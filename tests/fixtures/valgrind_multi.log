@@ -1,0 +1,17 @@
+==42== Memcheck, a memory error detector
+==42== Copyright (C) 2002-2024, and GNU GPL'd, by Julian Seward et al.
+==42==
+==42== Conditional jump or move depends on uninitialised value(s)
+==42==    at 0x10A100: foo (foo.c:23)
+==42==    by 0x10A200: bar (bar.c:55)
+==42==    by 0x10A300: main (main.c:9)
+==42==  Uninitialised value was created by a client request
+==42==    at 0x10A050: main (main.c:7)
+==42==
+==42== Use of uninitialised value of size 8
+==42==    at 0x10B100: poly_reduce (poly.c:88)
+==42==    by 0x10B200: main (main.c:11)
+==42==  Uninitialised value was created by a client request
+==42==    at 0x10A050: main (main.c:7)
+==42==
+==42== ERROR SUMMARY: 2 errors from 2 contexts (suppressed: 0 from 0)

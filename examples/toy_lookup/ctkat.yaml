@@ -1,0 +1,39 @@
+project:
+  name: toy_lookup
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  harnesses:
+    - name: leaky
+      template: generic
+      extra_headers: [lookup.h]
+      include_dirs: [include]
+      sources: [src/lookup.c]
+      function: leaky_lookup
+      return_type: void
+      args: [secret, out, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: out,    size: "16", role: output}
+
+    - name: safe
+      template: generic
+      extra_headers: [lookup.h]
+      include_dirs: [include]
+      sources: [src/lookup.c]
+      function: safe_lookup
+      return_type: void
+      args: [secret, out, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: out,    size: "16", role: output}
+
+report:
+  output_dir: ./reports

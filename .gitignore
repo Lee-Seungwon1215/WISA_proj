@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# C build artifacts
+*.o
+*.a
+
+# Per-example generated harnesses & reports
+examples/*/build/
+examples/*/_generated/
+examples/*/_generated_*/
+examples/*/reports/
+examples/*/reports_*/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local Docker overrides (keep docker-compose.yml committed)
+docker-compose.override.yml

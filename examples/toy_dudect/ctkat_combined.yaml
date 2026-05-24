@@ -1,0 +1,76 @@
+# Exercises both stages on the same set of harnesses so the verdict
+# matrix has both Valgrind and dudect signals to combine.
+project:
+  name: toy_combined
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated_ct
+  harnesses:
+    - name: leaky
+      template: generic
+      extra_headers: [leaky.h]
+      include_dirs: [include]
+      sources: [src/leaky.c]
+      function: leaky_function
+      return_type: int
+      args: [secret, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+
+    - name: safe
+      template: generic
+      extra_headers: [leaky.h]
+      include_dirs: [include]
+      sources: [src/leaky.c]
+      function: safe_function
+      return_type: int
+      args: [secret, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+
+dudect:
+  enabled: true
+  measurements: 30000
+  warmup: 300
+  batches: 10
+  clock: monotonic
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer]
+  harnesses:
+    - name: leaky
+      template: generic
+      extra_headers: [leaky.h]
+      include_dirs: [include]
+      sources: [src/leaky.c]
+      function: leaky_function
+      return_type: int
+      args: [secret, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+
+    - name: safe
+      template: generic
+      extra_headers: [leaky.h]
+      include_dirs: [include]
+      sources: [src/leaky.c]
+      function: safe_function
+      return_type: int
+      args: [secret, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+
+report:
+  output_dir: ./reports_combined

@@ -1,0 +1,48 @@
+project:
+  name: toy_password_auto
+  language: c
+  root: .
+
+build:
+  # The generic harness ships its own compile step, so we don't need a
+  # project-level Makefile invocation here.
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags:
+    - -O0
+    - -g
+    - -fno-inline
+    - -fno-omit-frame-pointer
+  harnesses:
+    - name: bad_auto
+      template: generic
+      extra_headers: [compare.h]
+      include_dirs: [include]
+      sources: [src/bad_compare.c]
+      function: bad_compare
+      return_type: int
+      args: [secret, guess, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: guess,  size: "16", role: public}
+
+    - name: safe_auto
+      template: generic
+      extra_headers: [compare.h]
+      include_dirs: [include]
+      sources: [src/safe_compare.c]
+      function: safe_compare
+      return_type: int
+      args: [secret, guess, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: guess,  size: "16", role: public}
+
+report:
+  output_dir: ./reports_auto
+  csv: ctkat_report.csv
+  json: ctkat_report.json

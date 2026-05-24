@@ -1,0 +1,58 @@
+# -O2 variant — same target as ctkat.yaml but compiled with optimization
+# enabled, to catch leaks the compiler may introduce (or hide) relative to
+# the -O0 diagnostic build. See doc §8 (operational strategy).
+#
+# Notes:
+#   * `-fno-inline` is dropped so inlining actually happens — that's the
+#     point of this run.
+#   * Stack frames in findings will be less precise (inlined functions get
+#     folded into their callers); use the -O0 yaml to localize root causes
+#     and this yaml to confirm the binary is still clean post-optimization.
+#   * dudect is omitted here — that stage already builds at -O2 in
+#     ctkat.yaml, so re-running it would be redundant.
+
+project:
+  name: pqclean_mlkem768_o2
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated_o2
+  cflags:
+    - -O2
+    - -g
+    - -fno-omit-frame-pointer
+  harnesses:
+    - name: kem_dec
+      template: kem
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs:
+        - clean
+        - common
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+        - common/randombytes.c
+
+report:
+  output_dir: ./reports_o2

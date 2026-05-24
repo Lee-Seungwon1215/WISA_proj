@@ -1,0 +1,92 @@
+project:
+  name: pqclean_mlkem768
+  language: c
+  root: .
+
+build:
+  # All sources are passed through the generator; no separate make stage.
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags:
+    - -O0
+    - -g
+    - -fno-inline
+    - -fno-omit-frame-pointer
+    - -DPQCLEAN_NO_GLIBC_RANDOMBYTES
+  harnesses:
+    - name: kem_dec
+      template: kem
+      # api.h gives us the *_CRYPTO_*BYTES macros; params.h provides the
+      # internal KYBER_INDCPA_SECRETKEYBYTES / KYBER_SYMBYTES values used
+      # in `secret_regions` below.
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      # ML-KEM stores `pk` and `H(pk)` inside `sk` (FIPS 203 §7.1). Only the
+      # ranges below are actually secret; the public bytes in between are
+      # legitimately consumed by re-encryption (rej_uniform on the seed),
+      # which would otherwise produce false-positive findings.
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs:
+        - clean
+        - common
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+        - common/randombytes.c
+
+dudect:
+  enabled: true
+  # ML-KEM-768 dec on QEMU x86 emulation: ~50µs per call. With a fresh
+  # keypair generated outside the timed region on every class-1 iteration
+  # (~80µs), 10k measurements ≈ 1–2 minutes.
+  measurements: 10000
+  warmup: 200
+  batches: 10
+  clock: monotonic
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer]
+  harnesses:
+    - name: kem_dec
+      template: kem
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      include_dirs: [clean, common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+        - common/randombytes.c
+
+report:
+  output_dir: ./reports

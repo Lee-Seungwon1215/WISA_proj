@@ -1,0 +1,35 @@
+MIT License
+
+Copyright (c) 2026 CT-KAT contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+================================================================================
+
+Third-party code:
+
+  examples/pqc_mlkem768/clean/    PQClean ML-KEM-768 (CC0 / public domain)
+                                  See examples/pqc_mlkem768/clean/LICENSE
+  examples/pqc_mlkem768/common/   PQClean common (CC0 / public domain)
+
+Both are fetched verbatim from https://github.com/PQClean/PQClean and remain
+under their upstream license. This repository's MIT license covers only the
+CT-KAT framework itself (the `ctkat/` package, `scripts/`, `tests/`, the
+non-PQClean examples, and the integration glue in `examples/pqc_mlkem768/`
+outside the `clean/` and `common/` subdirectories).

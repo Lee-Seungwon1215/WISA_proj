@@ -1,0 +1,6 @@
+==27== Conditional jump or move depends on uninitialised value(s)
+==27==    at 0x1095FE: bad_compare (bad_compare.c:10)
+==27==    by 0x1094BA: main (harness_bad.c:20)
+==27==  Uninitialised value was created by a client request
+==27==    at 0x109492: main (harness_bad.c:18)
+==27==

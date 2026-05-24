@@ -1,0 +1,21 @@
+project:
+  name: toy_password
+  language: c
+  root: .
+
+build:
+  command: "make clean && make"
+  workdir: .
+
+ct:
+  workdir: .
+  harnesses:
+    - name: bad
+      binary: build/harness_bad
+    - name: safe
+      binary: build/harness_safe
+
+report:
+  output_dir: ./reports
+  csv: ctkat_report.csv
+  json: ctkat_report.json
