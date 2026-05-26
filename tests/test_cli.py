@@ -14,7 +14,16 @@ from typing import List, Tuple
 
 from typer.testing import CliRunner
 
-from ctkat.cli import _compute_verdicts, app
+from ctkat.cli import _compute_verdicts, _print_cflags_banner, app
+from ctkat.config import (
+    BuildConfig,
+    CtConfig,
+    CtkatConfig,
+    DudectCompilerConfig,
+    DudectConfig,
+    HarnessConfig,
+    ProjectConfig,
+)
 from ctkat.dudect_runner import TimingSamples
 from ctkat.statistics import WelchResult
 from ctkat.valgrind_parser import (
@@ -239,3 +248,61 @@ def test_compute_verdicts_unions_harness_names_across_stages():
     vs = _compute_verdicts(ct, dud)
     names = {v.name for v in vs}
     assert names == {"a", "b"}
+
+
+# --- F9: cflags asymmetry banner (Bundle E-3) ------------------------------
+
+
+def _cfg_with_cflags(ct_flags, dud_flags):
+    """Build a minimal CtkatConfig with both stages and the given cflags."""
+    return CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(command="true"),
+        ct=CtConfig(
+            cflags=ct_flags,
+            harnesses=[HarnessConfig(name="h", binary=Path("/tmp/x"))],
+        ),
+        dudect=DudectConfig(
+            compiler=DudectCompilerConfig(cflags=dud_flags),
+        ),
+    )
+
+
+def test_cflags_banner_warns_when_asymmetric(capsys):
+    cfg = _cfg_with_cflags(["-O0", "-g"], ["-O2", "-g"])
+    _print_cflags_banner(cfg)
+    out = capsys.readouterr().out
+    assert "ct stage cflags" in out
+    assert "dudect stage cflags" in out
+    assert "WARNING" in out
+    assert "different cflags" in out
+
+
+def test_cflags_banner_silent_when_symmetric(capsys):
+    # Same flags in different order should NOT warn (set comparison).
+    cfg = _cfg_with_cflags(["-O2", "-g"], ["-g", "-O2"])
+    _print_cflags_banner(cfg)
+    out = capsys.readouterr().out
+    assert "ct stage cflags" in out
+    assert "dudect stage cflags" in out
+    assert "WARNING" not in out
+    assert "different cflags" not in out
+
+
+def test_cflags_banner_silent_when_dudect_missing(capsys):
+    cfg = CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(command="true"),
+        ct=CtConfig(
+            harnesses=[HarnessConfig(name="h", binary=Path("/tmp/x"))],
+        ),
+    )
+    _print_cflags_banner(cfg)
+    assert capsys.readouterr().out == ""
+
+
+def test_cflags_banner_silent_when_dudect_disabled(capsys):
+    cfg = _cfg_with_cflags(["-O0"], ["-O2"])
+    cfg = cfg.model_copy(update={"dudect": cfg.dudect.model_copy(update={"enabled": False})})
+    _print_cflags_banner(cfg)
+    assert capsys.readouterr().out == ""

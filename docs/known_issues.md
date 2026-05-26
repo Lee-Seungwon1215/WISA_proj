@@ -7,8 +7,10 @@ commits and PRs.
 ## Status
 
 - **Last updated**: 2026-05-26 (v5 + Quick Docs — see Review log at the bottom)
-- **Resolved so far**: R1 Option A (PQClean reproducibility caveat in README).
-  Pipeline progress: 0 issues fully closed, 1 partial. Bundle E-3 next.
+- **Resolved so far**:
+  - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
+  - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
+  Pipeline progress: 0 fully closed, 2 partial. Bundle E-1 next.
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -261,6 +263,13 @@ fail-open in any tier-1 spot makes that gate unreliable.
 - **Suggested bundle**: E.
 
 ### F9: ct stage and dudect stage compile with DIFFERENT optimization levels 🚨
+
+**Status**: **Criteria #1 (documentation) + #2 (CLI banner) RESOLVED in
+Bundle E-3.** `ctkat run` now prints both stages' cflags side-by-side at
+the top of the run, with a yellow `[CTKAT] WARNING: ... different cflags
+... cmov vs branch ...` line when they differ. README §"컴파일 옵션
+비대칭 경고" documents the trap.
+Open: #3 (yaml `shared_cflags` convenience) and #4 (multi-target matrix).
 
 - **Where**:
   - `ctkat/config.py:162-163` — `_default_cflags() = ["-O0", "-g",

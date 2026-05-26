@@ -60,6 +60,35 @@ def _resolve(base: Path, p: Path) -> Path:
     return p if p.is_absolute() else (base / p).resolve()
 
 
+def _print_cflags_banner(cfg: CtkatConfig) -> None:
+    """Print ct vs dudect cflags side-by-side; warn loudly when they differ.
+
+    F9: ct stage defaults to `-O0` (Valgrind debug friendliness — analyzers
+    need branches to stay branches) while dudect defaults to `-O2` (realistic
+    production timing). That means a verdict CLEAN does NOT mean "this exact
+    binary is constant-time" — the two stages compiled the same source with
+    different optimization, so e.g. an `if (secret) ...` that becomes a
+    branch at -O0 (and Valgrind FAILs it) may become a `cmov` at -O2 (and
+    dudect PASSes it). The user has to know this to read the verdict
+    correctly. Compared as sets so cflag reordering doesn't false-positive.
+    """
+    if cfg.ct is None or cfg.dudect is None or not cfg.dudect.enabled:
+        return
+    ct_flags = list(cfg.ct.cflags)
+    dud_flags = list(cfg.dudect.compiler.cflags)
+    console.print(f"[dim]ct stage cflags    : {' '.join(ct_flags)}[/]")
+    console.print(f"[dim]dudect stage cflags: {' '.join(dud_flags)}[/]")
+    if set(ct_flags) != set(dud_flags):
+        console.print(
+            "[bold yellow][CTKAT] WARNING:[/] ct and dudect stages compile "
+            "with different cflags — the two stages may analyze "
+            "structurally different binaries (e.g., `-O0` keeps a branch "
+            "that `-O2` turns into `cmov`). A combined verdict=CLEAN means "
+            "'both stages clean on their own builds', NOT 'the binary you "
+            "will ship is clean'. See README §컴파일 옵션 비대칭 경고."
+        )
+
+
 def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
     console.print(f"[bold cyan]==> Build[/]: {cfg.build.command}")
     workdir = _resolve(cfg_dir, cfg.build.workdir)
@@ -677,6 +706,8 @@ def run(
     """Run the full pipeline: build -> kat -> ct -> dudect -> report."""
     cfg = load_config(config)
     cfg_dir = config.parent.resolve()
+
+    _print_cflags_banner(cfg)
 
     if not _do_build(cfg, cfg_dir):
         raise typer.Exit(1)

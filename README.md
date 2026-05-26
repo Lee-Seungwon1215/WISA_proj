@@ -257,6 +257,41 @@ measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵
 | class 라벨 균형 | xorshift64의 상위 비트 (`>>32 & 1`) 사용 — LSB는 분포 약함 |
 | 언더플로우 clamp | `(t1 < t0) ? 0 : t1-t0`. TSC skew/clock anomaly로 인한 uint64 wrap 방지 |
 
+### 컴파일 옵션 비대칭 경고 (Bundle E-3)
+
+ct stage(Valgrind)와 dudect stage는 같은 소스를 **다른 cflags로 컴파일한다**.
+verdict=CLEAN이 떠도 "내가 배포할 -O2 바이너리"의 안전성 보장이 아님.
+
+| stage | 기본 cflags | 이유 |
+|---|---|---|
+| ct (Valgrind) | `-O0 -g -fno-inline -fno-omit-frame-pointer` | secret-dependent 분기를 cmov로 융합되기 전 단계에서 봐야 Valgrind가 정확히 보고 |
+| dudect | `-O2 -g -fno-omit-frame-pointer -fno-lto` | 사용자가 실제 배포할 바이너리에 가까운 타이밍 |
+
+구체적 함정:
+
+- `-O0`에선 `if (secret_byte) { ... }`가 분기로 남아 Valgrind가
+  secret-dependent branch FAIL을 보고.
+- `-O2`에선 같은 코드가 `cmov`로 컴파일되어 분기가 사라짐 → dudect는 타이밍
+  차이를 못 봐서 PASS.
+- 결합 verdict=CLEAN인데도 "실제 -O2 배포 바이너리"에 cmov로 마스킹된
+  leak이 있을 수 있고, 반대로 `-O2`가 keep한 분기가 `-O0` ct에선 안 보일
+  수도 있다.
+
+런 시작 시 두 stage의 cflags가 다르면 yellow banner로 경고가 뜸. 일치
+시키려면 yaml `ct.cflags`와 `dudect.compiler.cflags`를 동일 값으로 박으면
+됨 (Valgrind 측 디버그 정보 손실은 감수):
+
+```yaml
+ct:
+  cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]   # dudect와 통일
+dudect:
+  compiler:
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+```
+
+향후 작업: top-level `shared_cflags` 옵션 + 멀티 cflags 매트릭스 실행
+(known_issues.md F9 #3 / #4, follow-up).
+
 ### 통계 layer (Python 측)
 
 | 항목 | 내용 |
