@@ -469,12 +469,25 @@ Bundle G (S3) 효과 크기. 모두 항상 끝에 append되므로 awk-by-positio
 KyberSlash 류 검출은 별도 도구 (예: 알고리즘별 adversarial test vector,
 masking analysis) 필요.
 
-**❌ FO-fallback path 미커버 (U2 interim)**: `leak_target: ct`는 `enc()`로
-**valid** ct를 생성해 두 class에 모두 정상 dec path를 태운다. KEM의 FO
-fallback (잘못된 ct가 들어왔을 때 implicit rejection을 수행하는 경로) 안의
-timing leak은 검출하지 못한다 — 알려진 일부 KEM 취약점이 이 fallback 경로에
-거주하므로, "PASS"의 의미를 정상 dec path 내 ct-leak에 한정해서 읽을 것.
-별도 `leak_target: fo` 모드는 known_issues.md U2 #1 follow-up.
+**❌ FO-fallback path 미커버 → `leak_target: fo` 사용 (Bundle K, U2 #1)**:
+`leak_target: ct`는 `enc()`로 valid ct만 생성하므로 FO fallback / implicit
+rejection 경로는 안 들어감. 이 경로에 거주하는 leak (예: 정상 path 대비
+시간 차이로 ct invalidity가 누설)을 검출하려면 **`leak_target: fo`** 박을 것.
+class 0 = 매 iteration 새 valid ct (enc()로 생성), class 1 = random/invalid
+ct (FO fallback 강제). 같은 sk_fixed 위에서 dec timing 비교 → 정상 vs
+rejection 경로의 timing 차이가 검출됨.
+
+```yaml
+dudect:
+  harnesses:
+    - name: ml_kem_768_fo
+      template: kem
+      header: api.h
+      leak_target: fo      # ← FO fallback path 검사
+```
+
+sk-leak / ct-leak / fo-leak 세 모드는 직교 axis — 한 KEM 구현을 종합적으로
+보려면 3개 하니스 박을 것.
 
 ---
 

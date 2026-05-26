@@ -296,10 +296,13 @@ class DudectHarnessConfig(BaseModel):
     #   "sk" — class 0 fixed sk vs class 1 fresh sk (default; detects sk leaks)
     #   "ct" — class 0 fixed ct vs class 1 fresh ct (sk held constant;
     #          detects ct-content leaks, e.g. branches/lookups indexed by ct)
-    # `ct` mode trades sk-leak coverage for ct-leak coverage — define two
-    # harnesses if you want both. Only meaningful for template=kem; rejected
-    # at load time if combined with template=generic.
-    leak_target: Literal["sk", "ct"] = "sk"
+    #   "fo" — class 0 valid ct (via enc) vs class 1 random/invalid ct
+    #          (sk held constant; detects timing leaks in FO fallback /
+    #           implicit rejection path — Bundle K, U2 #1)
+    # Pick one per harness; define multiple harnesses for multiple modes.
+    # Only meaningful for template=kem; rejected at load time if combined
+    # with template=generic.
+    leak_target: Literal["sk", "ct", "fo"] = "sk"
 
     @model_validator(mode="after")
     def _check_mode(self) -> "DudectHarnessConfig":

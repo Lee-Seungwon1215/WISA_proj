@@ -229,3 +229,46 @@ def test_kem_randombytes_emitted_in_both_leak_modes():
     ct_out = render_timing_harness("kem", _kem_ctx(leak_target="ct"))
     assert "weak)) int randombytes(" in sk_out
     assert "weak)) int randombytes(" in ct_out
+
+
+# --- Bundle K (U2 #1): leak_target=fo mode ----------------------------
+
+
+def test_kem_fo_mode_uses_valid_ct_for_class_0():
+    out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
+    # Class 0 gets a fresh ENCryption — valid ct.
+    assert "crypto_kem_enc(ct_valid" in out
+    assert "ct = ct_valid;" in out
+
+
+def test_kem_fo_mode_uses_random_ct_for_class_1():
+    out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
+    # Class 1 fills ct_invalid with random bytes — FO fallback path.
+    assert "rand_bytes(ct_invalid" in out
+    assert "ct = ct_invalid;" in out
+
+
+def test_kem_fo_mode_measured_dec_uses_sk_fixed():
+    # sk is held constant in fo mode — only ct validity varies.
+    out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
+    assert "crypto_kem_dec(ss, ct, sk_fixed)" in out
+
+
+def test_kem_fo_mode_keypair_called_once_at_setup():
+    out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
+    # Exactly one actual call (prefix filters out the comment reference
+    # at the top of the rendered file).
+    assert out.count("TEST_crypto_kem_keypair(") == 1
+
+
+def test_kem_fo_mode_emits_weak_randombytes():
+    # All three modes (sk/ct/fo) need R1 Option B path for determinism.
+    out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
+    assert "weak)) int randombytes(" in out
+
+
+def test_kem_default_does_not_use_fo_mode():
+    # Backward compatibility: default leak_target must remain sk, not fo.
+    out = render_timing_harness("kem", _kem_ctx())
+    assert "ct_invalid" not in out
+    assert "fo-leak mode" not in out

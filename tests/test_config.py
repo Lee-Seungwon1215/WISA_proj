@@ -293,6 +293,38 @@ def test_dudect_generic_with_ct_leak_target_raises(tmp_path: Path):
         load_config(_write(tmp_path, body))
 
 
+def test_dudect_kem_leak_target_fo_accepted(tmp_path: Path):
+    # Bundle K (U2 #1): "fo" is a valid value for template=kem.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - name: h\n"
+        "      template: kem\n"
+        "      header: api.h\n"
+        "      leak_target: fo\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.dudect.harnesses[0].leak_target == "fo"
+
+
+def test_dudect_leak_target_fo_rejected_on_generic(tmp_path: Path):
+    # Same rule as ct: only valid for kem template.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - name: h\n"
+        "      template: generic\n"
+        "      function: foo\n"
+        "      leak_target: fo\n"
+    )
+    with pytest.raises(ValidationError, match="leak_target.*only valid for template=kem"):
+        load_config(_write(tmp_path, body))
+
+
 # --- Bundle H2: T4 argv / T7 name pattern / T8 bounds --------------------
 
 
