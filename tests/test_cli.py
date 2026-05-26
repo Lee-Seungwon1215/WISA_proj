@@ -696,3 +696,64 @@ def test_ct_error_flows_to_inconclusive_verdict():
     by_name = {v.name: v for v in vs}
     assert by_name["h"].verdict == Verdict.INCONCLUSIVE
     assert by_name["safe"].verdict == Verdict.CLEAN  # unaffected harness stays CLEAN
+
+
+# --- Bundle F: S1 dudect_summary.csv raw-count columns (18-20) ------------
+
+
+def test_dudect_summary_csv_has_raw_count_columns(tmp_path):
+    from ctkat.cli import _emit_dudect_report
+    from ctkat.dudect_runner import TimingSamples
+    from ctkat.statistics import WelchResult
+
+    samples = TimingSamples(
+        classes=[0, 1] * 50, cycles=[100.0, 200.0] * 50,
+        raw_n_total=200, dropped_zero_n0=30, dropped_zero_n1=2,
+    )
+    r = WelchResult(
+        n0=50, n1=50, mean0=100.0, mean1=200.0,
+        var0=1.0, var1=1.0,
+        t_score=5.0, abs_t_score=5.0, status="FAIL",
+    )
+    _emit_dudect_report("proj", tmp_path, [("h1", samples, r, [])])
+    summary = (tmp_path / "dudect_summary.csv").read_text().splitlines()
+    header = summary[0].split(",")
+    # Existing positions still stable (E-1 / Bundle B contract).
+    assert header[10] == "status"
+    assert header[14] == "cropped_at"
+    # New F columns appended at the end (1-indexed 18-20).
+    assert header[17] == "raw_n_total"
+    assert header[18] == "dropped_zero_n0"
+    assert header[19] == "dropped_zero_n1"
+    row = summary[1].split(",")
+    assert row[17] == "200"
+    assert row[18] == "30"
+    assert row[19] == "2"
+
+
+def test_dudect_summary_csv_error_harness_has_zero_raw_counts(tmp_path):
+    # S4 + S1 interaction: an ERROR-status harness emits a row with all
+    # raw-count columns at 0 (matching default-constructed TimingSamples).
+    # Important: the row STILL exists — previously E-1 made the loop
+    # `continue` instead of raise, but the CSV must reflect that.
+    from ctkat.cli import _emit_dudect_report, _error_welch
+    from ctkat.dudect_runner import TimingSamples
+    welch = _error_welch()
+    _emit_dudect_report(
+        "proj", tmp_path,
+        [("ok", TimingSamples(classes=[0, 1], cycles=[1.0, 2.0],
+                              raw_n_total=10, dropped_zero_n0=1,
+                              dropped_zero_n1=0),
+          WelchResult(n0=1, n1=1, mean0=1.0, mean1=2.0, var0=0.0, var1=0.0,
+                      t_score=0.0, abs_t_score=0.0, status="PASS"), []),
+         ("crashed", TimingSamples(), welch, [])],
+    )
+    rows = (tmp_path / "dudect_summary.csv").read_text().splitlines()[1:]
+    by_name = {r.split(",")[1]: r.split(",") for r in rows}
+    # Both harnesses present (S4: no row dropped on error).
+    assert set(by_name.keys()) == {"ok", "crashed"}
+    assert by_name["ok"][17] == "10"
+    assert by_name["crashed"][10] == "ERROR"
+    assert by_name["crashed"][17] == "0"
+    assert by_name["crashed"][18] == "0"
+    assert by_name["crashed"][19] == "0"

@@ -33,6 +33,7 @@ from .config import (
     load_config,
     resolve_clock,
 )
+from .coverage_check import check_secret_region_coverage
 from .dudect_runner import TimingSamples, run_timing_harness
 from .harness_generator import (
     HarnessGenerationError,
@@ -275,6 +276,26 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
             f"   [dim]binary: {result.binary_path}[/]"
         )
         paths[h.name] = result.binary_path
+
+        # F6: cross-check secret_regions coverage against the framework's
+        # expected total (CRYPTO_SECRETKEYBYTES). Only meaningful when the
+        # user actually specified secret_regions (otherwise full-sk taint is
+        # applied and there's nothing to verify). kem/sign templates only —
+        # generic has no canonical "sk" notion.
+        if (
+            h.template in ("kem", "sign")
+            and h.secret_regions
+            and h.header is not None
+        ):
+            check_secret_region_coverage(
+                harness_name=h.name,
+                header=h.header,
+                extra_headers=list(h.extra_headers),
+                prefix=h.prefix,
+                secret_region_lengths=[r.length for r in h.secret_regions],
+                include_dirs=include_dirs,
+                workdir=ct_cwd,
+            )
     return paths
 
 
@@ -508,8 +529,10 @@ def _emit_dudect_report(
         w = csv.writer(f, lineterminator="\n")
         # IMPORTANT: columns 1-14 are stable for backward compatibility —
         # scripts/run_phase4.sh parses $11 (status) via awk and we don't
-        # want to break that contract. New diagnostic columns (cropped_at,
-        # uncropped t-scores) go at the END.
+        # want to break that contract. Diagnostic columns 15-17 added in
+        # Bundle B (cropping), 18-20 added in Bundle F (S1 raw-count
+        # bookkeeping). All new columns go at the END so awk-by-position
+        # consumers keep working.
         w.writerow([
             "project", "harness",
             "n0", "n1",
@@ -517,8 +540,9 @@ def _emit_dudect_report(
             "t_score", "abs_t_score", "status",
             "batch_t_mean", "batch_t_max_abs", "batches",
             "cropped_at", "t_score_uncropped", "abs_t_score_uncropped",
+            "raw_n_total", "dropped_zero_n0", "dropped_zero_n1",
         ])
-        for harness_name, _, r, batches in results:
+        for harness_name, samples, r, batches in results:
             # Empty string when no batches — matches _print_dudect_summary's
             # on-screen "-" semantics and keeps pandas/R from reading the
             # literal string "nan" as a float NaN downstream.
@@ -537,6 +561,13 @@ def _emit_dudect_report(
                 batch_mean_str, batch_max_str, len(batches),
                 _fmt(r.cropped_at), _fmt(r.t_score_uncropped),
                 _fmt(r.abs_t_score_uncropped),
+                # S1: raw bookkeeping straight from the parser. ERROR-status
+                # rows (T6/S4) have a default-constructed TimingSamples so
+                # these columns are all 0 — that's the correct semantic
+                # ("the run didn't produce any samples").
+                samples.raw_n_total,
+                samples.dropped_zero_n0,
+                samples.dropped_zero_n1,
             ])
     return raw_path, summary_path
 

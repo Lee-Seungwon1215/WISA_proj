@@ -80,3 +80,63 @@ def test_low_zero_rate_is_silent(capsys):
     parse_timing_csv(text)
     captured = capsys.readouterr()
     assert "zero-cycle" not in captured.err.lower()
+
+
+# --- Bundle F: per-class drop tracking (F4) + raw counts (S1) ---------------
+
+
+def test_timing_samples_tracks_raw_counts_and_per_class_drops():
+    # 4 class-0 rows: 1 zero, 3 valid. 4 class-1 rows: 0 zero, 4 valid.
+    rows = [
+        "0,0,100", "1,0,0", "2,0,200", "3,0,300",
+        "4,1,1000", "5,1,1100", "6,1,1200", "7,1,1300",
+    ]
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    s = parse_timing_csv(text)
+    assert s.raw_n_total == 8
+    assert s.dropped_zero_n0 == 1
+    assert s.dropped_zero_n1 == 0
+    # Surviving cycles confirm the filter only dropped the zero row.
+    assert len(s.cycles) == 7
+
+
+def test_asymmetric_zero_drop_emits_per_class_warning(capsys):
+    # Class 0: 10 valid + 10 zero (50% drop). Class 1: 100 valid + 0 zero.
+    # Per-class gap = 50% vs 0%, well above the 5% threshold → warn.
+    rows = (
+        [f"{i},0,{100+i}" for i in range(10)]
+        + [f"{10+i},0,0" for i in range(10)]
+        + [f"{20+i},1,{1000+i}" for i in range(100)]
+    )
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    parse_timing_csv(text)
+    err = capsys.readouterr().err.lower()
+    assert "asymmetric" in err
+    assert "class-0" in err
+    assert "class-1" in err
+
+
+def test_symmetric_zero_drop_no_per_class_warning(capsys):
+    # Both classes drop ~50% — that's a noisy host, not a bias signal.
+    # Per-class warning should NOT fire (the overall zero-rate warning may).
+    rows = (
+        [f"{i},0,{100+i}" for i in range(10)]
+        + [f"{10+i},0,0" for i in range(10)]
+        + [f"{20+i},1,{1000+i}" for i in range(10)]
+        + [f"{30+i},1,0" for i in range(10)]
+    )
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    parse_timing_csv(text)
+    err = capsys.readouterr().err.lower()
+    # Per-class asymmetry warning must NOT fire (symmetric drop).
+    assert "asymmetric" not in err
+
+
+def test_per_class_warning_silent_when_one_class_empty(capsys):
+    # A single-class harness (only class 0) must not trip the per-class
+    # check trivially — without a class-1 baseline there's no gap to detect.
+    rows = [f"{i},0,{100+i}" for i in range(10)] + [f"{10+i},0,0" for i in range(10)]
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    parse_timing_csv(text)
+    err = capsys.readouterr().err.lower()
+    assert "asymmetric" not in err

@@ -318,9 +318,11 @@ dudect:
 
 | 항목 | 내용 |
 |---|---|
-| zero-cycle filter | parse 단계에서 cycles=0 (언더플로우 sentinel + ns-해상도 floor) drop. 1% 초과 시 warning |
+| zero-cycle filter | parse 단계에서 cycles=0 (언더플로우 sentinel + ns-해상도 floor) drop. 1% 초과 시 전체 warning |
+| per-class drop 비대칭 warning (Bundle F, F4/S2) | class별 drop rate를 추적해서 어느 한쪽이 5% 초과 + 두 rate의 gap이 5% 초과면 별도 warning. 살아남은 샘플이 한 클래스의 slow tail로 편향되어 Welch t-score를 왜곡할 수 있음 |
 | percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. dudect 원본의 multi-cutoff scan 정신 따름 |
 | batch t-score는 비-cropping | 환경 안정성 측정용이라 raw 신호 유지 |
+| secret_regions coverage probe (Bundle F, F6) | `template: kem/sign`이고 `secret_regions`가 설정된 하니스에 한해, 자동 생성 단계에서 별도 sentinel 프로그램을 잠시 컴파일·실행해 `sum(secret_regions.length)`와 `{prefix}CRYPTO_SECRETKEYBYTES`를 실제 컴파일러에서 평가. <50%면 yellow warning (sk 대부분을 public으로 취급 중 — yaml typo 의심). probe 컴파일/실행 실패는 yellow note만, blocking X |
 
 ### 재현성 (seed)
 
@@ -360,9 +362,12 @@ xorshift PRNG로만 입력을 만든다.
 | 12-14 | `batch_t_mean`, `batch_t_max_abs`, `batches` | 배치 안정성 |
 | 15 | `cropped_at` | max \|t\|를 만든 cutoff (e.g., `0.95`). cropping 꺼짐이면 빈 칸 |
 | 16-17 | `t_score_uncropped`, `abs_t_score_uncropped` | cutoff=1.0의 raw t-score (diagnostic, cropping 부작용 확인용) |
+| 18 | `raw_n_total` | Bundle F (S1): zero-filter 적용 전 C 하니스가 emit한 row 수. `measurements - raw_n_total`이 0 이상이면 하니스가 일부 측정을 누락. ERROR-status row는 0 |
+| 19-20 | `dropped_zero_n0`, `dropped_zero_n1` | Bundle F (S1): zero-cycle filter가 클래스별로 떨어뜨린 수. `n0 = (raw_n0 - dropped_zero_n0)` 식. 두 값이 비대칭하면 sample bias 의심 (F4/S2 console warning과 같이 봄) |
 
 컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
-diagnostic 컬럼으로 항상 끝에 append.
+Bundle B diagnostic 컬럼, 18-20은 Bundle F (S1) raw-count 컬럼. 모두 항상
+끝에 append되므로 awk-by-position 파서는 안 깨짐.
 
 ### `ctkat_verdict.csv` 컬럼 reference (Bundle E-1 갱신)
 

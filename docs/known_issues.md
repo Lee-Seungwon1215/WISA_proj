@@ -14,8 +14,10 @@ commits and PRs.
     INCONCLUSIVE verdict state + per-stage exit-code contract).
   - F2, F5 — Bundle E-2 (analysis-stage fail-open: valgrind crash → ERROR,
     manual-binary sentinel check).
-  Pipeline progress: 9 fully closed (F1/F2/F3/F5/F7/F8/F10/F11/T6), 2 partial
-  (R1, F9). Bundle F next (class balance + transparency: F4/F6/S1/S2/S4).
+  - F4, F6, S1, S2, S4 — Bundle F (per-class drop tracking, secret_regions
+    coverage probe, raw-count CSV columns, graceful per-harness skip).
+  Pipeline progress: 14 fully closed (F1/F2/F3/F4/F5/F6/F7/F8/F10/F11/S1/S2/S4/T6),
+  2 partial (R1, F9). Bundle G next (R2/S3 calibration + Cohen's d).
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -427,6 +429,12 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
 
 ### F4: dudect zero-cycle filter ignores class balance 🟡
 
+**Status: RESOLVED in Bundle F (with S2).** `parse_timing_csv` now tracks
+`dropped_zero_n0` / `dropped_zero_n1` separately and fires a dedicated
+yellow warning when one class loses ≥5% AND the per-class gap is ≥5%
+(symmetric drops stay quiet — that's noise, not bias). Per-class counts
+also surface in `TimingSamples` and propagate to CSV columns 19-20 (S1).
+
 - **Where**: `ctkat/dudect_runner.py:40-87` (`parse_timing_csv`),
   `ctkat/dudect_runner.py:19` (`_ZERO_CYCLE_WARN_THRESHOLD = 0.01`).
 - **Symptom**: Bundle B's zero-filter drops `cycles==0` rows class-agnostically.
@@ -463,6 +471,14 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
 ## Tier 2: Reproducibility / Calibration
 
 ### F6: Auto-template `secret_regions` size not cross-checked 🟡
+
+**Status: RESOLVED in Bundle F.** New `ctkat/coverage_check.py` module
+emits a sentinel C program that evaluates `sum(secret_regions.length)`
+and `{prefix}CRYPTO_SECRETKEYBYTES` under the same compiler+headers the
+real harness uses, parses the printed integers, and warns when coverage
+< 50%. kem/sign template harnesses only (no canonical "sk" notion in
+generic). Compile/exec/parse failures are non-blocking — F6 is a
+diagnostic, not a gate.
 
 (Numbered F-series because it's the same fail-open *pattern* as F1/F2/F5,
 just less severe — requires user misconfiguration to trigger.)
@@ -649,6 +665,13 @@ naturally co-targets T1 (template dedup).
 
 ### S1: CSV `n0`/`n1` reports post-filter, post-crop counts only 🟡
 
+**Status: RESOLVED in Bundle F.** `dudect_summary.csv` now has columns
+18 (`raw_n_total`), 19 (`dropped_zero_n0`), 20 (`dropped_zero_n1`). Users
+can reconstruct the full filter pipeline from the CSV alone:
+`n0 = raw_n0 - dropped_zero_n0 - cropping`. ERROR-status rows have all
+three at 0 (default-constructed TimingSamples). awk `$11=status` position
+unchanged.
+
 - **Where**: `ctkat/cli.py:_emit_dudect_report`
   (current columns documented at `README.md:264-277`).
 - **Symptom**: A user reading `dudect_summary.csv` sees `n0=10924`,
@@ -670,6 +693,12 @@ naturally co-targets T1 (template dedup).
 - **Suggested bundle**: F.
 
 ### S2: zero-filter asymmetry not surfaced in console output 🟢
+
+**Status: RESOLVED in Bundle F (with F4).** Per-class warning fires when
+per-class drop rate exceeds 5% AND the gap between classes is > 5%.
+Message: "zero-cycle filter asymmetric — dropped X% of class-0 vs Y%
+of class-1 samples. Surviving samples are likely a biased subset..."
+See F4 for the logic-side write-up.
 
 - **Where**: `ctkat/dudect_runner.py:parse_timing_csv` warning logic.
 - **Symptom**: Same root as F4; this is the user-facing side. Console
@@ -708,6 +737,13 @@ naturally co-targets T1 (template dedup).
 ---
 
 ### S4: partial dudect run discards all prior harnesses' data 🟡
+
+**Status: RESOLVED across Bundle E-1 + Bundle F.** E-1 introduced
+graceful per-harness skip (try/except → status=ERROR + continue instead
+of raise) for all four uncaught dudect paths plus the "n0/n1 < 2" case.
+Bundle F finalizes by verifying via tests that ERROR rows still appear
+in `dudect_summary.csv` with their raw-count columns at 0 — previously-
+completed harnesses' data is preserved end-to-end.
 
 - **Where**: `ctkat/cli.py:465-470` — inside the `for h in dud.harnesses:`
   loop, raises `typer.Exit(1)` when any single harness produces
