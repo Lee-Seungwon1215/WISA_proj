@@ -1,0 +1,47 @@
+project:
+  name: toy_kem_ct_leak
+  language: c
+  root: .
+
+build:
+  # Source is compiled in by the dudect harness step.
+  command: "true"
+  workdir: .
+
+dudect:
+  enabled: true
+  measurements: 50000
+  warmup: 500
+  batches: 10
+  clock: monotonic         # explicit for CI portability (see Bundle C)
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    # leaky: ct[0]-dependent slow path in LEAKY_crypto_kem_dec().
+    # Expected: FAIL.
+    - name: leaky
+      template: kem
+      leak_target: ct
+      include_dirs: [include]
+      sources: [src/toy_kem.c]
+      header: toy_kem.h
+      prefix: "LEAKY_"
+
+    # safe: same loop count for every ct in SAFE_crypto_kem_dec().
+    # Expected: PASS.
+    - name: safe
+      template: kem
+      leak_target: ct
+      include_dirs: [include]
+      sources: [src/toy_kem.c]
+      header: toy_kem.h
+      prefix: "SAFE_"
+
+report:
+  output_dir: ./reports

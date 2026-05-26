@@ -223,6 +223,14 @@ class DudectHarnessConfig(BaseModel):
     # kem-only
     header: Optional[str] = None
     prefix: str = ""
+    # Which axis of the KEM API is varied between class 0 and class 1.
+    #   "sk" — class 0 fixed sk vs class 1 fresh sk (default; detects sk leaks)
+    #   "ct" — class 0 fixed ct vs class 1 fresh ct (sk held constant;
+    #          detects ct-content leaks, e.g. branches/lookups indexed by ct)
+    # `ct` mode trades sk-leak coverage for ct-leak coverage — define two
+    # harnesses if you want both. Only meaningful for template=kem; rejected
+    # at load time if combined with template=generic.
+    leak_target: Literal["sk", "ct"] = "sk"
 
     @model_validator(mode="after")
     def _check_mode(self) -> "DudectHarnessConfig":
@@ -237,6 +245,14 @@ class DudectHarnessConfig(BaseModel):
         if self.template == "kem" and not self.header:
             raise ValueError(
                 f"dudect harness {self.name!r}: template=kem requires 'header'"
+            )
+        if self.template != "kem" and self.leak_target != "sk":
+            # leak_target is a KEM-specific axis; on the generic template
+            # there's no canonical "sk vs ct" split, so silently accepting
+            # ct here would be a noisy no-op.
+            raise ValueError(
+                f"dudect harness {self.name!r}: leak_target={self.leak_target!r} "
+                "only valid for template=kem"
             )
         return self
 

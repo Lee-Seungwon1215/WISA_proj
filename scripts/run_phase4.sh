@@ -6,6 +6,8 @@
 # 3. Phase 4: dudect alone against toy_dudect (leaky FAIL, safe PASS)
 # 4. Revision: combined yaml (ct+dudect) on toy_dudect → verdict matrix
 # 5. Revision: ct on toy_lookup → MEMORY_ACCESS finding type promoted
+# 6. Bundle D: dudect on toy_kem_ct_leak with leak_target=ct
+#    (leaky FAIL, safe PASS — validates the new ct-axis detection mode)
 
 set -uo pipefail
 
@@ -63,6 +65,19 @@ if [ -f "$lookup_csv" ]; then
 fi
 
 echo
+echo "==> [Bundle D] dudect ct-leak on toy_kem_ct_leak"
+PYTHONPATH=. python -m ctkat dudect --config examples/toy_kem_ct_leak/ctkat.yaml
+ctleak_rc=$?
+
+sum_ctleak=examples/toy_kem_ct_leak/reports/dudect_summary.csv
+ctleak_leaky=""
+ctleak_safe=""
+if [ -f "$sum_ctleak" ]; then
+    ctleak_leaky=$(awk -F',' 'NR>1 && $2=="leaky" {print $11}' "$sum_ctleak")
+    ctleak_safe=$(awk -F',' 'NR>1 && $2=="safe"  {print $11}' "$sum_ctleak")
+fi
+
+echo
 echo "==> Verdict"
 fail=0
 if [ "$pytest_rc" -ne 0 ]; then echo "  [BAD]  pytest rc=$pytest_rc"; fail=1; else echo "  [OK]   pytest"; fi
@@ -98,6 +113,19 @@ if echo "$lookup_types" | grep -q "SECRET_DEPENDENT_MEMORY_ACCESS"; then
     echo "  [OK]   toy_lookup leaky_lookup promoted to MEMORY_ACCESS"
 else
     echo "  [BAD]  toy_lookup finding types=$lookup_types (expected MEMORY_ACCESS)"; fail=1
+fi
+
+# Bundle D: ct-axis leak detection (toy_kem_ct_leak / leak_target=ct)
+if [ "$ctleak_rc" -eq 2 ]; then echo "  [OK]   ct-leak rc=2"; else echo "  [BAD]  ct-leak rc=$ctleak_rc"; fail=1; fi
+if [ "$ctleak_leaky" = "FAIL" ]; then
+    echo "  [OK]   ct-leak leaky dudect=FAIL"
+else
+    echo "  [BAD]  ct-leak leaky=$ctleak_leaky (expected FAIL)"; fail=1
+fi
+if [ "$ctleak_safe" = "PASS" ] || [ "$ctleak_safe" = "WARNING" ]; then
+    echo "  [OK]   ct-leak safe  dudect=$ctleak_safe"
+else
+    echo "  [BAD]  ct-leak safe=$ctleak_safe"; fail=1
 fi
 
 exit $fail

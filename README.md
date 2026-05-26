@@ -224,7 +224,7 @@ report:
 
 ---
 
-## dudect 측정 강화 (Bundle A / B / C)
+## dudect 측정 강화 (Bundle A / B / C / D)
 
 기본 동작이 dudect 원본 (Reparaz et al. 2017) 프로토콜에 정합되도록
 measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵션 ㄴ —
@@ -277,6 +277,35 @@ measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵
 
 컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
 diagnostic 컬럼으로 항상 끝에 append.
+
+### KEM leak axes — `sk` vs `ct` (Bundle D)
+
+`template: kem` 하니스에 `leak_target: sk` (default) 또는 `leak_target: ct` 설정.
+한 KEM 구현을 양 축으로 검증하려면 yaml에 하니스 2개 박음.
+
+| `leak_target` | 고정 | 변화 | 잡는 leak |
+|---|---|---|---|
+| `sk` (기본) | ct random 양 class | class 0 fixed sk vs class 1 fresh sk | sk-content dependent timing (sk-indexed branch/lookup) |
+| `ct` | sk fixed 양 class | class 0 fixed ct vs class 1 fresh ct via `enc()` | ct-content dependent timing (ct-indexed branch/lookup) |
+
+### ⚠️ ct-leak 모드의 본질적 한계
+
+`leak_target: ct`는 **random sampling 기반의 fixed-vs-random** 검사. 그래서:
+
+**✅ 잘 잡는 leak**:
+- `if (ct[i] == X) slow_path()` — 흔한 ct 비트 패턴에 dependent
+- ct 일부를 인덱스로 lookup table 접근
+- ct 처리 중 분기 ≥ ~1%의 입력에 영향
+
+**❌ 못 잡는 leak (KyberSlash 류)**:
+- **희귀한 ct 값**에서만 slow path 트리거 (e.g., `~2^-40` 확률)
+- 50k 랜덤 샘플 중 한 번도 안 걸릴 가능성 높음
+- 실제 KyberSlash 검출은 **adversarial ct 생성** (특정 polynomial 형태 만족
+  하는 ct를 알고리즘 지식으로 합성) 필요 — 본 framework 범위 밖
+
+**즉 `leak_target: ct` PASS = "흔한 ct-leak 면역"이지 "ct-CT-safe"가 아님.**
+KyberSlash 류 검출은 별도 도구 (예: 알고리즘별 adversarial test vector,
+masking analysis) 필요.
 
 ---
 

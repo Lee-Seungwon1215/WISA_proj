@@ -309,6 +309,7 @@ def _dudect_context(
         base.update({
             "header": h.header,
             "prefix": h.prefix,
+            "leak_target": h.leak_target,
         })
     else:  # generic
         base.update({

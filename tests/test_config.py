@@ -257,3 +257,37 @@ def test_auto_clock_on_arm_loads_cleanly(monkeypatch, tmp_path: Path):
     )
     cfg = load_config(_write(tmp_path, body))
     assert cfg.dudect.clock == "auto"
+
+
+# --- Bundle D: leak_target field ---------------------------------------------
+
+
+def test_dudect_harness_leak_target_default_is_sk():
+    from ctkat.config import DudectHarnessConfig
+    h = DudectHarnessConfig(name="h", template="kem", header="api.h")
+    assert h.leak_target == "sk"
+
+
+def test_dudect_kem_can_set_leak_target_ct():
+    from ctkat.config import DudectHarnessConfig
+    h = DudectHarnessConfig(
+        name="h", template="kem", header="api.h", leak_target="ct",
+    )
+    assert h.leak_target == "ct"
+
+
+def test_dudect_generic_with_ct_leak_target_raises(tmp_path: Path):
+    # leak_target is KEM-specific. On the generic template there's no
+    # canonical sk-vs-ct split, so accepting `ct` would be a silent no-op.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - name: h\n"
+        "      template: generic\n"
+        "      function: foo\n"
+        "      leak_target: ct\n"
+    )
+    with pytest.raises(ValidationError, match="leak_target.*only valid for template=kem"):
+        load_config(_write(tmp_path, body))

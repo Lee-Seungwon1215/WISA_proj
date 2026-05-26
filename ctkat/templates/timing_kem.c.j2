@@ -86,6 +86,65 @@ static uint8_t  classes_buf[CTKAT_MEASUREMENTS];
 int main(void) {
     prng_init(CTKAT_SEED);
 
+{% if leak_target | default("sk") == "ct" %}
+    /* === ct-leak mode ===
+     * sk is held constant across BOTH classes; ct is the fixed-vs-random
+     * axis. Detects branches/lookups indexed by ct content. NOT effective
+     * against adversarially-rare ct triggers (e.g. KyberSlash). */
+    uint8_t pk_fixed  [{{ prefix }}CRYPTO_PUBLICKEYBYTES];
+    uint8_t sk_fixed  [{{ prefix }}CRYPTO_SECRETKEYBYTES];
+    uint8_t ct_fixed  [{{ prefix }}CRYPTO_CIPHERTEXTBYTES];
+    uint8_t ct_random [{{ prefix }}CRYPTO_CIPHERTEXTBYTES];
+    uint8_t ct_warm   [{{ prefix }}CRYPTO_CIPHERTEXTBYTES];
+    uint8_t ss[{{ prefix }}CRYPTO_BYTES];
+
+    /* Fixed keypair — held constant for the whole run. */
+    {{ prefix }}crypto_kem_keypair(pk_fixed, sk_fixed);
+
+    /* Fixed ct — generated once via enc() so it's a *valid* ciphertext
+     * (exercises the normal dec path, not the FO fallback). `ss` is
+     * clobbered here but rewritten by every later dec() anyway. */
+    {{ prefix }}crypto_kem_enc(ct_fixed, ss, pk_fixed);
+
+    /* warmup — discard timings */
+    for (size_t i = 0; i < CTKAT_WARMUP; i++) {
+        rand_bytes(ct_warm, sizeof(ct_warm));
+        {{ prefix }}crypto_kem_dec(ss, ct_warm, sk_fixed);
+    }
+
+    for (size_t i = 0; i < CTKAT_MEASUREMENTS; i++) {
+        int cls = (int)((prng_next() >> 32) & 1ULL);
+
+        uint8_t *ct;
+        if (cls == 0) {
+            ct = ct_fixed;
+        } else {
+            /* Fresh valid ct via enc() — call is OUTSIDE the timed region.
+             * Same pk_fixed so the resulting ct decapsulates under the
+             * same sk; only the ct *content* varies between classes. */
+            {{ prefix }}crypto_kem_enc(ct_random, ss, pk_fixed);
+            ct = ct_random;
+        }
+
+        /* Cache-balance step. ct-leak mode shares sk between classes so
+         * cache pressure is more symmetric than sk-leak mode, but class 1's
+         * enc() still touches large polynomial buffers. Warm dec
+         * normalizes the cache state to "just-ran-dec" for both classes. */
+        rand_bytes(ct_warm, sizeof(ct_warm));
+        {{ prefix }}crypto_kem_dec(ss, ct_warm, sk_fixed);
+
+        uint64_t t0 = ctkat_now();
+        int __ctkat_dec_rc = {{ prefix }}crypto_kem_dec(ss, ct, sk_fixed);
+        CTKAT_USE(__ctkat_dec_rc);
+        uint64_t t1 = ctkat_now();
+
+        cycles_buf[i]  = (t1 >= t0) ? (t1 - t0) : 0;
+        classes_buf[i] = (uint8_t)cls;
+    }
+{% else %}
+    /* === sk-leak mode (default) ===
+     * sk is the fixed-vs-random axis; ct is random for both classes.
+     * Detects branches/lookups indexed by sk content. */
     uint8_t pk_fixed [{{ prefix }}CRYPTO_PUBLICKEYBYTES];
     uint8_t sk_fixed [{{ prefix }}CRYPTO_SECRETKEYBYTES];
     uint8_t pk_random[{{ prefix }}CRYPTO_PUBLICKEYBYTES];
@@ -145,6 +204,7 @@ int main(void) {
         cycles_buf[i]  = (t1 >= t0) ? (t1 - t0) : 0;
         classes_buf[i] = (uint8_t)cls;
     }
+{% endif %}
 
     printf("sample_id,class,cycles\n");
     for (size_t i = 0; i < CTKAT_MEASUREMENTS; i++) {

@@ -69,8 +69,36 @@ dudect:
     cc: gcc
     cflags: [-O2, -g, -fno-omit-frame-pointer]
   harnesses:
+    # sk-leak axis (default leak_target=sk). Name stays `kem_dec` so it
+    # pairs with the ct.harnesses[name=kem_dec] entry above in the combined
+    # verdict matrix.
     - name: kem_dec
       template: kem
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      include_dirs: [clean, common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+        - common/randombytes.c
+
+    # ct-leak axis (Bundle D): class 0 fixed ct vs class 1 fresh ct, sk
+    # held constant. Detects ct-content leaks (e.g. ct-indexed branches).
+    # Pairs with no ct.harness — Valgrind has no sk/ct axis distinction.
+    # NOTE: this catches common ct-leaks but NOT adversarial rare-trigger
+    # leaks like KyberSlash — see README "ct-leak 모드의 본질적 한계".
+    - name: kem_dec_ct
+      template: kem
+      leak_target: ct
       header: api.h
       extra_headers: [params.h]
       prefix: "PQCLEAN_MLKEM768_CLEAN_"
