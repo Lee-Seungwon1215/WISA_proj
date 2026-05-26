@@ -17,6 +17,10 @@ examples/*/_generated_*/
 examples/*/reports/
 examples/*/reports_*/
 
+# Bundle baseline measurements (raw timing CSVs ~3 MB each, regenerable
+# via `docker compose run --rm ctkat-dev bash scripts/run_phase4.sh`).
+baselines/
+
 # Editor / OS
 .DS_Store
 .idea/
