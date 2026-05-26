@@ -107,7 +107,7 @@ WISA/
     "secret 값이 분기 또는 메모리 주소 계산에 쓰였나?"
          ↓
 [3] dudect — Statistical Timing
-    fixed-vs-random secret + Welch t-test
+    fixed-vs-random secret + Welch t-test + percentile cropping (max |t|)
     "secret 값에 따라 실행 시간 분포가 통계적으로 다른가?"
          ↓
 [verdict] CLEAN / LOW_RISK / SUSPECT / RISKY / CRITICAL
@@ -195,7 +195,9 @@ dudect:
   generated_dir: ./_generated_dudect
   compiler:
     cc: gcc                    # gcc | clang
-    cflags: [-O2, -g, -fno-omit-frame-pointer]
+    # -fno-lto는 측정 정밀도에 중요: LTO를 켜면 컴파일러가 외부 링크 함수의
+    # body까지 보고 "return값 안 쓰니까 호출 elide"를 결정할 수 있음.
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
   harnesses:
     - name: bar
       template: generic        # generic | kem
@@ -222,16 +224,58 @@ report:
 
 ---
 
+## dudect 측정 강화 (Bundle A / B)
+
+기본 동작이 dudect 원본 (Reparaz et al. 2017) 프로토콜에 정합되도록
+measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵션 ㄴ —
+기본 ON이 권장 동작.
+
+### 측정 primitives (생성된 C harness)
+
+| 항목 | 내용 |
+|---|---|
+| rdtsc 직렬화 | `clock=rdtsc` 모드에서 `_mm_lfence` + `__rdtscp` + `_mm_lfence`. OOO/speculation으로 측정 명령이 timed region 밖으로 새는 것 방지 |
+| compiler 배리어 | `CTKAT_USE(ret)` 매크로로 비-void 리턴값 materialize. `-fno-lto` 기본값과 함께 외부 링크 함수 호출 elide 방어 |
+| class 라벨 균형 | xorshift64의 상위 비트 (`>>32 & 1`) 사용 — LSB는 분포 약함 |
+| 언더플로우 clamp | `(t1 < t0) ? 0 : t1-t0`. TSC skew/clock anomaly로 인한 uint64 wrap 방지 |
+
+### 통계 layer (Python 측)
+
+| 항목 | 내용 |
+|---|---|
+| zero-cycle filter | parse 단계에서 cycles=0 (언더플로우 sentinel + ns-해상도 floor) drop. 1% 초과 시 warning |
+| percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. dudect 원본의 multi-cutoff scan 정신 따름 |
+| batch t-score는 비-cropping | 환경 안정성 측정용이라 raw 신호 유지 |
+
+### `dudect_summary.csv` 컬럼 reference
+
+| col | 이름 | 의미 |
+|---|---|---|
+| 1-2 | `project`, `harness` | 식별자 |
+| 3-4 | `n0`, `n1` | 클래스별 sample 수 (cropping 후) |
+| 5-6 | `mean0`, `mean1` | 클래스별 평균 cycle / ns |
+| 7-8 | `var0`, `var1` | 클래스별 variance |
+| 9-10 | `t_score`, `abs_t_score` | max-cropped t-score |
+| 11 | `status` | PASS / WARNING / FAIL — **max-cropped 기준** |
+| 12-14 | `batch_t_mean`, `batch_t_max_abs`, `batches` | 배치 안정성 |
+| 15 | `cropped_at` | max \|t\|를 만든 cutoff (e.g., `0.95`). cropping 꺼짐이면 빈 칸 |
+| 16-17 | `t_score_uncropped`, `abs_t_score_uncropped` | cutoff=1.0의 raw t-score (diagnostic, cropping 부작용 확인용) |
+
+컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
+diagnostic 컬럼으로 항상 끝에 append.
+
+---
+
 ## CLI commands
 
 ```bash
 # 전체 파이프라인 (build → kat → ct → dudect → report → verdict)
-python -m ctkat run --config <ctkat.yaml>
+python -m ctkat run --config <ctkat.yaml> [--continue-on-kat-fail] [--no-crop]
 
 # 각 단계 단독 실행
 python -m ctkat ct       --config <ctkat.yaml>
 python -m ctkat kat      --config <ctkat.yaml>
-python -m ctkat dudect   --config <ctkat.yaml>  [--measurements N] [--seed VALUE|random]
+python -m ctkat dudect   --config <ctkat.yaml>  [--measurements N] [--seed VALUE|random] [--no-crop]
 
 # 헤더 파일에서 함수 시그니처 + secret/public 역할 자동 추론
 python -m ctkat infer --header path/to/api.h
@@ -241,6 +285,9 @@ python -m ctkat infer --header api.h --function crypto_kem_dec
 # Valgrind 로그 단일 파일 파싱 (디버깅용)
 python -m ctkat parse path/to/valgrind.log
 ```
+
+`--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
+사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.
 
 종료 코드:
 
@@ -290,7 +337,13 @@ int leaky_function(const uint8_t *secret, size_t len) {
 }
 ```
 
-결과: dudect mean diff ~3500 ns, `|t| = 156`, **FAIL** (clean monotonic clock, QEMU 환경).
+결과 (Bundle A/B 적용 후, monotonic clock, QEMU/Docker 환경):
+- post-Bundle-A: mean diff ~3400 ns, `|t| = 156.7`, **FAIL**
+- post-Bundle-B: mean diff ~4530 ns, `|t| = 192.3`, `cropped_at = 1.000`, **FAIL**
+
+Bundle A의 언더플로우 clamp가 sub-resolution 0-cycle 측정값을 정리하고
+Bundle B의 cropping이 추가로 noise를 잘라내면서 leak 감도가 +23% 향상됨.
+`safe_function` 은 `|t| ≈ 0.34` (uncropped) 로 PASS 유지.
 
 ### 4. `pqc_mlkem768` — 실전 PQClean ML-KEM-768
 
