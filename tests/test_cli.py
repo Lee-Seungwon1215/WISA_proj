@@ -132,7 +132,7 @@ def test_compute_verdicts_handles_ct_only_harness():
     assert len(vs) == 1
     assert vs[0].valgrind_status == "FAIL"
     assert vs[0].dudect_status == "NONE"
-    assert vs[0].verdict == Verdict.LOW_RISK
+    assert vs[0].verdict == Verdict.STRUCTURAL_LEAK
 
 
 def test_compute_verdicts_handles_dudect_only_harness():

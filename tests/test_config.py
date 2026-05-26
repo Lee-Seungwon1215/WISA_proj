@@ -409,3 +409,81 @@ def test_dudect_batches_zero_rejected(tmp_path: Path):
     )
     with pytest.raises(ValidationError, match=r"batches"):
         load_config(_write(tmp_path, body))
+
+
+# --- Bundle I (F9 #3): shared_cflags propagation -------------------------
+
+
+def test_shared_cflags_propagates_to_both_stages(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "shared_cflags: ['-O2', '-g', '-fno-inline']\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - {name: h, template: generic, function: foo}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.cflags == ["-O2", "-g", "-fno-inline"]
+    assert cfg.dudect.compiler.cflags == ["-O2", "-g", "-fno-inline"]
+
+
+def test_shared_cflags_yields_to_explicit_ct_cflags(tmp_path: Path):
+    # Explicit per-stage cflags must win over shared (so power users can
+    # share *most* flags but tweak one stage).
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "shared_cflags: ['-O2', '-g']\n"
+        "ct:\n"
+        "  cflags: ['-O0', '-g']\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.cflags == ["-O0", "-g"]
+
+
+def test_shared_cflags_unset_leaves_defaults(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    # Default ct cflags should still be the original -O0 list (Bundle E-3
+    # banner notices the asymmetry).
+    assert "-O0" in cfg.ct.cflags
+
+
+# --- Bundle I (T2): lookup_function_patterns yaml field ------------------
+
+
+def test_lookup_function_patterns_defaults_to_none(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.lookup_function_patterns is None
+
+
+def test_lookup_function_patterns_user_override(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  lookup_function_patterns: ['my_table']\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.lookup_function_patterns == ["my_table"]

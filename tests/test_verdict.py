@@ -6,9 +6,10 @@ def test_both_clean():
 
 
 def test_valgrind_only_fail():
-    # Structural finding with no timing evidence (or dudect didn't run)
-    assert combine("FAIL", "NONE") == Verdict.LOW_RISK
-    assert combine("FAIL", "PASS") == Verdict.LOW_RISK
+    # Structural finding with no timing evidence (or dudect didn't run).
+    # Bundle I (U6 Option A): renamed from LOW_RISK to STRUCTURAL_LEAK.
+    assert combine("FAIL", "NONE") == Verdict.STRUCTURAL_LEAK
+    assert combine("FAIL", "PASS") == Verdict.STRUCTURAL_LEAK
 
 
 def test_dudect_only_warning():
@@ -90,7 +91,7 @@ def test_kat_pass_does_not_affect_matrix():
     # mean anything — so it should NOT change verdicts compared to the
     # legacy NONE behavior.
     assert combine("PASS", "PASS", kat_status="PASS") == Verdict.CLEAN
-    assert combine("FAIL", "PASS", kat_status="PASS") == Verdict.LOW_RISK
+    assert combine("FAIL", "PASS", kat_status="PASS") == Verdict.STRUCTURAL_LEAK
     assert combine("FAIL", "FAIL", kat_status="PASS") == Verdict.CRITICAL
 
 

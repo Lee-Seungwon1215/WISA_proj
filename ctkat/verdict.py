@@ -25,7 +25,11 @@ from typing import Optional
 
 class Verdict(str, Enum):
     CLEAN = "CLEAN"               # both stages clean (or only one stage ran and it passed)
-    LOW_RISK = "LOW_RISK"         # structural finding only — Valgrind FAIL, dudect PASS (or absent)
+    STRUCTURAL_LEAK = "STRUCTURAL_LEAK"  # Bundle I (U6 Option A): renamed from LOW_RISK.
+                                  # Valgrind confirmed a secret-dependent branch / memory
+                                  # access; dudect happened to PASS in this environment.
+                                  # "LOW" misled users into dismissing the finding —
+                                  # rename is the honest framing.
     SUSPECT = "SUSPECT"           # weak statistical signal — dudect WARNING, Valgrind clean (or absent)
     RISKY = "RISKY"               # one strong signal: either dudect FAIL alone, or Valgrind FAIL + dudect WARNING
     CRITICAL = "CRITICAL"         # both stages flag the harness
@@ -34,12 +38,12 @@ class Verdict(str, Enum):
 
 # Style hints for terminal rendering (rich markup).
 VERDICT_STYLES = {
-    Verdict.CLEAN:        "bold green",
-    Verdict.LOW_RISK:     "yellow",
-    Verdict.SUSPECT:      "yellow",
-    Verdict.RISKY:        "bold red",
-    Verdict.CRITICAL:     "bold red on white",
-    Verdict.INCONCLUSIVE: "bold yellow on white",
+    Verdict.CLEAN:           "bold green",
+    Verdict.STRUCTURAL_LEAK: "yellow",
+    Verdict.SUSPECT:         "yellow",
+    Verdict.RISKY:           "bold red",
+    Verdict.CRITICAL:        "bold red on white",
+    Verdict.INCONCLUSIVE:    "bold yellow on white",
 }
 
 
@@ -61,14 +65,14 @@ class HarnessVerdict:
 _MATRIX: dict[tuple[str, str], Verdict] = {
     # Both stages ran cleanly
     ("PASS", "PASS"):    Verdict.CLEAN,
-    ("FAIL", "PASS"):    Verdict.LOW_RISK,
+    ("FAIL", "PASS"):    Verdict.STRUCTURAL_LEAK,
     ("PASS", "WARNING"): Verdict.SUSPECT,
     ("PASS", "FAIL"):    Verdict.RISKY,
     ("FAIL", "WARNING"): Verdict.RISKY,
     ("FAIL", "FAIL"):    Verdict.CRITICAL,
     # Only valgrind ran (dudect absent)
     ("PASS", "NONE"):    Verdict.CLEAN,
-    ("FAIL", "NONE"):    Verdict.LOW_RISK,
+    ("FAIL", "NONE"):    Verdict.STRUCTURAL_LEAK,
     # Only dudect ran (valgrind absent)
     ("NONE", "PASS"):    Verdict.CLEAN,
     ("NONE", "WARNING"): Verdict.SUSPECT,

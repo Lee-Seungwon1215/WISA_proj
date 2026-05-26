@@ -183,3 +183,63 @@ def test_unknown_message_is_skipped():
         "==1== \n"
     )
     assert parse_valgrind_log(text) == []
+
+
+# --- Bundle I: T2 lookup_patterns override + T3 dropped count -----------
+
+
+def test_lookup_patterns_override_disables_promotion():
+    # T2: a stack frame whose function name contains a built-in pattern
+    # ("lookup") would normally promote VALUE_USE → MEMORY_ACCESS. Passing
+    # an empty list MUST disable the heuristic.
+    text = (
+        "==1== Use of uninitialised value of size 8\n"
+        "==1==    at 0x1: my_lookup_helper (foo.c:1)\n"
+        "==1== \n"
+    )
+    promoted = parse_valgrind_log(text)
+    assert promoted[0].type == FindingType.SECRET_DEPENDENT_MEMORY_ACCESS
+    not_promoted = parse_valgrind_log(text, lookup_patterns=[])
+    assert not_promoted[0].type == FindingType.SECRET_DEPENDENT_VALUE_USE
+
+
+def test_lookup_patterns_override_uses_user_list():
+    # User-supplied pattern should fire for matching names even when the
+    # built-in list wouldn't have matched.
+    text = (
+        "==1== Use of uninitialised value of size 8\n"
+        "==1==    at 0x1: my_special_routine (foo.c:1)\n"
+        "==1== \n"
+    )
+    default = parse_valgrind_log(text)
+    assert default[0].type == FindingType.SECRET_DEPENDENT_VALUE_USE
+    overridden = parse_valgrind_log(text, lookup_patterns=["special"])
+    assert overridden[0].type == FindingType.SECRET_DEPENDENT_MEMORY_ACCESS
+
+
+def test_dropped_count_increments_on_unrecognized_lines():
+    # T3: unrecognized header lines must be counted, not silently dropped.
+    from ctkat.valgrind_parser import parse_valgrind_log_with_stats
+    text = (
+        "==1== Memcheck, a memory error detector\n"
+        "==1== Command: ./bin/foo\n"
+        "==1== Conditional jump or move depends on uninitialised value(s)\n"
+        "==1==    at 0x1: foo (foo.c:1)\n"
+        "==1== \n"
+        "==1== ERROR SUMMARY: 1 errors from 1 contexts\n"
+    )
+    findings, dropped = parse_valgrind_log_with_stats(text)
+    assert len(findings) == 1
+    # Banner/footer lines counted as dropped (3 banner + 1 error summary).
+    assert dropped >= 3
+
+
+def test_dropped_count_zero_on_pure_findings_log():
+    from ctkat.valgrind_parser import parse_valgrind_log_with_stats
+    text = (
+        "==1== Conditional jump or move depends on uninitialised value(s)\n"
+        "==1==    at 0x1: foo (foo.c:1)\n"
+        "==1== \n"
+    )
+    _, dropped = parse_valgrind_log_with_stats(text)
+    assert dropped == 0

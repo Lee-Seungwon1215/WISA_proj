@@ -238,6 +238,13 @@ class CtConfig(BaseModel):
     # legitimately wrap multiple harnesses if needed. Default matches
     # `puts("CTKAT-HARNESS-RAN: <name>")`-style lines.
     sentinel_pattern: str = r"CTKAT-HARNESS-RAN:\s*(\S+)"
+    # Bundle I (T2): substring patterns the parser uses to promote
+    # `SECRET_DEPENDENT_VALUE_USE` to `SECRET_DEPENDENT_MEMORY_ACCESS`
+    # when they appear in a stack frame's function name. Set to override
+    # the built-in `sbox/ttable/tbox/lookup/_table` list when domain
+    # function names cause false positives (e.g. `verify_table_size`).
+    # Set to `[]` to disable the substring-based promotion entirely.
+    lookup_function_patterns: Optional[List[str]] = None
 
 
 class ReportConfig(BaseModel):
@@ -393,6 +400,30 @@ class CtkatConfig(BaseModel):
     ct: Optional[CtConfig] = None
     dudect: Optional[DudectConfig] = None
     report: ReportConfig = Field(default_factory=ReportConfig)
+    # Bundle I (F9 #3): top-level convenience. When set, both stages
+    # (ct + dudect.compiler) adopt this flag list, overriding their
+    # per-stage defaults. Users wanting "verify what I'll ship" can set
+    # `shared_cflags: [-O2, -g]` and accept the Valgrind debug-info loss
+    # as the cost of consistency. Per-stage explicit `cflags` still take
+    # precedence to allow targeted overrides.
+    shared_cflags: Optional[List[str]] = None
+
+    @model_validator(mode="after")
+    def _apply_shared_cflags(self) -> "CtkatConfig":
+        if self.shared_cflags is None:
+            return self
+        # Only override stages that are using their *default* cflags.
+        # Detect by comparing object identity to the default-factory result —
+        # a user who explicitly set `ct.cflags: [...]` keeps their explicit
+        # choice. Same for `dudect.compiler.cflags`.
+        if self.ct is not None and self.ct.cflags == _default_cflags():
+            self.ct.cflags = list(self.shared_cflags)
+        if (
+            self.dudect is not None
+            and self.dudect.compiler.cflags == _default_dudect_cflags()
+        ):
+            self.dudect.compiler.cflags = list(self.shared_cflags)
+        return self
 
 
 def load_config(path: Path) -> CtkatConfig:

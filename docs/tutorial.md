@@ -106,7 +106,7 @@ PASS면 일단 통과. WARNING이면 다음 단계.
 ## 5. 다음 단계 — 결합 verdict
 
 dudect만으로는 한쪽 측면 — Valgrind ct 검사도 yaml에 같이 넣으면
-combined verdict (CLEAN / LOW_RISK / SUSPECT / RISKY / CRITICAL /
+combined verdict (CLEAN / STRUCTURAL_LEAK / SUSPECT / RISKY / CRITICAL /
 INCONCLUSIVE)가 나옴. CT 자동 모드의 보일러플레이트는 `examples/toy_dudect/
 ctkat_combined.yaml` 참고.
 

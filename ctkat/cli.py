@@ -51,7 +51,7 @@ from .statistics import (
     welch_with_cropping,
 )
 from .timing_harness_generator import generate_and_compile_timing
-from .valgrind_parser import Finding, parse_valgrind_log
+from .valgrind_parser import Finding, parse_valgrind_log_with_stats
 from .valgrind_runner import run_valgrind
 from .verdict import VERDICT_STYLES, HarnessVerdict, Verdict, combine
 
@@ -412,7 +412,20 @@ def _do_ct(
                 results.append((h.name, "ERROR", []))
                 continue
         text = log_path.read_text()
-        findings = parse_valgrind_log(text)
+        findings, dropped = parse_valgrind_log_with_stats(
+            text, lookup_patterns=cfg.ct.lookup_function_patterns,
+        )
+        # T3: if the parser ignored a lot of lines, surface it as a dim
+        # note. Banner/footer normally account for ~20 lines — anything
+        # much higher than that on a "no findings" log suggests Valgrind
+        # changed output format and our whitelist needs updating.
+        if dropped > 50:
+            console.print(
+                f"[dim][CTKAT] note:[/dim] valgrind parser ignored {dropped} "
+                f"unrecognized lines for harness [bold]{h.name}[/]. If this "
+                f"jumps across versions, our whitelist may need an update "
+                f"(known_issues T3)."
+            )
         status = "FAIL" if findings else "PASS"
         results.append((h.name, status, findings))
     return results

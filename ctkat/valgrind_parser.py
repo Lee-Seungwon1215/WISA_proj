@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import FrozenSet, List, Optional, Sequence, Tuple
 
 
 class FindingType(str, Enum):
@@ -95,24 +95,40 @@ _MEMORY_FUNCTION_NAMES = frozenset({
 _LOOKUP_PATTERNS = ("sbox", "ttable", "tbox", "lookup", "_table")
 
 
-def _is_memory_access(frames: List[StackFrame]) -> bool:
+def _is_memory_access(
+    frames: List[StackFrame],
+    lookup_patterns: Sequence[str] = _LOOKUP_PATTERNS,
+    memory_function_names: FrozenSet[str] = _MEMORY_FUNCTION_NAMES,
+) -> bool:
+    """Bundle I (T2): both heuristic vocabularies are now overridable.
+    `_LOOKUP_PATTERNS` defaults stay (sbox/ttable/...) but users with
+    domain-specific names (e.g. `verify_table_size` getting false-
+    positive promoted) can pass a tighter list via yaml
+    `ct.lookup_function_patterns`."""
     if not frames:
         return False
     top_fn = frames[0].function.lower()
-    if top_fn in _MEMORY_FUNCTION_NAMES:
+    if top_fn in memory_function_names:
         return True
     for fr in frames:
         fn = fr.function.lower()
-        if any(pat in fn for pat in _LOOKUP_PATTERNS):
+        if any(pat in fn for pat in lookup_patterns):
             return True
-        if fr.file and any(pat in fr.file.lower() for pat in _LOOKUP_PATTERNS):
+        if fr.file and any(pat in fr.file.lower() for pat in lookup_patterns):
             return True
     return False
 
 
-def _finalize(f: Finding) -> Finding:
+def _finalize(
+    f: Finding,
+    lookup_patterns: Sequence[str] = _LOOKUP_PATTERNS,
+    memory_function_names: FrozenSet[str] = _MEMORY_FUNCTION_NAMES,
+) -> Finding:
     """Optionally promote VALUE_USE to MEMORY_ACCESS based on stack context."""
-    if f.type == FindingType.SECRET_DEPENDENT_VALUE_USE and _is_memory_access(f.frames):
+    if (
+        f.type == FindingType.SECRET_DEPENDENT_VALUE_USE
+        and _is_memory_access(f.frames, lookup_patterns, memory_function_names)
+    ):
         f.type = FindingType.SECRET_DEPENDENT_MEMORY_ACCESS
         f.severity = Severity.HIGH
     return f
@@ -133,8 +149,16 @@ def _make_frame(address: str, function: str, location: str) -> StackFrame:
     return StackFrame(address=address, function=function, file=file_, line=line)
 
 
-def parse_valgrind_log(text: str) -> List[Finding]:
+def parse_valgrind_log(
+    text: str,
+    lookup_patterns: Optional[Sequence[str]] = None,
+) -> List[Finding]:
     """Parse a Valgrind Memcheck log into a list of Finding objects.
+
+    Bundle I (T2): `lookup_patterns` lets the caller (cli, yaml) override
+    the built-in heuristic substring list (`sbox/ttable/tbox/lookup/_table`)
+    when domain function names cause false-positive promotion to
+    `SECRET_DEPENDENT_MEMORY_ACCESS`. `None` keeps backward-compat defaults.
 
     State machine over `==PID==` lines:
       - A non-empty content line that is NOT a frame line starts a new finding
@@ -142,9 +166,29 @@ def parse_valgrind_log(text: str) -> List[Finding]:
       - Frame lines append to current finding's frames or origin_frames.
       - An empty content line (`==PID== `) closes the current finding.
     """
+    findings, _stats = parse_valgrind_log_with_stats(text, lookup_patterns)
+    return findings
+
+
+def parse_valgrind_log_with_stats(
+    text: str,
+    lookup_patterns: Optional[Sequence[str]] = None,
+) -> Tuple[List[Finding], int]:
+    """Bundle I (T3): like `parse_valgrind_log`, but also returns the
+    number of valgrind lines our `_classify` whitelist didn't recognize.
+
+    Includes banner/footer (`Memcheck, a memory error detector`,
+    `ERROR SUMMARY`, `Command:`, etc.) so the count is a *raw signal*:
+    when this number suddenly jumps after a Valgrind version upgrade or
+    locale change, the parser may have stopped recognizing real findings.
+
+    Returns `(findings, dropped_messages)`.
+    """
+    lp = tuple(lookup_patterns) if lookup_patterns is not None else _LOOKUP_PATTERNS
     findings: List[Finding] = []
     current: Optional[Finding] = None
     in_origin = False
+    dropped = 0
 
     for raw in text.splitlines():
         header = _HEADER_RE.match(raw)
@@ -155,7 +199,7 @@ def parse_valgrind_log(text: str) -> List[Finding]:
         # finding boundary
         if content == "":
             if current is not None:
-                findings.append(_finalize(current))
+                findings.append(_finalize(current, lp))
                 current = None
                 in_origin = False
             continue
@@ -180,19 +224,20 @@ def parse_valgrind_log(text: str) -> List[Finding]:
         # otherwise this is a new finding header — close previous if any
         new_finding = _classify(content.lstrip())
         if new_finding is None:
-            # banner/footer/unrecognized line; if we had an open finding,
-            # leave it open until we hit the closing empty line.
+            # banner/footer/unrecognized line. Bundle I (T3) counts these
+            # so a Valgrind format drift becomes a visible signal.
+            dropped += 1
             continue
         if current is not None:
             # Apply post-classification heuristics (e.g. VALUE_USE→MEMORY_ACCESS
             # promotion) even when the previous finding closes without an
             # explicit blank separator. Without _finalize here, two findings
             # printed back-to-back would silently skip promotion on the first.
-            findings.append(_finalize(current))
+            findings.append(_finalize(current, lp))
         current = new_finding
         in_origin = False
 
     if current is not None:
-        findings.append(_finalize(current))
+        findings.append(_finalize(current, lp))
 
-    return findings
+    return findings, dropped

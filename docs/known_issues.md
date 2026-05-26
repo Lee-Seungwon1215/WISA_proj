@@ -23,10 +23,12 @@ commits and PRs.
   - T1, T4, T5, T7, T8, T9, T10, T11 — Bundle H2 Hardening (template
     dedup, shell=False argv 옵션, name regex, pydantic Field bounds,
     qemu multi-signal, CSV snapshot, header parser skip count).
-  Pipeline progress: **30 fully closed**, 2 partial (R1, F9). Only
-  follow-up category items left: F9 #3/#4 (shared_cflags, multi-target
-  matrix), R1 Option B (randombytes interpose), U2 #1 (leak_target=fo
-  mode), U6 Option A (LOW_RISK rename), T2, T3.
+  - F9 #3, U6 Option A (LOW_RISK → STRUCTURAL_LEAK rename), T2, T3 —
+    Bundle I cleanup polish (shared_cflags propagation, label honesty,
+    lookup_patterns override, valgrind drop count).
+  Pipeline progress: **34 fully closed** (35 - F9 #4 remaining future
+  work). Only F9 #4 (multi-cflags matrix) deferred — explicitly "out
+  of scope for immediate fix" per spec.
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -310,12 +312,17 @@ bold-green PASS.
 
 ### F9: ct stage and dudect stage compile with DIFFERENT optimization levels 🚨
 
-**Status**: **Criteria #1 (documentation) + #2 (CLI banner) RESOLVED in
-Bundle E-3.** `ctkat run` now prints both stages' cflags side-by-side at
-the top of the run, with a yellow `[CTKAT] WARNING: ... different cflags
-... cmov vs branch ...` line when they differ. README §"컴파일 옵션
-비대칭 경고" documents the trap.
-Open: #3 (yaml `shared_cflags` convenience) and #4 (multi-target matrix).
+**Status**: **Criteria #1+#2 RESOLVED in Bundle E-3, #3 RESOLVED in
+Bundle I.** `ctkat run` now (1) prints both stages' cflags side-by-side
+at the top of the run with a yellow `[CTKAT] WARNING: ... different
+cflags` line when they differ, (2) supports yaml top-level
+`shared_cflags: List[str]` that auto-propagates to both stages unless
+per-stage `ct.cflags` / `dudect.compiler.cflags` are explicitly set.
+README §"컴파일 옵션 비대칭 경고" documents the trap.
+**Open**: #4 (multi-target matrix — yaml declares multiple cflag combos
+and runs ct+dudect for each, producing a verdict-per-combo matrix).
+Explicitly "out of scope for immediate fix" per spec — would require a
+new CSV schema and matrix-aware verdict computation; deferred indefinitely.
 
 - **Where**:
   - `ctkat/config.py:162-163` — `_default_cflags() = ["-O0", "-g",
@@ -928,6 +935,12 @@ manual binary sentinel) 정리.
 
 ### U6: `Verdict.LOW_RISK` label undersells valgrind structural findings 🟡
 
+**Status: Option A RESOLVED in Bundle I.** `Verdict.LOW_RISK` renamed to
+`Verdict.STRUCTURAL_LEAK` — string value 그대로, enum 이름 + verdict CSV
+값 둘 다 변경. README 매트릭스 + tutorial + 기존 caveat 단락 일괄 갱신.
+External awk scripts using literal `"LOW_RISK"` need update (intentional
+break — Option A의 본질). Option B (caveat docs) already done in H1.
+
 **Status: Option B RESOLVED in Bundle H1.** README verdict 매트릭스 옆에
 "LOW_RISK는 무시해도 되는 게 아니다" 단락 추가 — Valgrind가 구조적으로
 confirmed한 leak이 있고 dudect만 못 본 상태임을 명시. Option A (라벨을
@@ -1215,6 +1228,14 @@ follow-up (compile fail이 일종의 보호).
 
 ### T2: valgrind_parser substring matching is fragile 🟢
 
+**Status: RESOLVED in Bundle I.** Option (2) (yaml override) 채택.
+`parse_valgrind_log(text, lookup_patterns=...)` 시그니처 확장 + 신규
+yaml 필드 `ct.lookup_function_patterns: Optional[List[str]]`. 사용자가
+`verify_table_size` 같은 false-positive 함수명에 시달리면 빈 리스트나
+타이트한 패턴으로 override 가능. Option (1) (더 정밀한 휴리스틱)은
+별도 follow-up — 현 휴리스틱이 false-positive 선호 정책에 부합하니
+포기하지 않음.
+
 - **Where**: `ctkat/valgrind_parser.py:_LOOKUP_PATTERNS`.
 - **Symptom**: Substring match against function names (`"sbox"`,
   `"ttable"`, `"tbox"`, `"lookup"`, `"_table"`). Promotes any function
@@ -1231,6 +1252,12 @@ follow-up (compile fail이 일종의 보호).
 - **Suggested bundle**: TBD (not currently planned).
 
 ### T3: Whitelist-out Valgrind messages are silently dropped 🟢
+
+**Status: RESOLVED in Bundle I.** `parse_valgrind_log_with_stats(text)
+→ (findings, dropped_count)` 신규 API. cli `_do_ct`가 dropped > 50일 때
+dim note 출력 — Valgrind 버전 업그레이드 후 갑자기 dropped 폭증하면
+parser whitelist 갱신 신호. 기존 `parse_valgrind_log()` API 시그니처는
+보존 (backward-compat).
 
 - **Where**: `ctkat/valgrind_parser.py` (the dispatch over message types).
 - **Symptom**: Messages whose Valgrind error type isn't in the parser's
