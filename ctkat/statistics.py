@@ -7,6 +7,11 @@ Threshold defaults (§17.3):
     |t| < 4.5         => PASS
     4.5 <= |t| < 10   => WARNING
     |t| >= 10         => FAIL
+
+`welch_with_cropping` implements dudect's percentile-cropping protocol
+(Reparaz et al. 2017, §3): re-run the t-test at several upper-tail cutoffs
+and report the max |t|. Outliers from preemption / cache-miss bursts inflate
+variance and mask leak signal; cropping the top 1-5% typically recovers it.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import sqrt
 from statistics import mean, variance
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 
 @dataclass
@@ -28,6 +33,12 @@ class WelchResult:
     t_score: float
     abs_t_score: float
     status: str  # "PASS" | "WARNING" | "FAIL"
+    # Diagnostic fields populated only by `welch_with_cropping`. `None` on
+    # results from plain `welch_t_test` so the dataclass stays backward
+    # compatible — old callers ignore these, new callers read them.
+    cropped_at: Optional[float] = None        # cutoff that produced max |t|
+    t_score_uncropped: Optional[float] = None # t at cutoff=1.0 (no cropping)
+    abs_t_score_uncropped: Optional[float] = None
 
 
 def welch_t_test(
@@ -112,7 +123,85 @@ def batch_t_scores(
         c1 = [cycles[i] for i in range(start, end) if classes[i] == 1]
         if len(c0) < 2 or len(c1) < 2:
             continue
+        # batch t-scores deliberately skip cropping — they measure raw
+        # stability of the environment; cropping would smooth that signal.
         results.append(
             welch_t_test(c0, c1, warning_threshold, fail_threshold)
         )
     return results
+
+
+# --- upper-tail cropping -------------------------------------------------------
+
+# Cutoffs biased toward the lightly-cropped end (where dudect concentrates its
+# 100-cutoff scan). 1.0 is always first so the result is well-defined even
+# when downstream cropping cutoffs end up with <2 samples per class.
+CROP_PERCENTILES: List[float] = [1.0, 0.99, 0.95, 0.90, 0.75]
+
+
+def upper_crop(samples: Sequence[float], cutoff: float) -> List[float]:
+    """Keep the lowest `cutoff` fraction of samples (drop the upper tail).
+
+    cutoff=1.0  => no cropping (full list)
+    cutoff=0.95 => drop ≈top 5%
+    cutoff<=0.0 => empty list (degenerate; caller should skip)
+    """
+    if cutoff >= 1.0:
+        return list(samples)
+    if cutoff <= 0.0:
+        return []
+    n = len(samples)
+    if n == 0:
+        return []
+    # Clamp to n-1 so cutoff=1.0 corner cases never IndexError. Threshold
+    # picks the sample value at that rank from the sorted list, and we
+    # keep every sample <= threshold (ties included, so we may keep a
+    # tiny fraction more than `cutoff` — acceptable for dudect).
+    threshold_idx = min(int(n * cutoff), n - 1)
+    threshold = sorted(samples)[threshold_idx]
+    return [s for s in samples if s <= threshold]
+
+
+def welch_with_cropping(
+    class0: Sequence[float],
+    class1: Sequence[float],
+    warning_threshold: float = 4.5,
+    fail_threshold: float = 10.0,
+    cutoffs: Sequence[float] = CROP_PERCENTILES,
+) -> WelchResult:
+    """Run welch_t_test at each cutoff, return the result with the largest
+    |t|. The returned WelchResult is annotated with `cropped_at` (the cutoff
+    that won) and `*_uncropped` (the cutoff=1.0 result, for diagnostic).
+
+    Caller must ensure cutoffs starts with 1.0 — otherwise the uncropped
+    fields will be left as None and the all-cropping-fails fallback is lost.
+    """
+    best: Optional[WelchResult] = None
+    best_at: Optional[float] = None
+    uncropped_t: Optional[float] = None
+    uncropped_abs_t: Optional[float] = None
+
+    for p in cutoffs:
+        c0 = upper_crop(class0, p)
+        c1 = upper_crop(class1, p)
+        if len(c0) < 2 or len(c1) < 2:
+            continue
+        r = welch_t_test(c0, c1, warning_threshold, fail_threshold)
+        if p == 1.0:
+            uncropped_t = r.t_score
+            uncropped_abs_t = r.abs_t_score
+        if best is None or r.abs_t_score > best.abs_t_score:
+            best = r
+            best_at = p
+
+    if best is None:
+        # Only reachable if every cutoff (including 1.0) had <2 samples
+        # per class — same precondition welch_t_test would raise on.
+        raise ValueError(
+            "welch_with_cropping: every cutoff yielded <2 samples per class"
+        )
+
+    best.cropped_at = best_at
+    best.t_score_uncropped = uncropped_t
+    best.abs_t_score_uncropped = uncropped_abs_t
+    return best

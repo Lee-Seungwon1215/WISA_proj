@@ -5,12 +5,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-def _fmt(x: float, digits: int = 3) -> str:
-    """CSV-safe float formatting: non-finite values become empty so pandas/R
-    don't have to special-case the literal strings 'inf' / 'nan'. The
-    accompanying `status` column already carries the information that a
-    measurement blew up (it'll be FAIL whenever t_score is infinite)."""
-    if not math.isfinite(x):
+def _fmt(x: Optional[float], digits: int = 3) -> str:
+    """CSV-safe float formatting: None and non-finite values become empty so
+    pandas/R don't have to special-case the literal strings 'None' / 'inf' /
+    'nan'. The accompanying `status` column already carries the information
+    that a measurement blew up (it'll be FAIL whenever t_score is infinite).
+
+    `None` is accepted because diagnostic fields (e.g. cropping cutoff when
+    cropping was disabled via --no-crop) can be absent."""
+    if x is None or not math.isfinite(x):
         return ""
     return f"{x:.{digits}f}"
 
@@ -35,7 +38,12 @@ from .header_parser import discover_headers, parse_header_file
 from .qemu_detect import detect_qemu_emulation
 from .report import finding_to_row, write_csv, write_json
 from .secret_infer import InferredFunction, infer_functions
-from .statistics import WelchResult, batch_t_scores, welch_t_test
+from .statistics import (
+    WelchResult,
+    batch_t_scores,
+    welch_t_test,
+    welch_with_cropping,
+)
 from .timing_harness_generator import generate_and_compile_timing
 from .valgrind_parser import Finding, parse_valgrind_log
 from .valgrind_runner import run_valgrind
@@ -325,12 +333,17 @@ def _emit_dudect_report(
 
     with open(summary_path, "w", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
+        # IMPORTANT: columns 1-14 are stable for backward compatibility —
+        # scripts/run_phase4.sh parses $11 (status) via awk and we don't
+        # want to break that contract. New diagnostic columns (cropped_at,
+        # uncropped t-scores) go at the END.
         w.writerow([
             "project", "harness",
             "n0", "n1",
             "mean0", "mean1", "var0", "var1",
             "t_score", "abs_t_score", "status",
             "batch_t_mean", "batch_t_max_abs", "batches",
+            "cropped_at", "t_score_uncropped", "abs_t_score_uncropped",
         ])
         for harness_name, _, r, batches in results:
             # Empty string when no batches — matches _print_dudect_summary's
@@ -349,6 +362,8 @@ def _emit_dudect_report(
                 _fmt(r.var0), _fmt(r.var1),
                 _fmt(r.t_score), _fmt(r.abs_t_score), r.status,
                 batch_mean_str, batch_max_str, len(batches),
+                _fmt(r.cropped_at), _fmt(r.t_score_uncropped),
+                _fmt(r.abs_t_score_uncropped),
             ])
     return raw_path, summary_path
 
@@ -358,6 +373,7 @@ def _do_dudect(
     cfg_dir: Path,
     project_name: str,
     out_dir: Path,
+    crop: bool = True,
 ) -> List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]]:
     qemu = detect_qemu_emulation()
     if qemu and dud.clock == "rdtsc":
@@ -380,7 +396,8 @@ def _do_dudect(
     console.print(f"[dim]dudect seed = 0x{effective_seed:X}[/]")
     console.print(
         f"[dim]measurements={dud.measurements} warmup={dud.warmup} "
-        f"batches={dud.batches} clock={dud.clock}[/]"
+        f"batches={dud.batches} clock={dud.clock} "
+        f"cropping={'on' if crop else 'off'}[/]"
     )
 
     workdir = _resolve(cfg_dir, dud.workdir)
@@ -425,7 +442,16 @@ def _do_dudect(
             )
             raise typer.Exit(1)
 
-        overall = welch_t_test(c0, c1, dud.threshold_warning, dud.threshold_fail)
+        if crop:
+            overall = welch_with_cropping(
+                c0, c1,
+                warning_threshold=dud.threshold_warning,
+                fail_threshold=dud.threshold_fail,
+            )
+        else:
+            overall = welch_t_test(
+                c0, c1, dud.threshold_warning, dud.threshold_fail
+            )
         batches = batch_t_scores(
             samples.classes, samples.cycles,
             batches=dud.batches,
@@ -434,10 +460,15 @@ def _do_dudect(
         )
         results.append((h.name, samples, overall, batches))
 
+        crop_tag = (
+            f" crop@{overall.cropped_at:.2f}"
+            if overall.cropped_at is not None
+            else ""
+        )
         console.print(
             f"   n0={overall.n0} n1={overall.n1} "
             f"mean0={overall.mean0:.1f} mean1={overall.mean1:.1f} "
-            f"t={overall.t_score:+.2f} [bold]{overall.status}[/]"
+            f"t={overall.t_score:+.2f}{crop_tag} [bold]{overall.status}[/]"
         )
 
     _emit_dudect_report(project_name, out_dir, results)
@@ -450,7 +481,10 @@ def _print_dudect_summary(
     if not results:
         return
     table = Table(title="dudect timing summary")
-    for col in ("harness", "n0", "n1", "mean0", "mean1", "|t|", "status", "batch max|t|"):
+    for col in (
+        "harness", "n0", "n1", "mean0", "mean1", "|t|", "crop@",
+        "status", "batch max|t|",
+    ):
         table.add_column(col)
     for name, _, r, batches in results:
         batch_max = (
@@ -462,10 +496,14 @@ def _print_dudect_summary(
             "FAIL": "bold red",
         }.get(r.status, "")
         status_cell = f"[{style}]{r.status}[/]" if style else r.status
+        crop_cell = (
+            f"{r.cropped_at:.2f}" if r.cropped_at is not None else "-"
+        )
         table.add_row(
             name, str(r.n0), str(r.n1),
             f"{r.mean0:.1f}", f"{r.mean1:.1f}",
             f"{r.abs_t_score:.2f}",
+            crop_cell,
             status_cell,
             batch_max,
         )
@@ -481,6 +519,12 @@ def dudect(
     seed: Optional[str] = typer.Option(
         None, "--seed",
         help="Override yaml seed. Integer (decimal or 0x-prefixed hex) or 'random'.",
+    ),
+    crop: bool = typer.Option(
+        True, "--crop/--no-crop",
+        help="Apply dudect percentile cropping (default on). Use --no-crop "
+             "to report raw uncropped t-scores, e.g. for comparison against "
+             "external dudect runs.",
     ),
 ):
     """Run only the dudect-style statistical timing check."""
@@ -503,7 +547,7 @@ def dudect(
         dud = dud.model_copy(update=updates)
 
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
-    results = _do_dudect(dud, cfg_dir, cfg.project.name, out_dir)
+    results = _do_dudect(dud, cfg_dir, cfg.project.name, out_dir, crop=crop)
     _print_dudect_summary(results)
 
     any_fail = any(r.status == "FAIL" for _, _, r, _ in results)
@@ -597,6 +641,11 @@ def _print_verdicts(verdicts: List[HarnessVerdict]) -> None:
 def run(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
     continue_on_kat_fail: bool = typer.Option(False, "--continue-on-kat-fail"),
+    crop: bool = typer.Option(
+        True, "--crop/--no-crop",
+        help="Apply dudect percentile cropping (default on). Use --no-crop "
+             "for raw uncropped t-scores.",
+    ),
 ):
     """Run the full pipeline: build -> kat -> ct -> dudect -> report."""
     cfg = load_config(config)
@@ -626,7 +675,9 @@ def run(
     any_dudect_warn = False
     if cfg.dudect is not None and cfg.dudect.enabled:
         out_dir = _resolve(cfg_dir, cfg.report.output_dir)
-        dud_results = _do_dudect(cfg.dudect, cfg_dir, cfg.project.name, out_dir)
+        dud_results = _do_dudect(
+            cfg.dudect, cfg_dir, cfg.project.name, out_dir, crop=crop,
+        )
         _print_dudect_summary(dud_results)
         any_dudect_fail = any(r.status == "FAIL" for _, _, r, _ in dud_results)
         any_dudect_warn = any(r.status == "WARNING" for _, _, r, _ in dud_results)

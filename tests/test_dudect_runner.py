@@ -50,3 +50,33 @@ def test_low_malformed_rate_is_silent(capsys):
     parse_timing_csv(text)
     captured = capsys.readouterr()
     assert captured.err == ""
+
+
+# --- Bundle B: zero-cycle sentinel filter ------------------------------------
+
+
+def test_zero_cycle_samples_dropped():
+    # cycles=0 are Bundle A underflow sentinels and must be filtered out
+    # before they enter the t-test (otherwise they drag the mean down).
+    text = "sample_id,class,cycles\n0,0,100\n1,1,0\n2,0,200\n3,1,300\n"
+    s = parse_timing_csv(text)
+    assert s.classes == [0, 0, 1]
+    assert s.cycles == [100, 200, 300]
+
+
+def test_high_zero_rate_emits_warning(capsys):
+    # 1 valid + 5 zero = >1% threshold → should warn
+    rows = ["0,0,100"] + [f"{i},0,0" for i in range(1, 6)]
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    parse_timing_csv(text)
+    captured = capsys.readouterr()
+    assert "zero-cycle" in captured.err.lower()
+
+
+def test_low_zero_rate_is_silent(capsys):
+    # 200 valid + 1 zero = 0.5% → below 1% threshold, no warning
+    rows = [f"{i},0,{100 + i}" for i in range(200)] + ["999,0,0"]
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    parse_timing_csv(text)
+    captured = capsys.readouterr()
+    assert "zero-cycle" not in captured.err.lower()

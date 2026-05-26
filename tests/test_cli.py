@@ -141,6 +141,47 @@ def test_fmt_drops_non_finite_floats():
     assert _fmt(0.0) == "0.000"
 
 
+def test_fmt_accepts_none():
+    # Bundle B: diagnostic fields (cropped_at when --no-crop, etc.) can be
+    # None — must serialize to empty string, not the literal "None".
+    from ctkat.cli import _fmt
+    assert _fmt(None) == ""
+
+
+def test_dudect_summary_csv_preserves_status_column_position(tmp_path):
+    # Regression: scripts/run_phase4.sh parses `dudect_summary.csv` via
+    # awk -F',' '... {print $11}' to read the status column. New Bundle B
+    # diagnostic columns must be appended AFTER position 14 so that
+    # external awk-by-position parsers keep working.
+    from ctkat.cli import _emit_dudect_report
+    from ctkat.dudect_runner import TimingSamples
+    from ctkat.statistics import WelchResult
+
+    r = WelchResult(
+        n0=100, n1=100, mean0=1.0, mean1=2.0,
+        var0=0.5, var1=0.5,
+        t_score=-5.0, abs_t_score=5.0, status="WARNING",
+        cropped_at=0.95, t_score_uncropped=-3.0, abs_t_score_uncropped=3.0,
+    )
+    results = [("h1", TimingSamples(), r, [])]
+    _emit_dudect_report("proj", tmp_path, results)
+    summary = (tmp_path / "dudect_summary.csv").read_text().splitlines()
+    header = summary[0].split(",")
+    # awk's $1 == header[0] etc. — these positions are part of the public
+    # CSV contract.
+    assert header[10] == "status"          # awk $11
+    assert header[0]  == "project"         # awk $1
+    assert header[1]  == "harness"         # awk $2
+    # New columns at the end (15-17 in 1-indexed awk, 14-16 in 0-indexed).
+    assert header[14] == "cropped_at"
+    assert header[15] == "t_score_uncropped"
+    assert header[16] == "abs_t_score_uncropped"
+    # Data row carries the values.
+    row = summary[1].split(",")
+    assert row[10] == "WARNING"
+    assert row[14] == "0.950"
+
+
 def test_valgrind_unexpected_returncode_emits_warning(monkeypatch, tmp_path):
     """Regression: previously _do_ct ignored the valgrind ValgrindResult
     entirely. A crashing harness (segfault, abort) or a Valgrind failure
