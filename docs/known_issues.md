@@ -6,22 +6,23 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-26 (v3 — see Review log at the bottom)
+- **Last updated**: 2026-05-26 (v4 — see Review log at the bottom)
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
   - External independent reviewer, pass 2 (audited v1 of this doc)
   - External independent reviewer, pass 3 (audited v2 + whole repo)
-- **Total findings**: 5 tiers, 26 issues
-  (v1: 20 → v2: +F5, +F6, +T6 → v3: +F7, +F8, +T7)
-- **Verification**: All Tier 1 (F1–F8) and Tier 2 (F6, R1–R3) claims
+  - External independent reviewer, pass 4 (audited v3 + cross-stage interactions)
+- **Total findings**: 5 tiers, 35 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35)
+  - v4 additions: F9, F10, F11, S4, U6, T8, T9, T10, T11
+- **Verification**: All Tier 1 (F1–F11) and Tier 2 (F6, R1–R3) claims
   verified against `main` (commit `d678617` or later) by reading the
-  cited source lines. v1's R1 was under-audited (focused only on the
-  ct-leak branch of `timing_kem.c.j2`); v2 audit confirmed the same
-  `randombytes()` dependency in the sk-leak branch too. v3 audit
-  surfaced subcommand-level fail-opens (F7, F8) which had been missed
-  by v1/v2 because those passes focused on `run` pipeline rather than
-  the standalone `ctkat <stage>` commands.
+  cited source lines. Earlier passes (v1–v3) focused tightly on the
+  dudect pipeline and individual stages. v4 audit surfaced
+  *cross-stage* fail-opens that span the whole `run` pipeline (F9
+  compiler-flag asymmetry, F10 build-stage exit-code, F11
+  continue-on-kat-fail leak) — these were structurally hard to spot
+  without examining how the stages interact at the config level.
 
 ## How to read this document
 
@@ -249,6 +250,118 @@ fail-open in any tier-1 spot makes that gate unreliable.
      `test_ct_command_does_not_print_PASS_when_section_missing`.
 - **Related**: F7 (same pattern, kat stage), F1/F2 (CT-stage
   fail-opens in different sub-scenarios).
+- **Suggested bundle**: E.
+
+### F9: ct stage and dudect stage compile with DIFFERENT optimization levels 🚨
+
+- **Where**:
+  - `ctkat/config.py:163` — `_default_cflags() = ["-O0", "-g",
+    "-fno-inline", "-fno-omit-frame-pointer"]` (ct/Valgrind stage).
+  - `ctkat/config.py:194` — `_default_dudect_cflags() = ["-O2", "-g",
+    "-fno-omit-frame-pointer", "-fno-lto"]` (dudect stage).
+- **Symptom**: A verdict `CLEAN` does NOT mean "both ct and dudect
+  PASSed on the same code." The two stages compile the user's source
+  with different optimization levels by default, producing
+  structurally different binaries. Compiler may emit:
+  - A secret-dependent branch at `-O0` (which Valgrind catches at
+    ct stage as a secret-dependent jump).
+  - A `cmov` (conditional move) at `-O2` (which Valgrind does NOT see
+    as a branch).
+  - Or vice versa — `-O2` keeps a branch the user thought would be
+    optimized away.
+  → ct may FAIL on `-O0` while dudect PASSes on `-O2`, or both PASS
+  on their respective binaries while the user's actual production
+  binary (typically `-O2` or `-O3`) has different secret-dependent
+  behavior from both.
+- **Why solve**: This is the verdict-reliability gap with the largest
+  blast radius. Every user reading "verdict: CLEAN" assumes "this
+  code, as I'll ship it, is verified." The framework currently makes
+  no effort to ensure the two stages analyze the same code. It's a
+  more concrete trap than U1 ("PASS ≠ constant-time") because it
+  applies *even within the framework's own scope*.
+- **Acceptance criteria** (escalating):
+  1. **Documentation minimum**: README "dudect 측정 강화" section
+     adds explicit warning. The default `-O0` for ct and `-O2` for
+     dudect were chosen for different reasons (Valgrind debug
+     friendliness vs realistic timing), but the user must understand
+     they're analyzing different binaries.
+  2. **Visibility**: print effective ct cflags vs dudect cflags side-
+     by-side at run start; warn loudly when they differ.
+  3. **Recommendation tooling**: support a yaml convenience
+     `shared_cflags: List[str]` at top level; when set, BOTH stages
+     adopt it (overriding their per-stage defaults). Users wanting
+     "verify what I ship" can set `shared_cflags: [-O2, -g]` and
+     accept the Valgrind debug-info loss as the cost of consistency.
+  4. **Multi-target option** (deferred): allow yaml to declare
+     multiple `(ct_cflags, dudect_cflags)` combos and run ct + dudect
+     at each, producing a verdict matrix per combo. Out of scope for
+     immediate fix.
+- **Related**: U1 (PASS ≠ constant-time — F9 is the concrete-fail
+  case); the existing README "Findings #3 -O0 / -O2 일관성" briefly
+  touches the same concern in the context of PQClean but doesn't
+  generalize.
+- **Suggested bundle**: E (criteria #1+#2 are README + 10-line CLI
+  banner change), separate follow-up for #3.
+
+### F10: build stage validates by exit code only 🚨
+
+- **Where**: `ctkat/cli.py:63-75` (`_do_build`). Effectively the same
+  shape as F1 but at the build stage.
+- **Symptom**: `cfg.build.command` is run via `run_shell`; PASS iff
+  exit code 0. `build.command: "true"` → build PASS. Combined with
+  KAT no-op (F1) and a stale/fake harness binary (F5) → full pipeline
+  fail-open.
+- **Why solve**: F1's sibling that v1–v3 missed. The "fail-open
+  closure" Bundle E title is incomplete without it. Subset of the
+  same family: any user-supplied shell command that the framework
+  trusts solely on exit code.
+- **Acceptance criteria**:
+  1. Optional yaml field `build.expected_artifacts: List[str]` — list
+     of paths the build is expected to produce.
+  2. After `run_shell`, verify each listed path exists and has been
+     modified within the last N seconds (where N = run duration + a
+     buffer). Missing/stale → build FAIL.
+  3. Test: `build.command: "true"` with `expected_artifacts: [./bin/x]`
+     → FAIL because `./bin/x` doesn't exist.
+  4. Backward compatible: if `expected_artifacts` is unset, current
+     behavior preserved with a one-time warning (mirrors F1's
+     `expected_min` pattern).
+- **Related**: F1 (same exit-code-only pattern, KAT stage), F5 (binary
+  whose origin isn't verified).
+- **Suggested bundle**: E.
+
+### F11: `--continue-on-kat-fail` makes KAT FAIL invisible in verdict CSV 🚨
+
+- **Where**:
+  - `ctkat/cli.py:684-685` — the `--continue-on-kat-fail` flag swallows
+    KAT failures and proceeds to ct/dudect stages.
+  - `ctkat/cli.py:_compute_verdicts` — only consumes `ct_results` and
+    `dudect_results`. KAT status is not part of the verdict matrix.
+- **Symptom**: User runs `ctkat run --config x.yaml --continue-on-kat-fail`.
+  KAT fails (e.g., real correctness regression). ct and dudect still
+  run on the (incorrect) build artifact. Both report PASS (because
+  Valgrind sees no taint propagation through a broken function, and
+  dudect sees stable timing for the broken function). verdict CSV →
+  `CLEAN`. A CI script gating on `verdict=CLEAN` merges code whose
+  KAT failed.
+- **Why solve**: The flag's intent is "I want to see how far the
+  pipeline gets even if KAT is broken." Reasonable for dev iteration.
+  But the verdict output should still reflect that KAT failed — and
+  it doesn't. Verdict CSV is documented as the canonical CI gate
+  (`README.md:247-251`). This breaks that contract silently.
+- **Acceptance criteria**:
+  1. Add `kat_status` as a third axis to the verdict matrix:
+     PASS / FAIL / NONE (when no kat section).
+  2. When `kat_status == "FAIL"`, the verdict is downgraded to at
+     least `INCONCLUSIVE` (or a new state like `KAT_FAILED`),
+     regardless of ct/dudect outcomes.
+  3. Update verdict CSV columns: add `kat_status` column.
+  4. README updates: verdict matrix table extended to 3 axes (or
+     show kat_status as a precondition).
+  5. Test: continue-on-kat-fail + KAT FAIL + ct PASS + dudect PASS
+     → verdict ≠ CLEAN.
+- **Related**: F1 (KAT fail-open in standalone subcommand), F3 (verdict
+  state), F7 (kat subcommand).
 - **Suggested bundle**: E.
 
 ### F4: dudect zero-cycle filter ignores class balance 🟡
@@ -528,6 +641,39 @@ just less severe — requires user misconfiguration to trigger.)
 
 ---
 
+### S4: partial dudect run discards all prior harnesses' data 🟡
+
+- **Where**: `ctkat/cli.py:465-470` — inside the `for h in dud.harnesses:`
+  loop, raises `typer.Exit(1)` when any single harness produces
+  insufficient samples:
+  ```python
+  if len(c0) < 2 or len(c1) < 2:
+      console.print(f"[red]Not enough samples per class for {h.name}: ...[/]")
+      raise typer.Exit(1)
+  ```
+- **Symptom**: A yaml configures 5 dudect harnesses. The 4th has a
+  build problem producing too-few samples. Raise happens *inside the
+  loop*, before `_emit_dudect_report` is called. Results for the
+  3 already-completed harnesses are dropped on the floor — no CSV
+  emitted, no console summary persisted.
+- **Why solve**: Long dudect runs are expensive (minutes per
+  harness). Losing all of them because one is broken is poor UX
+  and incentivizes users to debug failed harnesses by isolating them
+  into separate yamls (defeating the per-yaml batch purpose).
+- **Acceptance criteria**:
+  1. On per-harness failure: log clearly, attach status=ERROR (uses
+     F3's INCONCLUSIVE), `continue` to next harness instead of raise.
+  2. After loop: still call `_emit_dudect_report` with whatever
+     results were collected.
+  3. Overall exit code = max severity across all harnesses (FAIL/
+     ERROR/PASS).
+  4. Test: 3 harnesses where 2nd fails — CSV contains all 3 rows
+     (2 with data, 1 with ERROR), exit non-zero.
+- **Related**: F2 / F3 / T6 (all part of the "graceful failure"
+  refactor).
+- **Suggested bundle**: F (the post-error-state work; logically
+  follows Bundle E's ERROR-state introduction).
+
 ## Tier 4: User Misunderstanding Risk (documentation)
 
 ### U1: "PASS" is overstated — readers may infer "constant-time" 🚨
@@ -624,6 +770,38 @@ just less severe — requires user misconfiguration to trigger.)
 
 ---
 
+### U6: `Verdict.LOW_RISK` label undersells valgrind structural findings 🟡
+
+- **Where**: `ctkat/verdict.py:55, 62` (matrix entries `(FAIL, PASS) →
+  LOW_RISK`, `(FAIL, NONE) → LOW_RISK`).
+- **Symptom**: When Valgrind reports a confirmed
+  secret-dependent-branch or secret-dependent-memory-access finding,
+  but dudect finds no timing difference, the verdict label is
+  "LOW_RISK". The literal word "LOW" makes users think the finding
+  is dismissible. In reality:
+  - Valgrind FAIL is *structural*, confirmed evidence that secret
+    values affect control flow / memory addressing.
+  - dudect PASS just means the framework's *current* harness +
+    measurement environment couldn't detect a timing difference. That
+    doesn't mean there isn't one in production, or on a different
+    micro-arch, or with adversarial inputs.
+- **Why solve**: User reading "LOW_RISK" in a security review report
+  may skip the finding. The framework should name this case in a way
+  that pushes the user to investigate, not to dismiss.
+- **Acceptance criteria** (pick one):
+  - **Option A — Rename**: `LOW_RISK` → `STRUCTURAL_LEAK` (or
+    `BRANCH_NOT_TIMED`). More accurate.
+  - **Option B — Doc**: keep the label, but README verdict matrix
+    section explicitly warns "LOW_RISK doesn't mean dismissible —
+    Valgrind has confirmed a structural secret dependence; dudect
+    just couldn't measure timing diff in this run."
+  - Option A is cleaner if we're willing to break verdict CSV
+    consumers. Option B is non-breaking.
+- **Related**: U1 ("PASS ≠ constant-time" — same family of
+  underclaim).
+- **Suggested bundle**: Docs sweep (B) or its own bundle (A breaks
+  CSV).
+
 ## Tier 5: Long-term Technical Debt
 
 ### T1: Template code duplication between sk-leak and ct-leak 🟢
@@ -645,67 +823,191 @@ just less severe — requires user misconfiguration to trigger.)
 - **Suggested bundle**: opportunistic (during Bundle E or as preface to
   R1 Option B).
 
-### T6: dudect harness timeout — hardcoded 600s + Python traceback 🟢→🟡
+### T6: dudect harness uncaught exceptions — Python traceback (4 paths) 🟢→🟡
 
 - **Where**:
+  - `ctkat/dudect_runner.py:36` — `raise ValueError("empty timing harness output")`
+  - `ctkat/dudect_runner.py:38` — `raise ValueError("unexpected CSV header: ...")`
   - `ctkat/dudect_runner.py:70-78` — `timeout: int = 600` is a function
     parameter default. Not propagated from yaml; user can't configure.
+  - `ctkat/dudect_runner.py:102-105` — `raise RuntimeError("timing harness ... failed (rc=...)")`
   - `ctkat/cli.py:461` (`run_timing_harness` call inside `_do_dudect`) —
-    no try/except wrapper.
+    no try/except wrapper for ANY of the above.
   - README — never documents the 600s ceiling.
-- **Symptom (two distinct ones)**:
-  1. **No graceful failure**: if a dudect harness infinite-loops or
-     exceeds 600s, `subprocess.TimeoutExpired` propagates up through
-     typer and the user sees a raw Python traceback. No verdict, no
-     summary, just a stack trace.
-  2. **Hardcoded ceiling**: a user running a slow target (e.g. 50µs
+- **Symptom (four distinct uncaught failure modes)**:
+  1. **Timeout (`subprocess.TimeoutExpired`)**: infinite-loop / slow
+     target exceeds 600s → raw Python traceback to user.
+  2. **Harness crash (`RuntimeError` from rc≠0)**: segfault / abort
+     → traceback.
+  3. **Empty stdout (`ValueError("empty timing harness output")`)**:
+     harness died before emitting any CSV → traceback.
+  4. **Malformed CSV header (`ValueError("unexpected CSV header")`)**:
+     harness wrote debug printf before the header line → traceback.
+  Plus the separate problem:
+  5. **Hardcoded 600s ceiling**: user running a slow target (e.g. 50µs
      per call × 50000 measurements ≈ 2500s on QEMU) hits the limit
-     even without infinite loops. They have no yaml knob to bump it.
-- **Why solve**: (1) is the same fail-mode class as F2 (analysis
-  didn't complete cleanly). (2) is a usability ceiling that
-  silently constrains the framework to fast targets — not documented
-  anywhere, surfaces as a confusing crash.
-- **Acceptance criteria**:
-  1. Add `dudect.timeout: int = 600` to `DudectConfig` (yaml-configurable
-     ceiling).
-  2. Plumb the configured value through `_do_dudect` → `run_timing_harness`.
-  3. Wrap `run_timing_harness` call with try/except for
-     `subprocess.TimeoutExpired`.
-  4. On timeout: log clear error (`harness X timed out after Ns`),
-     attach status=ERROR (using F3's INCONCLUSIVE).
-  5. Document the default and how to bump in README.
-  6. Test: harness that sleeps forever → ERROR, not Python traceback;
-     yaml `dudect.timeout: 60` → harness gets 60s.
-- **Related**: F2 (similar fail-mode, different stage), F3 (ERROR state),
-  U4 (function speed range documentation — closely related).
+     even without infinite loops. No yaml knob.
+- **Why solve**: (1)–(4) are all the same fail-mode class as F2
+  (analysis didn't complete cleanly). v3 framing covered only (1).
+  All four should produce status=ERROR / verdict=INCONCLUSIVE, not
+  raw stack traces. (5) is a usability ceiling that silently
+  constrains the framework to fast targets.
+- **Acceptance criteria** (revised, broader than v3):
+  1. Add `dudect.timeout: int = 600` to `DudectConfig`
+     (yaml-configurable ceiling).
+  2. Plumb the configured value through `_do_dudect` →
+     `run_timing_harness`.
+  3. Wrap the `run_timing_harness` call in `_do_dudect` with try/except
+     covering **all four**: `subprocess.TimeoutExpired`, `RuntimeError`
+     (rc≠0), and `ValueError` (from `parse_timing_csv` — empty or
+     malformed). Each → log clear diagnostic + status=ERROR (using
+     F3's INCONCLUSIVE).
+  4. Document the timeout default and how to bump in README.
+  5. Tests, one per uncaught path: harness that sleeps forever,
+     harness that segfaults (`exit(1)`), harness that prints nothing,
+     harness that prints garbage header. Each → ERROR result, not
+     traceback.
+- **Related**: F2 (similar fail-mode, different stage), F3 (ERROR
+  state), F5 (manual-binary fail-open with related stdout-discipline
+  concerns), U4 (function speed range documentation).
 - **Suggested bundle**: E.
 
-### T7: Jinja template context has no C-identifier validation 🟢
+### T8: dudect `measurements`/`warmup`/`batches` have no upper bound 🟢
 
-- **Where**: `ctkat/cli.py:97-140` (`_build_generic_context`,
-  `_build_kem_context`, `_build_sign_context`). All three pass
-  `h.function`, `h.prefix`, `h.args` etc. through to Jinja with no
-  pattern check; `HarnessConfig` pydantic validation enforces
-  `Optional[str]` but no `^[A-Za-z_][A-Za-z0-9_]*$` constraint.
-- **Symptom**: A yaml with `function: '; system("rm -rf /")'` lands
-  in the generated C file literally. Compile fails noisily, but the
-  abuse surface is open.
-- **Why solve**: Same family as T4 (`shell=True` on user yaml). The
-  framework's stance "yaml ownership is the user's responsibility" is
-  documented in README, but a defensive layer is cheap.
+- **Where**: `ctkat/config.py:268` `measurements: int = 100_000`,
+  similar for `warmup: int = 1_000`, `batches: int = 10`. Pydantic
+  enforces `int` typing only.
+- **Symptom**: User types `measurements: 100000000` (extra zero or
+  copy-paste mistake). Generated harness emits
+  `static uint64_t cycles_buf[100000000];` and
+  `static uint8_t classes_buf[100000000];` → ~800 MB + 100 MB in BSS.
+  Compile typically succeeds; runtime OOM on memory-limited hosts
+  (Docker default RAM, CI runners). Diagnostic is bad ("Killed" or
+  segfault from page-fault), not "you wrote too big a number."
+- **Why solve**: Defensive bounds on user input. Trivial pydantic
+  constraint.
 - **Acceptance criteria**:
-  1. Add pydantic field validators on `HarnessConfig.function`,
-     `HarnessConfig.prefix`, and `HarnessConfig.return_type` enforcing
-     `^[A-Za-z_][A-Za-z0-9_:* ]*$` (C identifiers, plus `:`, `*`, space
-     allowed for things like `unsigned int *`).
-  2. `HarnessConfig.args` is trickier (each element may be `sizeof(x)`,
-     etc.) — allow a broader pattern or skip.
-  3. Test: confirm `function: "; system(...)"` raises ValidationError
-     at config load.
+  1. `measurements: int = Field(default=100_000, ge=100, le=10_000_000)`
+     (10M is a defensible ceiling — 80MB BSS).
+  2. Similar `ge`/`le` bounds on `warmup` (e.g., 0..measurements) and
+     `batches` (e.g., 1..1000).
+  3. README documents the bounds.
+- **Related**: T7 (same family — pydantic field constraints).
+- **Suggested bundle**: TBD (cheap, opportunistic).
+
+### T9: `detect_qemu_emulation()` can false-positive 🟢
+
+- **Where**: `ctkat/qemu_detect.py:23-31`. Substring match: any file
+  in the candidate list containing `"QEMU"` → returns True.
+- **Symptom**: A bare-metal host that happens to load QEMU-related
+  modules (e.g., a workstation that runs VMs occasionally) may have
+  the substring `"QEMU"` in `/proc/cpuinfo` or
+  `/sys/class/dmi/id/sys_vendor`. `detect_qemu_emulation()` returns
+  True → `clock: auto` resolves to `monotonic` → user loses rdtsc
+  precision on native hardware.
+- **Why solve**: Edge case but real. Workstation users with KVM/VMM
+  setups would silently get worse measurements with no diagnostic.
+- **Acceptance criteria**:
+  1. Strengthen detection: require AT LEAST two signals to be present
+     (e.g., `/proc/cpuinfo "QEMU"` AND `/sys/firmware/devicetree/base/...`
+     paravirtualization hint).
+  2. Or: respect an explicit yaml `clock: rdtsc` override — when set,
+     bypass QEMU detection entirely (currently the F2-style warning
+     fires but the auto-resolution still picks monotonic).
+  3. Document the heuristic's failure mode in the clock auto section
+     of README.
+- **Related**: U3 (Windows support claim — similar arch-detection
+  edge case).
+- **Suggested bundle**: TBD (low-priority hardening).
+
+### T10: no snapshot test pinning `dudect_summary.csv` column positions 🟢
+
+- **Where**: `ctkat/cli.py:343-354` (the CSV header definition has a
+  comment saying "1-14 stable for backward compatibility" but no test
+  asserting the position contract). `scripts/run_phase4.sh:36-38`
+  parses `$11` and `$2` via awk — depends on the positions.
+- **Symptom**: A future refactor reorders the CSV columns. Existing
+  unit tests still pass (they check semantics, not positions). The
+  shell-script CI gate silently mis-parses the wrong column. Verdict
+  decisions become wrong.
+- **Why solve**: Belt-and-suspenders for an externally-observed
+  contract. `test_cli.py:test_dudect_summary_csv_preserves_status_column_position`
+  exists (Bundle B) but only checks `status` (col 11). The full
+  contract is wider — all columns 1–14 are part of the public
+  format.
+- **Acceptance criteria**:
+  1. Write a snapshot test asserting the exact header line of
+     `dudect_summary.csv` (columns 1–17, with the v3 reference
+     listing the canonical order).
+  2. Anyone who needs to add a column appends after col 17 (or bumps
+     a `CSV_SCHEMA_VERSION` and updates the test).
+- **Related**: S1, S3 (CSV format), no direct functional dependency.
+- **Suggested bundle**: opportunistic (during Bundle F or any future
+  CSV column addition).
+
+### T11: `header_parser._DECL_RE` doesn't match function-pointer params 🟢
+
+- **Where**: `ctkat/header_parser.py:49-61` — regex
+  `(?P<params>[^()]*)` matches everything inside the outermost parens
+  but stops at nested parens.
+- **Symptom**: `int register_cb(int (*cb)(int))` declarations are
+  silently skipped. No error, no count, no log line — the function
+  just doesn't show up in `ctkat infer` output. User wonders why
+  their callback-based API doesn't appear.
+- **Why solve**: Sharp edge for users running `infer` on
+  general-purpose C headers. PQClean and similar PQC suites don't
+  use this pattern, so the existing examples don't hit it.
+- **Acceptance criteria**:
+  1. Either upgrade the regex to handle one level of nested parens
+     (`re` supports `(?:[^()]|\([^()]*\))*` style), OR …
+  2. Emit a summary count at end of `infer`: "skipped N declarations
+     with unparseable params (function pointers, variadic, etc.)"
+     so the user has a heads-up.
+- **Related**: none.
+- **Suggested bundle**: TBD (low-priority parser hardening).
+
+### T7: yaml-supplied identifiers reach Jinja / filesystem without validation 🟢
+
+- **Where**:
+  - `ctkat/cli.py:97-140` (`_build_generic_context`,
+    `_build_kem_context`, `_build_sign_context`) — pass `h.function`,
+    `h.prefix`, `h.args`, `h.return_type` straight through to Jinja
+    with no pattern check.
+  - `ctkat/harness_generator.py:93-94` — `source_path = output_dir /
+    f"harness_{name}.c"` interpolates `name` directly into a file path.
+  - `HarnessConfig` / `DudectHarnessConfig` pydantic models enforce
+    `Optional[str]` typing but no regex constraints.
+- **Symptom**: Multiple injection surfaces:
+  1. `function: '; system("rm -rf /")'` lands in generated C
+     literally. Compile fails noisily but the abuse surface is open.
+  2. `name: "../../etc/passwd_pwn"` resolves to
+     `_generated/harness_../../etc/passwd_pwn.c` → directory escape
+     during the write step (typically fails on later compile, but
+     the file write happens first).
+- **Why solve**: Same family as T4 (`shell=True` on user yaml). The
+  framework's "yaml ownership is the user's responsibility" stance
+  is documented, but a defensive layer is cheap and the `name` →
+  path case is a real path-traversal vector, not just code
+  injection.
+- **Acceptance criteria**:
+  1. Add pydantic validators on `HarnessConfig` and
+     `DudectHarnessConfig`:
+     - `name`: `^[A-Za-z0-9_-]+$` (filename-safe, no path separators
+       or `..`).
+     - `function`, `return_type`: `^[A-Za-z_][A-Za-z0-9_:* ]*$` (C
+       identifiers, plus `:`, `*`, space for things like
+       `unsigned int *`).
+     - `prefix`: `^[A-Za-z_][A-Za-z0-9_]*$` (must be empty string or
+       a valid C identifier prefix ending in `_`).
+  2. `args` items: trickier — each may be `sizeof(x)`, integer
+     literals, identifiers. Allow a broader char class or skip.
+  3. Tests: each of the malicious yaml values above raises
+     `ValidationError` at config load.
 - **Related**: T4 (shell=True), F1/F5/F6 (related "trust the yaml"
   posture).
-- **Suggested bundle**: TBD (not currently planned; low-priority
-  hardening).
+- **Suggested bundle**: TBD (low-priority hardening). The `name`
+  pattern guard is the most concrete win and could land as a cheap
+  one-line pydantic validator before the rest.
 
 ### T2: valgrind_parser substring matching is fragile 🟢
 
@@ -766,49 +1068,74 @@ LoC).
 
 ### Bundle E — Fail-Open Closure 🚨
 
-**Closes**: F1, F2, F3, F5, F7, F8, T6, partially F4.
-**LoC estimate**: ~350 (v1 ~150 → v2 ~250 → v3 ~350, expanded with each
-external review pass).
+**Closes**: F1, F2, F3, F5, F7, F8, F9 (#1+#2 only), F10, F11, T6,
+partially F4.
+**LoC estimate**: ~500 (v1 ~150 → v2 ~250 → v3 ~350 → v4 ~500). With
+the v4 additions of F9/F10/F11 and T6 expansion, the bundle clearly
+exceeds the comfort zone for a single commit. **Split now strongly
+recommended.**
 **Why this bundle goes first**: Every other improvement compounds on
 top of verdict correctness. Building on a fail-open base produces
-false safety stacked on false safety. After external review pass 3 the
-bundle's title ("fail-open closure") only fits if F7/F8 (subcommand
-exit-code asymmetry) land alongside the verdict-matrix work.
+false safety stacked on false safety.
 
-**Sketch (ordered by inter-dependency)**:
-- New `Verdict.INCONCLUSIVE` enum member + matrix entries (F3) —
-  precondition for F2/F5/T6 mappings.
+**Recommended split** (preserves "fail-open closure" theme across two
+self-contained commits):
+
+#### Bundle E-1 — Verdict state + per-stage exit-code contract (~250 LoC)
+
+**Closes**: F1, F3, F7, F8, F10, F11, T6.
+
+- New `Verdict.INCONCLUSIVE` enum + matrix entries (F3) — precondition
+  for everything else.
+- KAT stdout grep + `expected_min` yaml field + always-echo stdout
+  (F1).
+- Build artifact existence check + `expected_artifacts` yaml field
+  (F10).
+- Subcommand exit-code consistency: `kat`/`ct` None → Exit(2) (F7, F8).
+- `kat_status` axis added to verdict matrix; `--continue-on-kat-fail`
+  + KAT FAIL → verdict ≠ CLEAN (F11).
+- `dudect.timeout` yaml field; try/except for all four dudect-runner
+  uncaught paths → INCONCLUSIVE (T6).
+- README updates: verdict matrix (now 3-axis: kat × ct × dudect),
+  exit-code semantics across stages.
+
+#### Bundle E-2 — Analysis-stage fail-open (~150 LoC)
+
+**Closes**: F2, F5. Depends on E-1's INCONCLUSIVE state.
+
 - New `valgrind_status="ERROR"` returned by `_do_ct` on crash (F2).
-- New `kat.expected_min` yaml field + stdout-grep validation in `_do_kat`
-  + always-echo stdout (F1).
-- New `ct.require_sentinel` yaml field + sentinel-line check in `_do_ct`
-  manual mode (F5). Includes updating example harnesses to emit the
-  sentinel.
-- Subcommand exit-code consistency: `cfg.kat is None → Exit(2)` (F7);
-  add `cfg.ct is None → Exit(2)` guard to ct command (F8). Don't print
-  "PASS" when section is absent.
-- `dudect.timeout` yaml field; try/except around timing harness for
-  TimeoutExpired → INCONCLUSIVE (T6).
-- **Deferred to Bundle F**: F6 (`secret_regions` size check) — see F6
-  body for rationale; needs sentinel program, doesn't fit E's scope.
-- Tests for each fail-open mode (one regression test per F-issue
-  closed).
-- README updates: verdict matrix, KAT section, CT manual-mode section,
-  CLI subcommand exit-code contract.
+- `ct.require_sentinel` yaml field + sentinel-line check (F5).
+  Includes updating example harnesses (toy_password, toy_lookup,
+  toy_dudect) to emit the sentinel.
 
-**Sizing risk**: ~350 LoC is at the upper end of single-commit comfort.
-Splitting option:
-- **E-1 (verdict-state + exit-code)**: F1, F3, F7, F8, T6. ~200 LoC.
-- **E-2 (analysis-stage fail-open)**: F2, F5. ~150 LoC. Depends on E-1's
-  INCONCLUSIVE state being available.
+#### Bundle E-3 — Compiler-flag asymmetry minimum (~80 LoC)
 
-Author preference: keep as single E unless review feedback demands
-split. Bundle B was 334 LoC single-commit precedent.
+**Closes**: F9 (criteria #1+#2 only — README + CLI banner). F9 criterion
+#3 (`shared_cflags`) and #4 (multi-target matrix) deferred to their own
+bundles.
 
-### Bundle F — Class Balance + Sample Transparency + F6 🟡
+- Print effective ct cflags vs dudect cflags side-by-side at run start;
+  warn loudly when they differ.
+- README "dudect 측정 강화" section: explicit "two stages may analyze
+  different binaries" warning with concrete cmov vs branch example.
 
-**Closes**: F4, F6, S1, S2.
-**LoC estimate**: ~170 (was ~120; +50 for F6 sentinel program).
+**Why this split is sensible**: each Bundle E-N is self-contained,
+testable, and reviewable in 30-60 minutes. Total ~480 LoC across 3
+commits is more honest than 500 LoC in one mega-commit. The F-series
+issues group naturally — exit-code semantics (E-1), analysis-stage
+hardening (E-2), compiler-flag visibility (E-3).
+
+**Deferred from E entirely**:
+- F4 (zero-filter class balance) → Bundle F.
+- F6 (`secret_regions` size check) → Bundle F.
+- F9 #3, #4 (yaml `shared_cflags`, multi-target matrix) → separate
+  bundles.
+
+### Bundle F — Class Balance + Sample Transparency + F6 + S4 🟡
+
+**Closes**: F4, F6, S1, S2, S4.
+**LoC estimate**: ~220 (v3 ~170 → v4 ~220; +50 for S4 graceful-skip
+refactor of `_do_dudect`).
 
 **Sketch**:
 - Per-class drop tracking in `parse_timing_csv` (F4 logic + S2 warning).
@@ -816,6 +1143,10 @@ split. Bundle B was 334 LoC single-commit precedent.
 - F6: emit a tiny sentinel program at harness compile to extract
   `CRYPTO_SECRETKEYBYTES` value; compare against `sum(secret_regions.length)`;
   warn at <50% coverage.
+- S4: `_do_dudect` per-harness failure becomes `continue` with
+  status=ERROR (uses Bundle E-1's INCONCLUSIVE); previously-completed
+  harnesses' results still get emitted. (**Depends on Bundle E-1 landing
+  first** for the ERROR state.)
 
 **Moved out**: R1 Option A is too small to wait — handled in Docs sweep
 (or a standalone quick commit), not held back to F.
@@ -833,8 +1164,8 @@ split. Bundle B was 334 LoC single-commit precedent.
 ### Docs sweep — Honest Limitations
 
 **Closes**: U1, U2 (interim doc note — primary fix is separate bundle),
-U3, U4, R1 (Option A), R3.
-**LoC estimate**: ~100 (README) + ~80 (new `docs/tutorial.md` if U5 included).
+U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
+**LoC estimate**: ~120 (README) + ~80 (new `docs/tutorial.md` if U5 included).
 
 **Sketch**:
 - R1 Option A: PQClean reproducibility caveat (yaml seed only controls
@@ -847,6 +1178,9 @@ U3, U4, R1 (Option A), R3.
 - Function speed range guidance + cross-ref to `dudect.timeout` (U4 +
   T6's documentation half).
 - Reproducibility / system noise note (R3).
+- LOW_RISK label clarification: "LOW does not mean ignorable;
+  Valgrind has confirmed a structural secret dependence; dudect
+  just couldn't measure timing diff in this run" (U6 Option B).
 
 ### Cleanup
 
@@ -949,3 +1283,65 @@ U3, U4, R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v4 — corrections after external review pass 4 (2026-05-26)
+
+- Reviewer audited cross-stage interactions, not just individual
+  stages.
+- Net change: 26 → 35 issues (+9 new IDs, 2 issues expanded).
+- New Tier 1 (verdict-reliability) issues — all confirmed by code
+  cross-reference:
+  - **F9** (compiler optimization asymmetry): ct stage uses `-O0`,
+    dudect uses `-O2`. The two stages analyze **structurally
+    different binaries**. verdict CLEAN doesn't mean "verified the
+    code you'll ship." Biggest verdict-reliability gap missed by
+    v1–v3 because those passes audited stages in isolation, not
+    their compile-flag handshake.
+  - **F10** (build stage exit-code only): `_do_build` returns
+    `r.ok`, same fail-open pattern as F1. Bundle E's "fail-open
+    closure" title doesn't fit unless this is closed too.
+  - **F11** (`--continue-on-kat-fail` verdict leak): when the flag
+    is set and KAT fails, the resulting verdict CSV doesn't
+    include KAT status at all. KAT FAIL + ct PASS + dudect PASS →
+    `CLEAN`, which is a lie.
+- New Tier 3:
+  - **S4** (partial dudect run discards prior data): mid-loop
+    `raise typer.Exit(1)` on first failure drops 1..k–1 harnesses'
+    measurements. Need to refactor to `continue` with ERROR status,
+    landed after Bundle E-1 introduces ERROR.
+- New Tier 4:
+  - **U6** (`LOW_RISK` label undersells valgrind structural
+    findings): user sees "LOW" and thinks dismissible; the actual
+    semantics are "Valgrind confirmed a structural leak, dudect
+    just couldn't measure it." Option A renames, Option B keeps
+    label but documents.
+- New Tier 5:
+  - **T8** (no upper bound on `measurements`/`warmup`/`batches`):
+    typo → 800MB BSS → OOM. Pydantic `Field(ge=…, le=…)` fix.
+  - **T9** (`detect_qemu_emulation()` substring match false-pos):
+    bare-metal hosts with QEMU strings in `/proc/cpuinfo` get
+    `clock: auto → monotonic` even when rdtsc would be fine.
+  - **T10** (no snapshot test pinning CSV column positions): the
+    "1-14 stable" contract is in a comment only, no test enforces.
+  - **T11** (`header_parser._DECL_RE` doesn't handle
+    function-pointer params): silent skip on `int (*cb)(int)`-style
+    declarations; user infers nothing and gets no warning.
+- Existing-issue updates:
+  - **T6 expanded** 🟢→🟡 (already in v3) → scope broadened. v3
+    acceptance only covered `subprocess.TimeoutExpired`. v4
+    reviewer pointed out the other three dudect-runner uncaught
+    paths (RuntimeError from `rc!=0`, ValueError from empty
+    stdout, ValueError from malformed CSV header). All four now
+    in T6 acceptance.
+  - **T7 expanded**: original scope was Jinja-context identifiers
+    (`function`/`prefix`/`return_type`). v4 reviewer noted yaml
+    `name` field → file path interpolation is a separate
+    path-traversal vector (`harness_generator.py:93`). Now folded
+    into T7 as a third acceptance criterion.
+  - **Bundle E split**: v3 single-commit E at ~350 LoC was already
+    at the upper edge. v4's F9/F10/F11/T6-expansion push it to
+    ~500 LoC. Split is now strongly recommended into
+    E-1 (verdict state + exit codes, ~250 LoC),
+    E-2 (analysis-stage fail-open, ~150 LoC),
+    E-3 (compiler-flag minimum, ~80 LoC).
+  - **Bundle F LoC**: 170 → 220 with S4 absorbed.
