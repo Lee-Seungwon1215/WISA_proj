@@ -701,6 +701,32 @@ def test_ct_error_flows_to_inconclusive_verdict():
 # --- Bundle F: S1 dudect_summary.csv raw-count columns (18-20) ------------
 
 
+# --- Bundle H2: T10 dudect_summary.csv full-header snapshot --------------
+
+
+def test_dudect_summary_csv_header_snapshot(tmp_path):
+    """T10: pin the exact header line. New columns must be appended at
+    the end with this test updated explicitly — silent reorders break
+    awk-by-position consumers (scripts/run_phase4.sh)."""
+    from ctkat.cli import _emit_dudect_report
+    from ctkat.dudect_runner import TimingSamples
+    from ctkat.statistics import WelchResult
+
+    r = WelchResult(
+        n0=1, n1=1, mean0=0.0, mean1=0.0, var0=0.0, var1=0.0,
+        t_score=0.0, abs_t_score=0.0, status="PASS",
+    )
+    _emit_dudect_report("p", tmp_path, [("h", TimingSamples(), r, [])])
+    header = (tmp_path / "dudect_summary.csv").read_text().splitlines()[0]
+    expected = (
+        "project,harness,n0,n1,mean0,mean1,var0,var1,t_score,"
+        "abs_t_score,status,batch_t_mean,batch_t_max_abs,batches,"
+        "cropped_at,t_score_uncropped,abs_t_score_uncropped,"
+        "raw_n_total,dropped_zero_n0,dropped_zero_n1,cohens_d"
+    )
+    assert header == expected
+
+
 def test_dudect_summary_csv_has_raw_count_columns(tmp_path):
     from ctkat.cli import _emit_dudect_report
     from ctkat.dudect_runner import TimingSamples

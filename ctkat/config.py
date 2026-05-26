@@ -54,20 +54,38 @@ class ProjectConfig(BaseModel):
 class BuildConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    command: str
+    # `command` (shell=True) is the legacy/convenient path. `argv`
+    # (shell=False, Bundle H2 T4) is the structured alternative for
+    # users who don't want yaml to be implicitly shell-executable.
+    # Exactly one must be set.
+    command: Optional[str] = None
+    argv: Optional[List[str]] = None
     workdir: Path = Path(".")
     # Paths the build is expected to produce (Bundle E-1, F10). Each path
-    # is resolved relative to `workdir` (or absolute). After `command`
+    # is resolved relative to `workdir` (or absolute). After the step
     # finishes with rc=0 we verify every entry exists; missing → build FAIL.
     # Empty list (default) preserves prior exit-code-only behavior with a
     # one-time per-run warning that the artifact check was skipped.
     expected_artifacts: List[Path] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _check_mode(self) -> "BuildConfig":
+        if (self.command is None) == (self.argv is None):
+            raise ValueError(
+                "build: exactly one of `command` (shell=True, legacy) or "
+                "`argv` (shell=False, T4 safer alternative) must be set"
+            )
+        return self
+
 
 class KatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    command: str
+    # Bundle H2 (T4): same command/argv split as BuildConfig. argv path
+    # bypasses the shell entirely so an untrusted yaml can't smuggle
+    # `; rm -rf /` past the framework.
+    command: Optional[str] = None
+    argv: Optional[List[str]] = None
     workdir: Path = Path(".")
     # Minimum number of KAT vectors the user expects to have executed
     # (Bundle E-1, F1). cli._do_kat greps the command's stdout with
@@ -79,6 +97,15 @@ class KatConfig(BaseModel):
     # Regex (single capturing group with the count). Default matches
     # PQClean / NIST KAT runner output like "PASSED: 100 tests".
     expected_pattern: str = r"PASSED:?\s*(\d+)"
+
+    @model_validator(mode="after")
+    def _check_mode(self) -> "KatConfig":
+        if (self.command is None) == (self.argv is None):
+            raise ValueError(
+                "kat: exactly one of `command` (shell=True, legacy) or "
+                "`argv` (shell=False, T4 safer alternative) must be set"
+            )
+        return self
 
 
 class BufferSpec(BaseModel):
@@ -108,7 +135,12 @@ class SecretRegion(BaseModel):
 class HarnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
+    # Bundle H2 (T7): `name` becomes part of a filesystem path
+    # (`{generated_dir}/harness_{name}.c` in harness_generator.py:93).
+    # A path-traversal value like `../../etc/passwd` would otherwise
+    # escape the generated dir. Restrict to filename-safe characters so
+    # the path interpolation is provably contained.
+    name: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
 
     # --- Manual mode (Phase 1) ---
     binary: Optional[Path] = None
@@ -237,7 +269,8 @@ class DudectCompilerConfig(BaseModel):
 class DudectHarnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
+    # T7: filename-safe pattern, see HarnessConfig.name.
+    name: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     template: Literal["generic", "kem"] = "generic"
     extra_headers: List[str] = Field(default_factory=list)
     include_dirs: List[Path] = Field(default_factory=list)
@@ -290,9 +323,16 @@ class DudectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    measurements: int = 100_000
-    warmup: int = 1_000
-    batches: int = 10
+    # Bundle H2 (T8): defensive upper bounds. A typo (extra zero,
+    # copy-paste mistake) on `measurements` previously allocated
+    # ~800 MB in the C harness's static BSS arrays and produced an
+    # opaque "Killed" / segfault diagnostic. 10M is a defensible
+    # ceiling (~80 MB BSS for cycles_buf + classes_buf). Lower
+    # `measurements` than this is fine; we just refuse the absurdly
+    # large case at config load.
+    measurements: int = Field(default=100_000, ge=100, le=10_000_000)
+    warmup: int = Field(default=1_000, ge=0, le=10_000_000)
+    batches: int = Field(default=10, ge=1, le=1_000)
     # "auto" (default) picks rdtsc on native x86_64 and monotonic elsewhere
     # (incl. ARM, QEMU). Explicit "rdtsc" is hard-validated against the host
     # arch so the failure surfaces at config load instead of as a cryptic

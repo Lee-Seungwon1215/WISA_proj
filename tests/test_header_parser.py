@@ -123,3 +123,29 @@ def test_anonymous_pointer_param_gets_deterministic_index_name():
 def test_discover_headers_finds_all_three():
     found = discover_headers(FIXTURES)
     assert {p.name for p in found} == {"toy.h", "kem.h", "sign.h"}
+
+
+# --- Bundle H2: T11 function-pointer / nested-paren skip count -----------
+
+
+def test_parse_functions_with_stats_counts_function_pointer_skips():
+    from ctkat.header_parser import parse_functions_with_stats
+    text = (
+        "int foo(int x);\n"
+        "int register_cb(int (*cb)(int));\n"     # function pointer — strict miss
+        "int bar(const uint8_t *p);\n"
+    )
+    sigs, skipped = parse_functions_with_stats(text)
+    names = {s.name for s in sigs}
+    assert "foo" in names
+    assert "bar" in names
+    # `register_cb` is silently skipped by the strict regex; loose match
+    # picks it up so the count is 1.
+    assert skipped == 1
+
+
+def test_parse_functions_with_stats_zero_skips_on_clean_header():
+    from ctkat.header_parser import parse_functions_with_stats
+    text = "int foo(int x);\nvoid bar(void);\n"
+    _, skipped = parse_functions_with_stats(text)
+    assert skipped == 0

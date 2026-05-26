@@ -60,6 +60,26 @@ _DECL_RE = re.compile(
     re.VERBOSE,
 )
 
+# Bundle H2 (T11): loose-match counterpart that accepts nested parens
+# inside the param list, so we can count function declarations whose
+# params our strict regex would silently skip (function pointers like
+# `int register_cb(int (*cb)(int))`, variadic, etc.). We don't try to
+# *parse* these — just to flag their existence so the user knows the
+# infer output is incomplete.
+_DECL_LOOSE_RE = re.compile(
+    r"""
+    (?P<ret>(?:[A-Za-z_][\w\s\*]*?))
+    \s+
+    (?P<name>[A-Za-z_]\w*)
+    \s*
+    \(
+    (?P<params>(?:[^()]|\([^()]*\))*)  # one level of nested parens allowed
+    \)
+    \s*;
+    """,
+    re.VERBOSE,
+)
+
 # A "line directive" left over from preprocessing — we don't run cpp so this
 # is unlikely to appear, but strip just in case.
 _DIRECTIVE_LINE = re.compile(r"^\s*#.*$", re.MULTILINE)
@@ -127,18 +147,39 @@ def _split_params(text: str) -> List[str]:
     return [p for p in (s.strip() for s in text.split(",")) if p]
 
 
+_KEYWORDS = {"if", "while", "for", "switch", "return", "sizeof"}
+
+
 def parse_functions(text: str, source_file: Optional[str] = None) -> List[FunctionSig]:
     """Extract function declarations from C header text."""
+    return _parse_functions_impl(text, source_file)[0]
+
+
+def parse_functions_with_stats(
+    text: str, source_file: Optional[str] = None
+) -> tuple[List[FunctionSig], int]:
+    """Bundle H2 (T11): like `parse_functions`, but also returns the
+    number of function declarations the strict regex skipped (function
+    pointers, variadic, nested-paren signatures). Callers can surface
+    this so the user knows the parsed list is incomplete.
+
+    Returns `(sigs, skipped_count)`.
+    """
+    return _parse_functions_impl(text, source_file)
+
+
+def _parse_functions_impl(
+    text: str, source_file: Optional[str]
+) -> tuple[List[FunctionSig], int]:
     stripped = _strip_preprocessing(text)
-    # Flatten whitespace inside declarations but preserve newlines for line numbers.
     sigs: List[FunctionSig] = []
+    strict_starts: set[int] = set()
     for m in _DECL_RE.finditer(stripped):
         ret = re.sub(r"\s+", " ", m.group("ret")).strip()
         name = m.group("name").strip()
         if not ret:
             continue
-        # Filter out things that look like control statements / definitions.
-        if name in {"if", "while", "for", "switch", "return", "sizeof"}:
+        if name in _KEYWORDS:
             continue
         params_raw = m.group("params")
         params = [
@@ -147,15 +188,28 @@ def parse_functions(text: str, source_file: Optional[str] = None) -> List[Functi
             )
             if p
         ]
-        sig = FunctionSig(
+        strict_starts.add(m.start())
+        sigs.append(FunctionSig(
             return_type=ret,
             name=name,
             params=params,
             source_file=source_file,
             source_line=_line_of(m.start(), stripped),
-        )
-        sigs.append(sig)
-    return sigs
+        ))
+
+    # T11: count loose-only matches (anything that looks like a function
+    # decl with nested parens but didn't survive the strict regex). Don't
+    # double-count strict-matches; don't count keyword false positives.
+    skipped = 0
+    for m in _DECL_LOOSE_RE.finditer(stripped):
+        if m.start() in strict_starts:
+            continue
+        if m.group("name") in _KEYWORDS:
+            continue
+        if not m.group("ret").strip():
+            continue
+        skipped += 1
+    return sigs, skipped
 
 
 def parse_header_file(path: Path) -> List[FunctionSig]:

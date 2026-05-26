@@ -24,7 +24,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .builder import run_shell
+from .builder import run_step
 from .config import (
     CtkatConfig,
     DudectConfig,
@@ -101,9 +101,10 @@ def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
     every listed path must exist after the command finishes. Unset →
     legacy exit-code-only behavior with a one-time warning.
     """
-    console.print(f"[bold cyan]==> Build[/]: {cfg.build.command}")
+    desc = cfg.build.command if cfg.build.command is not None else " ".join(cfg.build.argv or [])
+    console.print(f"[bold cyan]==> Build[/]: {desc}")
     workdir = _resolve(cfg_dir, cfg.build.workdir)
-    r = run_shell(cfg.build.command, workdir)
+    r = run_step(command=cfg.build.command, argv=cfg.build.argv, workdir=workdir)
     if not r.ok:
         console.print("[bold red][CTKAT] Build: FAIL[/]")
         if r.stdout:
@@ -150,9 +151,10 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
     # want a security tool's invariants disappearing in optimized builds.
     if cfg.kat is None:
         raise ValueError("_do_kat called with no `kat` section in config")
-    console.print(f"[bold cyan]==> KAT[/]: {cfg.kat.command}")
+    desc = cfg.kat.command if cfg.kat.command is not None else " ".join(cfg.kat.argv or [])
+    console.print(f"[bold cyan]==> KAT[/]: {desc}")
     workdir = _resolve(cfg_dir, cfg.kat.workdir)
-    r = run_shell(cfg.kat.command, workdir)
+    r = run_step(command=cfg.kat.command, argv=cfg.kat.argv, workdir=workdir)
     if r.stdout:
         console.print(r.stdout)
     if not r.ok:

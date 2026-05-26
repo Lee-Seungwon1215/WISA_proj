@@ -291,3 +291,121 @@ def test_dudect_generic_with_ct_leak_target_raises(tmp_path: Path):
     )
     with pytest.raises(ValidationError, match="leak_target.*only valid for template=kem"):
         load_config(_write(tmp_path, body))
+
+
+# --- Bundle H2: T4 argv / T7 name pattern / T8 bounds --------------------
+
+
+def test_build_argv_alternative_to_command(tmp_path: Path):
+    # T4: argv path replaces command. Both unset = error; both set = error.
+    body = (
+        "project: {name: demo}\n"
+        "build:\n"
+        "  argv: [make, -j4]\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.build.argv == ["make", "-j4"]
+    assert cfg.build.command is None
+
+
+def test_build_neither_command_nor_argv_raises(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    with pytest.raises(ValidationError, match="exactly one of"):
+        load_config(_write(tmp_path, body))
+
+
+def test_build_both_command_and_argv_raises(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true', argv: ['true']}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    with pytest.raises(ValidationError, match="exactly one of"):
+        load_config(_write(tmp_path, body))
+
+
+def test_kat_argv_alternative_to_command(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "kat: {argv: [./run_kat]}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.kat.argv == ["./run_kat"]
+
+
+def test_harness_name_pattern_rejects_path_traversal(tmp_path: Path):
+    # T7: name lands in `{generated_dir}/harness_{name}.c` — must be
+    # filename-safe.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: '../../etc/passwd', binary: ./x}\n"
+    )
+    with pytest.raises(ValidationError, match=r"name"):
+        load_config(_write(tmp_path, body))
+
+
+def test_harness_name_pattern_rejects_shell_metas(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: 'h;rm -rf /', binary: ./x}\n"
+    )
+    with pytest.raises(ValidationError, match=r"name"):
+        load_config(_write(tmp_path, body))
+
+
+def test_dudect_measurements_upper_bound_rejected(tmp_path: Path):
+    # T8: typo'd 100,000,000 → silently allocated 800MB BSS pre-H2.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  measurements: 100000000\n"
+        "  harnesses:\n"
+        "    - {name: h, template: generic, function: foo}\n"
+    )
+    with pytest.raises(ValidationError, match=r"measurements"):
+        load_config(_write(tmp_path, body))
+
+
+def test_dudect_warmup_too_large_rejected(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  warmup: 100000000\n"
+        "  harnesses:\n"
+        "    - {name: h, template: generic, function: foo}\n"
+    )
+    with pytest.raises(ValidationError, match=r"warmup"):
+        load_config(_write(tmp_path, body))
+
+
+def test_dudect_batches_zero_rejected(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  batches: 0\n"
+        "  harnesses:\n"
+        "    - {name: h, template: generic, function: foo}\n"
+    )
+    with pytest.raises(ValidationError, match=r"batches"):
+        load_config(_write(tmp_path, body))

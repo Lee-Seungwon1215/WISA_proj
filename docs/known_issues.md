@@ -20,8 +20,13 @@ commits and PRs.
     Cohen's d in WelchResult + CSV col 21).
   - U1, U2 (interim), U3, U4, U5, U6 (Option B), R3 — Bundle H1 Docs Sweep
     (정직한 한계 + Windows/속도/노이즈/LOW_RISK caveat + tutorial.md).
-  Pipeline progress: 23 fully closed (Bundle E/F/G + H1 docs), 2 partial
-  (R1, F9). Bundle H2 next (Tier 5 hardening: T1/T4/T7/T8/T9/T10/T11).
+  - T1, T4, T5, T7, T8, T9, T10, T11 — Bundle H2 Hardening (template
+    dedup, shell=False argv 옵션, name regex, pydantic Field bounds,
+    qemu multi-signal, CSV snapshot, header parser skip count).
+  Pipeline progress: **30 fully closed**, 2 partial (R1, F9). Only
+  follow-up category items left: F9 #3/#4 (shared_cflags, multi-target
+  matrix), R1 Option B (randombytes interpose), U2 #1 (leak_target=fo
+  mode), U6 Option A (LOW_RISK rename), T2, T3.
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -963,6 +968,13 @@ follow-up으로 남김.
 
 ### T1: Template code duplication between sk-leak and ct-leak 🟢
 
+**Status: RESOLVED in Bundle H2.** `timing_kem.c.j2` 상단에
+`emit_kem_measurement(sk_expr, ct_expr)` Jinja2 매크로 신설.
+양쪽 brunch (sk-leak / ct-leak)의 "warm dec + timed region + cycles
+저장" 7-line 블록이 매크로 호출 1라인으로 줄어듦. R1 Option B
+(randombytes interpose) 적용 시 이 매크로 한 군데에 박으면 양쪽
+brunch가 자동으로 받음.
+
 - **Where**: `ctkat/templates/timing_kem.c.j2` (two ~50-line `main()`
   bodies under `{% if leak_target ... %}`).
 - **Symptom**: PRNG class assignment, timed-region pattern, cycles_buf
@@ -1036,6 +1048,11 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 
 ### T8: dudect `measurements`/`warmup`/`batches` have no upper bound 🟢
 
+**Status: RESOLVED in Bundle H2.** Pydantic `Field(ge=, le=)` 박힘:
+`measurements: 100..10_000_000`, `warmup: 0..10_000_000`,
+`batches: 1..1_000`. 사용자가 zero 추가 typo로 800MB BSS 만들고 OOM
+당하는 경로를 config 로드 단계에서 거부.
+
 - **Where**: `ctkat/config.py:264-266` (`measurements: int = 100_000`,
   `warmup: int = 1_000`, `batches: int = 10`). Pydantic enforces `int`
   typing only.
@@ -1058,6 +1075,11 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 - **Suggested bundle**: TBD (cheap, opportunistic).
 
 ### T9: `detect_qemu_emulation()` can false-positive 🟢
+
+**Status: RESOLVED in Bundle H2.** `_MIN_SIGNALS=2` 도입. 한 candidate
+파일에서만 "QEMU" 발견된 경우는 false-positive로 보고 native 판정.
+Docker-on-M1처럼 ≥3 candidates에 박혀있는 진짜 emulation은 그대로
+검출. monkeypatch 기반 4개 단위 테스트 (0/1/2/no-match) 신설.
 
 - **Where**: `ctkat/qemu_detect.py:23-31`. Substring match: any file
   in the candidate list containing `"QEMU"` → returns True.
@@ -1084,6 +1106,11 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 
 ### T10: no snapshot test pinning `dudect_summary.csv` column positions 🟢
 
+**Status: RESOLVED in Bundle H2.** `test_dudect_summary_csv_header_snapshot`
+신설. 전체 헤더 한 줄 (`project,harness,n0,...cohens_d`)을 literal로
+pin. 새 컬럼 추가는 이 테스트를 명시적으로 갱신해야 통과 — silent
+reorder가 awk-by-position 컨슈머(`scripts/run_phase4.sh`)를 깨지 않음.
+
 - **Where**: `ctkat/cli.py:343-354` (the CSV header definition has a
   comment saying "1-14 stable for backward compatibility" but no test
   asserting the position contract). `scripts/run_phase4.sh:36-38`
@@ -1109,6 +1136,13 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 
 ### T11: `header_parser._DECL_RE` doesn't match function-pointer params 🟢
 
+**Status: RESOLVED in Bundle H2.** 신규 `_DECL_LOOSE_RE` — nested paren
+1단계 허용. `parse_functions_with_stats(text)` API가 추가되어
+`(sigs, skipped_count)` 반환. function pointer 같은 케이스가 silent
+미스 → 카운트 가능. 기존 `parse_functions()` API는 시그니처 그대로
+유지 (backward-compat). 정규식 자체 보강은 안 했음 — false-positive
+키워드 필터링 비용 더 큼.
+
 - **Where**: `ctkat/header_parser.py:49-61` — regex
   `(?P<params>[^()]*)` matches everything inside the outermost parens
   but stops at nested parens.
@@ -1129,6 +1163,14 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 - **Suggested bundle**: TBD (low-priority parser hardening).
 
 ### T7: yaml-supplied identifiers reach Jinja / filesystem without validation 🟢
+
+**Status: RESOLVED (primary) in Bundle H2.** Most important slice —
+`HarnessConfig.name` / `DudectHarnessConfig.name`이 `^[A-Za-z0-9_-]+$`
+패턴으로 제한되어 `../../etc/passwd` 같은 path traversal 또는 shell
+metacharacter 박힌 이름을 config 로드 단계에서 거부함. `harness_generator.py:93`의
+`{generated_dir}/harness_{name}.c` 인터폴레이션이 이제 안전. function /
+return_type / prefix / args 같은 Jinja-context 식별자 추가 패턴 제한은
+follow-up (compile fail이 일종의 보호).
 
 - **Where**:
   - `ctkat/cli.py:97-140` (`_build_generic_context`,
@@ -1201,6 +1243,13 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 
 ### T4: shell=True in user-yaml commands 🟢
 
+**Status: RESOLVED in Bundle H2.** `BuildConfig.argv: List[str]` +
+`KatConfig.argv: List[str]` 옵션 추가. 둘 중 정확히 하나 (command 또는
+argv) 박혀야 함 (validator로 강제). argv 박으면 `subprocess.run`이
+shell=False로 실행되어 yaml의 metacharacter 노출 제거. command 경로는
+backward-compat 그대로 유지. builder.py에 `run_argv` + `run_step` 헬퍼
+신설.
+
 - **Where**: `ctkat/builder.py:17-30 run_shell`.
 - **Symptom**: `cfg.kat.command` and `cfg.build.command` are passed to
   `subprocess.run(shell=True)`. README discloses this is intentional
@@ -1217,8 +1266,11 @@ result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 
 ### T5: Completed task list accumulation 🟢
 
-- 44 tasks completed in current session, never cleaned up.
-- Acceptance: bulk-delete completed tasks at end of each Bundle commit.
+**Status: RESOLVED in Bundle H2.** Bundle E-3 이후 각 Bundle 작업 동안
+TaskCreate/Update를 적극 사용, 매 Bundle commit 끝에 모든 task가
+`completed` 상태로 명시됨. 운영 정책 — 다음 작업 시작 전에 stale
+completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하는
+패턴이 자리잡힘.
 
 ---
 
