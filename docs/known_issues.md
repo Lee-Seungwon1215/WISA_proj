@@ -535,10 +535,17 @@ just less severe — requires user misconfiguration to trigger.)
 
 ### R1: dudect KEM harness is non-reproducible on real PQClean targets — BOTH leak modes 🚨
 
-**Status**: **Option A RESOLVED in Quick Docs commit (pre-Bundle-E warmup).**
-README §"재현성 (seed)" 표 + yaml seed 코멘트로 caveat 명시.
-Option B (`randombytes` interpose mechanism) is still open — follow-up,
-naturally co-targets T1 (template dedup).
+**Status: FULLY RESOLVED.**
+- Option A (docs caveat) in Quick Docs commit (pre-Bundle-E warmup).
+- **Option B (`randombytes` weak-symbol interpose) in Bundle J.** timing_kem
+  하네스가 자기 `randombytes(uint8_t *buf, size_t len)`을 weak symbol로
+  emit (xorshift PRNG로 buf 채움). 사용자가 yaml sources에서 PQClean의
+  `common/randombytes.c`를 빼면 우리 weak이 유일 정의 → deterministic.
+  안 빼면 strong이 win (legacy 동작 보존) → backward-compat.
+- GCC/Clang weak attribute 사용. Windows MSVC는 다른 시맨틱이라 현재
+  미지원 (U3 caveat과 동일).
+- T1 (template dedup) Bundle H2에서 이미 끝나 있어서 매크로 한 곳에
+  영향 미치는 일 없이 RNG 블록 추가만으로 완료.
 
 - **Where** (all in `ctkat/templates/timing_kem.c.j2`):
   - **ct-leak branch** (`{% if leak_target | default("sk") == "ct" %}`):

@@ -366,14 +366,42 @@ cropping 5개 cutoff 중 max \|t\|를 채택하면 nominal보다 false-positive
 
 **실용적 함의**:
 - `dudect_raw_timings.csv` 두 run 사이 bit-identical diff를 기대하지 말 것 —
-  PQClean KEM 하네스에선 sk/ct 값 자체가 매번 달라짐.
+  PQClean KEM 하네스에선 sk/ct 값 자체가 매번 달라짐 (legacy 동작).
 - |t| 절대값이 run 간 ±10-20% 흔들리는 게 정상 (OS 스케줄링/캐시 효과 포함).
   PASS/WARNING/FAIL 상태와 자릿수만 비교.
-- bit-identical 재현이 필요하면 PQClean `randombytes`를 xorshift로 교체하는
-  링크-타임 interpose가 필요 (follow-up: known_issues.md R1 Option B).
 
 합성 하네스(`toy_dudect`, `toy_kem_ct_leak`)는 위 영향 없음 — 그 쪽은 모두
 xorshift PRNG로만 입력을 만든다.
+
+### 결정론적 PQClean dudect — `randombytes` interpose (Bundle J, R1 Option B)
+
+Bundle J부터 timing_kem 하네스가 자기 자신의 `randombytes(uint8_t *buf,
+size_t len)`을 **weak symbol**로 emit한다. xorshift PRNG (CTKAT_SEED 기반)
+로 buf를 채우는 구현. 사용자가 yaml `sources:`에서 PQClean의
+`common/randombytes.c`를 **빼면** 우리 weak 정의가 유일 정의가 되어
+`crypto_kem_keypair` / `crypto_kem_enc`의 모든 randomness가 시드 결정론적
+이 된다 — `dudect_raw_timings.csv`가 bit-identical (modulo R3 시스템 노이즈).
+
+opt-in 방법:
+
+```yaml
+dudect:
+  harnesses:
+    - name: ml_kem_768
+      template: kem
+      header: api.h
+      include_dirs: [include]
+      sources:
+        - ml_kem_768/clean/kem.c
+        - ml_kem_768/clean/indcpa.c
+        # - common/randombytes.c   ← 빼기
+        - common/fips202.c
+```
+
+PQClean common/randombytes.c가 sources에 그대로 박혀있으면 strong이 win
+하니까 우리 weak 정의는 무시됨 (= legacy OS entropy 동작). backward-
+compat 보장. GCC/Clang 기준 — Windows MSVC의 weak symbol 시맨틱은
+다르므로 현재 지원하지 않음 (§Windows MSVC caveat 참고).
 
 ### `dudect_summary.csv` 컬럼 reference
 

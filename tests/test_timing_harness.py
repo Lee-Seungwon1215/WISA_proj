@@ -198,3 +198,34 @@ def test_kem_ct_leak_measured_dec_uses_sk_fixed():
     # content, not to sk-side caching.
     out = render_timing_harness("kem", _kem_ctx(leak_target="ct"))
     assert "crypto_kem_dec(ss, ct, sk_fixed)" in out
+
+
+# --- Bundle J (R1 Option B): randombytes weak interpose ----------------
+
+
+def test_kem_emits_weak_randombytes_override():
+    # Bundle J: the harness must declare its own `randombytes` as a weak
+    # symbol so user can opt into deterministic PQClean dudect by
+    # excluding common/randombytes.c from sources.
+    out = render_timing_harness("kem", _kem_ctx())
+    assert "__attribute__((weak)) int randombytes(" in out
+
+
+def test_kem_randombytes_uses_xorshift_prng():
+    # The override must feed PQClean's randomness from our seeded PRNG,
+    # otherwise enabling the interpose would just give nondeterministic
+    # randomness from a different source.
+    out = render_timing_harness("kem", _kem_ctx())
+    # Find the randombytes definition and check it calls our rand_bytes.
+    idx = out.find("int randombytes(")
+    assert idx > 0
+    body = out[idx:idx + 200]
+    assert "rand_bytes(" in body  # delegates to seeded xorshift PRNG
+
+
+def test_kem_randombytes_emitted_in_both_leak_modes():
+    # Both sk-leak and ct-leak branches must see the override.
+    sk_out = render_timing_harness("kem", _kem_ctx(leak_target="sk"))
+    ct_out = render_timing_harness("kem", _kem_ctx(leak_target="ct"))
+    assert "weak)) int randombytes(" in sk_out
+    assert "weak)) int randombytes(" in ct_out

@@ -82,6 +82,26 @@ static void rand_bytes(uint8_t *buf, size_t len) {
     }
 }
 
+/* Bundle J (R1 Option B): override PQClean's `randombytes` so KEM
+ * `keypair`/`enc` draw from our xorshift PRNG seeded by CTKAT_SEED rather
+ * than OS entropy (`getrandom`/`/dev/urandom`). When the user excludes
+ * PQClean's `common/randombytes.c` from `sources:`, this weak symbol
+ * becomes the only definition → keypair/enc deterministic across runs →
+ * `dudect_raw_timings.csv` bit-identical reproducibility (modulo R3
+ * system noise).
+ *
+ * Weak attribute: if PQClean's strong `randombytes` is still in the link
+ * (legacy behavior), the linker picks the strong one, so this opt-in
+ * doesn't break setups that haven't migrated. See README §"재현성 (seed)"
+ * for the opt-in instructions.
+ *
+ * GCC/Clang only — Windows MSVC has different weak-symbol semantics
+ * (__declspec(selectany)), not currently supported. */
+__attribute__((weak)) int randombytes(uint8_t *buf, size_t len) {
+    rand_bytes(buf, len);
+    return 0;
+}
+
 {% if clock == "rdtsc" -%}
 /* See timing_generic.c.j2 for the rationale behind the lfence-rdtscp-lfence
  * pattern. Same fence on both ends so any inflight insns drain before, and
