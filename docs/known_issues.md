@@ -6,14 +6,18 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-26
+- **Last updated**: 2026-05-26 (v2 — see Review log at the bottom)
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
-  - External independent reviewer (whole-pipeline audit)
-- **Total findings**: 5 tiers, 17 issues
-- **Verification**: all Tier 1 / Tier 2 claims verified against the
-  current `main` (commit `d678617` or later) by reading the cited source
-  lines.
+  - External independent reviewer, pass 1 (whole-pipeline audit)
+  - External independent reviewer, pass 2 (audited this doc itself)
+- **Total findings**: 5 tiers, 23 issues (v1: 20 → v2: +F5, +F6, +T6)
+- **Verification**: Tier 1 (F1–F6) and Tier 2 (R1–R3) claims verified
+  against `main` (commit `d678617` or later) by reading the cited source
+  lines. The original R1 was under-audited (focused only on the
+  ct-leak branch of `timing_kem.c.j2`); on second pass the same
+  `randombytes()` dependency was confirmed in the sk-leak branch too —
+  R1 body and acceptance criteria updated accordingly.
 
 ## How to read this document
 
@@ -66,12 +70,16 @@ fail-open in any tier-1 spot makes that gate unreliable.
   3. If pattern matches with count `n < expected_min` → KAT FAIL with a
      clear error message.
   4. If pattern doesn't match at all and `expected_min` is set → KAT FAIL.
-  5. Backward compatible: if `expected_min` is unset, current behavior
+  5. Always echo KAT stdout to console on PASS too (currently only
+     printed on FAIL — user can't see "count: 0" until they look at
+     reports/). Aggravates F1 because the user has no in-flow signal that
+     the KAT was a no-op.
+  6. Backward compatible: if `expected_min` is unset, current behavior
      (exit-code only) is preserved with a one-time runtime warning
      pointing users at the new field.
-  6. Tests covering: missing count, count < expected, count >= expected,
+  7. Tests covering: missing count, count < expected, count >= expected,
      no `expected_min` set (warning emitted once).
-- **Related**: F2 (same fail-open pattern, different stage), F3 (no
+- **Related**: F2, F5 (same fail-open pattern, different stages), F3 (no
   verdict state for "checked nothing").
 - **Suggested bundle**: E.
 
@@ -132,6 +140,41 @@ fail-open in any tier-1 spot makes that gate unreliable.
 - **Related**: F1, F2 (consumers of this state).
 - **Suggested bundle**: E.
 
+### F5: CT manual binary mode skips function-call verification 🚨
+
+- **Where**: `ctkat/cli.py:178-242` (`_do_ct`), specifically the
+  `harness.binary is not None` branch around line 209.
+- **Symptom**: In manual harness mode (`ct.harnesses[*].binary:
+  ./path/to/bin`), `_do_ct` runs Valgrind against whatever path the
+  user pointed at, with **no verification** that the binary actually
+  invokes the target function with tainted (`VALGRIND_MAKE_MEM_UNDEFINED`)
+  input.
+  - `binary: /bin/true` → Valgrind sees 0 findings → CT PASS.
+  - `binary: ./bin/old_unrelated_test` → Valgrind sees 0 findings → CT
+    PASS.
+  - Combined with dudect PASS (or NONE), verdict = CLEAN.
+- **Why solve**: Manual mode is the documented option for full user
+  control (`README.md:223`: `binary (수동) ↔ template (자동)은 상호
+  배타`). Without any sanity check, the framework reports CLEAN for a
+  binary that may not have called the function at all. Same shape of
+  fail-open as F1, just one stage down the pipeline.
+- **Acceptance criteria**:
+  1. Document a convention: manual-mode harnesses must emit a sentinel
+     line (e.g., `CTKAT-HARNESS-RAN: <name>`) at least once per run.
+  2. `_do_ct` captures the Valgrind-wrapped process stdout and asserts
+     the sentinel appears at least once for that harness name.
+  3. Missing sentinel → status=ERROR (uses F3's INCONCLUSIVE).
+  4. Backward compatibility: introduce yaml flag
+     `ct.require_sentinel: bool = false` (default false to not break
+     existing yamls); README pushes users to set it true; emit a
+     one-time warning when running without it.
+  5. Tests covering: sentinel present (PASS path), sentinel missing
+     (status=ERROR), `require_sentinel=false` produces a warning.
+- **Related**: F1 (same fail-open pattern, KAT stage), F2 (Valgrind
+  crash fail-open), F3 (INCONCLUSIVE state), F6 (auto-mode misconfig
+  fail-open).
+- **Suggested bundle**: E.
+
 ### F4: dudect zero-cycle filter ignores class balance 🟡
 
 - **Where**: `ctkat/dudect_runner.py:58-78` (`parse_timing_csv`),
@@ -164,66 +207,141 @@ fail-open in any tier-1 spot makes that gate unreliable.
 
 ## Tier 2: Reproducibility / Calibration
 
-### R1: `leak_target=ct` is non-reproducible on real KEMs 🚨
+### F6: Auto-template `secret_regions` size not cross-checked 🟡
 
-- **Where**: `ctkat/templates/timing_kem.c.j2:124` (the `crypto_kem_enc`
-  call inside the ct-leak measurement loop), and by extension
-  `ctkat/templates/timing_kem.c.j2:107` (the setup `enc` for `ct_fixed`).
-- **Symptom**: PQClean's `crypto_kem_enc()` consumes entropy from
-  `randombytes()` (default backend reads `/dev/urandom`). The harness's
-  yaml `seed` (the xorshift state seeding `rand_bytes`) **does not control
-  the ct values** generated by `enc()`. So two `ctkat dudect` runs with
-  identical yaml against the same KEM source produce **different
-  ciphertext sequences**.
-  - **My fault**: introduced in Bundle D (commit `d678617`). I designed
-    the ct-leak mode without realizing PQClean's enc has its own RNG.
-  - The synthetic `toy_kem_ct_leak` example is unaffected (its trivial
-    enc uses an internal counter and is reproducible per-process), but
-    the `pqc_mlkem768` ct-leak harness is non-reproducible.
-- **Why solve**: README claims (`README.md:191` ish) that `seed: 0xC0FFEE`
-  gives "deliberately reproducing the same input sequence." This is
-  *only true for sk-leak mode* now. For ct-leak mode on real KEMs, two
-  runs with the same seed give different inputs → different t-scores →
-  flaky CI gating, hard-to-debug measurement variance.
-- **Acceptance criteria** (pick one or both):
+(Numbered F-series because it's the same fail-open *pattern* as F1/F2/F5,
+just less severe — requires user misconfiguration to trigger.)
+
+- **Where**: `ctkat/config.py:HarnessConfig.secret_regions` validation
+  (none currently for size sums); `ctkat/templates/harness_kem.c.j2` (and
+  sign equivalent) where regions are emitted as
+  `VALGRIND_MAKE_MEM_UNDEFINED(sk + offset, length)` calls.
+- **Symptom**: User specifies `secret_regions` whose total length is
+  much smaller than `CRYPTO_SECRETKEYBYTES`. Only the listed bytes get
+  tainted, so secret-dependent code paths operating on the untainted
+  remainder produce no Valgrind findings → false PASS.
+  - Example typo: `length: 32` instead of `length: 2400` for ML-KEM —
+    only 32 bytes tainted of 2400 → most of `sk` is treated as public.
+- **Why solve**: README's ML-KEM walkthrough
+  (`README.md` "Findings from real-world testing #1") teaches users
+  that `secret_regions` is the right way to handle composite `sk`
+  blobs, but a misnumbered length silently degrades coverage. The
+  framework should at least warn when the sum looks suspicious.
+- **Acceptance criteria**:
+  1. Add a runtime check after harness generation: if
+     `sum(region.length_int) < 0.5 * CRYPTO_SECRETKEYBYTES_int`
+     (heuristic threshold; configurable), emit a startup warning naming
+     the harness and the byte-coverage percentage.
+  2. The `length` field is currently a C expression (offset/length can
+     reference macros like `KYBER_INDCPA_SECRETKEYBYTES`). Don't try to
+     evaluate C from Python; instead emit a small sentinel program
+     during harness compile that prints the byte counts, and parse its
+     output. Or: keep it simple and only check when both fields are
+     integer literals (skip with `unverified` log line otherwise).
+  3. Document the convention in the README ML-KEM section.
+- **Related**: F5 (related fail-open pattern, different config surface).
+- **Suggested bundle**: E (if cheap impl chosen) or F (deferred).
+
+### R1: dudect KEM harness is non-reproducible on real PQClean targets — BOTH leak modes 🚨
+
+- **Where** (all in `ctkat/templates/timing_kem.c.j2`):
+  - **sk-leak branch** (default):
+    - L102: `crypto_kem_keypair(pk_fixed, sk_fixed)` — fixed-class setup
+    - L177: `crypto_kem_keypair(pk_random, sk_random)` — per class-1 iteration
+  - **ct-leak branch**:
+    - L102: `crypto_kem_keypair(pk_fixed, sk_fixed)`
+    - L107: `crypto_kem_enc(ct_fixed, ss, pk_fixed)` — fixed-class ct setup
+    - L125: `crypto_kem_enc(ct_random, ss, pk_fixed)` — per class-1 iteration
+  - PQClean `randombytes.c` (`examples/pqc_mlkem768/common/randombytes.c`)
+    uses `getrandom()`/`SYS_getrandom`/`/dev/urandom` — OS entropy, ignores
+    yaml seed.
+- **Symptom**: Both `leak_target=sk` and `leak_target=ct` are
+  non-reproducible on real PQClean KEMs. Both branches call
+  `crypto_kem_keypair()` and/or `crypto_kem_enc()`, which in turn call
+  `randombytes()` for their internal entropy.
+  - **sk-leak**: keypair() at setup + per class-1 iteration → every sk
+    value differs across runs → every class-1 measurement uses a
+    different sk.
+  - **ct-leak**: keypair() once at setup + enc() at setup + enc() per
+    class-1 iteration → every ct value differs across runs.
+  - The synthetic `toy_kem_ct_leak` is unaffected — its `trivial_enc`
+    uses an internal counter, deterministic per-process. Likewise for
+    `toy_dudect` generic-template harnesses (those use `rand_bytes`
+    which is the harness's xorshift PRNG).
+- **History / framing correction**: The original v1 of this issue
+  claimed Bundle D introduced this and that sk-leak was reproducible.
+  Both claims were wrong — sk-leak has called PQClean `keypair()` since
+  Bundle B (when the dudect KEM template was first added). Bundle D
+  exposed the same flaw from a new angle but did not introduce it. The
+  "My fault" self-attribution to Bundle D was over-narrow.
+- **Why solve**: README and `config.py:DudectConfig.seed` doc both claim
+  that `seed: 0xC0FFEE` "deliberately reproduces the same input
+  sequence." This is only true for the xorshift-driven parts of the
+  harness (notably `rand_bytes` filling generic-template buffers). Any
+  PQClean-backed KEM harness — sk-leak or ct-leak — silently violates
+  the documented reproducibility guarantee. Users diffing two
+  `dudect_raw_timings.csv` files expecting bit-identical output will
+  be confused; CI gates on exact |t| values will be flaky.
+- **Acceptance criteria** (pick one):
   - **Option A — Documentation**: Add an explicit caveat to README
-    (`README.md` ct-leak section) and to the yaml schema's `seed`
-    comment, stating that `leak_target=ct` reproducibility depends on
-    the KEM implementation's RNG. Cite that the synthetic toy is
-    reproducible because it uses an internal counter; PQClean is not.
-    Show the user how to verify (run twice, diff `dudect_raw_timings.csv`).
-  - **Option B — Mechanism**: Override `randombytes()` in the timing
-    harness to draw from a deterministic source seeded from `dud.seed`.
-    Implementation: emit a `static int randombytes(unsigned char *buf, size_t n)`
-    in the generated `timing_<name>.c` that uses xorshift64 keyed off
-    `CTKAT_SEED`. Link order ensures it overrides the PQClean default.
-    Considerably more invasive — verify the link order works against
-    PQClean's `common/randombytes.c` (which is in the harness sources
-    list per `examples/pqc_mlkem768/ctkat.yaml:89`).
-- **Recommendation**: ship Option A in the immediate next bundle; consider
-  Option B as a follow-up if reproducibility becomes important for
-  external validation.
-- **Related**: R3 (system noise — separate cause of non-reproducibility).
-- **Suggested bundle**: F (A) or its own bundle (B).
+    (yaml schema `seed` description and the new "dudect 측정 강화"
+    section) stating: "PQClean-backed KEM harnesses are non-reproducible
+    regardless of `leak_target` — `crypto_kem_keypair()` and
+    `crypto_kem_enc()` draw from OS entropy, ignoring `seed`. Synthetic
+    harnesses (`toy_kem_ct_leak`, toys using the generic template) ARE
+    reproducible. To verify: `dudect_raw_timings.csv` diff between two
+    identical-yaml runs."
+  - **Option B — Mechanism**: Override `randombytes()` symbol in the
+    generated `timing_<name>.c` (link-time interpose) so PQClean uses a
+    xorshift64 keyed from `CTKAT_SEED` instead of OS entropy.
+    Implementation: emit a definition of
+    `int randombytes(uint8_t *buf, size_t n)` at the top of the timing
+    harness; the linker (when both this definition and PQClean's
+    `common/randombytes.c` are in the link set) will pick whichever
+    appears first. Verify link order in CI — may require
+    `-Wl,--allow-multiple-definition` or moving PQClean's
+    `randombytes.c` out of `sources:` and providing the override
+    exclusively. Fixes both leak modes uniformly. **Note**: the
+    randombytes override would need to be added in both branches of
+    `timing_kem.c.j2` — see T1 (template dedup) for an opportunity to
+    consolidate first or simultaneously.
+- **Recommendation**: ship Option A in the immediate next bundle to
+  remove the misleading documentation. Consider Option B as a separate
+  follow-up when reproducibility becomes a hard requirement (e.g., for
+  cross-machine baseline comparison or paper reproducibility).
+- **Related**: R3 (system noise — independent cause of non-reproducibility,
+  also undocumented). T1 (template dedup — natural co-target with Option B).
+- **Suggested bundle**: F (A); its own bundle if pursuing B.
 
-### R2: Multi-cutoff `max|t|` inflates Type-I error vs single-test threshold 🟡
+### R2: Multi-cutoff `max|t|` inflates Type-I error + normality assumption is unaddressed 🟡
 
 - **Where**: `ctkat/statistics.py:CROP_PERCENTILES` and
   `welch_with_cropping`,
   README `dudect_summary.csv` reference (`README.md:264-279` ish).
-- **Symptom**: Bundle B runs Welch's t-test at 5 cutoffs (`[1.0, 0.99,
-  0.95, 0.90, 0.75]`) and reports max |t|. The thresholds 4.5 / 10.0
-  (`dudect.threshold_warning` / `fail`) are calibrated for a *single*
-  Welch test under the H0 of no leak. Taking the max over 5 correlated
-  tests increases the chance of exceeding 4.5 by random chance —
-  empirically, on `toy_dudect/safe` the post-A `|t|=0.035` jumped to
-  `|t|=0.994` after Bundle B's cropping. Still PASS (well below 4.5),
-  but the effective threshold has shifted.
+- **Symptom (multi-cutoff)**: Bundle B runs Welch's t-test at 5 cutoffs
+  (`[1.0, 0.99, 0.95, 0.90, 0.75]`) and reports max |t|. The thresholds
+  4.5 / 10.0 (`dudect.threshold_warning` / `fail`) are calibrated for a
+  *single* Welch test under the H0 of no leak. Taking the max over 5
+  correlated tests increases the chance of exceeding 4.5 by random
+  chance — empirically, on `toy_dudect/safe` the post-A `|t|=0.035`
+  jumped to `|t|=0.994` after Bundle B's cropping. Still PASS (well
+  below 4.5), but the effective threshold has shifted.
+- **Symptom (normality)**: Welch's t-test assumes approximately normal
+  sample means. Cycle-count distributions on real hardware are
+  heavy-tailed (closer to gamma/log-normal due to scheduling/cache
+  bursts). The current cropping framing in README and commit messages
+  positions cropping as *outlier handling* — implying outliers are
+  rare anomalies. In reality, cropping is also *normalizing a
+  non-normal sample* (a band-aid for assumption violation), and the
+  band-aid effectiveness depends on the underlying distribution
+  shape, which we don't characterize.
 - **Why solve**: A borderline-clean implementation that scored
   `|t|=3.5` (PASS) under single-test could score `|t|=5.0` (WARNING)
   under max-of-5 with no actual leak change. False WARNINGs erode user
-  trust in the framework. Conversely, cropping at 0.50 can cut the tail
-  where a rare-trigger leak hides, masking real signal.
+  trust. Conversely, cropping at 0.50 can cut the tail where a
+  rare-trigger leak hides, masking real signal. The normality
+  framing matters for users reading the README who might assume the
+  framework's statistical guarantees are textbook-grade — they aren't.
 - **Acceptance criteria**:
   1. README adds a short calibration guide: "with 5 cutoffs, treat
      |t|≈4.5 as soft-WARNING and |t|>5.5 as confident-WARNING; |t|>10
@@ -421,12 +539,37 @@ fail-open in any tier-1 spot makes that gate unreliable.
   assignment, printf loop are all duplicated across the two branches.
 - **Why solve**: When Bundle E adds verdict ERROR handling or Bundle F
   adds per-class metrics, both branches must be edited in parallel —
-  easy to introduce drift.
+  easy to introduce drift. **Strong reason to land first**: R1 Option B
+  (randombytes override) requires adding the same override block to
+  both branches; doing it after a dedup refactor is a one-line change
+  instead of two.
 - **Acceptance criteria**: Pull common pieces into Jinja2 macros or
   share a base template via `{% include %}`. Refactor + tests confirm
   identical C output for both modes (modulo intended differences).
-- **Suggested bundle**: opportunistic (during Bundle E or later edits to
-  the kem template).
+- **Related**: R1 (especially Option B mechanism path).
+- **Suggested bundle**: opportunistic (during Bundle E or as preface to
+  R1 Option B).
+
+### T6: dudect harness timeout produces Python traceback 🟢
+
+- **Where**: `ctkat/dudect_runner.py:100` (`subprocess.run(..., timeout=600)`),
+  `ctkat/cli.py:_do_dudect` (no try/except around `run_timing_harness`).
+- **Symptom**: If a dudect harness binary infinite-loops or otherwise
+  exceeds 600s, `subprocess.TimeoutExpired` propagates up through
+  typer and the user sees a raw Python traceback. No graceful
+  reporting; no INCONCLUSIVE verdict.
+- **Why solve**: Hygiene — failure mode equivalent to F2 (Valgrind
+  crash) but currently doesn't even reach `_compute_verdicts`. CI
+  output is harder to interpret than necessary.
+- **Acceptance criteria**:
+  1. Wrap `run_timing_harness` call in `_do_dudect` with try/except for
+     `subprocess.TimeoutExpired`.
+  2. On timeout: log clear error (`harness X timed out after Ns`),
+     attach status=ERROR (using F3's INCONCLUSIVE).
+  3. Make timeout configurable via yaml (`dudect.timeout: int = 600`).
+  4. Test: harness that sleeps forever → ERROR, not Python traceback.
+- **Related**: F2 (similar fail-mode, different stage), F3 (ERROR state).
+- **Suggested bundle**: E (cheap to bundle in).
 
 ### T2: valgrind_parser substring matching is fragile 🟢
 
@@ -487,19 +630,29 @@ LoC).
 
 ### Bundle E — Fail-Open Closure 🚨
 
-**Closes**: F1, F2, F3, partially F4.
-**LoC estimate**: ~150.
+**Closes**: F1, F2, F3, F5, T6, optionally F6, partially F4.
+**LoC estimate**: ~250 (originally ~150; expanded after external review
+pass 2 added F5/F6/T6).
 **Why this bundle goes first**: Every other improvement compounds on
 top of verdict correctness. Building on a fail-open base produces
-false safety stacked on false safety.
+false safety stacked on false safety. After external review pass 2
+the bundle's title ("fail-open closure") only fits if F5 (CT manual
+binary) and T6 (timeout traceback) land alongside the original F1/F2/F3.
 
 **Sketch**:
-- New `Verdict.INCONCLUSIVE` enum member + matrix entries.
-- New `valgrind_status="ERROR"` returned by `_do_ct` on crash.
-- New `kat.expected_min` yaml field + stdout-grep validation in `_do_kat`.
-- Tests for each: verdict matrix ERROR cases, KAT count-below-expected,
-  KAT count-not-found.
-- README updates: verdict matrix table, KAT section, exit-code semantics.
+- New `Verdict.INCONCLUSIVE` enum member + matrix entries (F3).
+- New `valgrind_status="ERROR"` returned by `_do_ct` on crash (F2).
+- New `kat.expected_min` yaml field + stdout-grep validation in `_do_kat`
+  + always-echo stdout (F1).
+- New `ct.require_sentinel` yaml field + sentinel-line check in `_do_ct`
+  manual mode (F5).
+- Timeout exception handling in `_do_dudect` → INCONCLUSIVE (T6).
+- Optionally: `secret_regions` size-coverage warning (F6) if the
+  integer-literal-only heuristic is taken; defer to F if it'd need
+  sentinel-program inspection.
+- Tests for each fail-open mode.
+- README updates: verdict matrix, KAT section, CT manual-mode section,
+  exit-code semantics.
 
 ### Bundle F — Class Balance + Reproducibility 🟡
 
@@ -548,5 +701,43 @@ false safety stacked on false safety.
   the history.
 - **New issues found mid-bundle**: append in-place with a new ID.
 - **Issue IDs are stable**: never reuse a freed ID.
-- **External reviews**: append a "review log" section if more come in,
-  citing source.
+- **External reviews**: log each pass with date, scope, key corrections.
+
+---
+
+## Review log
+
+### v1 — initial (2026-05-26)
+
+- Author: Bundle A–D author, after external review pass 1.
+- Issues catalogued: F1–F4, R1–R3, S1–S3, U1–U5, T1–T5 (17 total).
+- Bundle plan: E / F / G / Docs sweep.
+
+### v2 — corrections after external review pass 2 (2026-05-26)
+
+- Reviewer audited v1 itself against the codebase.
+- Corrections:
+  - **R1 was wrong about scope**: claimed only `leak_target=ct` had the
+    reproducibility issue; in fact `leak_target=sk` has the same issue
+    because `crypto_kem_keypair()` ALSO calls PQClean `randombytes()`.
+    Bundle D was wrongly attributed as the introducing bundle —
+    actually Bundle B (when the KEM dudect template was first added)
+    already had this. Body and acceptance criteria rewritten.
+  - **F5 added** (Tier 1): CT manual binary mode skips function-call
+    verification — sibling of F1, same fail-open pattern in a different
+    stage. Missed in v1.
+  - **F6 added** (Tier 2 with F-numbering): `secret_regions` size not
+    cross-checked against `CRYPTO_SECRETKEYBYTES`.
+  - **T6 added** (Tier 5): dudect harness timeout produces raw Python
+    traceback instead of graceful ERROR.
+  - **R2 expanded**: added normality-assumption note (Welch assumes
+    approximately normal sample means; cycle distributions are
+    heavy-tailed; cropping is a band-aid not just outlier handling).
+  - **F1 acceptance**: added "always echo stdout on PASS too" — without
+    it the user never sees the count their `expected_min` is checking.
+  - **T1 cross-ref**: noted that R1 Option B is a natural co-target with
+    T1's template dedup work.
+  - **Bundle E roadmap expanded**: now closes F5/T6 too (and optionally
+    F6). LoC estimate bumped ~150 → ~250.
+  - **Verification statement honesty**: noted that v1's R1 audit was
+    too narrow (looked only at ct-leak branch).
