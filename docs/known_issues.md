@@ -6,8 +6,11 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-26 (v5 + Quick Docs — see Review log at the bottom)
-- **Resolved so far** (35/35 closed except deferred F9 #4):
+- **Last updated**: 2026-05-26 (v6 — see Review log at the bottom)
+- **Pipeline progress**: **34 fully closed** (Bundle 0~K), **1 deferred**
+  (F9 #4, out of scope per spec), **11 newly discovered open** (F12-F16,
+  T12-T17 from external review pass 5 — see Review log v6).
+- **Resolved so far** (34/35 prior closed except deferred F9 #4):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
@@ -38,11 +41,20 @@ commits and PRs.
   - External independent reviewer, pass 3 (audited v2 + whole repo)
   - External independent reviewer, pass 4 (audited v3 + cross-stage interactions)
   - Verification pass 5 (audited v4 line references against `main`)
-- **Total findings**: 5 tiers, 35 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35 → v5: 35)
+- **Total findings**: 5 tiers, 46 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35
+  → v5: 35 → v6: 46)
   - v5: no new issues — all 35 v4 findings re-verified against `main`;
     line-reference drift corrected in 7 places (F1, F4, F5, F7, F9, R1,
     T6, T8). R1's sk-leak branch line was a real mis-cite (L102 → L157),
     not just drift.
+  - v6: external review pass 5 (post-Bundle-K audit). 11 new issues:
+    F12 (parse NameError 광고 기능 사망), F13 (sk-leak이 정상 path 아닌
+    FO만 측정), F14 (cache-balance step 잘못된 path로 warm), F15
+    (shared_cflags silent override), F16 (seed=0 silent swap), T12
+    (subprocess timeout 무방어 4곳), T13 (T11 plumbing 미완성), T14
+    (pqc_mlkem768 yaml -fno-lto 누락), T15 (upper_crop sort 중복),
+    T16 (FRAME_RE partial accuracy), T17 (coverage probe -D 누락).
+    리뷰어가 던진 12 항목 중 1개(yaml=shell)는 이미 T4 mitigation 있음.
 - **Verification**: All Tier 1 (F1–F11) and Tier 2 (F6, R1–R3) claims
   verified against `main` (commit `d678617` or later) by reading the
   cited source lines. Earlier passes (v1–v3) focused tightly on the
@@ -444,6 +456,152 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
 - **Related**: F1 (KAT fail-open in standalone subcommand), F3 (verdict
   state), F7 (kat subcommand).
 - **Suggested bundle**: E.
+
+### F12: `ctkat parse` subcommand dies with NameError (광고된 기능 사망) 🚨
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/cli.py:54` import (`parse_valgrind_log_with_stats`만),
+  `:1223` 호출 (`parse_valgrind_log`).
+- **Symptom**: `python -m ctkat parse /tmp/v.log` →
+  `NameError: name 'parse_valgrind_log' is not defined`. README:511에
+  "Valgrind 로그 단일 파일 파싱 (디버깅용)"으로 광고된 user-facing 기능
+  완전 사망.
+- **History**: Bundle I (T3) 작업 중 `parse_valgrind_log` 호출을
+  `parse_valgrind_log_with_stats`로 교체했으나 cli.py:1223 (parse 서브
+  커맨드 본체)는 갱신 빼먹음. import도 새 함수만 가져옴. 기존 함수는
+  valgrind_parser.py에 여전히 존재하므로 import만 추가해도 fix됨.
+- **Test coverage**: 0. `tests/test_cli.py`에 parse 서브커맨드 smoke
+  test 없어서 pytest 228 통과해도 잡히지 않음.
+- **Why solve**: 광고된 user-facing 기능. 이전 Bundle 작업의 회귀
+  방어가 충분치 않았음을 드러냄.
+- **Acceptance criteria**:
+  1. cli.py:54 import에 `parse_valgrind_log` 추가 (1-line fix), 또는
+     :1223 호출을 `parse_valgrind_log_with_stats`로 교체 후 unpacking.
+  2. `tests/test_cli.py`에 `test_parse_subcommand_runs_on_valid_log`
+     smoke test 추가.
+- **Related**: T3 (parse_valgrind_log_with_stats 도입), T10 (CSV snapshot
+  같은 회귀 방어 — 여기에도 서브커맨드 smoke test가 필요했음을 시사).
+- **Suggested bundle**: 즉시 hot-fix.
+
+### F13: sk-leak 모드가 정상 dec 경로 대신 FO rejection만 측정 🚨
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/templates/timing_kem.c.j2:230-233` warmup,
+  `:251-255` measurement (sk-leak brunch).
+- **Symptom**: sk-leak brunch에서 양 class 모두 `rand_bytes(ct,
+  sizeof(ct))`로 ct 채움 → 거의 확실히 invalid → `crypto_kem_dec()`이
+  FO fallback path 진입. README §"KEM leak axes"는 "sk-content
+  dependent timing"이라 광고하지만 실제 측정 path는 FO rejection.
+- **Why solve**: 광고와 실측 불일치. PQClean ML-KEM-768 검증으로
+  sk-leak 돌리는 README 자랑은 사실 rejection path만 두들겨본 결과.
+  정상 dec path의 sk-leak은 이 도구로 못 잡음.
+  - sk-leak (현재): invalid ct × (sk_fixed vs sk_random) → FO path × sk-varies
+  - ct-leak: valid ct (enc로 생성) → 정상 path × ct-varies
+  - fo-leak: valid (cls 0) vs invalid (cls 1) → 두 path 비교 × sk_fixed
+  - 즉 현 sk-leak이 사실상 "fo with sk-varies"의 의미.
+- **Acceptance criteria**:
+  1. sk-leak brunch에서 양 class 모두 valid ct 사용:
+     - cls=0: `crypto_kem_enc(ct, ss, pk_fixed)` per iter → 정상 path
+     - cls=1: keypair → `enc(ct, ss, pk_random)` per iter → 정상 path
+  2. README §"KEM leak axes"에 sk-leak 측정 path가 정상 dec임을
+     명시. Bundle K가 fo 모드 추가했을 때 sk-leak의 의미를 재점검
+     했어야 했다고 review log에 인정.
+  3. test_timing_harness: sk-leak가 양 class에서 `crypto_kem_enc(`
+     호출하는지 검증 (random ct가 아니라).
+- **Related**: U2 #1 / Bundle K (fo-leak mode 도입 — 그때 sk-leak도
+  재정렬했어야 함), F14 (cache balance step도 같은 문제).
+- **Suggested bundle**: 별도 fix bundle. F14와 같은 호흡.
+
+### F14: emit_kem_measurement cache-balance가 ct-leak/fo-leak에서 실제 balance 안 됨 🟡
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/templates/timing_kem.c.j2:10-11`
+  (`emit_kem_measurement` Bundle H2/T1 매크로).
+- **Symptom**: 매크로의 warm step은 `rand_bytes(ct_warm, ...)` +
+  `crypto_kem_dec(ss, ct_warm, sk_expr)` → ct_warm은 random → invalid →
+  FO path로 warm.
+  - sk-leak (F13 fix 전): warm/timed 둘 다 invalid ct (FO). 균형 OK
+    이지만 측정 의미 자체가 정상 path 아님 (F13 본문 참조).
+  - ct-leak: warm는 invalid (FO path)이지만 timed는 valid ct (정상
+    path). cache state mismatch → 매크로 주석의 "cache state
+    normalized to just-ran-dec"가 거짓말 (실제로는 just-ran-FO-dec).
+  - fo-leak: warm는 invalid (FO), timed는 cls 0 valid (정상), cls 1
+    invalid (FO). class 0의 정상 path 측정이 FO cache state에서 시작.
+- **Why solve**: 매크로 주석 vs 실측 불일치. 양 class 모두 동일하게
+  잘못된 거라 통계적 bias는 일부 상쇄되지만 "cache balanced" 광고는
+  false.
+- **Acceptance criteria**:
+  1. warm dec도 mode별 valid/invalid 분기 — 또는 매크로 시그니처에
+     `warm_ct_expr` 인자 추가해서 caller가 path 선택.
+     - sk-leak (F13 fix 후): warm = valid (정상 path와 matching)
+     - ct-leak: warm = valid
+     - fo-leak: warm = mixed (class-aware) 또는 매크로 호출 두 번 분리
+  2. README의 cache-balance 단락 갱신 — 실측과 일치.
+  3. test_timing_harness: 매크로 호출 시 warm ct가 의도된 path인지
+     검증.
+- **Related**: F13 (sk-leak이 정상 vs FO 어디 측정하는지의 근본).
+- **Suggested bundle**: F13과 같은 호흡.
+
+### F15: `shared_cflags`가 사용자 명시 cflags를 값 동등성으로 silent override 🚨
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/config.py:415-428` `_apply_shared_cflags` validator.
+- **Symptom**: 주석은 "Detect by comparing object identity to the
+  default-factory result"라 적혀있지만 실제로는 `==` 값 비교. 사용자가
+  우연히 default와 같은 cflags를 yaml에 명시하면 → shared_cflags가
+  silent로 override.
+  ```yaml
+  shared_cflags: ['-O3']
+  ct:
+    cflags: ['-O0', '-g', '-fno-inline', '-fno-omit-frame-pointer']
+    # ↑ 사용자가 명시했지만 default와 동일 → shared_cflags가 override함
+  ```
+  → 결과 `ct.cflags = ['-O3']` (사용자 의도 증발).
+- **Why solve**: 디버깅 지옥. 사용자가 명시한 cflags가 왜 무시되는지
+  추적 어려움. yaml 명시가 항상 wins라는 원칙 위반.
+- **Acceptance criteria**:
+  1. pydantic v2 `model_fields_set` 사용:
+     ```python
+     if self.ct is not None and "cflags" not in self.ct.model_fields_set:
+         self.ct.cflags = list(self.shared_cflags)
+     ```
+     이러면 사용자가 명시한 경우 (값이 default와 같아도) override 안 됨.
+  2. test_config: 사용자가 default와 동일한 cflags 명시 → shared_cflags
+     무시 케이스 회귀 테스트.
+- **Related**: F9 #3 (shared_cflags 도입 시 정확성 검증 부족).
+- **Suggested bundle**: 1-line pydantic fix.
+
+### F16: `dudect.seed: 0` → 로그는 0x0, C는 0xC0FFEE swap (재현성 거짓말) 🚨
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**:
+  - `ctkat/cli.py:636` `effective_seed = dud.seed if dud.seed is not
+    None else secrets.randbits(63)` — `None`만 random 처리.
+  - `:637` `console.print(f"[dim]dudect seed = 0x{effective_seed:X}[/]")`
+    → 0x0 출력.
+  - `ctkat/templates/timing_kem.c.j2:75` `prng_state = seed ? seed
+    : 0xC0FFEEULL` — C에서 0이면 fallback.
+  - `ctkat/templates/timing_generic.c.j2:45` 동일 패턴.
+- **Symptom**: 사용자가 `seed: 0` 박으면 Python은 0 그대로 받아 로그에
+  `0x0` 출력, C 코드는 swap으로 `0xC0FFEE` 사용. 사용자는 seed=0으로
+  돌렸다고 믿지만 실제로는 0xC0FFEE — 두 다른 yaml run의 결과가 똑같이
+  나와도 (둘 다 swap되어 0xC0FFEE 사용) 사용자는 영문 모름.
+- **Why solve**: README §"재현성 (seed)"의 광고와 실제 동작 불일치.
+  xorshift는 seed=0이면 영구 stuck이라 swap 자체는 의미적으로 필요한
+  방어 — 다만 invisible해서 거짓말 됨.
+- **Acceptance criteria**:
+  1. Python에서 seed=0 명시적 거부: `Field(default=0xC0FFEE)` +
+     `model_validator`로 `seed=0` 거부 (또는 `gt=0` 제약).
+  2. README §"재현성 (seed)"에 "seed=0 금지 — xorshift stuck 회피용"
+     명시.
+  3. test_config: seed=0 yaml → ValidationError.
+- **Related**: R1, R3 (재현성 family).
+- **Suggested bundle**: 1-line pydantic validator + README 갱신.
 
 ### F4: dudect zero-cycle filter ignores class balance 🟡
 
@@ -1311,6 +1469,129 @@ TaskCreate/Update를 적극 사용, 매 Bundle commit 끝에 모든 task가
 completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하는
 패턴이 자리잡힘.
 
+### T12: subprocess 호출 4곳에 timeout 무방어 (CI hang 위험) 🚨→🟡
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: 5개 subprocess.run() call site 중 `dudect_runner.py`만 T6
+  에서 timeout 받음. 나머지는 무방어:
+  - `ctkat/builder.py:20` `run_shell`
+  - `ctkat/builder.py:42` `run_argv`
+  - `ctkat/valgrind_runner.py:28` `run_valgrind`
+  - `ctkat/harness_generator.py:67` `compile_harness`
+  - `ctkat/timing_harness_generator.py:72` `_compile`
+- **Symptom**: 사용자 build 스크립트에 `sleep infinity` 박혀있거나
+  gcc/valgrind가 무한 루프 들어가면 ctkat 그대로 멈춤. CI에서 hang이
+  떠도 진단 없음.
+- **Why solve**: T6가 timing harness만 막아놨는데 다른 subprocess도
+  똑같이 필요. CI 환경 안전성.
+- **Acceptance criteria**:
+  1. `BuildConfig.timeout`, `KatConfig.timeout` yaml 필드 (default 600).
+  2. `CtConfig.compile_timeout`, `CtConfig.valgrind_timeout` 필드 (default 600).
+  3. 각 subprocess.run에 timeout 전달, `TimeoutExpired` catch → 명확한
+     ERROR 메시지 (build/KAT은 Exit(1) 또는 ERROR status, ct/dudect은
+     기존 INCONCLUSIVE 흐름).
+- **Related**: T6 (dudect timing timeout만 처리).
+- **Suggested bundle**: timeout coverage bundle.
+
+### T13: `parse_functions_with_stats` skip count → CLI에서 안 씀 (T11 미완) 🟢
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/header_parser.py:158 parse_functions_with_stats`,
+  `cli.py:1195 parse_header_file(h)` 호출.
+- **Symptom**: T11에서 함수 포인터 등 strict regex가 놓친 선언 개수
+  추적하는 helper를 만들어놨는데, cli.py infer 서브커맨드는
+  `parse_header_file(h)`만 호출 — list-only 반환, skip count 무시.
+  사용자에게 "skipped N declarations" 알림 안 뜸.
+- **Why solve**: T11의 가치가 plumbing 미완으로 누수. infer 결과를
+  신뢰하는 사용자가 함수 포인터 누락 모름.
+- **Acceptance criteria**:
+  1. `parse_header_file_with_stats` 신규 wrapper 또는 `parse_functions_with_stats`
+     direct 호출.
+  2. cli infer 서브: skipped > 0이면 console에 dim note 출력.
+- **Related**: T11 (parser stats 도입).
+- **Suggested bundle**: 1-line plumbing fix.
+
+### T14: `examples/pqc_mlkem768/ctkat.yaml`에서 `-fno-lto` 누락 🟢
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `examples/pqc_mlkem768/ctkat.yaml` dudect.compiler.cflags.
+- **Symptom**: yaml cflags가 `[-O2, -g, -fno-omit-frame-pointer]` —
+  `-fno-lto` 빠짐. dudect 기본 cflags 정의(`config.py:_default_dudect_cflags`)는
+  `-fno-lto` 포함. README §"dudect 측정 강화"는 "LTO 켜면 컴파일러가
+  함수 elide" 경고. yaml에서 사용자 정의 cflags가 default override
+  하면서 critical flag 빼먹음.
+- **Why solve**: gcc default LTO off라 운 좋게 안 터지지만 사용자
+  환경에 `CFLAGS=-flto` 박혀있으면 측정 silent하게 망함.
+- **Acceptance criteria**:
+  1. yaml dudect.compiler.cflags에 `-fno-lto` 추가.
+  2. (선택) examples lint test — dudect cflags가 critical flags
+     (-fno-lto, -fno-omit-frame-pointer) 포함하는지 검증.
+- **Related**: F9 (cflags asymmetry / banner).
+- **Suggested bundle**: 1-line yaml fix.
+
+### T15: `upper_crop`이 cutoff마다 sort 다시 함 🟢
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/statistics.py:190 sorted(samples)` inside
+  `upper_crop`. `welch_with_cropping`이 5 cutoff × 2 class = 10번 호출.
+- **Symptom**: 매 호출마다 O(N log N) sort. 100k 측정이면 매번 ~1.5M
+  비교. 성능만 영향, 정확성 OK.
+- **Why solve**: 한 번 sort하고 cutoff별 prefix 슬라이스가 자연스러움.
+  `welch_with_cropping`을 redesign하면 O(N log N) → O(N) per cutoff.
+- **Acceptance criteria**:
+  1. `welch_with_cropping`이 c0/c1 한 번씩만 sort → cutoff별로 prefix
+     슬라이스 후 `welch_t_test` 호출.
+  2. test_statistics: cutoff별 결과가 변하지 않는지 회귀 (정확성 동등).
+- **Related**: R2 (calibration).
+- **Suggested bundle**: 성능 최적화 — 낮은 우선순위.
+
+### T16: `_FRAME_RE`가 `(in /lib/...)` 형식 location의 file:line 분리 못 함 🟢
+
+**Status: OPEN (v6 external review pass 5, partial accuracy).**
+
+- **Where**: `ctkat/valgrind_parser.py:47-49 _FRAME_RE`, `:50 _FILE_LINE_RE`.
+- **Symptom (실측)**: `_FRAME_RE` 자체는 `(in /lib/...)` 형식도 match —
+  function name까지 추출. 다만 `_FILE_LINE_RE` (`^(.+):(\d+)$`)는 `:`
+  없어서 fail → frame.file/line = None.
+- **External reviewer 표현**: "frame 인식 실패 → finding의 stack이
+  비어버림". 실제로는 그 정도까지는 아님 (frame은 인식됨). 단 file:line
+  loss로 stack trace가 빈약. **부분 정확**.
+- **Why solve**: PQClean처럼 source-mapped binary는 무관하지만 외부
+  shared lib에서 leak이 surfacing하면 file:line None으로 디버깅 단서
+  줄어듦.
+- **Acceptance criteria**:
+  1. `_FILE_LINE_RE`에 "in <path>" 패턴 보강: file=path, line=None
+     (현재와 동일 효과지만 명시적).
+  2. 또는 frame metadata에 `is_binary_only: bool` 추가.
+- **Related**: T2/T3 (parser hardening), T11 (parser regex보강 정책).
+- **Suggested bundle**: parser polish — 낮은 우선순위.
+
+### T17: coverage_check probe가 사용자 cflags(-D 등) 안 받음 — silent skip 🟢
+
+**Status: OPEN (v6 external review pass 5).**
+
+- **Where**: `ctkat/coverage_check.py:111 cmd = [cc, "-O0", str(src_path),
+  "-o", str(bin_path)]`. include_dirs는 받지만 `-D` 매크로, 사용자 custom
+  flag 안 받음.
+- **Symptom**: 사용자 헤더가 `#ifdef CONFIG_X` 뒤에 매크로 정의 →
+  probe 컴파일이 사용자 헤더 환경 미복제 → 컴파일 실패 → "F6 coverage
+  check skipped" yellow note만 출력. 사용자 입장에서 F6 검증이 도는 줄
+  알지만 매번 silent skip.
+- **Why solve**: F6의 가치가 환경 의존적으로 0이 될 수 있음. 실제로
+  PQClean 같은 예제는 매크로 chain이 단순해서 잡히지만 복잡한 user
+  코드는 trip하기 쉬움.
+- **Acceptance criteria**:
+  1. probe `cmd`에 사용자 cflags 중 `-D`, `-I`, `-isystem` 정도 propagate.
+     또는 전체 cflags propagate (probe도 main harness와 동일 환경).
+  2. README §"통계 layer / secret_regions coverage probe"에 "사용자
+     cflags 일부만 받음" caveat — 또는 fix 시 caveat 제거.
+- **Related**: F6 (coverage probe), F9 (cflags handling).
+- **Suggested bundle**: cflag propagation fix.
+
 ---
 
 ## Roadmap (proposed bundles)
@@ -1536,6 +1817,46 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v6 — external review pass 5: post-implementation audit (2026-05-26)
+
+옆집(외부) 리뷰어가 Bundle E ~ K 머지 후 새로 발견한 12개 항목을 받았음.
+내가 코드 대조 검증 결과 **11개 confirmed**, 1개 partial (정확하지만 표현이
+과장됨). Total 35 → **46 issues** (35 prior + 11 new).
+
+**가장 큰 충격: F12 — `ctkat parse` 서브커맨드가 NameError로 죽어있음.**
+Bundle I (T3)에서 `parse_valgrind_log` → `parse_valgrind_log_with_stats`로
+교체할 때 import만 갱신, 1223라인 호출자는 누락. 광고된 user-facing
+기능 사망 + test 0개라 pytest 228 통과해도 잡히지 않음. Bundle E 이래
+모든 검증 passes가 이걸 놓침 — test_cli에 parse 서브커맨드 smoke test
+부재가 근본 원인.
+
+**다음 큰 발견: F13/F14 — sk-leak 모드와 cache-balance step이 실제로는
+FO rejection path만 측정한다.** 양 class 모두 `rand_bytes(ct, ...)`로 ct를
+random bytes로 채워서 `crypto_kem_dec()`이 FO fallback에 진입. README의
+"sk-content dependent timing" 광고와 실측이 불일치 — 정상 dec path의
+sk-leak은 이 도구로 못 잡고 있다. ct-leak 모드도 warm step이 invalid
+ct여서 cache "balanced"가 사실 false. fo 모드(U2 #1)를 Bundle K에서
+추가했을 때 sk-leak의 의미를 재점검했어야 했는데 놓침.
+
+**나머지 confirmed**:
+- F15: `shared_cflags`가 사용자 명시 cflags를 값 동등성으로 silent override
+- F16: `dudect.seed: 0` → 로그는 0x0, C는 0xC0FFEE swap (xorshift fallback)
+- T12: `builder.run_shell` / `run_argv` / `valgrind_runner` / 두 compile
+  helper 다 timeout 인자 없음 (T6는 dudect timing만)
+- T13: `parse_functions_with_stats` skip count → CLI에서 안 씀 (T11 plumbing 미완성)
+- T14: `examples/pqc_mlkem768/ctkat.yaml` dudect cflags에서 `-fno-lto` 빠짐
+- T15: `upper_crop`이 cutoff마다 sort 다시 함 (5×2 sort/call)
+- T17: F6 probe가 사용자 `-D` 매크로 안 받아 silent skip 가능
+
+**Partial accuracy**:
+- T16: `_FRAME_RE` `(in /lib/...)` 형식. 리뷰어는 "frame 인식 실패"라 표현
+  했지만 실제로는 frame 자체는 인식됨 (function name 잡힘). 단 file:line
+  파싱은 None으로 떨어짐 → stack trace 빈약.
+
+**Not a new issue**: 리뷰어 #9 (yaml = shell 실행권한). T4의 argv 옵션
+opt-in으로 이미 mitigation 제공함 — 더 강한 보안 모드는 별도 follow-up
+이지만 새 known_issues entry 가치는 낮음.
 
 ### v5 — line-reference verification pass (2026-05-26)
 
