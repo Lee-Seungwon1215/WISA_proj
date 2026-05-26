@@ -26,6 +26,13 @@
 #include "{{ h }}"
 {% endfor %}
 
+/* CTKAT_USE: force `x` to be materialized (treated as observed) before the
+ * next instruction, and act as a compiler memory barrier. Defends against
+ * the compiler eliding an unused return value or hoisting loads/stores
+ * across the timed region. Pair with `-fno-lto` so the function body
+ * itself can't be inlined and analyzed for purity. */
+#define CTKAT_USE(x) __asm__ __volatile__("" : : "g"(x) : "memory")
+
 #define CTKAT_MEASUREMENTS {{ measurements }}
 #define CTKAT_WARMUP       {{ warmup }}
 #define CTKAT_SEED         {{ seed }}ULL
@@ -53,13 +60,21 @@ static void rand_bytes(uint8_t *buf, size_t len) {
 }
 
 {% if clock == "rdtsc" -%}
+/* See timing_generic.c.j2 for the rationale behind the lfence-rdtscp-lfence
+ * pattern. Same fence on both ends so any inflight insns drain before, and
+ * subsequent insns cannot speculate past, the cycle sample. */
 static inline uint64_t ctkat_now(void) {
     unsigned int aux;
-    return __rdtscp(&aux);
+    _mm_lfence();
+    uint64_t t = __rdtscp(&aux);
+    _mm_lfence();
+    return t;
 }
 {% else -%}
 static inline uint64_t ctkat_now(void) {
     struct timespec ts;
+    /* clock_gettime is a vDSO/syscall — already a compiler memory barrier
+     * and a CPU sync point, so no extra fence is needed here. */
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
@@ -89,7 +104,10 @@ int main(void) {
     }
 
     for (size_t i = 0; i < CTKAT_MEASUREMENTS; i++) {
-        int cls = (int)(prng_next() & 1ULL);
+        /* Use a high bit (>>32) instead of the LSB — xorshift64's LSB has
+         * known weak diffusion and would give a slightly biased 0/1 split.
+         * dudect's t-test needs unbiased class assignment. */
+        int cls = (int)((prng_next() >> 32) & 1ULL);
 
         uint8_t *sk;
         if (cls == 0) {
@@ -117,10 +135,14 @@ int main(void) {
         rand_bytes(ct, sizeof(ct));
 
         uint64_t t0 = ctkat_now();
-        {{ prefix }}crypto_kem_dec(ss, ct, sk);
+        /* Capture + CTKAT_USE the return so the optimizer can't decide the
+         * call is unobserved and elide it. Assumes the PQClean `int` ABI. */
+        int __ctkat_dec_rc = {{ prefix }}crypto_kem_dec(ss, ct, sk);
+        CTKAT_USE(__ctkat_dec_rc);
         uint64_t t1 = ctkat_now();
 
-        cycles_buf[i]  = t1 - t0;
+        /* Clamp underflow — see timing_generic.c.j2 for rationale. */
+        cycles_buf[i]  = (t1 >= t0) ? (t1 - t0) : 0;
         classes_buf[i] = (uint8_t)cls;
     }
 

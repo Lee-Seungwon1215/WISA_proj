@@ -16,6 +16,13 @@
 #include "{{ h }}"
 {% endfor %}
 
+/* CTKAT_USE: force `x` to be materialized (treated as observed) before the
+ * next instruction, and act as a compiler memory barrier. Defends against
+ * the compiler eliding an unused return value or hoisting loads/stores
+ * across the timed region. Pair with `-fno-lto` so the function body
+ * itself can't be inlined and analyzed for purity. */
+#define CTKAT_USE(x) __asm__ __volatile__("" : : "g"(x) : "memory")
+
 #define CTKAT_MEASUREMENTS {{ measurements }}
 #define CTKAT_WARMUP       {{ warmup }}
 #define CTKAT_SEED         {{ seed }}ULL
@@ -46,13 +53,26 @@ static void rand_bytes(uint8_t *buf, size_t len) {
 }
 
 {% if clock == "rdtsc" -%}
+/* lfence on both sides of rdtscp gives a full serialization fence:
+ *   - the leading lfence drains any in-flight insns before rdtscp samples,
+ *   - rdtscp itself waits for prior insns to retire,
+ *   - the trailing lfence prevents subsequent insns from speculating past
+ *     rdtscp, which would otherwise let post-measurement work creep into
+ *     the timed window on the next ctkat_now() call.
+ * (On pre-Spectre AMD microcode lfence was advisory; modern microcode
+ * makes it dispatch-serializing. Assumes a recent CPU.) */
 static inline uint64_t ctkat_now(void) {
     unsigned int aux;
-    return __rdtscp(&aux);
+    _mm_lfence();
+    uint64_t t = __rdtscp(&aux);
+    _mm_lfence();
+    return t;
 }
 {% else -%}
 static inline uint64_t ctkat_now(void) {
     struct timespec ts;
+    /* clock_gettime is a vDSO/syscall — already a compiler memory barrier
+     * and a CPU sync point, so no extra fence is needed here. */
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
@@ -85,7 +105,12 @@ int main(void) {
     }
 
     for (size_t i = 0; i < CTKAT_MEASUREMENTS; i++) {
-        int cls = (int)(prng_next() & 1ULL);
+        /* Use a high bit (shifted right 32) instead of the LSB. xorshift64's
+         * low bit has known weak diffusion — over short windows the 0/1
+         * balance drifts noticeably. The upper word is much closer to
+         * uniform, which matters because dudect's t-test needs the class
+         * assignment to be unbiased. */
+        int cls = (int)((prng_next() >> 32) & 1ULL);
 
         /* public + output buffers: always re-randomized */
         {% for b in buffers if b.role != "secret" -%}
@@ -104,13 +129,18 @@ int main(void) {
         uint64_t t0 = ctkat_now();
         {% if return_type and return_type != "void" -%}
         {{ return_type }} __ctkat_ret = {{ function }}({{ args | join(", ") }});
-        (void)__ctkat_ret;
+        CTKAT_USE(__ctkat_ret);
         {% else -%}
         {{ function }}({{ args | join(", ") }});
         {% endif %}
         uint64_t t1 = ctkat_now();
 
-        cycles_buf[i]  = t1 - t0;
+        /* Clamp underflow: t1 < t0 should be impossible on a single core
+         * with serialized rdtsc, but TSC skew across cores (no affinity) or
+         * a clock-anomaly can flip the order. uint64 underflow would yield
+         * a ~1e19 spike that swamps t-score variance. Store 0 instead;
+         * downstream cropping will discard it as an outlier. */
+        cycles_buf[i]  = (t1 >= t0) ? (t1 - t0) : 0;
         classes_buf[i] = (uint8_t)cls;
     }
 

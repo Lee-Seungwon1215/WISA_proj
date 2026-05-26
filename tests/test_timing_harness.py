@@ -71,3 +71,91 @@ def test_function_call_appears_inside_timed_region():
 def test_unknown_template_raises():
     with pytest.raises(HarnessGenerationError):
         render_timing_harness("nonsense", _ctx())
+
+
+# --- Bundle A: measurement-quality hardening -----------------------------------
+
+
+def test_rdtsc_clock_has_lfence_serialization():
+    out = render_timing_harness("generic", _ctx(clock="rdtsc"))
+    # lfence on both sides of __rdtscp drains in-flight insns and prevents
+    # speculation past the cycle sample. At least two occurrences expected.
+    assert out.count("_mm_lfence") >= 2
+
+
+def test_monotonic_clock_does_not_use_lfence():
+    out = render_timing_harness("generic", _ctx(clock="monotonic"))
+    # clock_gettime is already a sync point; lfence is x86-only and would
+    # break the ARM/portable path.
+    assert "_mm_lfence" not in out
+
+
+def test_class_label_uses_high_bits_of_prng():
+    out = render_timing_harness("generic", _ctx())
+    # xorshift64 LSB has weak diffusion; class assignment must shift right
+    # to use the upper word.
+    assert "prng_next() >> 32" in out
+    # The old LSB pattern must be gone.
+    assert "prng_next() & 1ULL" not in out
+
+
+def test_nonvoid_return_uses_ctkat_use_macro():
+    # default _ctx() has return_type="int" — the return must be materialized
+    # by CTKAT_USE so the optimizer cannot prune the call as dead.
+    out = render_timing_harness("generic", _ctx())
+    assert "CTKAT_USE(__ctkat_ret)" in out
+
+
+def test_void_return_does_not_capture():
+    out = render_timing_harness("generic", _ctx(return_type="void"))
+    # No return-value capture line for void.
+    assert "__ctkat_ret" not in out
+    # The function call itself is still present.
+    assert "leaky_function(secret, sizeof(secret))" in out
+
+
+def test_underflow_clamp_present():
+    # Guards against uint64 wrap when t1 < t0 (TSC skew across cores etc.)
+    out = render_timing_harness("generic", _ctx())
+    assert "(t1 >= t0) ? (t1 - t0) : 0" in out
+
+
+# --- Bundle A: KEM template parity --------------------------------------------
+
+
+def _kem_ctx(**overrides):
+    ctx = {
+        "extra_headers": [],
+        "header": "api.h",
+        "prefix": "TEST_",
+        "measurements": 1000,
+        "warmup": 10,
+        "seed": 0xC0FFEE,
+        "clock": "monotonic",
+    }
+    ctx.update(overrides)
+    return ctx
+
+
+def test_kem_rdtsc_has_lfence_serialization():
+    out = render_timing_harness("kem", _kem_ctx(clock="rdtsc"))
+    assert out.count("_mm_lfence") >= 2
+
+
+def test_kem_class_label_uses_high_bits():
+    out = render_timing_harness("kem", _kem_ctx())
+    assert "prng_next() >> 32" in out
+    assert "prng_next() & 1ULL" not in out
+
+
+def test_kem_captures_dec_return_with_ctkat_use():
+    out = render_timing_harness("kem", _kem_ctx())
+    # The timed dec's return value must be captured and CTKAT_USE'd to
+    # block elision under LTO / aggressive opt.
+    assert "__ctkat_dec_rc" in out
+    assert "CTKAT_USE(__ctkat_dec_rc)" in out
+
+
+def test_kem_underflow_clamp_present():
+    out = render_timing_harness("kem", _kem_ctx())
+    assert "(t1 >= t0) ? (t1 - t0) : 0" in out

@@ -157,3 +157,13 @@ def test_dudect_kem_requires_header(tmp_path: Path):
 def test_dudect_generic_requires_function(tmp_path: Path):
     with pytest.raises(ValidationError, match="requires 'function'"):
         load_config(_write(tmp_path, _DUDECT_GENERIC_WITHOUT_FUNCTION))
+
+
+def test_dudect_default_cflags_disable_lto():
+    # `-fno-lto` is load-bearing: with LTO the optimizer can see across the
+    # timed function's external linkage and elide it once it concludes the
+    # return value is unused. Keep the flag in the default set so users who
+    # don't override `dudect.compiler.cflags` are protected by default.
+    from ctkat.config import DudectCompilerConfig
+    flags = DudectCompilerConfig().cflags
+    assert "-fno-lto" in flags

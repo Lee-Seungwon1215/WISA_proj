@@ -153,7 +153,11 @@ class ReportConfig(BaseModel):
 
 
 def _default_dudect_cflags() -> List[str]:
-    return ["-O2", "-g", "-fno-omit-frame-pointer"]
+    # `-fno-lto` keeps the compiler from peeking past the timed function's
+    # external linkage boundary. With LTO the optimizer can see the callee's
+    # body, decide an unused return value (or even the whole call) is
+    # pure/dead, and elide it — which silently zeros out the measurement.
+    return ["-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"]
 
 
 class DudectCompilerConfig(BaseModel):
