@@ -1,8 +1,46 @@
+import platform
 from pathlib import Path
 from typing import List, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .qemu_detect import detect_qemu_emulation
+
+
+# CPU architectures that support the x86 `rdtsc`/`rdtscp` instructions used
+# by the dudect timing harness. Compared case-insensitively against
+# platform.machine() because Windows reports "AMD64" while Linux/macOS Intel
+# report "x86_64".
+_X86_ARCHES = frozenset({"x86_64", "amd64"})
+
+
+def _is_x86_native() -> bool:
+    """True iff the host is x86_64-family AND not running under QEMU.
+
+    QEMU x86 emulation (e.g. Docker on Apple Silicon) reports x86_64 from
+    platform.machine() but its rdtsc is unreliable for timing — treat that
+    as non-native so callers fall back to the monotonic clock.
+    """
+    if platform.machine().lower() not in _X86_ARCHES:
+        return False
+    if detect_qemu_emulation():
+        return False
+    return True
+
+
+def resolve_clock(clock: str) -> str:
+    """Resolve a yaml `clock:` value to a concrete backend.
+
+    - "auto"     → "rdtsc" on native x86_64, else "monotonic".
+    - "rdtsc"    → "rdtsc"  (validator already rejected this on non-x86).
+    - "monotonic"→ "monotonic".
+
+    Public (not _-prefixed) because cli.py imports it and tests mock it.
+    """
+    if clock != "auto":
+        return clock
+    return "rdtsc" if _is_x86_native() else "monotonic"
 
 
 class ProjectConfig(BaseModel):
@@ -210,7 +248,11 @@ class DudectConfig(BaseModel):
     measurements: int = 100_000
     warmup: int = 1_000
     batches: int = 10
-    clock: Literal["rdtsc", "monotonic"] = "monotonic"
+    # "auto" (default) picks rdtsc on native x86_64 and monotonic elsewhere
+    # (incl. ARM, QEMU). Explicit "rdtsc" is hard-validated against the host
+    # arch so the failure surfaces at config load instead of as a cryptic
+    # `<x86intrin.h>` compile error.
+    clock: Literal["rdtsc", "monotonic", "auto"] = "auto"
     # Default seed is the hex-readable constant 0xC0FFEE — picked to be
     # memorable and obviously-not-real-entropy, so it's clear at a glance
     # that two runs sharing this seed are deliberately reproducing the
@@ -225,6 +267,19 @@ class DudectConfig(BaseModel):
     workdir: Path = Path(".")
     generated_dir: Path = Path("./_generated_dudect")
     harnesses: List[DudectHarnessConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_clock_arch(self) -> "DudectConfig":
+        # Explicit clock=rdtsc on a non-x86 host would compile-fail with a
+        # confusing `<x86intrin.h>` not-found error. Reject it at load time
+        # with a message that points at the cause. `auto` and `monotonic`
+        # are always portable so they bypass this check.
+        if self.clock == "rdtsc" and platform.machine().lower() not in _X86_ARCHES:
+            raise ValueError(
+                f"dudect.clock='rdtsc' requires an x86_64 host (current: "
+                f"{platform.machine()}). Use 'auto' (default) or 'monotonic'."
+            )
+        return self
 
 
 class CtkatConfig(BaseModel):

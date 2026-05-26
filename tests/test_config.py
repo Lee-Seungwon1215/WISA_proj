@@ -167,3 +167,93 @@ def test_dudect_default_cflags_disable_lto():
     from ctkat.config import DudectCompilerConfig
     flags = DudectCompilerConfig().cflags
     assert "-fno-lto" in flags
+
+
+# --- Bundle C: clock=auto + ARM guard ----------------------------------------
+
+
+def test_dudect_clock_default_is_auto():
+    from ctkat.config import DudectConfig
+    cfg = DudectConfig(harnesses=[])
+    assert cfg.clock == "auto"
+
+
+def test_resolve_clock_passes_through_explicit_values():
+    from ctkat.config import resolve_clock
+    assert resolve_clock("rdtsc") == "rdtsc"
+    assert resolve_clock("monotonic") == "monotonic"
+
+
+def test_resolve_clock_auto_picks_rdtsc_on_native_x86(monkeypatch):
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: False)
+    assert cfg_mod.resolve_clock("auto") == "rdtsc"
+
+
+def test_resolve_clock_auto_picks_monotonic_under_qemu(monkeypatch):
+    # QEMU x86 (Docker on Apple Silicon) reports x86_64 but rdtsc is
+    # unreliable — auto must downgrade to monotonic.
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: True)
+    assert cfg_mod.resolve_clock("auto") == "monotonic"
+
+
+def test_resolve_clock_auto_picks_monotonic_on_arm(monkeypatch):
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: False)
+    assert cfg_mod.resolve_clock("auto") == "monotonic"
+
+
+def test_resolve_clock_auto_handles_windows_amd64_casing(monkeypatch):
+    # Regression guard: Windows reports "AMD64" (uppercase). Naive == check
+    # against "amd64" would miss it and fall through to monotonic.
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: False)
+    assert cfg_mod.resolve_clock("auto") == "rdtsc"
+
+
+def test_explicit_rdtsc_on_arm_raises(monkeypatch, tmp_path: Path):
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  clock: rdtsc\n"
+        "  harnesses: []\n"
+    )
+    with pytest.raises(ValidationError, match="rdtsc.*requires.*x86_64"):
+        load_config(_write(tmp_path, body))
+
+
+def test_explicit_monotonic_on_arm_is_fine(monkeypatch, tmp_path: Path):
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  clock: monotonic\n"
+        "  harnesses: []\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.dudect.clock == "monotonic"
+
+
+def test_auto_clock_on_arm_loads_cleanly(monkeypatch, tmp_path: Path):
+    # The yaml stays "auto"; resolution happens lazily at runtime.
+    import ctkat.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  clock: auto\n"
+        "  harnesses: []\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.dudect.clock == "auto"

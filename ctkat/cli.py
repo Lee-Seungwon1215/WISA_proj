@@ -1,5 +1,6 @@
 import csv
 import math
+import platform
 import secrets
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -28,6 +29,7 @@ from .config import (
     DudectHarnessConfig,
     HarnessConfig,
     load_config,
+    resolve_clock,
 )
 from .dudect_runner import TimingSamples, run_timing_harness
 from .harness_generator import (
@@ -291,13 +293,17 @@ def _dudect_context(
     h: DudectHarnessConfig,
     dud: DudectConfig,
     effective_seed: int,
+    effective_clock: str,
 ) -> dict:
+    # `effective_clock` is the resolved concrete value ("rdtsc"/"monotonic"),
+    # never the literal "auto" — the Jinja2 template branches on this and
+    # would emit broken C if handed an unresolved sentinel.
     base = {
         "extra_headers": list(h.extra_headers),
         "measurements": dud.measurements,
         "warmup": dud.warmup,
         "seed": effective_seed,
-        "clock": dud.clock,
+        "clock": effective_clock,
     }
     if h.template == "kem":
         base.update({
@@ -376,14 +382,19 @@ def _do_dudect(
     crop: bool = True,
 ) -> List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]]:
     qemu = detect_qemu_emulation()
-    if qemu and dud.clock == "rdtsc":
+    # Resolve clock=auto once up front so every downstream consumer (Jinja2
+    # template, QEMU-warning logic, CLI banner) sees the same concrete value.
+    effective_clock = resolve_clock(dud.clock)
+    if qemu and effective_clock == "rdtsc":
+        # Only reachable when the user explicitly set clock: rdtsc inside
+        # QEMU — `auto` would have downgraded to monotonic already.
         console.print(
             "[bold yellow]WARNING:[/] QEMU emulation detected — rdtsc cycle "
             "counts here are NOT a reliable signal for timing analysis. "
-            "Consider [bold]clock: monotonic[/] in your ctkat.yaml, or run on "
-            "a native x86_64 Linux host."
+            "Consider [bold]clock: auto[/] (or 'monotonic') in your "
+            "ctkat.yaml, or run on a native x86_64 Linux host."
         )
-    elif qemu and dud.clock == "monotonic":
+    elif qemu and effective_clock == "monotonic":
         console.print(
             "[yellow]Note:[/] QEMU emulation detected. clock=monotonic is "
             "safe for [italic]qualitative[/] comparison (effect "
@@ -392,11 +403,26 @@ def _do_dudect(
             "Linux host."
         )
 
+    # CPU pin hint — Linux only (taskset isn't a thing on macOS/Windows) and
+    # only when not in QEMU (taskset inside QEMU pins the QEMU thread, not
+    # the emulated CPU, so the hint would mislead). We don't enforce pinning
+    # from Python because the user may already have wrapped us in taskset
+    # or have a reason not to.
+    if platform.system() == "Linux" and not qemu:
+        console.print(
+            "[dim][Tip] pin to one CPU for cleaner measurements: "
+            "`taskset -c 0 python -m ctkat dudect ...`[/]"
+        )
+
     effective_seed = dud.seed if dud.seed is not None else secrets.randbits(63)
     console.print(f"[dim]dudect seed = 0x{effective_seed:X}[/]")
+    clock_display = (
+        f"{dud.clock}→{effective_clock}" if dud.clock == "auto"
+        else effective_clock
+    )
     console.print(
         f"[dim]measurements={dud.measurements} warmup={dud.warmup} "
-        f"batches={dud.batches} clock={dud.clock} "
+        f"batches={dud.batches} clock={clock_display} "
         f"cropping={'on' if crop else 'off'}[/]"
     )
 
@@ -412,7 +438,7 @@ def _do_dudect(
             gen = generate_and_compile_timing(
                 name=h.name,
                 template=h.template,
-                context=_dudect_context(h, dud, effective_seed),
+                context=_dudect_context(h, dud, effective_seed, effective_clock),
                 output_dir=gen_dir,
                 sources=[_resolve(cfg_dir, s) for s in h.sources],
                 include_dirs=[_resolve(cfg_dir, d) for d in h.include_dirs],

@@ -187,7 +187,7 @@ dudect:
   measurements: 100000
   warmup: 1000
   batches: 10                  # batch stability 분할 수
-  clock: monotonic             # monotonic (안전) | rdtsc (native x86 only)
+  clock: auto                  # auto (기본, 환경 감지) | monotonic | rdtsc (x86 only)
   seed: 0xC0FFEE               # null이면 매번 랜덤 시드 + 로그에 기록
   threshold_warning: 4.5       # |t| 임계값
   threshold_fail: 10.0
@@ -224,11 +224,25 @@ report:
 
 ---
 
-## dudect 측정 강화 (Bundle A / B)
+## dudect 측정 강화 (Bundle A / B / C)
 
 기본 동작이 dudect 원본 (Reparaz et al. 2017) 프로토콜에 정합되도록
 measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵션 ㄴ —
 기본 ON이 권장 동작.
+
+### clock 선택 (`clock: auto` default)
+
+`auto`는 yaml load 시 환경을 보고 적합한 clock을 자동 선택:
+
+| 환경 | resolved clock |
+|---|---|
+| Native x86_64 (Linux/macOS Intel/Windows AMD64) | `rdtsc` |
+| Apple Silicon, Linux ARM | `monotonic` |
+| Docker on Apple Silicon (QEMU x86_64 에뮬레이션) | `monotonic` |
+
+명시적으로 `clock: rdtsc`를 박아 놓은 yaml이 x86_64 아닌 호스트에서
+로드되면 yaml load 단계에서 `ValidationError` (compile 단의 cryptic
+`<x86intrin.h>` not-found 에러 대신).
 
 ### 측정 primitives (생성된 C harness)
 
