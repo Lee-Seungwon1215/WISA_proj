@@ -6,6 +6,11 @@
 #include "compare.h"
 
 int main(void) {
+    /* Bundle E-2 (F5): sentinel proving the harness actually ran the
+     * target function. `ctkat run` with `ct.require_sentinel=true`
+     * looks for this exact format on stdout. */
+    puts("CTKAT-HARNESS-RAN: bad");
+
     uint8_t secret[16] = {
         0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe,
         0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef

@@ -25,6 +25,11 @@ kat:
 
 ct:
   workdir: .
+  # Bundle E-2 (F5): require manual binaries to emit
+  # 'CTKAT-HARNESS-RAN: <name>' on stdout so a /bin/true binary can't
+  # silently PASS. Hardened to true here to exercise the F5 code path
+  # end-to-end through run_phase4.sh.
+  require_sentinel: true
   harnesses:
     - name: bad
       binary: build/harness_bad

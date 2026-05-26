@@ -282,16 +282,49 @@ def _do_ct(
     cfg: CtkatConfig,
     cfg_dir: Path,
     generated: Dict[str, Path],
-) -> List[Tuple[str, List[Finding]]]:
+) -> List[Tuple[str, str, List[Finding]]]:
+    """Run Valgrind on each ct harness; return per-harness (name, status,
+    findings).
+
+    `status` ∈ {"PASS", "FAIL", "ERROR"}:
+      - PASS  — valgrind ran cleanly, no findings
+      - FAIL  — valgrind reported one or more findings
+      - ERROR — analysis didn't complete (Bundle E-2):
+          F2: returncode not in {0, 99} (harness crash / valgrind itself
+              failed), or the log file is missing — previously these
+              silently parsed as zero findings → PASS → CLEAN verdict.
+          F5: manual-binary harness whose stdout doesn't contain
+              `ct.sentinel_pattern` and `ct.require_sentinel=True` — a
+              binary that pointed at /bin/true would otherwise PASS
+              without ever calling the target function.
+
+    ERROR flows through `_compute_verdicts` → verdict.combine() →
+    Verdict.INCONCLUSIVE so the verdict CSV never claims CLEAN for an
+    incomplete analysis.
+    """
     if cfg.ct is None:
         return []
     ct_cwd = _resolve(cfg_dir, cfg.ct.workdir)
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    results: List[Tuple[str, List[Finding]]] = []
+    # F5: per-run one-time note when require_sentinel=False and at least
+    # one manual harness exists — the user is implicitly opting into the
+    # legacy fail-open. Mirror's F1/F10's note pattern.
+    has_manual = any(h.binary is not None for h in cfg.ct.harnesses)
+    if has_manual and not cfg.ct.require_sentinel:
+        console.print(
+            "[dim][CTKAT] note:[/dim] ct.require_sentinel is False — "
+            "manual-binary harnesses are accepted even if they never invoke "
+            "the target function (the binary could be /bin/true). Set the "
+            "field to true and have your harness emit "
+            "'CTKAT-HARNESS-RAN: <name>' on stdout (see known_issues F5)."
+        )
+
+    results: List[Tuple[str, str, List[Finding]]] = []
     for h in cfg.ct.harnesses:
-        if h.template is not None:
+        is_manual = h.template is None
+        if not is_manual:
             # In practice _do_generate fills `generated` for every template
             # harness before we get here, but guard explicitly — a KeyError
             # traceback is hostile to the user, especially when they're
@@ -316,43 +349,59 @@ def _do_ct(
             f"[bold cyan]==> Valgrind[/]: harness=[bold]{h.name}[/] bin={binary}"
         )
         result = run_valgrind(binary, log_path, cfg.ct.valgrind_flags, ct_cwd)
-        # Expected Valgrind exit codes:
-        #   0  — harness ran cleanly, no findings
-        #   99 — findings detected (our --error-exitcode flag)
-        # Anything else means the harness crashed (segfault, abort) or
-        # Valgrind itself failed (bad flags, OOM, missing binary). Treating
-        # a missing/empty log as "no findings" in those cases would silently
-        # mark a broken run as PASS — exactly the fail-open pattern we
-        # otherwise avoid (see verdict.combine() which raises on unknowns).
+        # F2: expected Valgrind exit codes are 0 (clean) and 99 (findings,
+        # via --error-exitcode). Anything else = harness crashed or
+        # Valgrind itself failed. Treating that as zero findings used to
+        # produce verdict=CLEAN; now it's ERROR → INCONCLUSIVE.
         if result.returncode not in (0, 99):
             tail = (result.stderr or "").strip().splitlines()[-3:]
             console.print(
-                f"[bold red]WARNING:[/] valgrind exited with code "
-                f"{result.returncode} on harness [bold]{h.name}[/] — analysis "
-                f"may be incomplete or the harness binary itself failed. "
-                f"Treat any subsequent PASS verdict for this harness as "
-                f"inconclusive.\n"
+                f"[bold red][CTKAT] ct: ERROR[/] — valgrind exited with code "
+                f"{result.returncode} on harness [bold]{h.name}[/]. Analysis "
+                f"incomplete; verdict will be INCONCLUSIVE. (F2)\n"
                 f"[dim]valgrind stderr tail: {tail or '(empty)'}[/]"
             )
+            results.append((h.name, "ERROR", []))
+            continue
         if not log_path.exists():
             console.print(
-                f"[bold red]WARNING:[/] valgrind produced no log file at "
-                f"{log_path} for harness [bold]{h.name}[/] — nothing to parse."
+                f"[bold red][CTKAT] ct: ERROR[/] — valgrind produced no log "
+                f"file at {log_path} for harness [bold]{h.name}[/]. Analysis "
+                f"incomplete; verdict will be INCONCLUSIVE. (F2)"
             )
-        text = log_path.read_text() if log_path.exists() else ""
+            results.append((h.name, "ERROR", []))
+            continue
+        # F5: manual-binary sentinel check. Only enforced on manual mode —
+        # template-generated harnesses are known-good by construction.
+        # `require_sentinel=False` keeps legacy behavior (the per-run note
+        # above already warned).
+        if is_manual and cfg.ct.require_sentinel:
+            m = re.search(cfg.ct.sentinel_pattern, result.stdout or "")
+            if m is None:
+                console.print(
+                    f"[bold red][CTKAT] ct: ERROR[/] — manual harness "
+                    f"[bold]{h.name}[/] did not emit sentinel "
+                    f"{cfg.ct.sentinel_pattern!r} on stdout. The binary may "
+                    f"not have invoked the target function. Verdict will be "
+                    f"INCONCLUSIVE. (F5)"
+                )
+                results.append((h.name, "ERROR", []))
+                continue
+        text = log_path.read_text()
         findings = parse_valgrind_log(text)
-        results.append((h.name, findings))
+        status = "FAIL" if findings else "PASS"
+        results.append((h.name, status, findings))
     return results
 
 
 def _emit_report(
     cfg: CtkatConfig,
     cfg_dir: Path,
-    ct_results: List[Tuple[str, List[Finding]]],
+    ct_results: List[Tuple[str, str, List[Finding]]],
 ) -> Path:
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
     rows = []
-    for harness_name, findings in ct_results:
+    for harness_name, _status, findings in ct_results:
         for f in findings:
             rows.append(finding_to_row(cfg.project.name, harness_name, f))
 
@@ -367,7 +416,7 @@ def _emit_report(
                     "name": name,
                     "findings": [finding_to_row(cfg.project.name, name, f) for f in fs],
                 }
-                for name, fs in ct_results
+                for name, _status, fs in ct_results
             ],
         },
         json_path,
@@ -743,7 +792,7 @@ def dudect(
 
 
 def _compute_verdicts(
-    ct_results: List[Tuple[str, List[Finding]]],
+    ct_results: List[Tuple[str, str, List[Finding]]],
     dudect_results: List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]],
     kat_status: str = "NONE",
 ) -> List[HarnessVerdict]:
@@ -754,8 +803,12 @@ def _compute_verdicts(
     regardless of ct/dudect outcomes, because the analyses ran on
     functionally broken code. Defaults to NONE so callers that don't have
     a KAT stage keep their existing behavior.
+
+    Bundle E-2 (F2/F5): `ct_results` now carries a per-harness status —
+    valgrind crash, missing log, and missing sentinel all flow in as
+    "ERROR" and the matrix maps any ERROR pair to INCONCLUSIVE.
     """
-    ct_map = {name: findings for name, findings in ct_results}
+    ct_map = {name: (status, findings) for name, status, findings in ct_results}
     dud_map = {name: (r, batches) for name, _, r, batches in dudect_results}
 
     names: List[str] = []
@@ -767,9 +820,13 @@ def _compute_verdicts(
 
     verdicts: List[HarnessVerdict] = []
     for name in names:
-        findings = ct_map.get(name)
+        ct_entry = ct_map.get(name)
         dud_pair = dud_map.get(name)
-        v_status = "NONE" if findings is None else ("FAIL" if findings else "PASS")
+        if ct_entry is None:
+            v_status = "NONE"
+            findings: Optional[List[Finding]] = None
+        else:
+            v_status, findings = ct_entry
         if dud_pair is None:
             d_status = "NONE"
             abs_t: Optional[float] = None
@@ -874,14 +931,21 @@ def run(
         if not ok and not continue_on_kat_fail:
             raise typer.Exit(1)
 
-    ct_results: List[Tuple[str, List[Finding]]] = []
+    ct_results: List[Tuple[str, str, List[Finding]]] = []
     any_finding = False
+    any_ct_error = False
     if cfg.ct is not None:
         generated = _do_generate(cfg, cfg_dir)
         ct_results = _do_ct(cfg, cfg_dir, generated)
-        any_finding = any(fs for _, fs in ct_results)
+        any_finding = any(s == "FAIL" for _, s, _ in ct_results)
+        any_ct_error = any(s == "ERROR" for _, s, _ in ct_results)
         if any_finding:
             console.print("[bold red][CTKAT] Constant-Time Check: FAIL[/]")
+        elif any_ct_error:
+            console.print(
+                "[bold yellow][CTKAT] Constant-Time Check: INCOMPLETE[/] "
+                "(see ERROR lines above)"
+            )
         else:
             console.print("[bold green][CTKAT] Constant-Time Check: PASS[/]")
         _emit_report(cfg, cfg_dir, ct_results)
@@ -943,13 +1007,22 @@ def ct(
         raise typer.Exit(2)
     generated = _do_generate(cfg, cfg_dir)
     ct_results = _do_ct(cfg, cfg_dir, generated)
-    any_finding = any(fs for _, fs in ct_results)
+    any_finding = any(s == "FAIL" for _, s, _ in ct_results)
+    any_ct_error = any(s == "ERROR" for _, s, _ in ct_results)
     if any_finding:
         console.print("[bold red][CTKAT] Constant-Time Check: FAIL[/]")
+    elif any_ct_error:
+        console.print(
+            "[bold yellow][CTKAT] Constant-Time Check: INCOMPLETE[/] "
+            "(see ERROR lines above)"
+        )
     else:
         console.print("[bold green][CTKAT] Constant-Time Check: PASS[/]")
     _emit_report(cfg, cfg_dir, ct_results)
-    if any_finding:
+    if any_finding or any_ct_error:
+        # E-2: ct ERROR (F2/F5) also exits 2 — verdict CSV consumers and
+        # `ctkat ct --config ... && deploy` patterns must see "couldn't
+        # verify" as a gating failure, not green-light.
         raise typer.Exit(2)
 
 

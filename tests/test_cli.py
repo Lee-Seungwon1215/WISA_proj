@@ -82,19 +82,29 @@ def test_infer_missing_header_file_errors_cleanly():
 # --- _compute_verdicts (the ct+dudect merger) -------------------------------
 
 
-def _ct_finding(harness: str) -> Tuple[str, List[Finding]]:
-    """A single placeholder finding so the ct side counts as FAIL."""
+def _ct_finding(harness: str) -> Tuple[str, str, List[Finding]]:
+    """A single placeholder finding so the ct side counts as FAIL.
+
+    Bundle E-2: 3-tuple (name, status, findings). status="FAIL" because
+    findings is non-empty.
+    """
     f = Finding(
         type=FindingType.SECRET_DEPENDENT_BRANCH,
         severity=Severity.HIGH,
         message="Conditional jump",
         frames=[StackFrame(address="0x0", function="foo", file="f.c", line=1)],
     )
-    return (harness, [f])
+    return (harness, "FAIL", [f])
 
 
-def _ct_clean(harness: str) -> Tuple[str, List[Finding]]:
-    return (harness, [])
+def _ct_clean(harness: str) -> Tuple[str, str, List[Finding]]:
+    return (harness, "PASS", [])
+
+
+def _ct_error(harness: str) -> Tuple[str, str, List[Finding]]:
+    """Bundle E-2: ct stage didn't complete (valgrind crash F2 or sentinel
+    missing F5). Verdict matrix maps this to INCONCLUSIVE."""
+    return (harness, "ERROR", [])
 
 
 def _dudect_result(harness: str, status: str, abs_t: float = 5.0):
@@ -191,24 +201,19 @@ def test_dudect_summary_csv_preserves_status_column_position(tmp_path):
     assert row[14] == "0.950"
 
 
-def test_valgrind_unexpected_returncode_emits_warning(monkeypatch, tmp_path):
-    """Regression: previously _do_ct ignored the valgrind ValgrindResult
-    entirely. A crashing harness (segfault, abort) or a Valgrind failure
-    would leave an empty/missing log, which then parsed as 0 findings →
-    silent PASS. Now we surface a loud warning for any unexpected exit code.
+def test_valgrind_unexpected_returncode_yields_error(monkeypatch, tmp_path):
+    """Bundle E-2 (F2): valgrind exiting with anything outside {0, 99}
+    means the harness crashed or valgrind itself failed. Previously this
+    parsed the missing log as 0 findings and reported PASS (a CLEAN
+    verdict on a crashed run). Now it must surface status=ERROR with
+    exit code 2 — verdict CSV consumers must see "couldn't verify"
+    instead of green-light.
     """
     import textwrap
     from ctkat import cli as cli_module
-    from ctkat.config import load_config
     from ctkat.valgrind_runner import ValgrindResult
 
-    # Fake out the heavyweight steps: skip build/generate, and have
-    # `run_valgrind` claim a bogus exit code (137 = SIGKILL by convention)
-    # without producing any log file.
-    captured_log_path = {}
-
     def fake_run_valgrind(binary, log_path, flags, workdir):
-        captured_log_path["path"] = log_path
         # Deliberately do NOT write any log — simulates a crashed harness.
         return ValgrindResult(
             returncode=137,
@@ -233,12 +238,10 @@ def test_valgrind_unexpected_returncode_emits_warning(monkeypatch, tmp_path):
 
     runner = CliRunner()
     result = runner.invoke(app, ["ct", "--config", str(p)])
-    # Should still complete (we treat the missing log as 0 findings) but
-    # the warning must be present in stdout.
-    assert "WARNING" in result.stdout
+    assert "ct: ERROR" in result.stdout
     assert "137" in result.stdout
-    # Also the missing-log warning should fire.
-    assert "no log file" in result.stdout.lower() or "nothing to parse" in result.stdout.lower()
+    assert "INCOMPLETE" in result.stdout  # subcommand summary line
+    assert result.exit_code == 2          # E-2: ct ERROR also exits 2
 
 
 def test_compute_verdicts_unions_harness_names_across_stages():
@@ -590,3 +593,106 @@ def test_dudect_error_flows_to_inconclusive_verdict(tmp_path, monkeypatch):
     results = cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=False)
     verdicts = _compute_verdicts([], results)
     assert verdicts[0].verdict == Verdict.INCONCLUSIVE
+
+
+# --- Bundle E-2: F2 (valgrind ERROR) + F5 (sentinel) ----------------------
+
+
+def _ctkat_yaml(extra_ct_keys: str = "", harness_block: str = "") -> str:
+    import textwrap
+    return textwrap.dedent(f"""
+        project: {{name: demo}}
+        build: {{command: "true"}}
+        ct:
+        {extra_ct_keys}
+          harnesses:
+        {harness_block}
+    """).strip()
+
+
+def _stub_ct_setup(monkeypatch, *, returncode: int, stdout: str, write_log: bool):
+    """Common monkeypatching for _do_ct unit tests: stub generate_and_compile
+    (so we don't need a real binary on disk) and run_valgrind (so we don't
+    need real valgrind)."""
+    from ctkat import cli as cli_module
+    from ctkat.valgrind_runner import ValgrindResult
+
+    def fake_run_valgrind(binary, log_path, flags, workdir):
+        if write_log:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text("==1== ERROR SUMMARY: 0 errors from 0 contexts\n")
+        return ValgrindResult(
+            returncode=returncode, log_path=log_path,
+            stdout=stdout, stderr="",
+        )
+
+    monkeypatch.setattr(cli_module, "run_valgrind", fake_run_valgrind)
+    monkeypatch.setattr(cli_module, "_do_generate", lambda *a, **k: {})
+
+
+def test_ct_missing_log_yields_error(monkeypatch, tmp_path):
+    # F2: rc=0 but log file never appeared — must produce ERROR, not PASS.
+    _stub_ct_setup(monkeypatch, returncode=0, stdout="x", write_log=False)
+    yaml_text = _ctkat_yaml(harness_block="    - {name: h, binary: ./x}")
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    result = CliRunner().invoke(app, ["ct", "--config", str(p)])
+    assert "ct: ERROR" in result.stdout
+    assert "no log file" in result.stdout.lower()
+    assert result.exit_code == 2
+
+
+def test_ct_sentinel_required_but_missing_yields_error(monkeypatch, tmp_path):
+    # F5: require_sentinel=true + binary stdout has no sentinel → ERROR.
+    _stub_ct_setup(monkeypatch, returncode=0, stdout="hello world", write_log=True)
+    yaml_text = _ctkat_yaml(
+        extra_ct_keys="  require_sentinel: true",
+        harness_block="    - {name: h, binary: ./x}",
+    )
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    result = CliRunner().invoke(app, ["ct", "--config", str(p)])
+    assert "ct: ERROR" in result.stdout
+    assert "sentinel" in result.stdout.lower()
+    assert result.exit_code == 2
+
+
+def test_ct_sentinel_required_and_present_passes(monkeypatch, tmp_path):
+    # F5: require_sentinel=true + sentinel present → normal PASS path.
+    _stub_ct_setup(
+        monkeypatch, returncode=0,
+        stdout="CTKAT-HARNESS-RAN: h\nother output\n", write_log=True,
+    )
+    yaml_text = _ctkat_yaml(
+        extra_ct_keys="  require_sentinel: true",
+        harness_block="    - {name: h, binary: ./x}",
+    )
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    result = CliRunner().invoke(app, ["ct", "--config", str(p)])
+    assert "Constant-Time Check: PASS" in result.stdout
+    assert result.exit_code == 0
+
+
+def test_ct_sentinel_skipped_when_require_false_emits_note(monkeypatch, tmp_path):
+    # F5 backward-compat: require_sentinel=false → don't enforce, but
+    # emit a per-run note pointing users at the new field.
+    _stub_ct_setup(monkeypatch, returncode=0, stdout="no sentinel here", write_log=True)
+    yaml_text = _ctkat_yaml(harness_block="    - {name: h, binary: ./x}")
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    result = CliRunner().invoke(app, ["ct", "--config", str(p)])
+    assert "Constant-Time Check: PASS" in result.stdout
+    assert "require_sentinel" in result.stdout
+    assert result.exit_code == 0
+
+
+def test_ct_error_flows_to_inconclusive_verdict():
+    # End-to-end via _compute_verdicts: ct ERROR (from either F2 or F5)
+    # + dudect PASS must NOT yield CLEAN.
+    ct = [_ct_error("h"), _ct_clean("safe")]
+    dud = [_dudect_result("h", "PASS"), _dudect_result("safe", "PASS")]
+    vs = _compute_verdicts(ct, dud)
+    by_name = {v.name: v for v in vs}
+    assert by_name["h"].verdict == Verdict.INCONCLUSIVE
+    assert by_name["safe"].verdict == Verdict.CLEAN  # unaffected harness stays CLEAN

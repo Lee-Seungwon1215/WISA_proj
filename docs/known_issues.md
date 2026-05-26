@@ -12,8 +12,10 @@ commits and PRs.
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
     INCONCLUSIVE verdict state + per-stage exit-code contract).
-  Pipeline progress: 7 fully closed (F1/F3/F7/F8/F10/F11/T6), 2 partial
-  (R1, F9). Bundle E-2 next (analysis-stage fail-open: F2, F5).
+  - F2, F5 — Bundle E-2 (analysis-stage fail-open: valgrind crash → ERROR,
+    manual-binary sentinel check).
+  Pipeline progress: 9 fully closed (F1/F2/F3/F5/F7/F8/F10/F11/T6), 2 partial
+  (R1, F9). Bundle F next (class balance + transparency: F4/F6/S1/S2/S4).
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -106,6 +108,12 @@ one-time warning. Stdout always echoed (previously hidden on PASS).
 
 ### F2: Valgrind harness crash → verdict CLEAN 🚨
 
+**Status: RESOLVED in Bundle E-2.** `_do_ct` now returns per-harness
+status; valgrind returncode∉{0, 99} OR missing log → status="ERROR" +
+continue. ERROR flows through `_compute_verdicts` → verdict.combine()
+→ `Verdict.INCONCLUSIVE` (matrix entries added in E-1). `ctkat ct`
+subcommand also exits 2 on ct ERROR.
+
 - **Where**: `ctkat/cli.py:215-243` (`_do_ct`),
   `ctkat/cli.py:594-...` (`_compute_verdicts`),
   `ctkat/verdict.py:52-69` (`_MATRIX`).
@@ -166,6 +174,14 @@ entries for any ERROR pair (and KAT FAIL pre-filter via F11). CI exit code
 - **Suggested bundle**: E.
 
 ### F5: CT manual binary mode skips function-call verification 🚨
+
+**Status: RESOLVED in Bundle E-2.** New `ct.require_sentinel: bool` +
+`ct.sentinel_pattern: str` yaml fields. When `require_sentinel=true` on
+manual-binary harnesses, `_do_ct` checks the binary's stdout for the
+pattern (default `CTKAT-HARNESS-RAN:\s*(\S+)`); missing → status=ERROR
+→ INCONCLUSIVE. Template-mode harnesses skip the check. Backward-compat:
+default `false`, plus a per-run note when manual harnesses are present.
+examples/toy_password updated with the sentinel convention.
 
 - **Where**: `ctkat/cli.py:178-242` (`_do_ct`), specifically the
   `if h.binary is None` guard at line 204 and the manual-binary

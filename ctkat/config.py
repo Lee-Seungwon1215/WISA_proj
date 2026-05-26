@@ -193,6 +193,19 @@ class CtConfig(BaseModel):
     # happened to hit a different branch". See harness_generic.c.j2.
     # Use the same default sentinel as the dudect side (0xC0FFEE).
     seed: int = 0xC0FFEE
+    # Bundle E-2 (F5): manual-binary harnesses produce zero findings if the
+    # binary never actually invokes the target function with tainted input
+    # — `binary: /bin/true` would happily report a PASS. When True, _do_ct
+    # checks the binary's stdout for `sentinel_pattern` and downgrades the
+    # harness to status=ERROR if absent. Default False keeps legacy yaml
+    # working (with a per-run note); flip to True once your harnesses emit
+    # the sentinel.
+    require_sentinel: bool = False
+    # Regex matched against the manual binary's stdout. One capturing
+    # group, expected to hold the harness name so a single binary can
+    # legitimately wrap multiple harnesses if needed. Default matches
+    # `puts("CTKAT-HARNESS-RAN: <name>")`-style lines.
+    sentinel_pattern: str = r"CTKAT-HARNESS-RAN:\s*(\S+)"
 
 
 class ReportConfig(BaseModel):

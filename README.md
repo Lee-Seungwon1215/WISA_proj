@@ -157,6 +157,11 @@ ct:
   workdir: .
   generated_dir: ./_generated  # 자동 생성된 하네스 .c/binary 위치
   seed: 0xC0FFEE               # 자동 생성 하네스의 xorshift PRNG 시드 (재현성)
+  require_sentinel: true       # (E-2) manual-binary 하니스가 stdout에
+                               # 'CTKAT-HARNESS-RAN: <name>' 를 emit해야 PASS.
+                               # 없으면 status=ERROR → INCONCLUSIVE. template
+                               # 모드 하니스는 검사 안 함.
+  sentinel_pattern: 'CTKAT-HARNESS-RAN:\s*(\S+)'   # (E-2) capturing group 1개.
   cflags:                      # 자동 생성 하네스 컴파일 옵션 (기본 -O0 디버그 친화)
     - -O0
     - -g
@@ -236,6 +241,12 @@ report:
 ```
 
 `ct.harnesses[*].binary` (수동) ↔ `template` (자동)은 **상호 배타**. 둘 중 하나만.
+
+수동 모드는 사용자 책임 영역이라 프레임워크가 binary 안에서 무슨 일이 일어나는지 모름 — `binary: /bin/true`도 "0 findings → PASS"로 통과되어 버린다 (F5). E-2부터는 `ct.require_sentinel: true`를 박으면 binary가 stdout에
+`CTKAT-HARNESS-RAN: <harness-name>`을 출력해야 PASS, 없으면 status=ERROR
+→ verdict INCONCLUSIVE. examples의 `toy_password/harness/harness_*.c`가
+이 컨벤션의 reference. 자동 모드(template)는 자체적으로 target 함수를
+호출하므로 sentinel 검사 스킵.
 
 ---
 
