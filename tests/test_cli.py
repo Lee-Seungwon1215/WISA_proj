@@ -731,6 +731,102 @@ def test_dudect_summary_csv_has_raw_count_columns(tmp_path):
     assert row[19] == "2"
 
 
+# --- Bundle G: Cohen's d CSV column (S3) + Bonferroni scaling (R2) -------
+
+
+def test_dudect_summary_csv_has_cohens_d_column(tmp_path):
+    from ctkat.cli import _emit_dudect_report
+    from ctkat.dudect_runner import TimingSamples
+    from ctkat.statistics import WelchResult
+
+    r = WelchResult(
+        n0=10, n1=10, mean0=100.0, mean1=110.0,
+        var0=1.0, var1=1.0,
+        t_score=5.0, abs_t_score=5.0, status="WARNING",
+        cohens_d=2.5,
+    )
+    _emit_dudect_report("proj", tmp_path,
+                       [("h1", TimingSamples(), r, [])])
+    summary = (tmp_path / "dudect_summary.csv").read_text().splitlines()
+    header = summary[0].split(",")
+    # S3: col 21 (0-indexed 20). Existing positions still stable.
+    assert header[20] == "cohens_d"
+    assert header[10] == "status"          # E-1/B contract
+    assert header[17] == "raw_n_total"     # Bundle F contract
+    row = summary[1].split(",")
+    assert row[20] == "2.500"
+
+
+def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
+    """R2: when dud.bonferroni_correct=True, _do_dudect must pass scaled
+    thresholds to welch_with_cropping / welch_t_test / batch_t_scores.
+    We monkeypatch those to capture their threshold kwargs."""
+    import ctkat.cli as cli_module
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+
+    # Stub run_timing_harness to return enough samples for the t-test
+    # to actually fire.
+    def fake_run(binary, workdir, timeout):
+        from ctkat.dudect_runner import TimingSamples
+        s = TimingSamples()
+        s.classes = [0, 1] * 50
+        s.cycles = [100.0, 110.0] * 50
+        s.raw_n_total = 100
+        return s
+    monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
+
+    captured = {}
+
+    def fake_welch_with_cropping(c0, c1, warning_threshold, fail_threshold):
+        captured["warn"] = warning_threshold
+        captured["fail"] = fail_threshold
+        from ctkat.statistics import welch_t_test
+        return welch_t_test(c0, c1, warning_threshold, fail_threshold)
+    monkeypatch.setattr(cli_module, "welch_with_cropping", fake_welch_with_cropping)
+
+    dud = _dud_cfg_with_harness()
+    dud = dud.model_copy(update={"bonferroni_correct": True})
+    cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=True)
+
+    # 4.5 * sqrt(5) ≈ 10.06, 10.0 * sqrt(5) ≈ 22.36
+    import math
+    expected_warn = 4.5 * math.sqrt(5)
+    expected_fail = 10.0 * math.sqrt(5)
+    assert abs(captured["warn"] - expected_warn) < 1e-6
+    assert abs(captured["fail"] - expected_fail) < 1e-6
+    # Banner line must mention the scaling so the user knows it kicked in.
+    assert "bonferroni" in capsys.readouterr().out.lower()
+
+
+def test_bonferroni_off_leaves_thresholds_alone(monkeypatch, tmp_path):
+    import ctkat.cli as cli_module
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+
+    def fake_run(binary, workdir, timeout):
+        from ctkat.dudect_runner import TimingSamples
+        s = TimingSamples()
+        s.classes = [0, 1] * 50
+        s.cycles = [100.0, 110.0] * 50
+        s.raw_n_total = 100
+        return s
+    monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
+
+    captured = {}
+
+    def fake_welch_with_cropping(c0, c1, warning_threshold, fail_threshold):
+        captured["warn"] = warning_threshold
+        captured["fail"] = fail_threshold
+        from ctkat.statistics import welch_t_test
+        return welch_t_test(c0, c1, warning_threshold, fail_threshold)
+    monkeypatch.setattr(cli_module, "welch_with_cropping", fake_welch_with_cropping)
+
+    dud = _dud_cfg_with_harness()  # bonferroni_correct=False default
+    cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=True)
+
+    assert captured["warn"] == 4.5
+    assert captured["fail"] == 10.0
+
+
 def test_dudect_summary_csv_error_harness_has_zero_raw_counts(tmp_path):
     # S4 + S1 interaction: an ERROR-status harness emits a row with all
     # raw-count columns at 0 (matching default-constructed TimingSamples).

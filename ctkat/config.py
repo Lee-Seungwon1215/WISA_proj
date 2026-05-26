@@ -318,6 +318,15 @@ class DudectConfig(BaseModel):
     # raw Python traceback escape. Bump for slow targets (e.g. QEMU + many
     # measurements); shrink in CI to surface infinite-loop bugs faster.
     timeout: int = 600
+    # Bundle G (R2): the multi-cutoff cropping protocol takes max |t| over
+    # 5 correlated tests, which inflates the per-test Type-I rate. When
+    # True, scale `threshold_warning` and `threshold_fail` by
+    # sqrt(len(CROP_PERCENTILES)) (≈2.24) — a conservative Bonferroni-like
+    # adjustment that keeps the family-wise error rate ≈ what a single
+    # Welch test would have. Default False because most users tune
+    # thresholds against the literature's "4.5 / 10.0 single-test" advice
+    # and would be confused by a stricter scale.
+    bonferroni_correct: bool = False
 
     @model_validator(mode="after")
     def _check_clock_arch(self) -> "DudectConfig":

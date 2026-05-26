@@ -16,8 +16,10 @@ commits and PRs.
     manual-binary sentinel check).
   - F4, F6, S1, S2, S4 — Bundle F (per-class drop tracking, secret_regions
     coverage probe, raw-count CSV columns, graceful per-harness skip).
-  Pipeline progress: 14 fully closed (F1/F2/F3/F4/F5/F6/F7/F8/F10/F11/S1/S2/S4/T6),
-  2 partial (R1, F9). Bundle G next (R2/S3 calibration + Cohen's d).
+  - R2, S3 — Bundle G (multi-cutoff Type-I calibration + Bonferroni opt-in,
+    Cohen's d in WelchResult + CSV col 21).
+  Pipeline progress: 16 fully closed (F1/F2/F3/F4/F5/F6/F7/F8/F10/F11/S1/S2/S3/S4/T6 + R2),
+  2 partial (R1, F9). Docs sweep + follow-ups remaining.
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -599,6 +601,16 @@ naturally co-targets T1 (template dedup).
 
 ### R2: Multi-cutoff `max|t|` inflates Type-I error + normality assumption is unaddressed 🟡
 
+**Status: RESOLVED in Bundle G.** New `dudect.bonferroni_correct: bool`
+yaml field. When true, `_do_dudect` scales both thresholds by
+`sqrt(len(CROP_PERCENTILES))` ≈ 2.236 before passing them to
+`welch_with_cropping` / `welch_t_test` / `batch_t_scores`. README adds
+a multi-cutoff calibration guide. A `test_multi_cutoff_under_null_typeI_rate_pinned`
+synthetic test on 200 IID-noise trials pins the rate so future cropping
+changes are visible regressions.
+Normality assumption side stays partially open — documented as a caveat
+in README but no kurtosis-aware adjustment yet.
+
 - **Where**: `ctkat/statistics.py:CROP_PERCENTILES` and
   `welch_with_cropping`,
   README `dudect_summary.csv` reference (`README.md:264-279` ish).
@@ -716,6 +728,14 @@ See F4 for the logic-side write-up.
 - **Suggested bundle**: F.
 
 ### S3: No effect-size column (Cohen's d) 🟢
+
+**Status: RESOLVED in Bundle G.** `WelchResult.cohens_d` field populated
+by `welch_t_test` via `_cohens_d(n0, n1, m0, m1, v0, v1)` using the
+pooled-SD formula `(m1-m0)/sqrt(((n0-1)*v0+(n1-1)*v1)/(n0+n1-2))`. Sign
+preserved (+ means class 1 slower). Degenerate cases handled (0 when
+pooled var=0 AND means equal, ±inf when pooled var=0 but means differ —
+mirrors the t-score's inf convention). CSV col 21. README has Cohen 1988
+interpretation guide.
 
 - **Where**: `ctkat/statistics.py:WelchResult`, CSV output.
 - **Symptom**: t-score magnitude depends on both effect size and sample

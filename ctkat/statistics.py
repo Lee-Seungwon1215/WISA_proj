@@ -32,13 +32,41 @@ class WelchResult:
     var1: float
     t_score: float
     abs_t_score: float
-    status: str  # "PASS" | "WARNING" | "FAIL"
+    status: str  # "PASS" | "WARNING" | "FAIL" | "ERROR"
     # Diagnostic fields populated only by `welch_with_cropping`. `None` on
     # results from plain `welch_t_test` so the dataclass stays backward
     # compatible — old callers ignore these, new callers read them.
     cropped_at: Optional[float] = None        # cutoff that produced max |t|
     t_score_uncropped: Optional[float] = None # t at cutoff=1.0 (no cropping)
     abs_t_score_uncropped: Optional[float] = None
+    # Bundle G (S3): standardized effect size. t-score size is confounded
+    # with sample size — a tiny leak with huge n can match a large leak with
+    # modest n. Cohen's d divides the mean difference by the pooled SD, so
+    # it answers "how big is the leak per-sample, regardless of how many
+    # samples we threw at it". Sign is preserved (positive means class 1 is
+    # slower than class 0); interpretation per Cohen (1988): |d|<0.2 trivial,
+    # ~0.5 medium, ≥0.8 large.
+    cohens_d: float = 0.0
+
+
+def _cohens_d(n0: int, n1: int, m0: float, m1: float, v0: float, v1: float) -> float:
+    """Standardized mean difference using the pooled-variance estimator
+    (Cohen 1988): d = (m1 - m0) / s_p, where
+        s_p = sqrt(((n0-1)*v0 + (n1-1)*v1) / (n0 + n1 - 2))
+    Sign: positive when class 1 (random-secret) is slower than class 0,
+    matching the typical "leak makes secret-handling slower" intuition.
+    Returns 0.0 when the pooled SD is zero (constant samples on both
+    sides — vacuously no effect); returns inf when SD is zero but means
+    differ (matches the t-score's inf convention).
+    """
+    if n0 + n1 - 2 <= 0:
+        return 0.0
+    pooled_var = ((n0 - 1) * v0 + (n1 - 1) * v1) / (n0 + n1 - 2)
+    if pooled_var <= 0.0:
+        if m0 == m1:
+            return 0.0
+        return float("inf") if m1 > m0 else float("-inf")
+    return (m1 - m0) / sqrt(pooled_var)
 
 
 def welch_t_test(
@@ -74,6 +102,7 @@ def welch_t_test(
         var0=v0, var1=v1,
         t_score=t, abs_t_score=abs_t,
         status=status,
+        cohens_d=_cohens_d(n0, n1, m0, m1, v0, v1),
     )
 
 

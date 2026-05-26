@@ -44,6 +44,7 @@ from .qemu_detect import detect_qemu_emulation
 from .report import finding_to_row, write_csv, write_json
 from .secret_infer import InferredFunction, infer_functions
 from .statistics import (
+    CROP_PERCENTILES,
     WelchResult,
     batch_t_scores,
     welch_t_test,
@@ -541,6 +542,7 @@ def _emit_dudect_report(
             "batch_t_mean", "batch_t_max_abs", "batches",
             "cropped_at", "t_score_uncropped", "abs_t_score_uncropped",
             "raw_n_total", "dropped_zero_n0", "dropped_zero_n1",
+            "cohens_d",
         ])
         for harness_name, samples, r, batches in results:
             # Empty string when no batches — matches _print_dudect_summary's
@@ -568,6 +570,10 @@ def _emit_dudect_report(
                 samples.raw_n_total,
                 samples.dropped_zero_n0,
                 samples.dropped_zero_n1,
+                # S3: standardized effect size. _fmt handles inf/NaN by
+                # emitting empty string — matches what we do with t_score
+                # so pandas/R get a consistent reading of "blew up".
+                _fmt(r.cohens_d),
             ])
     return raw_path, summary_path
 
@@ -623,6 +629,25 @@ def _do_dudect(
         f"batches={dud.batches} clock={clock_display} "
         f"cropping={'on' if crop else 'off'}[/]"
     )
+
+    # Bundle G (R2): bonferroni-like correction for multi-cutoff cropping.
+    # When enabled, scale both thresholds by sqrt(N_cutoffs) so the
+    # family-wise Type-I rate of "max |t| over N cropping cutoffs"
+    # approximates a single Welch test's per-test rate. Only the cropping
+    # path needs this (batch_t_scores remains uncropped per its own
+    # docstring), but we scale both calls so a single yaml flag means
+    # "be conservative across the whole report".
+    warn_t = dud.threshold_warning
+    fail_t = dud.threshold_fail
+    if dud.bonferroni_correct:
+        scale = math.sqrt(len(CROP_PERCENTILES))
+        warn_t = dud.threshold_warning * scale
+        fail_t = dud.threshold_fail * scale
+        console.print(
+            f"[dim]bonferroni correction: scaling thresholds by "
+            f"sqrt({len(CROP_PERCENTILES)})={scale:.3f} → "
+            f"warning={warn_t:.2f} fail={fail_t:.2f}[/]"
+        )
 
     workdir = _resolve(cfg_dir, dud.workdir)
     gen_dir = _resolve(cfg_dir, dud.generated_dir)
@@ -703,18 +728,16 @@ def _do_dudect(
         if crop:
             overall = welch_with_cropping(
                 c0, c1,
-                warning_threshold=dud.threshold_warning,
-                fail_threshold=dud.threshold_fail,
+                warning_threshold=warn_t,
+                fail_threshold=fail_t,
             )
         else:
-            overall = welch_t_test(
-                c0, c1, dud.threshold_warning, dud.threshold_fail
-            )
+            overall = welch_t_test(c0, c1, warn_t, fail_t)
         batches = batch_t_scores(
             samples.classes, samples.cycles,
             batches=dud.batches,
-            warning_threshold=dud.threshold_warning,
-            fail_threshold=dud.threshold_fail,
+            warning_threshold=warn_t,
+            fail_threshold=fail_t,
         )
         results.append((h.name, samples, overall, batches))
 

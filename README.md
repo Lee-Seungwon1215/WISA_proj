@@ -211,6 +211,9 @@ dudect:
   timeout: 600                 # (E-1) per-harness wall-clock ceiling. 초과 시
                                # TimeoutExpired → status=ERROR → verdict
                                # INCONCLUSIVE. Python traceback이 나가지 않음.
+  bonferroni_correct: false    # (G/R2) true면 임계값을 sqrt(N_cutoffs)≈2.24
+                               # 배 스케일 — multi-cutoff cropping의 Type-I
+                               # inflation 상쇄. 보수적 calibration 원할 때만.
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:
@@ -323,6 +326,25 @@ dudect:
 | percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. dudect 원본의 multi-cutoff scan 정신 따름 |
 | batch t-score는 비-cropping | 환경 안정성 측정용이라 raw 신호 유지 |
 | secret_regions coverage probe (Bundle F, F6) | `template: kem/sign`이고 `secret_regions`가 설정된 하니스에 한해, 자동 생성 단계에서 별도 sentinel 프로그램을 잠시 컴파일·실행해 `sum(secret_regions.length)`와 `{prefix}CRYPTO_SECRETKEYBYTES`를 실제 컴파일러에서 평가. <50%면 yellow warning (sk 대부분을 public으로 취급 중 — yaml typo 의심). probe 컴파일/실행 실패는 yellow note만, blocking X |
+| 효과 크기 (Bundle G, S3) | 모든 t-score 결과에 Cohen's d 동반 (CSV col 21). pooled-SD 정확 버전, sign 유지. 같은 \|t\|=5라도 d=0.2 (작은 leak + 큰 n)과 d=2.0 (큰 leak + 작은 n)이 구별됨 |
+| multi-cutoff calibration (Bundle G, R2) | percentile cropping은 5개 cutoff에서 max \|t\|를 채택하므로 H0 하 Type-I 비율이 단일 Welch 대비 약간 inflate된다. `dudect.bonferroni_correct: true`를 박으면 threshold가 `sqrt(N_cutoffs)`≈2.24만큼 더 보수적으로 스케일됨. default False — 대부분의 문헌이 "단일-test 4.5/10.0" 기준이라 사용자가 혼란을 안 겪게 |
+
+#### multi-cutoff calibration guide (R2)
+
+cropping 5개 cutoff 중 max \|t\|를 채택하면 nominal보다 false-positive
+비율이 inflate된다 (대략 1.5-2배 수준, IID 가우시안 noise 기준의 회귀
+테스트로 추적 중). 실용 해석 가이드:
+
+| \|t\| | 단일-test 의미 | multi-cutoff (default) 의미 |
+|---|---|---|
+| < 4.5 | PASS | PASS (noise 영역) |
+| 4.5 ~ 5.5 | WARNING | soft WARNING — 실제 leak 가능성은 절반 정도 |
+| 5.5 ~ 10 | WARNING | confident WARNING — 진짜 신호 의심 |
+| ≥ 10 | FAIL | FAIL (자릿수 차이 — 거의 noise 아님) |
+
+엄격한 family-wise α 보존이 필요하면 `dudect.bonferroni_correct: true`
+박기. 그러면 threshold 자체가 ≈2.24배 올라가서 4.5→10.06, 10.0→22.36이
+되니까 "단일-test 4.5/10.0과 동등한 보수성"이 multi-cutoff에서도 유지됨.
 
 ### 재현성 (seed)
 
@@ -364,10 +386,12 @@ xorshift PRNG로만 입력을 만든다.
 | 16-17 | `t_score_uncropped`, `abs_t_score_uncropped` | cutoff=1.0의 raw t-score (diagnostic, cropping 부작용 확인용) |
 | 18 | `raw_n_total` | Bundle F (S1): zero-filter 적용 전 C 하니스가 emit한 row 수. `measurements - raw_n_total`이 0 이상이면 하니스가 일부 측정을 누락. ERROR-status row는 0 |
 | 19-20 | `dropped_zero_n0`, `dropped_zero_n1` | Bundle F (S1): zero-cycle filter가 클래스별로 떨어뜨린 수. `n0 = (raw_n0 - dropped_zero_n0)` 식. 두 값이 비대칭하면 sample bias 의심 (F4/S2 console warning과 같이 봄) |
+| 21 | `cohens_d` | Bundle G (S3): 표준화 효과 크기 = `(mean1 - mean0) / pooled_SD`. t-score는 sample 크기에 같이 비례하지만 Cohen's d는 표본수에 무관 — "leak 자체가 얼마나 큰가"를 답함. 부호 유지(양수 = class 1이 느림). Cohen 1988 기준: \|d\|<0.2 trivial, ~0.5 medium, ≥0.8 large. ERROR row는 0.0 |
 
 컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
-Bundle B diagnostic 컬럼, 18-20은 Bundle F (S1) raw-count 컬럼. 모두 항상
-끝에 append되므로 awk-by-position 파서는 안 깨짐.
+Bundle B diagnostic 컬럼, 18-20은 Bundle F (S1) raw-count 컬럼, 21은
+Bundle G (S3) 효과 크기. 모두 항상 끝에 append되므로 awk-by-position
+파서는 안 깨짐.
 
 ### `ctkat_verdict.csv` 컬럼 reference (Bundle E-1 갱신)
 
