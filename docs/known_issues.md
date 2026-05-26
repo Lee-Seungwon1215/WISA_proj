@@ -6,18 +6,22 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-26 (v2 — see Review log at the bottom)
+- **Last updated**: 2026-05-26 (v3 — see Review log at the bottom)
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
-  - External independent reviewer, pass 2 (audited this doc itself)
-- **Total findings**: 5 tiers, 23 issues (v1: 20 → v2: +F5, +F6, +T6)
-- **Verification**: Tier 1 (F1–F6) and Tier 2 (R1–R3) claims verified
-  against `main` (commit `d678617` or later) by reading the cited source
-  lines. The original R1 was under-audited (focused only on the
-  ct-leak branch of `timing_kem.c.j2`); on second pass the same
-  `randombytes()` dependency was confirmed in the sk-leak branch too —
-  R1 body and acceptance criteria updated accordingly.
+  - External independent reviewer, pass 2 (audited v1 of this doc)
+  - External independent reviewer, pass 3 (audited v2 + whole repo)
+- **Total findings**: 5 tiers, 26 issues
+  (v1: 20 → v2: +F5, +F6, +T6 → v3: +F7, +F8, +T7)
+- **Verification**: All Tier 1 (F1–F8) and Tier 2 (F6, R1–R3) claims
+  verified against `main` (commit `d678617` or later) by reading the
+  cited source lines. v1's R1 was under-audited (focused only on the
+  ct-leak branch of `timing_kem.c.j2`); v2 audit confirmed the same
+  `randombytes()` dependency in the sk-leak branch too. v3 audit
+  surfaced subcommand-level fail-opens (F7, F8) which had been missed
+  by v1/v2 because those passes focused on `run` pipeline rather than
+  the standalone `ctkat <stage>` commands.
 
 ## How to read this document
 
@@ -175,6 +179,78 @@ fail-open in any tier-1 spot makes that gate unreliable.
   fail-open).
 - **Suggested bundle**: E.
 
+### F7: `ctkat kat` subcommand exits 0 when no `kat` section in config 🚨
+
+- **Where**: `ctkat/cli.py:752-757` (kat subcommand). Concretely:
+  ```python
+  if cfg.kat is None:
+      console.print("[yellow]No `kat` section in config.[/]")
+      raise typer.Exit(0)   # ← fail-open exit code
+  ```
+- **Symptom**: A user runs `ctkat kat -c bad.yaml` where `bad.yaml`
+  is missing its `kat:` section entirely. The subcommand prints a
+  yellow note and exits 0. CI scripts gating on exit code (e.g.,
+  `ctkat kat -c x.yaml && echo OK`) report OK for a configuration
+  that defined no KAT step at all.
+- **Asymmetric with peer subcommands**: the dudect subcommand
+  (`cli.py:560-562`) raises `typer.Exit(2)` in the same situation
+  ("No `dudect` section in config"). kat's exit-0 is inconsistent
+  and lenient where dudect is strict.
+- **Why solve**: Same fail-open shape as F1, but one level up — F1
+  is "KAT ran on a no-op binary"; F7 is "KAT didn't run at all but
+  we still said OK." Single-stage subcommands are explicitly
+  designed for CI gating (per `README.md:225+` CLI commands section),
+  so subcommand exit codes are part of the contract.
+- **Acceptance criteria**:
+  1. `if cfg.kat is None`: `raise typer.Exit(2)`, matching the
+     dudect subcommand. Update the printed message to red
+     (`"[red]No `kat` section in config.[/]"`).
+  2. Same fix for ct subcommand — see F8.
+  3. README CLI section documents that single-stage subcommands
+     exit non-zero when their stage is absent from the config (do
+     not silently no-op).
+  4. Test: `test_kat_command_exits_nonzero_when_kat_section_missing`.
+- **Related**: F1, F8 (same pattern, different stages), F3
+  (verdict state — but subcommands don't go through verdict
+  matrix; this is exit-code-only).
+- **Suggested bundle**: E.
+
+### F8: `ctkat ct` subcommand reports "PASS" when no `ct` section 🚨
+
+- **Where**: `ctkat/cli.py:729-745` (ct subcommand). No `cfg.ct is None`
+  guard at all; control flow runs through `_do_generate` (which
+  guards internally and returns `{}`) and `_do_ct` (also guards,
+  returns `[]`) and falls through to:
+  ```python
+  any_finding = any(fs for _, fs in ct_results)   # False on empty
+  if any_finding:
+      console.print("[bold red][CTKAT] Constant-Time Check: FAIL[/]")
+  else:
+      console.print("[bold green][CTKAT] Constant-Time Check: PASS[/]")
+  ```
+- **Symptom**: User runs `ctkat ct -c bad.yaml` with no `ct:`
+  section. Output: `[CTKAT] Constant-Time Check: PASS` and exit 0.
+  **The framework explicitly reports a green PASS for a
+  configuration that defined no CT check.**
+- **Why solve**: Worse than F7 — kat prints a yellow note saying
+  no kat section exists, at least giving the user a clue. ct
+  prints "PASS" in bold green, actively misleading. Any CI script
+  or downstream tool consuming this output will mis-record that
+  CT was checked and passed.
+- **Acceptance criteria**:
+  1. Early guard in `ct` subcommand:
+     ```python
+     if cfg.ct is None:
+         console.print("[red]No `ct` section in config.[/]")
+         raise typer.Exit(2)
+     ```
+  2. Mirror in `dudect` and `kat` (F7) for consistency.
+  3. Test: `test_ct_command_exits_nonzero_when_ct_section_missing`,
+     `test_ct_command_does_not_print_PASS_when_section_missing`.
+- **Related**: F7 (same pattern, kat stage), F1/F2 (CT-stage
+  fail-opens in different sub-scenarios).
+- **Suggested bundle**: E.
+
 ### F4: dudect zero-cycle filter ignores class balance 🟡
 
 - **Where**: `ctkat/dudect_runner.py:58-78` (`parse_timing_csv`),
@@ -194,14 +270,19 @@ fail-open in any tier-1 spot makes that gate unreliable.
 - **Why solve**: Biased samples can either inflate or deflate the t-score
   in non-obvious ways depending on which class loses more. The user has
   no visibility into this (see S1, S2 for related transparency issue).
-- **Acceptance criteria**:
+- **Acceptance criteria** (statistical correctness — F4 is the
+  *logic* fix, S2 is the user-facing alert face of the same
+  remediation; close both in one PR):
   1. Track per-class drop count in `parse_timing_csv`.
-  2. Emit a *separate* warning when per-class drop rate exceeds a threshold
-     (suggest 5% per-class, regardless of total).
+  2. Emit a *separate* warning when per-class drop rate exceeds a
+     threshold (suggest 5% per-class, regardless of total) — this
+     warning *is* the S2 deliverable.
   3. Expose per-class drop counts as fields on `TimingSamples` so they
-     can be reported downstream (see S1).
-- **Related**: S1, S2 (sample transparency).
-- **Suggested bundle**: F.
+     can be reported downstream (this also feeds the S1 raw-count
+     columns).
+- **Related**: **S2 (user-facing warning text — same fix, different
+  surface)**, S1 (raw-count CSV columns — fed by the same tracking).
+- **Suggested bundle**: F (close F4 + S1 + S2 together).
 
 ---
 
@@ -228,19 +309,23 @@ just less severe — requires user misconfiguration to trigger.)
   blobs, but a misnumbered length silently degrades coverage. The
   framework should at least warn when the sum looks suspicious.
 - **Acceptance criteria**:
-  1. Add a runtime check after harness generation: if
-     `sum(region.length_int) < 0.5 * CRYPTO_SECRETKEYBYTES_int`
-     (heuristic threshold; configurable), emit a startup warning naming
-     the harness and the byte-coverage percentage.
-  2. The `length` field is currently a C expression (offset/length can
-     reference macros like `KYBER_INDCPA_SECRETKEYBYTES`). Don't try to
-     evaluate C from Python; instead emit a small sentinel program
-     during harness compile that prints the byte counts, and parse its
-     output. Or: keep it simple and only check when both fields are
-     integer literals (skip with `unverified` log line otherwise).
+  1. Emit a tiny sentinel program at harness compile time that prints
+     the actual byte counts (or reuses the same compile to extract
+     macro values via `printf("%zu\n", sum)` ). Parse its output and
+     compare against `CRYPTO_SECRETKEYBYTES`.
+  2. If coverage < 50% (configurable), emit a startup warning naming
+     the harness and the percentage. Don't fail — user may have a
+     reason — but warn loudly.
   3. Document the convention in the README ML-KEM section.
+- **Why this is Bundle F not Bundle E**: the cheap "integer-literal
+  only" alternative was considered but rejected. PQClean uses macros
+  (`KYBER_INDCPA_SECRETKEYBYTES` etc.) in exactly the case this issue
+  is meant to protect — a literal-only check would skip the real
+  target. Sentinel-program impl is not cheap (extra compile step,
+  output parsing, error paths) so it doesn't fit Bundle E's
+  exit-code-and-state scope.
 - **Related**: F5 (related fail-open pattern, different config surface).
-- **Suggested bundle**: E (if cheap impl chosen) or F (deferred).
+- **Suggested bundle**: **F** (final, no longer "E or F").
 
 ### R1: dudect KEM harness is non-reproducible on real PQClean targets — BOTH leak modes 🚨
 
@@ -305,13 +390,17 @@ just less severe — requires user misconfiguration to trigger.)
     randombytes override would need to be added in both branches of
     `timing_kem.c.j2` — see T1 (template dedup) for an opportunity to
     consolidate first or simultaneously.
-- **Recommendation**: ship Option A in the immediate next bundle to
-  remove the misleading documentation. Consider Option B as a separate
-  follow-up when reproducibility becomes a hard requirement (e.g., for
-  cross-machine baseline comparison or paper reproducibility).
+- **Recommendation**: Option A should land **as soon as possible** —
+  the doc currently lies about reproducibility, every day with the
+  false claim is a day a user could be confused. Easiest path: a
+  small dedicated docs commit before Bundle E (not even bundled),
+  literally one README paragraph + one yaml-schema-comment line.
+  Option B (mechanism fix) is the larger work, naturally co-targets
+  T1 (template dedup) per its note, and can wait for its own bundle.
 - **Related**: R3 (system noise — independent cause of non-reproducibility,
   also undocumented). T1 (template dedup — natural co-target with Option B).
-- **Suggested bundle**: F (A); its own bundle if pursuing B.
+- **Suggested bundle**: **Docs sweep / immediate quick commit** (A);
+  separate bundle for (B).
 
 ### R2: Multi-cutoff `max|t|` inflates Type-I error + normality assumption is unaddressed 🟡
 
@@ -409,11 +498,13 @@ just less severe — requires user misconfiguration to trigger.)
   asymmetry — the actually interesting case — gets no special message.
 - **Why solve**: Per-class drop disparity is a smoking gun for biased
   sampling (see F4 rationale). User should see it loudly.
-- **Acceptance criteria**:
+- **Acceptance criteria** — **deliberately overlaps F4 #2**. The
+  warning text *is* S2; the per-class tracking is F4. Close together.
   1. Per F4, emit a per-class warning. Format: `dropped 12.4% of class-0
      vs 0.3% of class-1 — sample bias likely, treat |t| skeptically`.
   2. Test it triggers on synthetic asymmetric input.
-- **Related**: F4, S1.
+- **Related**: **F4 (same fix; F4 is the logic, S2 is the user-facing
+  alert)**, S1.
 - **Suggested bundle**: F.
 
 ### S3: No effect-size column (Cohen's d) 🟢
@@ -475,13 +566,17 @@ just less severe — requires user misconfiguration to trigger.)
   (e.g., timing differences between the success path and the
   re-encryption check). Our framework currently can't reach them.
 - **Acceptance criteria**:
-  1. Add to README "ct-leak 모드 한계" paragraph: explicitly mention
-     FO-fallback paths are not tested.
-  2. Optionally: future bundle adds a third `leak_target=fo` mode that
-     uses invalid (random) ct for class 1 — out of scope for the
-     immediate doc fix.
+  1. **Primary fix**: add a third `leak_target=fo` mode to
+     `timing_kem.c.j2` that uses random/invalid ct for class 1 (class
+     0 keeps a valid `enc()`-derived ct). Verifies the FO fallback
+     decapsulation path is constant-time across valid-vs-invalid ct.
+     New bundle territory (logically Bundle E-2 or D-2 follow-up).
+  2. **Secondary fix (and quick interim)**: README "ct-leak 모드 한계"
+     paragraph explicitly mentions FO-fallback paths are not covered
+     by the current `leak_target=ct` mode. Lands in Docs sweep.
 - **Related**: U1.
-- **Suggested bundle**: Docs sweep.
+- **Suggested bundle**: Docs sweep (#2 interim), then a follow-up
+  bundle for #1.
 
 ### U3: Windows support claim is overoptimistic 🟢
 
@@ -550,26 +645,67 @@ just less severe — requires user misconfiguration to trigger.)
 - **Suggested bundle**: opportunistic (during Bundle E or as preface to
   R1 Option B).
 
-### T6: dudect harness timeout produces Python traceback 🟢
+### T6: dudect harness timeout — hardcoded 600s + Python traceback 🟢→🟡
 
-- **Where**: `ctkat/dudect_runner.py:100` (`subprocess.run(..., timeout=600)`),
-  `ctkat/cli.py:_do_dudect` (no try/except around `run_timing_harness`).
-- **Symptom**: If a dudect harness binary infinite-loops or otherwise
-  exceeds 600s, `subprocess.TimeoutExpired` propagates up through
-  typer and the user sees a raw Python traceback. No graceful
-  reporting; no INCONCLUSIVE verdict.
-- **Why solve**: Hygiene — failure mode equivalent to F2 (Valgrind
-  crash) but currently doesn't even reach `_compute_verdicts`. CI
-  output is harder to interpret than necessary.
+- **Where**:
+  - `ctkat/dudect_runner.py:70-78` — `timeout: int = 600` is a function
+    parameter default. Not propagated from yaml; user can't configure.
+  - `ctkat/cli.py:461` (`run_timing_harness` call inside `_do_dudect`) —
+    no try/except wrapper.
+  - README — never documents the 600s ceiling.
+- **Symptom (two distinct ones)**:
+  1. **No graceful failure**: if a dudect harness infinite-loops or
+     exceeds 600s, `subprocess.TimeoutExpired` propagates up through
+     typer and the user sees a raw Python traceback. No verdict, no
+     summary, just a stack trace.
+  2. **Hardcoded ceiling**: a user running a slow target (e.g. 50µs
+     per call × 50000 measurements ≈ 2500s on QEMU) hits the limit
+     even without infinite loops. They have no yaml knob to bump it.
+- **Why solve**: (1) is the same fail-mode class as F2 (analysis
+  didn't complete cleanly). (2) is a usability ceiling that
+  silently constrains the framework to fast targets — not documented
+  anywhere, surfaces as a confusing crash.
 - **Acceptance criteria**:
-  1. Wrap `run_timing_harness` call in `_do_dudect` with try/except for
+  1. Add `dudect.timeout: int = 600` to `DudectConfig` (yaml-configurable
+     ceiling).
+  2. Plumb the configured value through `_do_dudect` → `run_timing_harness`.
+  3. Wrap `run_timing_harness` call with try/except for
      `subprocess.TimeoutExpired`.
-  2. On timeout: log clear error (`harness X timed out after Ns`),
+  4. On timeout: log clear error (`harness X timed out after Ns`),
      attach status=ERROR (using F3's INCONCLUSIVE).
-  3. Make timeout configurable via yaml (`dudect.timeout: int = 600`).
-  4. Test: harness that sleeps forever → ERROR, not Python traceback.
-- **Related**: F2 (similar fail-mode, different stage), F3 (ERROR state).
-- **Suggested bundle**: E (cheap to bundle in).
+  5. Document the default and how to bump in README.
+  6. Test: harness that sleeps forever → ERROR, not Python traceback;
+     yaml `dudect.timeout: 60` → harness gets 60s.
+- **Related**: F2 (similar fail-mode, different stage), F3 (ERROR state),
+  U4 (function speed range documentation — closely related).
+- **Suggested bundle**: E.
+
+### T7: Jinja template context has no C-identifier validation 🟢
+
+- **Where**: `ctkat/cli.py:97-140` (`_build_generic_context`,
+  `_build_kem_context`, `_build_sign_context`). All three pass
+  `h.function`, `h.prefix`, `h.args` etc. through to Jinja with no
+  pattern check; `HarnessConfig` pydantic validation enforces
+  `Optional[str]` but no `^[A-Za-z_][A-Za-z0-9_]*$` constraint.
+- **Symptom**: A yaml with `function: '; system("rm -rf /")'` lands
+  in the generated C file literally. Compile fails noisily, but the
+  abuse surface is open.
+- **Why solve**: Same family as T4 (`shell=True` on user yaml). The
+  framework's stance "yaml ownership is the user's responsibility" is
+  documented in README, but a defensive layer is cheap.
+- **Acceptance criteria**:
+  1. Add pydantic field validators on `HarnessConfig.function`,
+     `HarnessConfig.prefix`, and `HarnessConfig.return_type` enforcing
+     `^[A-Za-z_][A-Za-z0-9_:* ]*$` (C identifiers, plus `:`, `*`, space
+     allowed for things like `unsigned int *`).
+  2. `HarnessConfig.args` is trickier (each element may be `sizeof(x)`,
+     etc.) — allow a broader pattern or skip.
+  3. Test: confirm `function: "; system(...)"` raises ValidationError
+     at config load.
+- **Related**: T4 (shell=True), F1/F5/F6 (related "trust the yaml"
+  posture).
+- **Suggested bundle**: TBD (not currently planned; low-priority
+  hardening).
 
 ### T2: valgrind_parser substring matching is fragile 🟢
 
@@ -630,40 +766,59 @@ LoC).
 
 ### Bundle E — Fail-Open Closure 🚨
 
-**Closes**: F1, F2, F3, F5, T6, optionally F6, partially F4.
-**LoC estimate**: ~250 (originally ~150; expanded after external review
-pass 2 added F5/F6/T6).
+**Closes**: F1, F2, F3, F5, F7, F8, T6, partially F4.
+**LoC estimate**: ~350 (v1 ~150 → v2 ~250 → v3 ~350, expanded with each
+external review pass).
 **Why this bundle goes first**: Every other improvement compounds on
 top of verdict correctness. Building on a fail-open base produces
-false safety stacked on false safety. After external review pass 2
-the bundle's title ("fail-open closure") only fits if F5 (CT manual
-binary) and T6 (timeout traceback) land alongside the original F1/F2/F3.
+false safety stacked on false safety. After external review pass 3 the
+bundle's title ("fail-open closure") only fits if F7/F8 (subcommand
+exit-code asymmetry) land alongside the verdict-matrix work.
 
-**Sketch**:
-- New `Verdict.INCONCLUSIVE` enum member + matrix entries (F3).
+**Sketch (ordered by inter-dependency)**:
+- New `Verdict.INCONCLUSIVE` enum member + matrix entries (F3) —
+  precondition for F2/F5/T6 mappings.
 - New `valgrind_status="ERROR"` returned by `_do_ct` on crash (F2).
 - New `kat.expected_min` yaml field + stdout-grep validation in `_do_kat`
   + always-echo stdout (F1).
 - New `ct.require_sentinel` yaml field + sentinel-line check in `_do_ct`
-  manual mode (F5).
-- Timeout exception handling in `_do_dudect` → INCONCLUSIVE (T6).
-- Optionally: `secret_regions` size-coverage warning (F6) if the
-  integer-literal-only heuristic is taken; defer to F if it'd need
-  sentinel-program inspection.
-- Tests for each fail-open mode.
+  manual mode (F5). Includes updating example harnesses to emit the
+  sentinel.
+- Subcommand exit-code consistency: `cfg.kat is None → Exit(2)` (F7);
+  add `cfg.ct is None → Exit(2)` guard to ct command (F8). Don't print
+  "PASS" when section is absent.
+- `dudect.timeout` yaml field; try/except around timing harness for
+  TimeoutExpired → INCONCLUSIVE (T6).
+- **Deferred to Bundle F**: F6 (`secret_regions` size check) — see F6
+  body for rationale; needs sentinel program, doesn't fit E's scope.
+- Tests for each fail-open mode (one regression test per F-issue
+  closed).
 - README updates: verdict matrix, KAT section, CT manual-mode section,
-  exit-code semantics.
+  CLI subcommand exit-code contract.
 
-### Bundle F — Class Balance + Reproducibility 🟡
+**Sizing risk**: ~350 LoC is at the upper end of single-commit comfort.
+Splitting option:
+- **E-1 (verdict-state + exit-code)**: F1, F3, F7, F8, T6. ~200 LoC.
+- **E-2 (analysis-stage fail-open)**: F2, F5. ~150 LoC. Depends on E-1's
+  INCONCLUSIVE state being available.
 
-**Closes**: F4, R1 (Option A), S1, S2.
-**LoC estimate**: ~120.
+Author preference: keep as single E unless review feedback demands
+split. Bundle B was 334 LoC single-commit precedent.
+
+### Bundle F — Class Balance + Sample Transparency + F6 🟡
+
+**Closes**: F4, F6, S1, S2.
+**LoC estimate**: ~170 (was ~120; +50 for F6 sentinel program).
 
 **Sketch**:
-- Per-class drop tracking in `parse_timing_csv`.
-- New CSV columns 18-20 (raw_n_total, dropped_zero_n0/n1).
-- Per-class asymmetry warning.
-- README explicit caveat on `leak_target=ct` reproducibility under PQClean.
+- Per-class drop tracking in `parse_timing_csv` (F4 logic + S2 warning).
+- New CSV columns 18-20 (raw_n_total, dropped_zero_n0/n1) (S1).
+- F6: emit a tiny sentinel program at harness compile to extract
+  `CRYPTO_SECRETKEYBYTES` value; compare against `sum(secret_regions.length)`;
+  warn at <50% coverage.
+
+**Moved out**: R1 Option A is too small to wait — handled in Docs sweep
+(or a standalone quick commit), not held back to F.
 
 ### Bundle G — Calibration / Effect Size 🟢
 
@@ -677,15 +832,21 @@ binary) and T6 (timeout traceback) land alongside the original F1/F2/F3.
 
 ### Docs sweep — Honest Limitations
 
-**Closes**: U1, U2, U3, U4, R3.
-**LoC estimate**: ~80 (README) + ~80 (new `docs/tutorial.md` if U5 included).
+**Closes**: U1, U2 (interim doc note — primary fix is separate bundle),
+U3, U4, R1 (Option A), R3.
+**LoC estimate**: ~100 (README) + ~80 (new `docs/tutorial.md` if U5 included).
 
 **Sketch**:
-- "PASS does not mean constant-time" paragraph.
-- FO-fallback / KyberSlash / power side-channel limits.
-- Windows MSVC caveat.
-- Function speed range guidance.
-- Reproducibility / system noise note.
+- R1 Option A: PQClean reproducibility caveat (yaml seed only controls
+  xorshift-driven parts, not `crypto_kem_*` calls). **Can ship as a
+  standalone quick docs commit before Bundle E** to remove the
+  misleading "deliberately reproducing" claim ASAP.
+- "PASS does not mean constant-time" paragraph (U1).
+- FO-fallback path note in ct-leak section (U2 interim).
+- Windows MSVC caveat (U3).
+- Function speed range guidance + cross-ref to `dudect.timeout` (U4 +
+  T6's documentation half).
+- Reproducibility / system noise note (R3).
 
 ### Cleanup
 
@@ -741,3 +902,50 @@ binary) and T6 (timeout traceback) land alongside the original F1/F2/F3.
     F6). LoC estimate bumped ~150 → ~250.
   - **Verification statement honesty**: noted that v1's R1 audit was
     too narrow (looked only at ct-leak branch).
+
+### v3 — corrections after external review pass 3 (2026-05-26)
+
+- Reviewer audited v2 + whole repo (not just files I'd touched).
+- Net change: 23 → 26 issues.
+- New issues:
+  - **F7 added** (Tier 1): `ctkat kat` subcommand exits 0 when `kat:`
+    section absent (`cli.py:756`). Asymmetric with `ctkat dudect`
+    which exits 2 in the same case. v1/v2 missed because they focused
+    on the `run` pipeline, not standalone subcommand semantics.
+  - **F8 added** (Tier 1): `ctkat ct` subcommand prints
+    "[CTKAT] Constant-Time Check: PASS" with exit 0 when `ct:` section
+    is absent (`cli.py:729-745`, missing `cfg.ct is None` guard).
+    Worse than F7 — actively reports green PASS.
+  - **T7 added** (Tier 5): no C-identifier validation on yaml-supplied
+    `function`/`prefix`/`return_type` before they hit Jinja templates.
+    Compile will fail noisily but defense-in-depth is missing. Sibling
+    of T4 (`shell=True`).
+- Existing-issue updates:
+  - **T6 elevated** 🟢→🟡: original framing covered only the
+    Python-traceback half. v3 reviewer noted the 600s timeout is
+    hardcoded (`dudect_runner.py:70`) and not yaml-configurable — this
+    silently constrains usable function speed range. Acceptance
+    criteria now covers both halves; `dudect.timeout` yaml field is
+    primary deliverable.
+  - **F4 ↔ S2 cross-ref tightened**: external noted the two issues had
+    overlapping acceptance criteria. Confirmed they are deliberately
+    paired — F4 is the logic fix, S2 is the user-facing warning text
+    for the same fix. Both now explicitly note they close together.
+  - **F6 bundle assignment finalized**: was "Bundle E or F"; now
+    definitively Bundle F. Rationale: cheap "integer-literal only"
+    check skips the macro-based case (e.g. PQClean ML-KEM) that
+    motivates the issue. Sentinel-program impl is the right answer
+    but doesn't fit E's exit-code-and-state scope.
+  - **R1 Option A scheduling**: moved out of Bundle F into Docs sweep
+    / standalone quick commit. v2 had it sitting in F; v3 reviewer
+    pointed out the doc lies about reproducibility today, so the
+    one-paragraph fix should land ASAP, not wait for F.
+  - **U2 acceptance criteria reordered**: v2 listed README note first
+    and the template `leak_target=fo` mode as "optionally". v3
+    reviewer pointed out priority was inverted — the mode is the
+    primary fix, the doc is interim. Now reflected.
+  - **Bundle E LoC re-estimated**: v2 ~250 → v3 ~350 with F7/F8/T6
+    expansion folded in. Added explicit E-1 / E-2 split option in
+    case ~350 is too big to land in one commit.
+  - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
+    F's scope, ~170 LoC total.
