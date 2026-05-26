@@ -6,15 +6,21 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-26 (v4 — see Review log at the bottom)
+- **Last updated**: 2026-05-26 (v5 + Quick Docs — see Review log at the bottom)
+- **Resolved so far**: R1 Option A (PQClean reproducibility caveat in README).
+  Pipeline progress: 0 issues fully closed, 1 partial. Bundle E-3 next.
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
   - External independent reviewer, pass 2 (audited v1 of this doc)
   - External independent reviewer, pass 3 (audited v2 + whole repo)
   - External independent reviewer, pass 4 (audited v3 + cross-stage interactions)
-- **Total findings**: 5 tiers, 35 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35)
-  - v4 additions: F9, F10, F11, S4, U6, T8, T9, T10, T11
+  - Verification pass 5 (audited v4 line references against `main`)
+- **Total findings**: 5 tiers, 35 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35 → v5: 35)
+  - v5: no new issues — all 35 v4 findings re-verified against `main`;
+    line-reference drift corrected in 7 places (F1, F4, F5, F7, F9, R1,
+    T6, T8). R1's sk-leak branch line was a real mis-cite (L102 → L157),
+    not just drift.
 - **Verification**: All Tier 1 (F1–F11) and Tier 2 (F6, R1–R3) claims
   verified against `main` (commit `d678617` or later) by reading the
   cited source lines. Earlier passes (v1–v3) focused tightly on the
@@ -55,7 +61,7 @@ fail-open in any tier-1 spot makes that gate unreliable.
 ### F1: KAT validates by exit code only 🚨
 
 - **Where**: `ctkat/builder.py:17-30` (`run_shell`),
-  `ctkat/cli.py:78-93` (`_do_kat`).
+  `ctkat/cli.py:78-94` (`_do_kat`).
 - **Symptom**: `kat.command` returning exit code 0 is treated as PASS
   regardless of what (if anything) was actually tested.
   - `make kat; true` passes.
@@ -148,7 +154,8 @@ fail-open in any tier-1 spot makes that gate unreliable.
 ### F5: CT manual binary mode skips function-call verification 🚨
 
 - **Where**: `ctkat/cli.py:178-242` (`_do_ct`), specifically the
-  `harness.binary is not None` branch around line 209.
+  `if h.binary is None` guard at line 204 and the manual-binary
+  assignment at line 210.
 - **Symptom**: In manual harness mode (`ct.harnesses[*].binary:
   ./path/to/bin`), `_do_ct` runs Valgrind against whatever path the
   user pointed at, with **no verification** that the binary actually
@@ -182,7 +189,8 @@ fail-open in any tier-1 spot makes that gate unreliable.
 
 ### F7: `ctkat kat` subcommand exits 0 when no `kat` section in config 🚨
 
-- **Where**: `ctkat/cli.py:752-757` (kat subcommand). Concretely:
+- **Where**: `ctkat/cli.py:755-757` (kat subcommand, inside the
+  `@app.command()` kat function at `:748-759`). Concretely:
   ```python
   if cfg.kat is None:
       console.print("[yellow]No `kat` section in config.[/]")
@@ -255,9 +263,9 @@ fail-open in any tier-1 spot makes that gate unreliable.
 ### F9: ct stage and dudect stage compile with DIFFERENT optimization levels 🚨
 
 - **Where**:
-  - `ctkat/config.py:163` — `_default_cflags() = ["-O0", "-g",
+  - `ctkat/config.py:162-163` — `_default_cflags() = ["-O0", "-g",
     "-fno-inline", "-fno-omit-frame-pointer"]` (ct/Valgrind stage).
-  - `ctkat/config.py:194` — `_default_dudect_cflags() = ["-O2", "-g",
+  - `ctkat/config.py:193-198` — `_default_dudect_cflags() = ["-O2", "-g",
     "-fno-omit-frame-pointer", "-fno-lto"]` (dudect stage).
 - **Symptom**: A verdict `CLEAN` does NOT mean "both ct and dudect
   PASSed on the same code." The two stages compile the user's source
@@ -366,8 +374,8 @@ fail-open in any tier-1 spot makes that gate unreliable.
 
 ### F4: dudect zero-cycle filter ignores class balance 🟡
 
-- **Where**: `ctkat/dudect_runner.py:58-78` (`parse_timing_csv`),
-  `ctkat/dudect_runner.py:24` (`_ZERO_CYCLE_WARN_THRESHOLD = 0.01`).
+- **Where**: `ctkat/dudect_runner.py:40-87` (`parse_timing_csv`),
+  `ctkat/dudect_runner.py:19` (`_ZERO_CYCLE_WARN_THRESHOLD = 0.01`).
 - **Symptom**: Bundle B's zero-filter drops `cycles==0` rows class-agnostically.
   Only emits a warning when *total* drop rate exceeds 1%. If the zero
   events are concentrated in one class (e.g., TSC anomalies fire more
@@ -442,14 +450,19 @@ just less severe — requires user misconfiguration to trigger.)
 
 ### R1: dudect KEM harness is non-reproducible on real PQClean targets — BOTH leak modes 🚨
 
+**Status**: **Option A RESOLVED in Quick Docs commit (pre-Bundle-E warmup).**
+README §"재현성 (seed)" 표 + yaml seed 코멘트로 caveat 명시.
+Option B (`randombytes` interpose mechanism) is still open — follow-up,
+naturally co-targets T1 (template dedup).
+
 - **Where** (all in `ctkat/templates/timing_kem.c.j2`):
-  - **sk-leak branch** (default):
+  - **ct-leak branch** (`{% if leak_target | default("sk") == "ct" %}`):
     - L102: `crypto_kem_keypair(pk_fixed, sk_fixed)` — fixed-class setup
-    - L177: `crypto_kem_keypair(pk_random, sk_random)` — per class-1 iteration
-  - **ct-leak branch**:
-    - L102: `crypto_kem_keypair(pk_fixed, sk_fixed)`
     - L107: `crypto_kem_enc(ct_fixed, ss, pk_fixed)` — fixed-class ct setup
     - L125: `crypto_kem_enc(ct_random, ss, pk_fixed)` — per class-1 iteration
+  - **sk-leak branch** (default, `{% else %}`):
+    - L157: `crypto_kem_keypair(pk_fixed, sk_fixed)` — fixed-class setup
+    - L177: `crypto_kem_keypair(pk_random, sk_random)` — per class-1 iteration
   - PQClean `randombytes.c` (`examples/pqc_mlkem768/common/randombytes.c`)
     uses `getrandom()`/`SYS_getrandom`/`/dev/urandom` — OS entropy, ignores
     yaml seed.
@@ -826,11 +839,11 @@ just less severe — requires user misconfiguration to trigger.)
 ### T6: dudect harness uncaught exceptions — Python traceback (4 paths) 🟢→🟡
 
 - **Where**:
-  - `ctkat/dudect_runner.py:36` — `raise ValueError("empty timing harness output")`
-  - `ctkat/dudect_runner.py:38` — `raise ValueError("unexpected CSV header: ...")`
-  - `ctkat/dudect_runner.py:70-78` — `timeout: int = 600` is a function
+  - `ctkat/dudect_runner.py:43` — `raise ValueError("empty timing harness output")`
+  - `ctkat/dudect_runner.py:45` — `raise ValueError("unexpected CSV header: ...")`
+  - `ctkat/dudect_runner.py:90-100` — `timeout: int = 600` is a function
     parameter default. Not propagated from yaml; user can't configure.
-  - `ctkat/dudect_runner.py:102-105` — `raise RuntimeError("timing harness ... failed (rc=...)")`
+  - `ctkat/dudect_runner.py:102-106` — `raise RuntimeError("timing harness ... failed (rc=...)")`
   - `ctkat/cli.py:461` (`run_timing_harness` call inside `_do_dudect`) —
     no try/except wrapper for ANY of the above.
   - README — never documents the 600s ceiling.
@@ -874,9 +887,9 @@ just less severe — requires user misconfiguration to trigger.)
 
 ### T8: dudect `measurements`/`warmup`/`batches` have no upper bound 🟢
 
-- **Where**: `ctkat/config.py:268` `measurements: int = 100_000`,
-  similar for `warmup: int = 1_000`, `batches: int = 10`. Pydantic
-  enforces `int` typing only.
+- **Where**: `ctkat/config.py:264-266` (`measurements: int = 100_000`,
+  `warmup: int = 1_000`, `batches: int = 10`). Pydantic enforces `int`
+  typing only.
 - **Symptom**: User types `measurements: 100000000` (extra zero or
   copy-paste mistake). Generated harness emits
   `static uint64_t cycles_buf[100000000];` and
@@ -1283,6 +1296,38 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v5 — line-reference verification pass (2026-05-26)
+
+- Reviewer re-walked every cited `path:line` against `main`
+  (commit `74f1eb4` at audit time).
+- Net change: **no new issues, no removed issues**. All 35 v4 findings
+  remain valid; the code matches their descriptions.
+- Line-reference corrections (file shrunk / functions moved up since v4
+  was written):
+  - **F1**: `cli.py:78-93` → `cli.py:78-94` (`_do_kat` is now 17 lines).
+  - **F4**: `dudect_runner.py:58-78` → `:40-87` (`parse_timing_csv`
+    starts at L40 now, not L58). `:24` → `:19` for the threshold const.
+  - **F5**: "around line 209" → guard at `:204`, assignment at `:210`
+    (clearer pointer to both halves of the branch).
+  - **F7**: `cli.py:752-757` → `:755-757` (the `kat` `@app.command()`
+    body starts at L753 now).
+  - **F9**: `config.py:163` → `:162-163` (function span); `:194` →
+    `:193-198` for `_default_dudect_cflags`.
+  - **R1 (real mis-cite)**: sk-leak branch setup keypair was cited at
+    L102, but L102 is actually the **ct-leak** branch's keypair. The
+    sk-leak branch's setup keypair is at **L157**. Both branches were
+    re-mapped to their actual line numbers. The reproducibility
+    conclusion is unchanged — both branches still call OS-entropy
+    `randombytes()` via PQClean.
+  - **T6**: `dudect_runner.py:36/38/70-78/102-105` → `:43/45/90-100/102-106`.
+  - **T8**: `config.py:268` → `:264-266` (all three fields cited together).
+- No drift in F2/F8/F10/F11/T7/T9/T10/T11 — those `path:line` cites were
+  already exact.
+- Why the drift: `dudect_runner.py` lost ~20 lines of comments between
+  v2 and v4 reviews; `config.py` lost ~5 lines around the dudect config
+  block. Neither was tracked when v4 was written because the audits ran
+  at slightly different commits.
 
 ### v4 — corrections after external review pass 4 (2026-05-26)
 

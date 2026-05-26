@@ -189,6 +189,10 @@ dudect:
   batches: 10                  # batch stability 분할 수
   clock: auto                  # auto (기본, 환경 감지) | monotonic | rdtsc (x86 only)
   seed: 0xC0FFEE               # null이면 매번 랜덤 시드 + 로그에 기록
+                               # ⚠ PQClean-backed KEM 하네스(template: kem)는
+                               # crypto_kem_keypair/enc가 OS entropy(getrandom)을
+                               # 쓰기 때문에 이 seed로 재현되지 않음. 자세한 건
+                               # "재현성 (seed)" 섹션 참고.
   threshold_warning: 4.5       # |t| 임계값
   threshold_fail: 10.0
   workdir: .
@@ -260,6 +264,31 @@ measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵
 | zero-cycle filter | parse 단계에서 cycles=0 (언더플로우 sentinel + ns-해상도 floor) drop. 1% 초과 시 warning |
 | percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. dudect 원본의 multi-cutoff scan 정신 따름 |
 | batch t-score는 비-cropping | 환경 안정성 측정용이라 raw 신호 유지 |
+
+### 재현성 (seed)
+
+`dudect.seed`는 **자동 생성 하네스의 xorshift64 PRNG**만 제어함. 구체적으로:
+
+| 부분 | seed로 재현됨? |
+|---|---|
+| `template: generic`의 `rand_bytes()`로 채우는 secret/public 버퍼 | ✅ 예 |
+| `toy_kem_ct_leak` 등 합성 KEM 하네스의 PRNG-기반 ct 생성 | ✅ 예 |
+| `template: kem`에서 PQClean `crypto_kem_keypair()` 호출 결과 (sk-leak 모드 setup + class 1 매 반복, ct-leak 모드 setup) | ❌ **아니오** |
+| `template: kem`에서 PQClean `crypto_kem_enc()` 호출 결과 (ct-leak 모드 setup + class 1 매 반복) | ❌ **아니오** |
+
+이유: PQClean의 `common/randombytes.c`는 `getrandom()` / `/dev/urandom`을
+직접 호출함 (OS entropy). yaml `seed`는 그 레이어에 닿지 않음.
+
+**실용적 함의**:
+- `dudect_raw_timings.csv` 두 run 사이 bit-identical diff를 기대하지 말 것 —
+  PQClean KEM 하네스에선 sk/ct 값 자체가 매번 달라짐.
+- |t| 절대값이 run 간 ±10-20% 흔들리는 게 정상 (OS 스케줄링/캐시 효과 포함).
+  PASS/WARNING/FAIL 상태와 자릿수만 비교.
+- bit-identical 재현이 필요하면 PQClean `randombytes`를 xorshift로 교체하는
+  링크-타임 interpose가 필요 (follow-up: known_issues.md R1 Option B).
+
+합성 하네스(`toy_dudect`, `toy_kem_ct_leak`)는 위 영향 없음 — 그 쪽은 모두
+xorshift PRNG로만 입력을 만든다.
 
 ### `dudect_summary.csv` 컬럼 reference
 
