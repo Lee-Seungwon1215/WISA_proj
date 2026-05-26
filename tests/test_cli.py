@@ -306,3 +306,287 @@ def test_cflags_banner_silent_when_dudect_disabled(capsys):
     cfg = cfg.model_copy(update={"dudect": cfg.dudect.model_copy(update={"enabled": False})})
     _print_cflags_banner(cfg)
     assert capsys.readouterr().out == ""
+
+
+# --- Bundle E-1: F1 KAT expected_min, F10 build expected_artifacts ----------
+
+
+def _kat_cfg(command: str, expected_min=None, pattern=None):
+    from ctkat.config import KatConfig
+    kwargs = dict(command=command)
+    if expected_min is not None:
+        kwargs["expected_min"] = expected_min
+    if pattern is not None:
+        kwargs["expected_pattern"] = pattern
+    return CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(command="true"),
+        kat=KatConfig(**kwargs),
+    )
+
+
+def test_kat_passes_when_count_meets_expected_min(tmp_path, capsys):
+    from ctkat.cli import _do_kat
+    cfg = _kat_cfg('echo "PASSED: 100 tests"', expected_min=50)
+    ok, count = _do_kat(cfg, tmp_path)
+    assert ok is True
+    assert count == 100
+    assert "KAT: PASS" in capsys.readouterr().out
+
+
+def test_kat_fails_when_count_below_expected_min(tmp_path, capsys):
+    from ctkat.cli import _do_kat
+    cfg = _kat_cfg('echo "PASSED: 3 tests"', expected_min=10)
+    ok, count = _do_kat(cfg, tmp_path)
+    assert ok is False
+    assert count == 3
+    out = capsys.readouterr().out
+    assert "KAT: FAIL" in out
+    assert "ran 3" in out
+
+
+def test_kat_fails_when_pattern_does_not_match(tmp_path, capsys):
+    from ctkat.cli import _do_kat
+    cfg = _kat_cfg('echo "everything is fine"', expected_min=1)
+    ok, count = _do_kat(cfg, tmp_path)
+    assert ok is False
+    assert count is None
+    assert "did not match" in capsys.readouterr().out
+
+
+def test_kat_unset_expected_min_warns_but_passes(tmp_path, capsys):
+    # F1 backward-compat: legacy yaml (no expected_min) still passes on rc=0
+    # but emits a one-time note pointing users at the new field.
+    from ctkat.cli import _do_kat
+    cfg = _kat_cfg('echo "hi"')  # no expected_min
+    ok, count = _do_kat(cfg, tmp_path)
+    assert ok is True
+    out = capsys.readouterr().out
+    assert "expected_min unset" in out
+    assert "KAT: PASS" in out
+
+
+def test_kat_no_op_still_passes_without_expected_min(tmp_path, capsys):
+    # F1: documenting the fail-open that motivates F1 — a no-op runner
+    # (`true`) still PASSes when expected_min is unset. This test pins
+    # current legacy behavior so a future change is intentional.
+    from ctkat.cli import _do_kat
+    cfg = _kat_cfg("true")  # no stdout at all
+    ok, _ = _do_kat(cfg, tmp_path)
+    assert ok is True
+
+
+def test_build_passes_when_expected_artifacts_present(tmp_path, capsys):
+    from ctkat.cli import _do_build
+    artifact = tmp_path / "out.bin"
+    cfg = CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(
+            command=f"touch {artifact.name}",
+            workdir=tmp_path,
+            expected_artifacts=[Path("out.bin")],
+        ),
+    )
+    assert _do_build(cfg, tmp_path) is True
+    assert "Build: PASS" in capsys.readouterr().out
+
+
+def test_build_fails_when_expected_artifact_missing(tmp_path, capsys):
+    from ctkat.cli import _do_build
+    cfg = CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(
+            command="true",  # no-op build
+            workdir=tmp_path,
+            expected_artifacts=[Path("never_produced.bin")],
+        ),
+    )
+    assert _do_build(cfg, tmp_path) is False
+    out = capsys.readouterr().out
+    assert "Build: FAIL" in out
+    assert "missing" in out
+
+
+def test_build_unset_expected_artifacts_warns(tmp_path, capsys):
+    # F10 backward-compat: legacy yaml (no expected_artifacts) still passes
+    # on rc=0 but a one-time note is emitted.
+    from ctkat.cli import _do_build
+    cfg = CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(command="true", workdir=tmp_path),
+    )
+    assert _do_build(cfg, tmp_path) is True
+    assert "expected_artifacts unset" in capsys.readouterr().out
+
+
+# --- Bundle E-1: F7/F8 subcommand exit code symmetry ----------------------
+
+
+def test_ct_subcommand_exits_2_when_ct_section_missing(tmp_path):
+    import textwrap
+    yaml_text = textwrap.dedent("""
+        project: {name: demo}
+        build: {command: "true"}
+    """).strip()
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    runner = CliRunner()
+    result = runner.invoke(app, ["ct", "--config", str(p)])
+    assert result.exit_code == 2
+    # F8 specifically: must NOT print bold-green PASS in this case.
+    assert "Constant-Time Check: PASS" not in result.stdout
+
+
+def test_kat_subcommand_exits_2_when_kat_section_missing(tmp_path):
+    import textwrap
+    yaml_text = textwrap.dedent("""
+        project: {name: demo}
+        build: {command: "true"}
+    """).strip()
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    runner = CliRunner()
+    result = runner.invoke(app, ["kat", "--config", str(p)])
+    # F7: previously this exited 0 — asymmetric with dudect subcommand.
+    assert result.exit_code == 2
+
+
+# --- Bundle E-1: F11 KAT FAIL pre-filters verdict to INCONCLUSIVE ----------
+
+
+def test_compute_verdicts_kat_fail_forces_inconclusive():
+    # All ct/dudect clean, but KAT failed — verdict must NOT be CLEAN.
+    ct = [_ct_clean("a"), _ct_clean("b")]
+    dud = [_dudect_result("a", "PASS"), _dudect_result("b", "PASS")]
+    vs = _compute_verdicts(ct, dud, kat_status="FAIL")
+    assert all(v.verdict == Verdict.INCONCLUSIVE for v in vs)
+
+
+def test_compute_verdicts_kat_pass_unchanged_from_legacy():
+    # Backward compat: kat_status="PASS" doesn't change the matrix outcome
+    # compared to legacy kat_status="NONE".
+    ct = [_ct_clean("a")]
+    dud = [_dudect_result("a", "FAIL", abs_t=15.0)]
+    vs_pass = _compute_verdicts(ct, dud, kat_status="PASS")
+    vs_none = _compute_verdicts(ct, dud, kat_status="NONE")
+    assert vs_pass[0].verdict == vs_none[0].verdict == Verdict.RISKY
+
+
+# --- Bundle E-1: verdict CSV gets kat_status / kat_count appended ---------
+
+
+def test_emit_verdicts_csv_includes_kat_columns(tmp_path):
+    from ctkat.cli import _emit_verdicts
+    from ctkat.verdict import HarnessVerdict
+    v = HarnessVerdict(
+        name="h1",
+        valgrind_status="PASS",
+        dudect_status="PASS",
+        verdict=Verdict.CLEAN,
+        valgrind_finding_count=0,
+        dudect_abs_t=1.5,
+    )
+    path = _emit_verdicts(
+        tmp_path, "proj", [v], kat_status="PASS", kat_count=100,
+    )
+    lines = path.read_text().splitlines()
+    header = lines[0].split(",")
+    assert header[6] == "verdict"          # awk $7 must stay stable
+    assert header[7] == "kat_status"       # appended at end
+    assert header[8] == "kat_count"
+    row = lines[1].split(",")
+    assert row[6] == "CLEAN"
+    assert row[7] == "PASS"
+    assert row[8] == "100"
+
+
+# --- Bundle E-1: T6 dudect runner uncaught paths → status=ERROR ---------
+
+
+def _stub_compile(name, **kwargs):
+    """Pretend the timing harness compiled successfully — what we want to
+    test is what happens when the binary itself misbehaves at run time,
+    not the compile path."""
+    from ctkat.timing_harness_generator import GeneratedTimingHarness
+    return GeneratedTimingHarness(
+        source_path=Path(f"/tmp/{name}.c"),
+        binary_path=Path(f"/tmp/{name}"),
+        compile_command="(stubbed)",
+    )
+
+
+def _dud_cfg_with_harness(timeout=600):
+    from ctkat.config import DudectHarnessConfig
+    return DudectConfig(
+        timeout=timeout,
+        clock="monotonic",
+        harnesses=[
+            DudectHarnessConfig(
+                name="h1",
+                template="generic",
+                function="foo",
+                return_type="int",
+                args=["x"],
+                buffers=[],
+            ),
+        ],
+    )
+
+
+def test_dudect_timeout_yields_error_status(tmp_path, monkeypatch, capsys):
+    import subprocess
+    import ctkat.cli as cli_module
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+
+    def fake_run(binary, workdir, timeout):
+        raise subprocess.TimeoutExpired(cmd=str(binary), timeout=timeout)
+    monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
+
+    dud = _dud_cfg_with_harness(timeout=1)
+    results = cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=False)
+    assert len(results) == 1
+    name, _, welch, _ = results[0]
+    assert name == "h1"
+    assert welch.status == "ERROR"
+    assert "ERROR" in capsys.readouterr().out
+
+
+def test_dudect_crash_yields_error_status(tmp_path, monkeypatch, capsys):
+    import ctkat.cli as cli_module
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+
+    def fake_run(binary, workdir, timeout):
+        raise RuntimeError(f"timing harness {binary} failed (rc=139)")
+    monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
+
+    dud = _dud_cfg_with_harness()
+    results = cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=False)
+    assert results[0][2].status == "ERROR"
+    assert "crashed" in capsys.readouterr().out
+
+
+def test_dudect_empty_output_yields_error_status(tmp_path, monkeypatch, capsys):
+    import ctkat.cli as cli_module
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+
+    def fake_run(binary, workdir, timeout):
+        raise ValueError("empty timing harness output")
+    monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
+
+    dud = _dud_cfg_with_harness()
+    results = cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=False)
+    assert results[0][2].status == "ERROR"
+    assert "unparseable" in capsys.readouterr().out
+
+
+def test_dudect_error_flows_to_inconclusive_verdict(tmp_path, monkeypatch):
+    import ctkat.cli as cli_module
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+    monkeypatch.setattr(
+        cli_module, "run_timing_harness",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("rc=139")),
+    )
+    dud = _dud_cfg_with_harness()
+    results = cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=False)
+    verdicts = _compute_verdicts([], results)
+    assert verdicts[0].verdict == Verdict.INCONCLUSIVE

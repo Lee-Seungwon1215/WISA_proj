@@ -1,7 +1,9 @@
 import csv
 import math
 import platform
+import re
 import secrets
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -90,6 +92,13 @@ def _print_cflags_banner(cfg: CtkatConfig) -> None:
 
 
 def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
+    """Run the user-supplied build command; verify expected artifacts exist.
+
+    Bundle E-1 (F10): exit-code 0 is not enough — `build.command: "true"`
+    will rc=0 forever and produce nothing. If `expected_artifacts` is set,
+    every listed path must exist after the command finishes. Unset →
+    legacy exit-code-only behavior with a one-time warning.
+    """
     console.print(f"[bold cyan]==> Build[/]: {cfg.build.command}")
     workdir = _resolve(cfg_dir, cfg.build.workdir)
     r = run_shell(cfg.build.command, workdir)
@@ -100,11 +109,41 @@ def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
         if r.stderr:
             console.print(r.stderr)
         return False
+    if cfg.build.expected_artifacts:
+        missing = [p for p in cfg.build.expected_artifacts
+                   if not _resolve(workdir, p).exists()]
+        if missing:
+            console.print(
+                "[bold red][CTKAT] Build: FAIL[/] — expected_artifacts "
+                f"missing: {[str(p) for p in missing]}"
+            )
+            return False
+    else:
+        console.print(
+            "[dim][CTKAT] note:[/dim] build.expected_artifacts unset — "
+            "build validated by exit code only. Set the field in yaml to "
+            "verify produced files exist (see known_issues F10)."
+        )
     console.print("[green][CTKAT] Build: PASS[/]")
     return True
 
 
-def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> bool:
+def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
+    """Run the user-supplied KAT command; verify reported test count.
+
+    Returns `(success, count)`. `count` is the integer captured by
+    `expected_pattern` (when the field was set and matched), else None.
+    `run()` consumes both — the count is propagated into the verdict CSV
+    as `kat_count` so a CI consumer can audit "how many vectors ran".
+
+    Bundle E-1 (F1): exit-code 0 is not enough — a no-op runner can rc=0
+    with zero tests executed and the framework would call that PASS. If
+    `expected_min` is set, the regex `expected_pattern` must match in
+    stdout and the captured count must be >= expected_min. Unset →
+    legacy exit-code-only behavior with a one-time warning. KAT stdout
+    is always echoed now (previously hidden on PASS) so the user sees
+    the count their `expected_min` is checking against.
+    """
     # Use raise rather than assert — `python -O` strips asserts and we don't
     # want a security tool's invariants disappearing in optimized builds.
     if cfg.kat is None:
@@ -112,15 +151,50 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> bool:
     console.print(f"[bold cyan]==> KAT[/]: {cfg.kat.command}")
     workdir = _resolve(cfg_dir, cfg.kat.workdir)
     r = run_shell(cfg.kat.command, workdir)
+    if r.stdout:
+        console.print(r.stdout)
     if not r.ok:
         console.print("[bold red][CTKAT] KAT: FAIL[/]")
-        if r.stdout:
-            console.print(r.stdout)
         if r.stderr:
             console.print(r.stderr)
-        return False
+        return False, None
+    # Best-effort count extraction even when expected_min is unset, so the
+    # verdict CSV's `kat_count` column carries useful diagnostic info
+    # whenever the pattern happens to match.
+    count: Optional[int] = None
+    m = re.search(cfg.kat.expected_pattern, r.stdout or "")
+    if m is not None:
+        try:
+            count = int(m.group(1))
+        except (IndexError, ValueError):
+            count = None
+    if cfg.kat.expected_min is not None:
+        if count is None:
+            console.print(
+                "[bold red][CTKAT] KAT: FAIL[/] — expected_pattern "
+                f"{cfg.kat.expected_pattern!r} did not match stdout. "
+                "Either the runner output format differs or KAT didn't "
+                "actually report any test count."
+            )
+            return False, None
+        if count < cfg.kat.expected_min:
+            console.print(
+                f"[bold red][CTKAT] KAT: FAIL[/] — ran {count} tests but "
+                f"expected_min={cfg.kat.expected_min}."
+            )
+            return False, count
+        console.print(
+            f"[green][CTKAT] KAT: PASS[/] ({count} tests, expected >= "
+            f"{cfg.kat.expected_min})"
+        )
+        return True, count
+    console.print(
+        "[dim][CTKAT] note:[/dim] kat.expected_min unset — KAT validated by "
+        "exit code only (a no-op runner passes). Set the field in yaml to "
+        "require a minimum test count (see known_issues F1)."
+    )
     console.print("[green][CTKAT] KAT: PASS[/]")
-    return True
+    return True, count
 
 
 def _build_generic_context(h: HarnessConfig, seed: int) -> dict:
@@ -350,6 +424,20 @@ def _dudect_context(
     return base
 
 
+def _error_welch() -> WelchResult:
+    """Sentinel WelchResult for a harness whose dudect stage couldn't
+    complete (timeout / crash / unparseable output / insufficient samples).
+    `status="ERROR"` flows through `_compute_verdicts` → verdict.combine()
+    → Verdict.INCONCLUSIVE so verdict CSV never silently downgrades a
+    broken run to CLEAN. Used by Bundle E-1 (T6) and Bundle F (S4)."""
+    return WelchResult(
+        n0=0, n1=0,
+        mean0=0.0, mean1=0.0, var0=0.0, var1=0.0,
+        t_score=0.0, abs_t_score=0.0,
+        status="ERROR",
+    )
+
+
 def _emit_dudect_report(
     project: str,
     out_dir: Path,
@@ -487,16 +575,50 @@ def _do_dudect(
             f"[bold cyan]==> Run timing harness[/]: [bold]{h.name}[/] "
             f"(this may take a while)"
         )
-        samples = run_timing_harness(gen.binary_path, workdir)
+        # Bundle E-1 (T6): wrap every uncaught failure mode of the timing
+        # harness (timeout, crash rc!=0, empty stdout, malformed CSV header)
+        # into a status=ERROR result instead of a raw Python traceback. The
+        # ERROR flows through _compute_verdicts → INCONCLUSIVE so the verdict
+        # CSV reflects "couldn't verify" rather than silently dropping the
+        # harness. Bundle F (S4) will preserve already-completed harnesses'
+        # data the same way; the `continue` here is the foundation.
+        try:
+            samples = run_timing_harness(
+                gen.binary_path, workdir, timeout=dud.timeout
+            )
+        except subprocess.TimeoutExpired:
+            console.print(
+                f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                f"[bold]{h.name}[/] exceeded timeout={dud.timeout}s. "
+                f"Bump dudect.timeout or reduce measurements. (T6)"
+            )
+            results.append((h.name, TimingSamples(), _error_welch(), []))
+            continue
+        except RuntimeError as e:
+            console.print(
+                f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                f"[bold]{h.name}[/] crashed: {e} (T6)"
+            )
+            results.append((h.name, TimingSamples(), _error_welch(), []))
+            continue
+        except ValueError as e:
+            console.print(
+                f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                f"[bold]{h.name}[/] output unparseable: {e} (T6)"
+            )
+            results.append((h.name, TimingSamples(), _error_welch(), []))
+            continue
 
         c0 = [c for cls, c in zip(samples.classes, samples.cycles) if cls == 0]
         c1 = [c for cls, c in zip(samples.classes, samples.cycles) if cls == 1]
         if len(c0) < 2 or len(c1) < 2:
             console.print(
-                f"[red]Not enough samples per class for {h.name}: "
-                f"n0={len(c0)} n1={len(c1)}[/]"
+                f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                f"[bold]{h.name}[/] insufficient samples per class: "
+                f"n0={len(c0)} n1={len(c1)} (T6)"
             )
-            raise typer.Exit(1)
+            results.append((h.name, samples, _error_welch(), []))
+            continue
 
         if crop:
             overall = welch_with_cropping(
@@ -623,8 +745,16 @@ def dudect(
 def _compute_verdicts(
     ct_results: List[Tuple[str, List[Finding]]],
     dudect_results: List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]],
+    kat_status: str = "NONE",
 ) -> List[HarnessVerdict]:
-    """Merge ct + dudect outcomes per harness name; missing side becomes NONE."""
+    """Merge ct + dudect outcomes per harness name; missing side becomes NONE.
+
+    Bundle E-1 (F11): `kat_status` is now part of every harness verdict —
+    a KAT FAIL flips the verdict to INCONCLUSIVE for every harness
+    regardless of ct/dudect outcomes, because the analyses ran on
+    functionally broken code. Defaults to NONE so callers that don't have
+    a KAT stage keep their existing behavior.
+    """
     ct_map = {name: findings for name, findings in ct_results}
     dud_map = {name: (r, batches) for name, _, r, batches in dudect_results}
 
@@ -650,16 +780,32 @@ def _compute_verdicts(
             name=name,
             valgrind_status=v_status,
             dudect_status=d_status,
-            verdict=combine(v_status, d_status),
+            verdict=combine(v_status, d_status, kat_status=kat_status),
             valgrind_finding_count=(len(findings) if findings else 0),
             dudect_abs_t=abs_t,
         ))
     return verdicts
 
 
-def _emit_verdicts(out_dir: Path, project: str, verdicts: List[HarnessVerdict]) -> Path:
+def _emit_verdicts(
+    out_dir: Path,
+    project: str,
+    verdicts: List[HarnessVerdict],
+    kat_status: str = "NONE",
+    kat_count: Optional[int] = None,
+) -> Path:
+    """Write the per-harness verdict CSV.
+
+    Bundle E-1 (F11): columns 8-9 (`kat_status`, `kat_count`) appended at
+    the end so the column positions 1-7 stay backward-compatible with
+    `scripts/run_phase4.sh` awk (which keys on `$7=verdict`). `kat_status`
+    is a pipeline-wide signal (every row gets the same value), but we
+    write it per-row so a single-file consumer can read it without
+    cross-referencing a separate manifest.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "ctkat_verdict.csv"
+    kat_count_str = "" if kat_count is None else str(kat_count)
     with open(path, "w", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow([
@@ -667,6 +813,7 @@ def _emit_verdicts(out_dir: Path, project: str, verdicts: List[HarnessVerdict]) 
             "valgrind_status", "valgrind_findings",
             "dudect_status", "dudect_abs_t",
             "verdict",
+            "kat_status", "kat_count",
         ])
         for v in verdicts:
             w.writerow([
@@ -675,6 +822,7 @@ def _emit_verdicts(out_dir: Path, project: str, verdicts: List[HarnessVerdict]) 
                 v.dudect_status,
                 _fmt(v.dudect_abs_t) if v.dudect_abs_t is not None else "",
                 v.verdict.value,
+                kat_status, kat_count_str,
             ])
     return path
 
@@ -712,8 +860,18 @@ def run(
     if not _do_build(cfg, cfg_dir):
         raise typer.Exit(1)
 
+    # KAT outcome feeds into the combined verdict: a KAT FAIL means the
+    # build artifact didn't pass functional correctness, so ct/dudect ran
+    # on incorrect code — their PASS is meaningless (F11). We track
+    # (status, count) here and forward both into _compute_verdicts /
+    # _emit_verdicts so verdict CSV reflects the full pipeline state even
+    # when --continue-on-kat-fail keeps the pipeline running.
+    kat_status = "NONE"
+    kat_count: Optional[int] = None
     if cfg.kat is not None:
-        if not _do_kat(cfg, cfg_dir) and not continue_on_kat_fail:
+        ok, kat_count = _do_kat(cfg, cfg_dir)
+        kat_status = "PASS" if ok else "FAIL"
+        if not ok and not continue_on_kat_fail:
             raise typer.Exit(1)
 
     ct_results: List[Tuple[str, List[Finding]]] = []
@@ -741,15 +899,27 @@ def run(
         any_dudect_warn = any(r.status == "WARNING" for _, _, r, _ in dud_results)
 
     # Combined verdict — only meaningful when at least one stage ran.
+    any_inconclusive = False
     if cfg.ct is not None or (cfg.dudect is not None and cfg.dudect.enabled):
-        verdicts = _compute_verdicts(ct_results, dud_results)
+        verdicts = _compute_verdicts(ct_results, dud_results, kat_status=kat_status)
         if verdicts:
             _print_verdicts(verdicts)
             out_dir = _resolve(cfg_dir, cfg.report.output_dir)
-            verdict_csv = _emit_verdicts(out_dir, cfg.project.name, verdicts)
+            verdict_csv = _emit_verdicts(
+                out_dir, cfg.project.name, verdicts,
+                kat_status=kat_status, kat_count=kat_count,
+            )
             console.print(f"[dim]Verdict CSV: {verdict_csv}[/]")
+            any_inconclusive = any(v.verdict == Verdict.INCONCLUSIVE for v in verdicts)
 
     if any_finding or any_dudect_fail:
+        raise typer.Exit(2)
+    if any_inconclusive:
+        # F11/F2/F5/T6: INCONCLUSIVE must be shell-distinguishable from
+        # PASS — a CI script gating on `verdict=CLEAN` should NOT merge
+        # code whose analysis couldn't complete. Same exit code as FAIL
+        # (decision documented in known_issues F3) so existing CI
+        # patterns (`run && deploy`) keep behaving sensibly.
         raise typer.Exit(2)
     if any_dudect_warn:
         # Same reasoning as the `dudect` subcommand: WARNING must be shell-
@@ -764,6 +934,13 @@ def ct(
     """Run only the constant-time check stage (skip build/KAT)."""
     cfg = load_config(config)
     cfg_dir = config.parent.resolve()
+    # F8: previously fell through `_do_generate({}) → _do_ct([]) → any_finding=False`
+    # and printed bold-green "PASS" with exit 0 when `ct:` section was absent.
+    # That actively misleads CI consumers. Match the dudect subcommand's
+    # Exit(2) and the new F7 fix for the kat subcommand.
+    if cfg.ct is None:
+        console.print("[red]No `ct` section in config.[/]")
+        raise typer.Exit(2)
     generated = _do_generate(cfg, cfg_dir)
     ct_results = _do_ct(cfg, cfg_dir, generated)
     any_finding = any(fs for _, fs in ct_results)
@@ -783,10 +960,15 @@ def kat(
     """Run only the KAT stage."""
     cfg = load_config(config)
     cfg_dir = config.parent.resolve()
+    # F7: previously printed a yellow note and exited 0 when `kat:` was
+    # absent — asymmetric with the dudect subcommand (which exits 2 in
+    # the same case) and a real fail-open in CI gating (`ctkat kat && deploy`
+    # would deploy even when KAT was never wired up).
     if cfg.kat is None:
-        console.print("[yellow]No `kat` section in config.[/]")
-        raise typer.Exit(0)
-    if not _do_kat(cfg, cfg_dir):
+        console.print("[red]No `kat` section in config.[/]")
+        raise typer.Exit(2)
+    ok, _ = _do_kat(cfg, cfg_dir)
+    if not ok:
         raise typer.Exit(1)
 
 

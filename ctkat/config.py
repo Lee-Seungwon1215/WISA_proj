@@ -56,6 +56,12 @@ class BuildConfig(BaseModel):
 
     command: str
     workdir: Path = Path(".")
+    # Paths the build is expected to produce (Bundle E-1, F10). Each path
+    # is resolved relative to `workdir` (or absolute). After `command`
+    # finishes with rc=0 we verify every entry exists; missing → build FAIL.
+    # Empty list (default) preserves prior exit-code-only behavior with a
+    # one-time per-run warning that the artifact check was skipped.
+    expected_artifacts: List[Path] = Field(default_factory=list)
 
 
 class KatConfig(BaseModel):
@@ -63,6 +69,16 @@ class KatConfig(BaseModel):
 
     command: str
     workdir: Path = Path(".")
+    # Minimum number of KAT vectors the user expects to have executed
+    # (Bundle E-1, F1). cli._do_kat greps the command's stdout with
+    # `expected_pattern` and compares the captured count against
+    # `expected_min`. Unset → KAT validates by exit code only (legacy
+    # behavior) and emits a one-time per-run warning. Set to 0 to
+    # opt out of the warning while keeping exit-code-only semantics.
+    expected_min: Optional[int] = None
+    # Regex (single capturing group with the count). Default matches
+    # PQClean / NIST KAT runner output like "PASSED: 100 tests".
+    expected_pattern: str = r"PASSED:?\s*(\d+)"
 
 
 class BufferSpec(BaseModel):
@@ -283,6 +299,12 @@ class DudectConfig(BaseModel):
     workdir: Path = Path(".")
     generated_dir: Path = Path("./_generated_dudect")
     harnesses: List[DudectHarnessConfig] = Field(default_factory=list)
+    # Per-harness wall-clock ceiling for the timing binary (Bundle E-1, T6).
+    # Reaching this raises a TimeoutExpired which `_do_dudect` catches and
+    # turns into status=ERROR / verdict=INCONCLUSIVE rather than letting a
+    # raw Python traceback escape. Bump for slow targets (e.g. QEMU + many
+    # measurements); shrink in CI to surface infinite-loop bugs faster.
+    timeout: int = 600
 
     @model_validator(mode="after")
     def _check_clock_arch(self) -> "DudectConfig":

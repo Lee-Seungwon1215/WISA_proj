@@ -6,6 +6,22 @@ project:
 build:
   command: "make clean && make"
   workdir: .
+  # Bundle E-1 (F10): list the binaries the build is expected to produce.
+  # If `make` rc=0 but a file is missing the build step still FAILs — the
+  # legacy exit-code-only check would have silently called this PASS.
+  expected_artifacts:
+    - build/harness_bad
+    - build/harness_safe
+
+# Bundle E-1 (F1): a tiny KAT to exercise the new expected_min field.
+# `echo` writes `PASSED: 1 vector` and expected_min=1 verifies the pattern
+# matched. This isn't a real KAT — it's here so run_phase4.sh exercises
+# the F1 code path end-to-end. Real users wire kat.command to their actual
+# NIST KAT runner and bump expected_min.
+kat:
+  command: 'echo "PASSED: 1 sanity vector"'
+  workdir: .
+  expected_min: 1
 
 ct:
   workdir: .

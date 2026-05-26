@@ -138,11 +138,19 @@ project:
 build:
   command: "make clean && make"
   workdir: .
+  expected_artifacts:          # (E-1) 빌드가 생산해야 할 파일들. rc=0인데
+    - build/harness_foo        # 빠진 게 있으면 build FAIL. unset 시 legacy
+    - build/harness_bar        # exit-code-only 동작 + 1회 warning.
 
 # Optional. 없으면 KAT 단계 스킵.
 kat:
   command: "./test_kat"
   workdir: .
+  expected_min: 100            # (E-1) stdout에서 expected_pattern으로 추출한
+                               # 테스트 개수가 이 값 이상이어야 PASS. unset 시
+                               # legacy exit-code-only 동작 + 1회 warning.
+  expected_pattern: 'PASSED:?\s*(\d+)'   # (E-1) capturing group 1개. 기본값은
+                               # PQClean/NIST KAT 출력 'PASSED: N tests'와 호환.
 
 # Optional. 없으면 ct 검사 스킵.
 ct:
@@ -195,6 +203,9 @@ dudect:
                                # "재현성 (seed)" 섹션 참고.
   threshold_warning: 4.5       # |t| 임계값
   threshold_fail: 10.0
+  timeout: 600                 # (E-1) per-harness wall-clock ceiling. 초과 시
+                               # TimeoutExpired → status=ERROR → verdict
+                               # INCONCLUSIVE. Python traceback이 나가지 않음.
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:
@@ -342,6 +353,21 @@ xorshift PRNG로만 입력을 만든다.
 컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
 diagnostic 컬럼으로 항상 끝에 append.
 
+### `ctkat_verdict.csv` 컬럼 reference (Bundle E-1 갱신)
+
+`run` 명령이 emit하는 통합 verdict CSV — CI의 canonical gate.
+
+| col | 이름 | 의미 |
+|---|---|---|
+| 1-2 | `project`, `harness` | 식별자 |
+| 3-4 | `valgrind_status`, `valgrind_findings` | PASS / FAIL / ERROR / NONE + finding 개수 |
+| 5-6 | `dudect_status`, `dudect_abs_t` | PASS / WARNING / FAIL / ERROR / NONE + max-cropped \|t\| |
+| 7 | `verdict` | CLEAN / LOW_RISK / SUSPECT / RISKY / CRITICAL / INCONCLUSIVE |
+| 8-9 | `kat_status`, `kat_count` | E-1: PASS / FAIL / NONE + (있다면) expected_pattern으로 추출한 테스트 개수 |
+
+컬럼 1-7은 backward-compat 보장 (`scripts/run_phase4.sh`의 awk `$7=verdict`
+호환). 8-9는 E-1에서 끝에 append.
+
 ### KEM leak axes — `sk` vs `ct` (Bundle D)
 
 `template: kem` 하니스에 `leak_target: sk` (default) 또는 `leak_target: ct` 설정.
@@ -399,8 +425,13 @@ python -m ctkat parse path/to/valgrind.log
 종료 코드:
 
 - `0` — 모든 검사 PASS
-- `2` — finding 발견 또는 dudect FAIL
+- `2` — finding 발견, dudect FAIL/WARNING, 또는 verdict=INCONCLUSIVE (E-1)
 - `1` — 빌드/KAT 실패 등 파이프라인 자체 에러
+
+`ctkat ct`, `ctkat kat`, `ctkat dudect` 단일 stage 서브커맨드는 yaml에
+해당 섹션이 없을 때 모두 **exit 2** — 이전엔 `ct`/`kat`가 PASS인 척
+exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
+패턴으로 안전하게 게이팅 가능.
 
 ---
 
@@ -575,8 +606,12 @@ ctkat은 `build.command`, `kat.command` 같은 **사용자가 직접 적은 셸 
 | PASS / NONE | FAIL | **RISKY** | 통계적으로 명확한 차이, 단 구조는 깨끗 (microarch leak 또는 환경) |
 | FAIL | WARNING | **RISKY** | 구조 + 약한 통계 |
 | FAIL | FAIL | **CRITICAL** | 양쪽 다 명확 — 우선 수정 대상 |
+| ERROR (어느 한쪽) | * | **INCONCLUSIVE** | 한 stage가 완료되지 못함 (valgrind crash F2, manual binary sentinel 미흡 F5, dudect harness timeout/crash T6) — verdict 신뢰 불가 |
+| * | * + KAT FAIL | **INCONCLUSIVE** | KAT 자체가 실패했으므로 분석은 잘못된 코드 위에서 돌아간 셈. `--continue-on-kat-fail`로 강행했을 때도 verdict는 INCONCLUSIVE로 떨어짐 (F11) |
 
 이 라벨은 finding의 per-row `Severity` (HIGH/MEDIUM/LOW)와 의도적으로 단어가 다름 — finding 위험도와 통합 verdict를 시각적으로 구분하기 위함.
+
+INCONCLUSIVE는 "안전하지 않다"는 뜻이 아니라 **"이 도구로는 판단할 수 없다"**는 뜻 — 사용자는 원인 (timeout? sentinel 누락? KAT FAIL?) 을 console 출력에서 확인하고 yaml/build를 고친 뒤 재실행해야 한다. CI는 INCONCLUSIVE를 FAIL과 동일하게 (exit 2) 취급한다.
 
 ---
 

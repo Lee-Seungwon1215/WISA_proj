@@ -10,7 +10,10 @@ commits and PRs.
 - **Resolved so far**:
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
-  Pipeline progress: 0 fully closed, 2 partial. Bundle E-1 next.
+  - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
+    INCONCLUSIVE verdict state + per-stage exit-code contract).
+  Pipeline progress: 7 fully closed (F1/F3/F7/F8/F10/F11/T6), 2 partial
+  (R1, F9). Bundle E-2 next (analysis-stage fail-open: F2, F5).
 - **Audit sources**:
   - Internal review by Bundle A–D author (focused on dudect pipeline)
   - External independent reviewer, pass 1 (whole-pipeline audit)
@@ -61,6 +64,11 @@ The verdict CSV is intended to be the canonical CI gate; silent
 fail-open in any tier-1 spot makes that gate unreliable.
 
 ### F1: KAT validates by exit code only 🚨
+
+**Status: RESOLVED in Bundle E-1.** `_do_kat` now greps stdout with
+`kat.expected_pattern` (default matches PQClean/NIST output) and compares
+against `kat.expected_min`. Unset → legacy exit-code-only behavior with a
+one-time warning. Stdout always echoed (previously hidden on PASS).
 
 - **Where**: `ctkat/builder.py:17-30` (`run_shell`),
   `ctkat/cli.py:78-94` (`_do_kat`).
@@ -132,6 +140,10 @@ fail-open in any tier-1 spot makes that gate unreliable.
 
 ### F3: No verdict state for "checked but inconclusive" 🚨
 
+**Status: RESOLVED in Bundle E-1.** `Verdict.INCONCLUSIVE` enum + matrix
+entries for any ERROR pair (and KAT FAIL pre-filter via F11). CI exit code
+2 (same as FAIL) so existing `&& deploy` gates keep working.
+
 - **Where**: `ctkat/verdict.py:20-26` (`Verdict` enum),
   `ctkat/verdict.py:52-69` (`_MATRIX`).
 - **Symptom**: The five existing states (CLEAN / LOW_RISK / SUSPECT /
@@ -191,6 +203,9 @@ fail-open in any tier-1 spot makes that gate unreliable.
 
 ### F7: `ctkat kat` subcommand exits 0 when no `kat` section in config 🚨
 
+**Status: RESOLVED in Bundle E-1.** `ctkat kat` now raises `Exit(2)` —
+symmetric with `ctkat ct` (F8) and `ctkat dudect`.
+
 - **Where**: `ctkat/cli.py:755-757` (kat subcommand, inside the
   `@app.command()` kat function at `:748-759`). Concretely:
   ```python
@@ -227,6 +242,10 @@ fail-open in any tier-1 spot makes that gate unreliable.
 - **Suggested bundle**: E.
 
 ### F8: `ctkat ct` subcommand reports "PASS" when no `ct` section 🚨
+
+**Status: RESOLVED in Bundle E-1.** Early guard added; subcommand now
+exits 2 with a red "No `ct` section in config." message instead of
+bold-green PASS.
 
 - **Where**: `ctkat/cli.py:729-745` (ct subcommand). No `cfg.ct is None`
   guard at all; control flow runs through `_do_generate` (which
@@ -322,6 +341,10 @@ Open: #3 (yaml `shared_cflags` convenience) and #4 (multi-target matrix).
 
 ### F10: build stage validates by exit code only 🚨
 
+**Status: RESOLVED in Bundle E-1.** `build.expected_artifacts: List[Path]`
+added; `_do_build` now verifies every listed path exists after rc=0.
+Unset → legacy behavior + one-time warning.
+
 - **Where**: `ctkat/cli.py:63-75` (`_do_build`). Effectively the same
   shape as F1 but at the build stage.
 - **Symptom**: `cfg.build.command` is run via `run_shell`; PASS iff
@@ -348,6 +371,11 @@ Open: #3 (yaml `shared_cflags` convenience) and #4 (multi-target matrix).
 - **Suggested bundle**: E.
 
 ### F11: `--continue-on-kat-fail` makes KAT FAIL invisible in verdict CSV 🚨
+
+**Status: RESOLVED in Bundle E-1.** `kat_status` propagated through
+`_compute_verdicts`; KAT FAIL pre-filters every harness verdict to
+INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
+(appended at end, awk `$7=verdict` position unchanged).
 
 - **Where**:
   - `ctkat/cli.py:684-685` — the `--continue-on-kat-fail` flag swallows
@@ -846,6 +874,11 @@ naturally co-targets T1 (template dedup).
   R1 Option B).
 
 ### T6: dudect harness uncaught exceptions — Python traceback (4 paths) 🟢→🟡
+
+**Status: RESOLVED in Bundle E-1.** `dudect.timeout` yaml field added.
+`_do_dudect` wraps all four paths (TimeoutExpired, RuntimeError rc!=0,
+ValueError empty stdout, ValueError malformed CSV) → `status="ERROR"`
+result, propagates to verdict INCONCLUSIVE. No raw Python traceback.
 
 - **Where**:
   - `ctkat/dudect_runner.py:43` — `raise ValueError("empty timing harness output")`
