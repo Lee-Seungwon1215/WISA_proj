@@ -254,6 +254,89 @@ def test_kem_fo_mode_measured_dec_uses_sk_fixed():
     assert "crypto_kem_dec(ss, ct, sk_fixed)" in out
 
 
+# --- Bundle M (F13/F14): sk-leak measures normal path, warm balances ----
+
+
+def _strip_comments(src: str) -> str:
+    """Return source with /*...*/ and // line comments removed, so a
+    `substring not in code` assertion isn't confused by historical
+    breadcrumbs left inside doc comments. Crude but enough for these tests
+    — the harness template uses C99 comment styles only."""
+    import re as _re
+    src = _re.sub(r"/\*.*?\*/", "", src, flags=_re.DOTALL)
+    src = _re.sub(r"//.*", "", src)
+    return src
+
+
+def test_kem_sk_leak_uses_valid_ct_for_both_classes(_kem_ctx=_kem_ctx):
+    """F13 regression: sk-leak previously called `rand_bytes(ct, ...)` for
+    both classes → invalid ct → dec() took the FO fallback path every
+    iteration. The README advertises sk-leak as a *normal-path* secret-
+    dependence probe; the fix is to generate a valid ct under each
+    class's pk."""
+    out = render_timing_harness("kem", _kem_ctx(leak_target="sk"))
+    code = _strip_comments(out)
+    # Both classes call enc() — class 0 with pk_fixed, class 1 with pk_random.
+    assert "crypto_kem_enc(ct, ss, pk_fixed)" in code
+    assert "crypto_kem_enc(ct, ss, pk_random)" in code
+    # The old rand_bytes(ct, ...) measurement step must be gone.
+    assert "rand_bytes(ct, sizeof(ct))" not in code
+
+
+def _extract_warmup_block(code: str) -> str:
+    """Return the C source spanning from the warmup `for(...CTKAT_WARMUP...)`
+    line up to the start of the measurement `for(...CTKAT_MEASUREMENTS...)`
+    loop. Used by warmup-assertion tests."""
+    warmup_idx = code.find("i < CTKAT_WARMUP")
+    measure_idx = code.find("i < CTKAT_MEASUREMENTS")
+    assert 0 < warmup_idx < measure_idx, (
+        f"could not locate distinct warmup/measurement loops: "
+        f"warmup={warmup_idx}, measurement={measure_idx}"
+    )
+    return code[warmup_idx:measure_idx]
+
+
+def test_kem_sk_leak_warmup_uses_valid_ct(_kem_ctx=_kem_ctx):
+    """F14 regression: sk-leak warmup also burnt in with random ct (FO
+    path) while the measured loop now exercises the normal path. The
+    warmup must match — a valid ct under sk_fixed."""
+    out = render_timing_harness("kem", _kem_ctx(leak_target="sk"))
+    code = _strip_comments(out)
+    warmup_block = _extract_warmup_block(code)
+    # The warm loop body must NOT contain rand_bytes(ct, ...).
+    assert "rand_bytes(ct," not in warmup_block
+
+
+def test_kem_macro_warm_and_timed_dec_use_identical_args(_kem_ctx=_kem_ctx):
+    """F14 regression: the macro's warm dec used a separate `ct_warm`
+    buffer filled with random bytes, regardless of what the measured dec
+    was about to do. Rewritten to call dec() on the SAME (ct, sk) pair
+    twice — first for cache/branch warm, then timed — so the timed region
+    actually starts in the microarch state of "just ran this exact path"."""
+    for mode in ("sk", "ct", "fo"):
+        out = render_timing_harness("kem", _kem_ctx(leak_target=mode))
+        code = _strip_comments(out)
+        # No live ct_warm declaration or use anywhere — it was renamed away.
+        # We tolerate the substring in comments (already filtered).
+        assert "ct_warm" not in code, f"{mode}: ct_warm survives as code, not just comment"
+        # Macro now emits two identical dec calls back-to-back with the
+        # same (ct, sk) args. Count occurrences of the timed-call shape
+        # `crypto_kem_dec(ss, <ct_expr>, <sk_expr>)` inside the
+        # measurement loop — must be ≥ 2 per iteration.
+        assert code.count("crypto_kem_dec(ss,") >= 2
+
+
+def test_kem_ct_leak_warmup_uses_fixed_valid_ct(_kem_ctx=_kem_ctx):
+    """F14 regression: ct-leak warmup used to randomize ct_warm (FO path)
+    even though the measured loop runs the normal path under valid ct.
+    The fix uses ct_fixed for warmup so burn-in matches measurement."""
+    out = render_timing_harness("kem", _kem_ctx(leak_target="ct"))
+    code = _strip_comments(out)
+    warmup_block = _extract_warmup_block(code)
+    assert "ct_fixed" in warmup_block
+    assert "rand_bytes(" not in warmup_block
+
+
 def test_kem_fo_mode_keypair_called_once_at_setup():
     out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
     # Exactly one actual call (prefix filters out the comment reference

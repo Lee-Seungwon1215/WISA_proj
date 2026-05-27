@@ -6,11 +6,11 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-27 (v8 — Bundle L hot-fixes landed)
-- **Pipeline progress**: **40 fully closed** (Bundle 0~L), **1 deferred**
-  (F9 #4, out of scope per spec), **12 still open** (F13, F14, T12, T13,
-  T15, T16, T17, T18, T19, T20, T21, T22).
-- **Resolved so far** (40/41 prior closed except deferred F9 #4):
+- **Last updated**: 2026-05-27 (v9 — Bundle M landed: sk-leak/cache-balance semantics)
+- **Pipeline progress**: **42 fully closed** (Bundle 0~M), **1 deferred**
+  (F9 #4, out of scope per spec), **10 still open** (T12, T13, T15, T16,
+  T17, T18, T19, T20, T21, T22).
+- **Resolved so far** (42/43 prior closed except deferred F9 #4):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
@@ -36,6 +36,9 @@ commits and PRs.
     NameError, shared_cflags `model_fields_set`, seed=0 거부, CLI
     `model_validate` 재검증, KAT regex 앵커 + `re.MULTILINE`, yaml
     `-fno-lto` 추가 + examples lint).
+  - **F13, F14** — Bundle M (sk-leak 정상 dec path 측정 + cache-balance
+    warm step이 측정 path와 일치하도록 매크로 재설계). README §"KEM
+    leak axes" 갱신 — 광고와 실측이 비로소 정합.
   - F9 #4 — deferred future work (multi-cflags matrix; out of scope per
     spec, requires new CSV schema + matrix-aware verdict computation).
 - **Audit sources**:
@@ -501,7 +504,17 @@ smoke test 박혀 회귀 방어.
 
 ### F13: sk-leak 모드가 정상 dec 경로 대신 FO rejection만 측정 🚨
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle M.** sk-leak brunch가 양 class 모두
+`crypto_kem_enc()`로 valid ct 생성하도록 재설계:
+- cls=0 → `crypto_kem_enc(ct, ss, pk_fixed)` (sk_fixed에 매칭된 valid ct)
+- cls=1 → `crypto_kem_keypair(pk_random, sk_random)` + `crypto_kem_enc(ct,
+  ss, pk_random)` (sk_random에 매칭된 valid ct)
+
+양 class 모두 정상 dec path를 측정 — sk-content dependent timing이 광고
+대로 측정됨. 의미적 invariant 회귀 테스트 3개 (`test_kem_sk_leak_uses_valid_ct_for_both_classes`,
+`test_kem_sk_leak_warmup_uses_valid_ct`, `test_kem_macro_warm_and_timed_dec_use_identical_args`)
+박힘. README §"KEM leak axes" 표 갱신 (측정 path 컬럼 추가) + Bundle M
+audit fix 단락 인정.
 
 - **Where**: `ctkat/templates/timing_kem.c.j2:230-233` warmup,
   `:251-255` measurement (sk-leak brunch).
@@ -531,7 +544,20 @@ smoke test 박혀 회귀 방어.
 
 ### F14: emit_kem_measurement cache-balance가 ct-leak/fo-leak에서 실제 balance 안 됨 🟡
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle M.** 매크로 warm step을 `rand_bytes(ct_warm) +
+dec(ct_warm)` → `dec(ct_expr, sk_expr)` 로 교체. warm dec와 timed dec가
+완전히 동일한 (ct, sk) pair를 사용 → cache state가 실제로 "방금 이 path를
+돌고 왔다" 상태. ct_warm 변수 삭제 (사용처 없음).
+
+warmup loop도 mode-aware로 정정 (이건 F14의 logical extension):
+- sk-leak: 단일 valid ct를 enc로 만든 뒤 dec loop (정상 path)
+- ct-leak: ct_fixed로 dec loop (정상 path)
+- fo-leak: random ct로 dec loop (FO path — measurement loop가 mixed라
+  burn-in은 longer-running path로 잡는 게 유리)
+
+회귀 테스트 `test_kem_macro_warm_and_timed_dec_use_identical_args` +
+`test_kem_ct_leak_warmup_uses_fixed_valid_ct` + `test_kem_sk_leak_warmup_uses_valid_ct`
+박힘. README §"KEM leak axes"에 cache-balance 정정 내용 명시.
 
 - **Where**: `ctkat/templates/timing_kem.c.j2:10-11`
   (`emit_kem_measurement` Bundle H2/T1 매크로).
@@ -2117,6 +2143,37 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v9 — Bundle M: sk-leak/cache-balance semantics (2026-05-27)
+
+Bundle L 후속 — v6 audit이 가장 강하게 꼬집었던 광고-실측 불일치 처리.
+F13/F14 묶음 한 commit, ~80 LoC (C 템플릿 + Python 테스트 + README).
+
+**무엇이 닫혔나**:
+- **F13**: sk-leak brunch가 양 class에서 `crypto_kem_enc()`로 valid ct를
+  생성하도록 재설계. README의 "정상 dec path의 sk-dependent timing"
+  주장과 실측이 비로소 정합. cls=0은 enc(pk_fixed), cls=1은 keypair +
+  enc(pk_random) — 각자의 sk가 자기 pk로 만든 valid ct를 측정.
+- **F14**: `emit_kem_measurement` 매크로의 warm step을 `dec(ct_expr,
+  sk_expr)` 로 교체. measurement와 동일 path warm → cache state 정직.
+  ct_warm 버퍼 폐기. ct-leak/sk-leak warmup loop도 valid ct 사용. fo-leak
+  warmup은 random ct 유지 (mixed-path 측정의 burn-in 정책).
+
+**테스트**: 237 → **241 passed**. 새 회귀 방어 4개:
+- `test_kem_sk_leak_uses_valid_ct_for_both_classes` — F13 의미 핵심
+- `test_kem_sk_leak_warmup_uses_valid_ct` — F14 sk-leak 적용
+- `test_kem_macro_warm_and_timed_dec_use_identical_args` — F14 매크로 invariant
+- `test_kem_ct_leak_warmup_uses_fixed_valid_ct` — F14 ct-leak 적용
+
+**측정값 변동 가능성**: sk-leak 결과가 Bundle M 이전과 달라짐
+(FO path → 정상 path). 기존 `dudect_summary.csv` baseline 비교 불가.
+README §KEM leak axes에 caveat 명시. 별도 baselines/ 디렉토리는 R3
+시스템 노이즈로 어차피 변동성 ±10-20%이라 일괄 갱신 불필요.
+
+**남은 OPEN 10개**:
+- 다음 Bundle N (subprocess/encoding hygiene): T12, T18, T21
+- Bundle O (T7 follow-up validator): T20
+- Bundle P (polish): T13, T22, T17, T16, T15, T19
 
 ### v8 — Bundle L hot-fixes (2026-05-27)
 

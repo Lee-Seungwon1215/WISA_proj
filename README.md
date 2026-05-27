@@ -449,15 +449,32 @@ Bundle G (S3) 효과 크기. 모두 항상 끝에 append되므로 awk-by-positio
 컬럼 1-7은 backward-compat 보장 (`scripts/run_phase4.sh`의 awk `$7=verdict`
 호환). 8-9는 E-1에서 끝에 append.
 
-### KEM leak axes — `sk` vs `ct` (Bundle D)
+### KEM leak axes — `sk` / `ct` / `fo` (Bundle D, K, M)
 
-`template: kem` 하니스에 `leak_target: sk` (default) 또는 `leak_target: ct` 설정.
-한 KEM 구현을 양 축으로 검증하려면 yaml에 하니스 2개 박음.
+`template: kem` 하니스에 `leak_target: sk` (default), `leak_target: ct`,
+또는 `leak_target: fo` (Bundle K) 설정. 세 모드는 직교 axis라 한 KEM
+구현을 종합 검증하려면 yaml에 하니스 3개 박음.
 
-| `leak_target` | 고정 | 변화 | 잡는 leak |
-|---|---|---|---|
-| `sk` (기본) | ct random 양 class | class 0 fixed sk vs class 1 fresh sk | sk-content dependent timing (sk-indexed branch/lookup) |
-| `ct` | sk fixed 양 class | class 0 fixed ct vs class 1 fresh ct via `enc()` | ct-content dependent timing (ct-indexed branch/lookup) |
+| `leak_target` | 측정 path | 고정 | 변화 | 잡는 leak |
+|---|---|---|---|---|
+| `sk` (기본) | **정상 dec** (양 class 모두 valid ct를 `enc()`로 생성) | ct는 각 class의 sk에 매칭된 valid ct | class 0 sk_fixed vs class 1 fresh sk_random | 정상 dec 경로에서 sk-content dependent timing (sk-indexed branch/lookup) |
+| `ct` | **정상 dec** (valid ct만 사용) | sk fixed 양 class | class 0 fixed ct vs class 1 fresh ct via `enc()` | 정상 dec 경로에서 ct-content dependent timing |
+| `fo` | **정상 ↔ FO** 비교 | sk fixed 양 class | class 0 valid ct (`enc()`) vs class 1 random/invalid ct | 정상 path와 FO fallback path 사이의 timing 차이 (rejection-side leak) |
+
+**Bundle M (F13/F14 audit fix)**: 이전 버전의 sk-leak은 양 class 모두
+`rand_bytes(ct, ...)`로 ct를 random bytes로 채워 dec()가 매번 FO
+fallback 경로로 떨어졌음 — 즉 README가 광고했던 "정상 dec 경로의
+sk-dependent timing"이 아니라 실제로는 "FO rejection 경로의 sk-dependent
+timing"을 측정한 셈. Bundle K에서 `leak_target: fo`를 별도로 추가하면서
+sk-leak의 의미를 재점검했어야 했는데 빠뜨렸음. Bundle M에서 양 class에
+valid ct를 `enc()`로 생성하도록 수정 → sk-leak이 진짜 정상 path를 측정.
+Bundle M 이전 결과 (`dudect_summary.csv`의 |t| 값) 와 비교하려면 측정
+경로 자체가 달라졌음을 감안할 것.
+
+매크로의 cache-balance warm step도 같은 family로 수정 (F14): 이전엔
+warm dec가 항상 random ct로 호출되어 FO path로 burn-in 됐는데, 측정 dec
+와 동일 (ct, sk) pair로 warm해서 cache state가 실제로 "just-ran-the-
+measured-path"가 되도록 정정.
 
 ### ⚠️ ct-leak 모드의 본질적 한계
 
