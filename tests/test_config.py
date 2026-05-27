@@ -403,6 +403,113 @@ def test_harness_name_pattern_rejects_shell_metas(tmp_path: Path):
         load_config(_write(tmp_path, body))
 
 
+# --- Bundle O (T20, T7 follow-up): yaml identifier validators -----------
+
+
+def test_harness_header_with_quote_rejected(tmp_path: Path):
+    """T20: header lands inside `#include "{value}"` in generated C.
+    A quote character would let the yaml break out of the include directive
+    and inject arbitrary additional `#include` lines into the harness /
+    coverage probe."""
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: \'foo.h"\\n#include "/etc/passwd\'}\n'
+    )
+    with pytest.raises(ValidationError, match=r"header"):
+        load_config(_write(tmp_path, body))
+
+
+def test_harness_extra_headers_with_newline_rejected(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: api.h, extra_headers: ["a.h\\nMALICIOUS"]}\n'
+    )
+    with pytest.raises(ValidationError, match=r"extra_headers"):
+        load_config(_write(tmp_path, body))
+
+
+def test_harness_prefix_must_be_valid_c_identifier(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: api.h, prefix: "1bad_start"}\n'
+    )
+    with pytest.raises(ValidationError, match=r"prefix"):
+        load_config(_write(tmp_path, body))
+
+
+def test_harness_prefix_empty_is_allowed(tmp_path: Path):
+    # Default value path: empty prefix must keep working (toy_password etc.).
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: api.h}\n'
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.harnesses[0].prefix == ""
+
+
+def test_harness_pqclean_prefix_passes(tmp_path: Path):
+    # Real-world prefix used by examples/pqc_mlkem768.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: api.h, prefix: "PQCLEAN_MLKEM768_CLEAN_"}\n'
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.harnesses[0].prefix == "PQCLEAN_MLKEM768_CLEAN_"
+
+
+def test_harness_function_must_be_c_identifier(tmp_path: Path):
+    # T7 follow-up: function name flows into Jinja contexts as a C symbol.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: generic, function: "system(\\"rm -rf /\\")"}\n'
+    )
+    with pytest.raises(ValidationError, match=r"function"):
+        load_config(_write(tmp_path, body))
+
+
+def test_dudect_harness_header_with_quote_rejected(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: \'evil.h"\'}\n'
+    )
+    with pytest.raises(ValidationError, match=r"header"):
+        load_config(_write(tmp_path, body))
+
+
+def test_harness_subdir_header_allowed(tmp_path: Path):
+    # Power users put headers in subdirs; pattern must accept `/`.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        '    - {name: h, template: kem, header: "pqclean/include/api.h"}\n'
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.harnesses[0].header == "pqclean/include/api.h"
+
+
 def test_dudect_measurements_upper_bound_rejected(tmp_path: Path):
     # T8: typo'd 100,000,000 → silently allocated 800MB BSS pre-H2.
     body = (

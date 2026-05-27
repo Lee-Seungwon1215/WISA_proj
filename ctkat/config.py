@@ -1,4 +1,5 @@
 import platform
+import re
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -6,6 +7,70 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .qemu_detect import detect_qemu_emulation
+
+
+# Bundle O (T20, T7 follow-up): yaml fields that flow into generated C
+# source or Jinja contexts. Validators run at config-load time so a
+# malicious / typo'd value surfaces as a clear ValidationError instead of
+# either (a) a confusing compile error 200 lines later or (b) — worse —
+# a successfully-compiled probe / harness that imports the wrong file.
+#
+# `_HEADER_PATTERN` allows: alphanumerics, `_`, `.`, `/`, `-`, `+`. Covers
+# every real header name we've seen (`api.h`, `subdir/foo.h`,
+# `libc++/v1/x.hpp`, `gmp-6.h`) while excluding the quote/backslash/newline
+# characters that would let a yaml value break out of `#include "..."`.
+_HEADER_PATTERN = re.compile(r"^[A-Za-z0-9_./+-]+$")
+# C identifier — function names, prefixes.
+_C_IDENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# C type expression — allows pointers, `const`, `unsigned`, multi-token
+# types, scoped names (`std::byte`). Deliberately loose: the user's
+# generated C will compile-fail noisily if the type is nonsense, but a
+# value with quotes / semicolons / braces is rejected up front.
+_C_TYPE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_:* ]*$")
+
+
+def _check_yaml_identifiers(
+    where: str,
+    *,
+    prefix: Optional[str] = None,
+    header: Optional[str] = None,
+    extra_headers: Optional[List[str]] = None,
+    function: Optional[str] = None,
+    return_type: Optional[str] = None,
+) -> None:
+    """Apply Bundle O regex checks to the subset of fields present on the
+    caller. Empty `prefix` is allowed (default). Other Optional fields are
+    skipped when None."""
+    if prefix is not None and prefix != "" and not _C_IDENT_PATTERN.match(prefix):
+        raise ValueError(
+            f"{where}: prefix={prefix!r} must be empty or a valid C "
+            "identifier (matches "
+            f"{_C_IDENT_PATTERN.pattern!r})"
+        )
+    if header is not None and not _HEADER_PATTERN.match(header):
+        raise ValueError(
+            f"{where}: header={header!r} contains characters that would "
+            "break the generated `#include` directive "
+            f"(allowed: {_HEADER_PATTERN.pattern!r})"
+        )
+    if extra_headers is not None:
+        for h in extra_headers:
+            if not _HEADER_PATTERN.match(h):
+                raise ValueError(
+                    f"{where}: extra_headers entry {h!r} contains characters "
+                    "that would break the generated `#include` directive "
+                    f"(allowed: {_HEADER_PATTERN.pattern!r})"
+                )
+    if function is not None and not _C_IDENT_PATTERN.match(function):
+        raise ValueError(
+            f"{where}: function={function!r} must be a valid C identifier "
+            f"(matches {_C_IDENT_PATTERN.pattern!r})"
+        )
+    if return_type is not None and not _C_TYPE_PATTERN.match(return_type):
+        raise ValueError(
+            f"{where}: return_type={return_type!r} must look like a C "
+            f"type expression (matches {_C_TYPE_PATTERN.pattern!r})"
+        )
 
 
 # CPU architectures that support the x86 `rdtsc`/`rdtscp` instructions used
@@ -159,7 +224,15 @@ class HarnessConfig(BaseModel):
     template: Optional[Literal["generic", "kem", "sign"]] = None
 
     # Shared by all auto templates:
-    extra_headers: List[str] = Field(default_factory=list)
+    # Bundle O (T20, T7 follow-up): header / extra_headers go into
+    # generated C via `#include "{value}"`. Quote/newline characters would
+    # let an untrusted yaml break out of the include directive (CVE-style
+    # C-source injection). Restrict to filename-safe characters that cover
+    # real-world header names (`api.h`, `pqclean/include/foo.h`,
+    # `libc++/v1/x.hpp`).
+    extra_headers: List[str] = Field(
+        default_factory=list,
+    )
     include_dirs: List[Path] = Field(default_factory=list)
     sources: List[Path] = Field(default_factory=list)
     cflags: Optional[List[str]] = None  # None => inherit from CtConfig.cflags
@@ -175,6 +248,10 @@ class HarnessConfig(BaseModel):
     # Symbol prefix prepended to crypto_kem_*/crypto_sign_* identifiers and
     # to CRYPTO_* macros. Empty string by default; set to e.g.
     # "PQCLEAN_MLKEM768_CLEAN_" for PQClean-style namespaced builds.
+    # T20/T7: must be empty or a valid C identifier — anything that isn't
+    # a legal identifier prefix would either break the generated code
+    # noisily (best case) or smuggle non-identifier tokens into the macro
+    # / function-name interpolations (worst case).
     prefix: str = ""
     # If set, only these byte ranges of `sk` are tainted (instead of the
     # whole buffer). Lets us avoid false positives from public material
@@ -200,6 +277,16 @@ class HarnessConfig(BaseModel):
             raise ValueError(
                 f"harness {self.name!r}: template={self.template} requires 'header'"
             )
+        # Bundle O (T20, T7 follow-up): enforce the regex policy that was
+        # left as Bundle H2 follow-up after the `name` field landed.
+        _check_yaml_identifiers(
+            f"ct harness {self.name!r}",
+            prefix=self.prefix,
+            header=self.header,
+            extra_headers=self.extra_headers,
+            function=self.function,
+            return_type=self.return_type,
+        )
         return self
 
 
@@ -347,6 +434,14 @@ class DudectHarnessConfig(BaseModel):
                 f"dudect harness {self.name!r}: leak_target={self.leak_target!r} "
                 "only valid for template=kem"
             )
+        _check_yaml_identifiers(
+            f"dudect harness {self.name!r}",
+            prefix=self.prefix,
+            header=self.header,
+            extra_headers=self.extra_headers,
+            function=self.function,
+            return_type=self.return_type,
+        )
         return self
 
 

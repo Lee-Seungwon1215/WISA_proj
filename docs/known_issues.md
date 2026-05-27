@@ -6,11 +6,11 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-27 (v10 — Bundle N landed: subprocess/encoding hygiene)
-- **Pipeline progress**: **45 fully closed** (Bundle 0~N), **1 deferred**
-  (F9 #4, out of scope per spec), **7 still open** (T13, T15, T16, T17,
-  T19, T20, T22).
-- **Resolved so far** (45/46 prior closed except deferred F9 #4):
+- **Last updated**: 2026-05-27 (v11 — Bundle O landed: T20 + T7 follow-up validators)
+- **Pipeline progress**: **46 fully closed** (Bundle 0~O), **1 deferred**
+  (F9 #4, out of scope per spec), **6 still open** (T13, T15, T16, T17,
+  T19, T22).
+- **Resolved so far** (46/47 prior closed except deferred F9 #4):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
@@ -45,6 +45,11 @@ commits and PRs.
     × 2) + 6개 read/write_text 일괄 적용. yaml 필드 신규: `build.timeout`,
     `kat.timeout`, `ct.compile_timeout`, `ct.valgrind_timeout`,
     `dudect.compile_timeout` (default 모두 600초).
+  - **T20** (+ T7 follow-up family) — Bundle O. `prefix`, `header`,
+    `extra_headers`, `function`, `return_type` 모두 pydantic validator에서
+    regex 검증. `_check_yaml_identifiers` 모듈 레벨 함수로 두 모델
+    (Harness/DudectHarness) 공유. F6 coverage probe도 같은 validator 거친
+    값만 받으므로 C-source injection surface 자동 차단.
   - F9 #4 — deferred future work (multi-cflags matrix; out of scope per
     spec, requires new CSV schema + matrix-aware verdict computation).
 - **Audit sources**:
@@ -1809,7 +1814,27 @@ U+FFFD replacement character로 surface. 회귀 테스트
 
 ### T20: F6 coverage probe의 C source가 사용자 yaml 값 (`header`, `extra_headers`, `prefix`) 무검증 interpolate — T7 follow-up 못 잡은 surface 🟢
 
-**Status: OPEN (v7 internal post-impl audit).**
+**Status: RESOLVED in Bundle O.** T7 follow-up까지 함께 처리:
+- `_check_yaml_identifiers` 모듈 레벨 helper 신설 (`config.py`).
+  세 regex 정책 박힘:
+  * `_HEADER_PATTERN = ^[A-Za-z0-9_./+-]+$` — `#include "..."` escape
+    문자 (quote, backslash, newline) 차단. 실제 헤더명 (`api.h`,
+    `pqclean/include/foo.h`, `libc++/v1/x.hpp`, `gmp-6.h`) 다 통과.
+  * `_C_IDENT_PATTERN = ^[A-Za-z_][A-Za-z0-9_]*$` — `function`, `prefix`
+    (빈 문자열 default 허용).
+  * `_C_TYPE_PATTERN = ^[A-Za-z_][A-Za-z0-9_:* ]*$` — `return_type`
+    (포인터/const/namespaced 허용, quote/semicolon/brace 차단).
+- `HarnessConfig._check_mode` + `DudectHarnessConfig._check_mode` 둘
+  다 호출. coverage probe(`_render_sentinel_c`)도 같은 validator 거친
+  값만 받음 → T20에서 지목한 C-source injection surface 자동 차단.
+- 회귀 테스트 8개 (`test_harness_header_with_quote_rejected`,
+  `test_harness_extra_headers_with_newline_rejected`,
+  `test_harness_prefix_must_be_valid_c_identifier`,
+  `test_harness_prefix_empty_is_allowed`,
+  `test_harness_pqclean_prefix_passes`,
+  `test_harness_function_must_be_c_identifier`,
+  `test_dudect_harness_header_with_quote_rejected`,
+  `test_harness_subdir_header_allowed`).
 
 - **Where**: `ctkat/coverage_check.py:67-80` (`_render_sentinel_c` —
   f-string으로 `#include "{header}"` 와 `{prefix}CRYPTO_SECRETKEYBYTES`
@@ -2169,6 +2194,36 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v11 — Bundle O: T20 + T7 follow-up validator family (2026-05-27)
+
+Bundle N 후속. ~120 LoC (config.py validator + 8개 회귀 테스트).
+
+**무엇이 닫혔나**:
+- **T20**: F6 coverage probe `_render_sentinel_c`의 `header`/`extra_headers`/
+  `prefix` 무검증 interpolate 차단. 단 probe 쪽 코드는 안 건드림 — pydantic
+  validator가 입력 단계에서 거부하므로 probe는 자동으로 안전한 값만 받음.
+  *upstream에서 막는 게 down-stream 손대는 것보다 robust*.
+- **T7 follow-up** (acceptance criterion #1 마지막 부분 — H2에서 `name`만
+  박았음): `function`, `return_type`, `prefix`, `header`, `extra_headers`
+  regex 검증. `_check_yaml_identifiers` 모듈 함수로 추출해 두 모델
+  (HarnessConfig + DudectHarnessConfig) 공유.
+
+**정책**:
+- `_HEADER_PATTERN`: 알파벳/숫자/`_./+-`. quote/backslash/newline 차단.
+  실제 헤더명 다 통과.
+- `_C_IDENT_PATTERN`: 표준 C identifier. function name, prefix.
+- `_C_TYPE_PATTERN`: 느슨 (포인터/const/scoped 허용). return_type.
+
+**테스트**: 246 → **254 passed** (8개 신규).
+
+**남은 OPEN 6개** (Bundle P 후보):
+- T13 (parse_functions_with_stats plumbing 미완)
+- T15 (upper_crop sort 중복 — 성능)
+- T16 (FRAME_RE binary-only location partial)
+- T17 (coverage probe `-D` 매크로 안 받음)
+- T19 (harness_*.c TOCTOU race)
+- T22 (dudect summary ERROR row 시각적 분리)
 
 ### v10 — Bundle N: subprocess/encoding hygiene (2026-05-27)
 
