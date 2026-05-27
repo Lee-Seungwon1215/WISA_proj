@@ -94,9 +94,13 @@ class KatConfig(BaseModel):
     # behavior) and emits a one-time per-run warning. Set to 0 to
     # opt out of the warning while keeping exit-code-only semantics.
     expected_min: Optional[int] = None
-    # Regex (single capturing group with the count). Default matches
-    # PQClean / NIST KAT runner output like "PASSED: 100 tests".
-    expected_pattern: str = r"PASSED:?\s*(\d+)"
+    # Regex (single capturing group with the count). cli._do_kat applies
+    # this with `re.MULTILINE`, so `^...$` anchors line boundaries inside
+    # the runner's stdout. Default matches PQClean / NIST KAT runner
+    # output like "PASSED: 100 tests" appearing as a standalone summary
+    # line — anchored, so substring matches inside error messages don't
+    # falsely satisfy `expected_min` (F18).
+    expected_pattern: str = r"^PASSED:?\s*(\d+)(?:\s|$)"
 
     @model_validator(mode="after")
     def _check_mode(self) -> "KatConfig":
@@ -224,7 +228,11 @@ class CtConfig(BaseModel):
     # between days should mean code changed, not "today's random inputs
     # happened to hit a different branch". See harness_generic.c.j2.
     # Use the same default sentinel as the dudect side (0xC0FFEE).
-    seed: int = 0xC0FFEE
+    # F16: `seed=0` is rejected at config load because the generated C swaps
+    # it to 0xC0FFEE (xorshift64 gets stuck on state=0) — accepting it here
+    # would mean Python logs `0x0` while C runs with `0xC0FFEE`. The swap is
+    # semantically necessary; we just refuse to let the two layers disagree.
+    seed: int = Field(default=0xC0FFEE, gt=0)
     # Bundle E-2 (F5): manual-binary harnesses produce zero findings if the
     # binary never actually invokes the target function with tainted input
     # — `binary: /bin/true` would happily report a PASS. When True, _do_ct
@@ -355,7 +363,11 @@ class DudectConfig(BaseModel):
     # `None` (yaml null) means "pick a random 63-bit seed at run time and
     # log it" — use that when you want independent samples for stability
     # checks across runs.
-    seed: Optional[int] = 0xC0FFEE
+    # F16: `seed=0` is rejected because the timing harness C swaps it to
+    # 0xC0FFEE (xorshift64 stuck-at-zero), which would make Python log `0x0`
+    # while the running binary uses 0xC0FFEE — a silent reproducibility lie.
+    # Optional[int] keeps `None` (random-pick) working.
+    seed: Optional[int] = Field(default=0xC0FFEE, gt=0)
     threshold_warning: float = 4.5
     threshold_fail: float = 10.0
     compiler: DudectCompilerConfig = Field(default_factory=DudectCompilerConfig)
@@ -415,15 +427,18 @@ class CtkatConfig(BaseModel):
     def _apply_shared_cflags(self) -> "CtkatConfig":
         if self.shared_cflags is None:
             return self
-        # Only override stages that are using their *default* cflags.
-        # Detect by comparing object identity to the default-factory result —
-        # a user who explicitly set `ct.cflags: [...]` keeps their explicit
-        # choice. Same for `dudect.compiler.cflags`.
-        if self.ct is not None and self.ct.cflags == _default_cflags():
+        # F15: detect "user did not explicitly set cflags" by checking
+        # pydantic v2's `model_fields_set` (the set of field names actually
+        # present in the input). The earlier `== _default_cflags()` check
+        # was a value comparison — a user who happened to specify the same
+        # list as the default would get their explicit choice silently
+        # overridden. `model_fields_set` is input-based, so explicit-but-
+        # equal-to-default keeps the user's intent.
+        if self.ct is not None and "cflags" not in self.ct.model_fields_set:
             self.ct.cflags = list(self.shared_cflags)
         if (
             self.dudect is not None
-            and self.dudect.compiler.cflags == _default_dudect_cflags()
+            and "cflags" not in self.dudect.compiler.model_fields_set
         ):
             self.dudect.compiler.cflags = list(self.shared_cflags)
         return self

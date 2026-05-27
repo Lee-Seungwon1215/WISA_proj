@@ -373,6 +373,15 @@ cropping 5개 cutoff 중 max \|t\|를 채택하면 nominal보다 false-positive
 합성 하네스(`toy_dudect`, `toy_kem_ct_leak`)는 위 영향 없음 — 그 쪽은 모두
 xorshift PRNG로만 입력을 만든다.
 
+**`seed: 0` 금지** (F16). `ct.seed`와 `dudect.seed` 둘 다 config 로드
+단계에서 `0` 입력을 거부한다. 이유: 생성된 C 하네스의 xorshift64는
+`state=0`이면 영구적으로 0만 뱉기 때문에 템플릿이 내부적으로
+`seed ? seed : 0xC0FFEE` swap을 박아둠. swap 자체는 의미적으로 필요한
+방어지만, 사용자가 `seed: 0`을 yaml에 박으면 Python 로그는 `0x0`을
+출력하고 실제 실행 바이너리는 `0xC0FFEE`를 쓰게 되어 두 레이어가
+silent로 어긋난다. validator가 그걸 막는다. 다른 값이 필요하면
+`seed: 1` 이상을 박거나, `dudect.seed: null`(랜덤 + 로그 출력)을 쓰면 됨.
+
 ### 결정론적 PQClean dudect — `randombytes` interpose (Bundle J, R1 Option B)
 
 Bundle J부터 timing_kem 하네스가 자기 자신의 `randombytes(uint8_t *buf,

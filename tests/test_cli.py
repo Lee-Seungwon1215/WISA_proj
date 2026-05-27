@@ -79,6 +79,22 @@ def test_infer_missing_header_file_errors_cleanly():
     assert "not found" in result.stdout.lower()
 
 
+# --- ctkat parse smoke test (F12 regression) --------------------------------
+
+
+def test_parse_subcommand_runs_on_valid_log(tmp_path):
+    """F12 regression: `ctkat parse <log>` used to NameError because the
+    cli.py:1223 call site referenced `parse_valgrind_log` which was no longer
+    imported after Bundle I (T3) switched to `parse_valgrind_log_with_stats`.
+    """
+    log = tmp_path / "valgrind.log"
+    log.write_text("==123== No findings here\n")
+    runner = CliRunner()
+    result = runner.invoke(app, ["parse", str(log)])
+    assert result.exit_code == 0
+    assert "no findings" in result.stdout.lower()
+
+
 # --- _compute_verdicts (the ct+dudect merger) -------------------------------
 
 
@@ -354,7 +370,9 @@ def test_kat_fails_when_pattern_does_not_match(tmp_path, capsys):
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is False
     assert count is None
-    assert "did not match" in capsys.readouterr().out
+    # Rich may wrap the message; collapse whitespace before checking.
+    out = " ".join(capsys.readouterr().out.split())
+    assert "did not match" in out
 
 
 def test_kat_unset_expected_min_warns_but_passes(tmp_path, capsys):
@@ -377,6 +395,35 @@ def test_kat_no_op_still_passes_without_expected_min(tmp_path, capsys):
     cfg = _kat_cfg("true")  # no stdout at all
     ok, _ = _do_kat(cfg, tmp_path)
     assert ok is True
+
+
+def test_kat_anchored_pattern_rejects_substring_in_error_line(tmp_path, capsys):
+    """F18 regression: a runner that prints an error line containing the
+    substring "PASSED: N" but exits 0 used to false-PASS because the
+    default `expected_pattern` was `re.search`ed without anchoring. The
+    fix anchors the default pattern with `^...` + re.MULTILINE, so the
+    match only fires on a standalone summary line."""
+    from ctkat.cli import _do_kat
+    # Single-line stdout with "PASSED: 100" embedded inside an error msg.
+    # `printf` keeps it on one line — the offending substring is mid-line,
+    # not at the start, so the anchored default must not match.
+    cfg = _kat_cfg('printf "ERROR vector 50 differs. PASSED: 100 prior\\n"',
+                   expected_min=10)
+    ok, count = _do_kat(cfg, tmp_path)
+    assert ok is False
+    assert count is None
+
+
+def test_kat_anchored_pattern_still_matches_pqclean_style_line(tmp_path, capsys):
+    """F18 must not regress the happy path. PQClean / NIST KAT runners
+    emit a standalone `PASSED: 100 tests` summary line, which the anchored
+    default still matches."""
+    from ctkat.cli import _do_kat
+    cfg = _kat_cfg('printf "running ML-KEM-768 KAT\\nPASSED: 100 tests\\n"',
+                   expected_min=50)
+    ok, count = _do_kat(cfg, tmp_path)
+    assert ok is True
+    assert count == 100
 
 
 def test_build_passes_when_expected_artifacts_present(tmp_path, capsys):
@@ -420,6 +467,31 @@ def test_build_unset_expected_artifacts_warns(tmp_path, capsys):
     )
     assert _do_build(cfg, tmp_path) is True
     assert "expected_artifacts unset" in capsys.readouterr().out
+
+
+# --- F17: CLI override re-validates against pydantic Field bounds --------
+
+
+def test_dudect_cli_measurements_override_rejects_above_cap(tmp_path):
+    """F17 regression: `--measurements 100000000` used to bypass T8's
+    `Field(le=10_000_000)` because `model_copy(update=...)` does not
+    re-validate. The fix routes overrides through `model_validate`."""
+    import textwrap
+    yaml_text = textwrap.dedent("""
+        project: {name: demo}
+        build: {command: "true"}
+        dudect:
+          harnesses:
+            - {name: h, template: generic, function: foo}
+    """).strip()
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    runner = CliRunner()
+    # 10**8 is 10x the T8 cap of 10_000_000.
+    result = runner.invoke(app, ["dudect", "--config", str(p), "--measurements", "100000000"])
+    assert result.exit_code != 0
+    # The actual surfacing is via pydantic ValidationError → typer error;
+    # what matters is we do NOT proceed silently.
 
 
 # --- Bundle E-1: F7/F8 subcommand exit code symmetry ----------------------

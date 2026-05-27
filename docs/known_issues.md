@@ -6,11 +6,11 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-26 (v6 — see Review log at the bottom)
-- **Pipeline progress**: **34 fully closed** (Bundle 0~K), **1 deferred**
-  (F9 #4, out of scope per spec), **11 newly discovered open** (F12-F16,
-  T12-T17 from external review pass 5 — see Review log v6).
-- **Resolved so far** (34/35 prior closed except deferred F9 #4):
+- **Last updated**: 2026-05-27 (v8 — Bundle L hot-fixes landed)
+- **Pipeline progress**: **40 fully closed** (Bundle 0~L), **1 deferred**
+  (F9 #4, out of scope per spec), **12 still open** (F13, F14, T12, T13,
+  T15, T16, T17, T18, T19, T20, T21, T22).
+- **Resolved so far** (40/41 prior closed except deferred F9 #4):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
@@ -32,6 +32,10 @@ commits and PRs.
   - **R1 Option B** — Bundle J (randombytes weak-symbol interpose,
     PQClean dudect deterministic opt-in).
   - **U2 #1** — Bundle K (`leak_target: fo` 모드, FO fallback path 검사).
+  - **F12, F15, F16, F17, F18, T14** — Bundle L hot-fixes (parse 서브
+    NameError, shared_cflags `model_fields_set`, seed=0 거부, CLI
+    `model_validate` 재검증, KAT regex 앵커 + `re.MULTILINE`, yaml
+    `-fno-lto` 추가 + examples lint).
   - F9 #4 — deferred future work (multi-cflags matrix; out of scope per
     spec, requires new CSV schema + matrix-aware verdict computation).
 - **Audit sources**:
@@ -41,8 +45,8 @@ commits and PRs.
   - External independent reviewer, pass 3 (audited v2 + whole repo)
   - External independent reviewer, pass 4 (audited v3 + cross-stage interactions)
   - Verification pass 5 (audited v4 line references against `main`)
-- **Total findings**: 5 tiers, 46 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35
-  → v5: 35 → v6: 46)
+- **Total findings**: 5 tiers, 53 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35
+  → v5: 35 → v6: 46 → v7: 53)
   - v5: no new issues — all 35 v4 findings re-verified against `main`;
     line-reference drift corrected in 7 places (F1, F4, F5, F7, F9, R1,
     T6, T8). R1's sk-leak branch line was a real mis-cite (L102 → L157),
@@ -55,6 +59,14 @@ commits and PRs.
     (pqc_mlkem768 yaml -fno-lto 누락), T15 (upper_crop sort 중복),
     T16 (FRAME_RE partial accuracy), T17 (coverage probe -D 누락).
     리뷰어가 던진 12 항목 중 1개(yaml=shell)는 이미 T4 mitigation 있음.
+  - v7: internal LLM-typical bug hunt (post-impl audit). 7 new issues:
+    F17 (model_copy(update=) 재검증 안 함 → T8 cap CLI 우회 🚨),
+    F18 (KAT regex `re.search` anywhere match → false PASS 🚨),
+    T18 (subprocess `text=True` errors=replace 7군데 누락),
+    T19 (harness_{name}.c TOCTOU race),
+    T20 (F6 probe C-source injection T7 follow-up surface),
+    T21 (Path.read/write_text 인코딩 미지정 → Windows 깨짐),
+    T22 (dudect summary table ERROR row가 진짜 측정처럼 보임).
 - **Verification**: All Tier 1 (F1–F11) and Tier 2 (F6, R1–R3) claims
   verified against `main` (commit `d678617` or later) by reading the
   cited source lines. Earlier passes (v1–v3) focused tightly on the
@@ -459,7 +471,10 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
 
 ### F12: `ctkat parse` subcommand dies with NameError (광고된 기능 사망) 🚨
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle L.** `cli.py:1223` 호출자를
+`parse_valgrind_log_with_stats(text)`로 교체 (T3 정신과 통일, dropped 카운트
+>50일 때 dim note 출력). `tests/test_cli.py::test_parse_subcommand_runs_on_valid_log`
+smoke test 박혀 회귀 방어.
 
 - **Where**: `ctkat/cli.py:54` import (`parse_valgrind_log_with_stats`만),
   `:1223` 호출 (`parse_valgrind_log`).
@@ -547,7 +562,12 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
 
 ### F15: `shared_cflags`가 사용자 명시 cflags를 값 동등성으로 silent override 🚨
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle L.** `_apply_shared_cflags`가
+`self.ct.cflags == _default_cflags()` (값 비교) → `"cflags" not in
+self.ct.model_fields_set` (input-set 비교) 으로 교체. 주석도 거짓말이었던
+"object identity" 표현 폐기. 사용자가 default와 동일 cflags 명시한 경우
+의도 유지 회귀 테스트 `test_shared_cflags_yields_when_user_explicit_matches_default`
+박힘.
 
 - **Where**: `ctkat/config.py:415-428` `_apply_shared_cflags` validator.
 - **Symptom**: 주석은 "Detect by comparing object identity to the
@@ -577,7 +597,12 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
 
 ### F16: `dudect.seed: 0` → 로그는 0x0, C는 0xC0FFEE swap (재현성 거짓말) 🚨
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle L.** `DudectConfig.seed`와 `CtConfig.seed`
+둘 다 `Field(gt=0)` 적용 — yaml에 `seed: 0` 박으면 config 로드 단계에서
+ValidationError. Optional[int] (None=랜덤 픽) 경로는 그대로 동작.
+README §재현성에 "seed=0 금지 — xorshift stuck 회피용" 단락 추가.
+회귀 테스트 `test_dudect_seed_zero_rejected` / `test_dudect_seed_null_still_allowed`
+/ `test_ct_seed_zero_rejected` 박힘.
 
 - **Where**:
   - `ctkat/cli.py:636` `effective_seed = dud.seed if dud.seed is not
@@ -602,6 +627,98 @@ INCONCLUSIVE. Verdict CSV gets new `kat_status` + `kat_count` columns
   3. test_config: seed=0 yaml → ValidationError.
 - **Related**: R1, R3 (재현성 family).
 - **Suggested bundle**: 1-line pydantic validator + README 갱신.
+
+### F17: `dudect --measurements N` CLI override가 T8 cap 그대로 뚫음 (pydantic `model_copy` 재검증 안 함) 🚨
+
+**Status: RESOLVED in Bundle L.** `cli.py:843`을
+`dud.model_copy(update=updates)` → `DudectConfig.model_validate({**dud.model_dump(),
+**updates})` 로 교체. full validation 거치므로 T8 `Field(le=10_000_000)` 와
+F16 `gt=0` 모두 CLI 경로에서도 enforce됨. 회귀 테스트
+`test_dudect_cli_measurements_override_rejects_above_cap` 박힘.
+
+- **Where**: `ctkat/cli.py:835-843` (`dudect` subcommand override 로직),
+  `ctkat/config.py:343-345` (T8 Field bounds).
+- **뭐가 좆되냐**: T8에서 `measurements: int = Field(default=100_000, ge=100,
+  le=10_000_000)` 박아놨는데, CLI 옵션으로 우회 가능:
+  ```bash
+  python -m ctkat dudect -c x.yaml --measurements 100000000  # → 800MB BSS, OOM
+  ```
+  cli.py L842는 `dud = dud.model_copy(update=updates)`로 갱신하는데
+  pydantic v2의 `model_copy(update=...)`는 **재검증 안 함** (공식 문서대로).
+  직접 검증:
+  ```python
+  >>> M(x=Field(default=10, ge=0, le=100)).model_copy(update={'x': 99999}).x
+  99999  # ㅋㅋ pydantic이 아무 말도 안 함
+  ```
+  T8 acceptance criteria의 "config 로드 단계에서 거부"라는 약속이 CLI
+  경로에서 전부 무력화. 동일 패턴으로 `--seed 0`도 F16 미래 validator
+  (seed=0 거부) 도입돼도 뚫림.
+- **LLM이 자주 싸는 패턴 사유**: pydantic v2의 `model_copy(update=)` 가
+  `model_validate(update=)` 처럼 보이지만 둘은 완전히 다른 함수임.
+  LLM이 "그냥 copy하고 필드 갈아끼우기"라는 의도로 짜는데, 검증
+  contract가 사라지는 줄 모름. v1 대비 v2에서 이 동작이 미묘해진 것도
+  요인.
+- **Why solve**: T8/F16의 방어선이 yaml 입력에만 걸려있고 CLI 입력은
+  free pass — known_issues 문서는 "config 로드 단계에서 거부"라 적었는데
+  거짓말. CI에서 `--measurements` 박는 사용자가 의도치 않은 cap 우회.
+- **Acceptance criteria**:
+  1. cli.py L842를 `dud = DudectConfig.model_validate({**dud.model_dump(),
+     **updates})` 로 교체. 또는 `DudectConfig(**{**dud.model_dump(),
+     **updates})`. 둘 다 full validation 거침.
+  2. test_cli: `dudect --measurements 100000000` → `ValidationError` 또는
+     명확한 exit 메시지 (typer가 입력단에서 잡는 게 더 정직).
+  3. typer 옵션 레벨에서도 `min=100, max=10_000_000` 추가하면 double-belt
+     (typer가 먼저 잡음).
+- **Related**: T8 (Field bounds 자체), F16 (seed validator도 같이 우회됨),
+  F15 (`shared_cflags` validator 정확성 — 비슷한 family).
+- **Suggested bundle**: 1-line 교체 fix.
+
+### F18: KAT `expected_pattern` 이 `re.search` (anywhere match) → stdout 오류 메시지 한 줄에 "PASSED: N" 박혀있으면 false PASS 🚨
+
+**Status: RESOLVED in Bundle L.** default pattern을
+`r"PASSED:?\s*(\d+)"` → `r"^PASSED:?\s*(\d+)(?:\s|$)"`로 앵커링하고
+cli `_do_kat`의 `re.search` 호출에 `re.MULTILINE` 플래그 전달. 라인
+시작이 `PASSED`인 standalone 요약 라인만 매치 → 에러 메시지 중간에
+`PASSED: 100` 박혀도 false PASS 안 됨. PQClean `PASSED: 100 tests`
+형식은 그대로 매치 (trailing `(?:\s|$)`). 회귀 테스트
+`test_kat_anchored_pattern_rejects_substring_in_error_line` /
+`test_kat_anchored_pattern_still_matches_pqclean_style_line` 박힘.
+
+- **Where**: `ctkat/cli.py:169` (`m = re.search(cfg.kat.expected_pattern,
+  r.stdout or "")`), `ctkat/config.py:99` (default
+  `r"PASSED:?\s*(\d+)"`).
+- **뭐가 좆되냐**: KAT runner가 진짜로는 죽었는데 stderr가 stdout으로
+  redirect돼서 다음 같은 한 줄 박힌 경우 — `re.search`는 stdout 어디든
+  매치 잡음:
+  ```
+  ERROR: vector 50 differs from expected. Test summary: PASSED: 100, FAILED: 0
+                                                       ^^^^^^^^^^^^^^^^^
+                                                       이거 match → count=100 → KAT PASS
+  ```
+  exit code도 0이면 (KAT runner가 마지막에 cleanup하면서 rc=0 반환) F1
+  acceptance가 "count >= expected_min" 통과 시켜 PASS. 광고된 F1 fix가
+  허울뿐.
+- **LLM이 자주 싸는 패턴 사유**: `re.search` vs `re.match` vs `re.fullmatch`
+  헷갈리기. LLM이 "stdout에서 패턴 찾기"라고 생각하면 거의 항상
+  `re.search` 박는데, 보안 컨텍스트에서는 anchored match가 default여야
+  함. 게다가 default pattern이 `PASSED:?\s*(\d+)` 라 `^`/`$` 앵커 없어서
+  더더욱 안전망 없음.
+- **Why solve**: F1의 "no-op runner도 PASS 박는다"를 해결한다고
+  Bundle E-1에서 fix했는데, runner가 *진짜로 fail하면서 동시에 PASSED
+  단어 어딘가에 박는* 경우는 여전히 뚫림. ML-KEM 같은 PQClean 출력은
+  `PASSED: 100` 형식인데, 같은 패턴이 진행률 로그나 에러 메시지에도
+  쉽게 등장할 수 있음.
+- **Acceptance criteria**:
+  1. default `expected_pattern`을 `re.MULTILINE` 가정 + 라인 앵커 추가:
+     `r"^PASSED:?\s*(\d+)\s*$"` (`re.MULTILINE` 플래그도 함께).
+  2. 또는 KAT runner의 *마지막* 라인만 매치 (stdout splitlines 후 끝에서
+     앞으로 search). PQClean도 보통 summary가 마지막에 옴.
+  3. README §"KAT pattern" 에 anchor 권장.
+  4. test_cli: stdout이 `"ERROR foo: PASSED: 100 baz\n"` 이고 exit 0인
+     KAT runner → PASS가 *아니라* FAIL.
+- **Related**: F1 (Bundle E-1에서 fix됐다고 주장한 베이스), T4 (사용자
+  yaml regex injection).
+- **Suggested bundle**: default pattern + multiline 플래그 갱신 — 2줄 fix.
 
 ### F4: dudect zero-cycle filter ignores class balance 🟡
 
@@ -1515,7 +1632,12 @@ completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하
 
 ### T14: `examples/pqc_mlkem768/ctkat.yaml`에서 `-fno-lto` 누락 🟢
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle L.** 세 yaml (`examples/pqc_mlkem768/ctkat.yaml`,
+`examples/toy_dudect/ctkat_dudect.yaml`, `examples/toy_dudect/ctkat_combined.yaml`)
+의 dudect.compiler.cflags에 `-fno-lto` 추가. 추가로
+`test_example_yamls_have_fno_lto_when_overriding_dudect_cflags` lint test
+박혀 — 앞으로 example yaml이 dudect cflags override 하면서 `-fno-lto`
+빠뜨리면 CI에서 잡힘.
 
 - **Where**: `examples/pqc_mlkem768/ctkat.yaml` dudect.compiler.cflags.
 - **Symptom**: yaml cflags가 `[-O2, -g, -fno-omit-frame-pointer]` —
@@ -1569,6 +1691,184 @@ completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하
   2. 또는 frame metadata에 `is_binary_only: bool` 추가.
 - **Related**: T2/T3 (parser hardening), T11 (parser regex보강 정책).
 - **Suggested bundle**: parser polish — 낮은 우선순위.
+
+### T18: subprocess `text=True` 가 `errors='replace'` 없음 → 하네스가 garbage 뱉으면 UnicodeDecodeError raw traceback 🟡
+
+**Status: OPEN (v7 internal post-impl audit).**
+
+- **Where**: 7개 call site 전부 동일 패턴:
+  - `ctkat/builder.py:25` (`run_shell`)
+  - `ctkat/builder.py:47` (`run_argv`)
+  - `ctkat/valgrind_runner.py` (`run_valgrind`)
+  - `ctkat/harness_generator.py:71` (`compile_harness`)
+  - `ctkat/timing_harness_generator.py:73` (`_compile`)
+  - `ctkat/dudect_runner.py:145` (`run_timing_harness`)
+  - `ctkat/coverage_check.py:117, 137` (probe compile+exec)
+  전부 `subprocess.run(..., text=True)`만 박고 `errors='replace'` 없음.
+- **뭐가 좆되냐**: `text=True`는 locale.getpreferredencoding(False)
+  (보통 utf-8) 로 decode. 하네스가 죽으면서 stdout/stderr에 garbage
+  bytes 뱉으면 (segfault stack dump, `\xff\xfe` BOM, 깨진 multibyte
+  중간 자름) Python이 `UnicodeDecodeError` 던지고 raw traceback 분출.
+  T6 try/except이 잡는 건 `TimeoutExpired/RuntimeError/ValueError`만 —
+  `UnicodeDecodeError`는 못 잡음 → fail-open 으로 죽기 직전까지 가다가
+  마지막에 LLM이 자주 까먹는 예외로 사용자 console에 raw stack trace.
+- **LLM이 자주 싸는 패턴 사유**: subprocess 핸들링에서 `text=True`만
+  넣고 끝나는 게 typical AI-generated code. `errors=` 인자는 Python 3.6+
+  에서 추가됐는데 LLM이 학습한 옛 코드는 모름. 보안 도구에서 이게
+  특히 골때리는 게 — 분석 대상이 정의상 "이상하게 행동하는 코드"라
+  garbage output 확률이 일반 도구보다 훨씬 높음.
+- **Why solve**: T6의 "raw traceback 노출 금지" 약속이 7군데 중 6군데에서
+  새는 거. ERROR status로 graceful flow 해야 할 시점에 Python 내부
+  exception이 leak.
+- **Acceptance criteria**:
+  1. `text=True` → `text=True, errors='replace'` 일괄 교체 (또는
+     `encoding='utf-8', errors='replace'`).
+  2. test: 합성 하네스가 `printf("\xff\xfe garbage\n")` 후 exit 0 →
+     ERROR status로 잡혀야 하고 traceback 노출 X.
+  3. 헬퍼 wrapper 하나 만들어서 (`_run_text(...)`) 한 곳에서 정책 강제 —
+     drift 방지.
+- **Related**: T6 (try/except 정책), T12 (timeout 정책 — 같은 패밀리),
+  F2/F5/T6 (graceful ERROR 약속).
+- **Suggested bundle**: T12와 함께 묶어서 "subprocess hardening bundle".
+
+### T19: `harness_{name}.c` 파일이 동일 yaml 두 ctkat 프로세스 동시 실행 시 race (TOCTOU) 🟢
+
+**Status: OPEN (v7 internal post-impl audit).**
+
+- **Where**: `ctkat/harness_generator.py:93-97` (`source_path = output_dir /
+  f"harness_{name}.c"; ...; source_path.write_text(code)`),
+  `ctkat/timing_harness_generator.py:96-100` 동일 패턴.
+- **뭐가 좆되냐**: 동일 yaml에 대해 `ctkat run` 두 번 동시 실행 (CI 매트릭스,
+  matrix 빌드에서 parallel jobs)하면 두 프로세스가 같은 `_generated/
+  harness_foo.c` 에 write_text → 마지막 writer wins. 그 사이에 첫
+  프로세스의 compile_harness가 source_path를 read하면 두 번째 writer가
+  덮어쓴 *다른* 코드를 컴파일할 수 있음. Race condition. seed 같은 build
+  컨텍스트가 두 yaml run에서 다르면 (e.g. --seed random) 하네스 두 개의
+  통계가 섞임.
+- **LLM이 자주 싸는 패턴 사유**: 파일 I/O 직렬화 가정. LLM이 "하나의
+  프로세스 모델" 안에서 코드를 짜기 때문에 concurrent execution은
+  거의 안 고려. `tempfile.NamedTemporaryFile` + atomic rename 패턴은
+  명시적으로 요청하지 않으면 안 나옴.
+- **Why solve**: 보통은 사용자가 ctkat 한 번에 한 yaml만 돌리니까 안
+  걸리지만, CI matrix 빌드 (e.g. 같은 yaml × 다른 OS × 다른 seed)에서
+  공유 workspace 쓰면 silent corruption. 디버깅 ㅈㄴ 어려움.
+- **Acceptance criteria**:
+  1. write_text → tempfile에 write 후 `Path.replace()` 로 atomic rename
+     (POSIX rename은 atomic, Windows도 PathLike replace).
+  2. 또는 generated_dir에 PID/seed 박은 서브디렉토리 만들어서 충돌 회피
+     (`_generated/{pid}_{seed}/harness_*.c`). 단 cleanup 부담.
+  3. README §"동시 실행 / CI matrix" caveat — minimum.
+- **Related**: T5 (operational hygiene), F5 (manual binary 경로와 별개).
+- **Suggested bundle**: 낮은 우선순위. README caveat이 minimum.
+
+### T20: F6 coverage probe의 C source가 사용자 yaml 값 (`header`, `extra_headers`, `prefix`) 무검증 interpolate — T7 follow-up 못 잡은 surface 🟢
+
+**Status: OPEN (v7 internal post-impl audit).**
+
+- **Where**: `ctkat/coverage_check.py:67-80` (`_render_sentinel_c` —
+  f-string으로 `#include "{header}"` 와 `{prefix}CRYPTO_SECRETKEYBYTES`
+  박음).
+- **뭐가 좆되냐**: yaml 사용자가 다음 같이 박으면:
+  ```yaml
+  ct:
+    harnesses:
+      - name: pwn
+        template: kem
+        header: 'foo.h"\n#include "/etc/passwd"\nint x=1; /*'
+        prefix: 'KYBER_'
+        secret_regions: [{offset: '0', length: '32'}]
+  ```
+  generate된 probe C가:
+  ```c
+  #include "foo.h"
+  #include "/etc/passwd"
+  int x=1; /*"
+  ```
+  T7은 `name` 만 regex 박았고 `header`/`prefix`/`extra_headers`는 follow-up
+  으로 남겨놨는데, T20은 그 same family의 *coverage probe* 쪽 surface.
+  컴파일 보통 fail (probe는 yellow note만 출력하고 silent skip)이지만
+  shell-level abuse는 아니어도 *imported file contents가 probe binary에
+  컴파일됨* → probe가 어쩌다 run 되면 사용자 의도와 다른 매크로 값이
+  CTKAT-COVERAGE 출력에 박힐 수 있음.
+- **LLM이 자주 싸는 패턴 사유**: 코드 생성 (codegen) 에서 f-string으로
+  user input interpolate. shell injection은 LLM도 학습됐지만 *C source
+  injection* 은 자주 놓침 — "어차피 compile fail이면 OK"라는 false
+  confidence.
+- **Why solve**: F6는 *diagnostic*이라 silent skip이 정책이긴 하지만,
+  광범위한 user input → generated C 흐름의 일관성 정책이 없음. T7
+  acceptance criteria의 "function/return_type/prefix 추가 패턴 제한"
+  follow-up이 coverage_check까지 커버해야 함.
+- **Acceptance criteria**:
+  1. `prefix` 에 `^[A-Za-z_][A-Za-z0-9_]*$` 또는 빈 문자열 pydantic
+     validator (T7 acceptance criterion #1과 동일).
+  2. `header` / `extra_headers` 에 `^[A-Za-z0-9_./-]+$` 정도 — path
+     traversal과 quote 차단.
+  3. coverage_check도 같은 validator path 거치게 — probe 진입 전에 이미
+     검증된 값만 들어옴.
+- **Related**: T7 (validator follow-up family), F6 (probe 자체), F15
+  (사용자 입력 정확성).
+- **Suggested bundle**: T7 follow-up과 묶어서.
+
+### T21: `Path.write_text` / `read_text` 인코딩 미지정 → Windows에서 cp1252 로 시도 → 깨짐 🟢
+
+**Status: OPEN (v7 internal post-impl audit).**
+
+- **Where**: 인코딩 미지정 read/write 다수:
+  - `ctkat/harness_generator.py:97` (`source_path.write_text(code)`)
+  - `ctkat/timing_harness_generator.py:100` (`source_path.write_text(code)`)
+  - `ctkat/coverage_check.py:110` (`src_path.write_text(src)`)
+  - `ctkat/cli.py:414, 1222` (valgrind log `read_text()`)
+  - `ctkat/qemu_detect.py:49` (`path.read_text()`)
+  - `ctkat/header_parser.py:216` (`path.read_text()`)
+- **뭐가 좆되냐**: `Path.write_text/read_text`는 인코딩 미지정 시
+  `locale.getpreferredencoding(False)` 따름. Linux는 보통 utf-8이라
+  안 걸리지만 native Windows (WSL2 아님) 는 cp1252 default → 한국어
+  주석 박힌 C 소스나 valgrind 로그의 UTF-8 stack 심볼 디코딩 깨짐.
+  U3가 "Windows MSVC 미지원" 으로 caveat 박았지만 *gcc-on-Windows*
+  (MinGW) 사용자한테는 여전히 enroll됨.
+- **LLM이 자주 싸는 패턴 사유**: Path API의 편의 메서드 (`.read_text()`/
+  `.write_text()`) 가 인코딩 인자 optional 이라 LLM이 거의 항상 생략.
+  Python docs도 "default uses locale" 이라 명시는 하지만 LLM이
+  copy-paste한 옛 stackoverflow 답변은 인자 누락 상태.
+- **Why solve**: U3 캐비엇이 "MSVC 안 됨"만 다루는데 actual encoding
+  문제는 컴파일러 선택과 무관. PEP 597 (`encoding=`) 도 PythonWarning
+  으로 권장.
+- **Acceptance criteria**:
+  1. 모든 `read_text()`/`write_text()` 에 `encoding="utf-8"` 명시.
+  2. read 쪽은 valgrind 로그 처럼 외부 출력은 `errors="replace"` 추가
+     (T18과 같은 정책).
+  3. Lint rule (e.g. ruff `PLW1514`) 추가해서 회귀 방지.
+- **Related**: T18 (subprocess decoding 정책 — 같은 family), U3 (Windows
+  caveat).
+- **Suggested bundle**: T18과 함께 — "encoding/decoding hygiene bundle".
+
+### T22: dudect summary table이 ERROR row를 `n0=0, mean=0.0` 으로 표시 — 진짜 측정처럼 보임 🟢
+
+**Status: OPEN (v7 internal post-impl audit).**
+
+- **Where**: `ctkat/cli.py:785-805` (`_print_dudect_summary` loop),
+  `ctkat/cli.py:519-524` (`_error_welch` — `n0=0, mean0=0.0, ...`).
+- **뭐가 좆되냐**: 하네스 timeout/crash로 `_error_welch()` 반환된 ERROR
+  row 가 dudect summary table 에 그대로 `mean0=0.0 mean1=0.0 |t|=0.00`
+  으로 들어감. status cell 만 ERROR라 사용자가 빠르게 스캔하면 "측정은
+  됐고 그냥 ERROR가 뜬 거구나" 로 오해. 실제로는 *측정 자체가 안 됨*.
+  `crop@` 셀은 None 핸들링으로 `-` 떨어지지만 mean/n0/n1/abs_t 는 `0.0`/
+  `0` 그대로 노출.
+- **LLM이 자주 싸는 패턴 사유**: dataclass default 값을 sentinel 처럼
+  쓰는 게 typical. ERROR row 만 별도 분기 처리하는 건 verbose해서
+  LLM이 자주 생략 — "어차피 status가 ERROR면 사용자도 알겠지" false
+  confidence. table rendering 에서 status 외 cell 들이 sentinel 값임을
+  visual 로 표시 안 함.
+- **Why solve**: U6 (LOW_RISK label → STRUCTURAL_LEAK rename) 와 같은
+  family — "사용자가 빠르게 읽고 안전한 줄 오해" 방어. ERROR 인데
+  `|t|=0.00` 은 "측정했더니 leak 없더라" 와 동일한 시각적 신호.
+- **Acceptance criteria**:
+  1. `_print_dudect_summary` 에서 `r.status == "ERROR"` 분기 — n0/n1/
+     mean/abs_t cell 모두 `-` 로 출력.
+  2. CSV 쪽은 그대로 (S1 raw 카운트 0이 "측정 안 됨" 의미라는 contract
+     유지) — 단 인간이 보는 console table 만 시각적 구분.
+- **Related**: U6 (라벨 정직성), F2/F5/T6 (ERROR status 도입).
+- **Suggested bundle**: 5-line UX fix.
 
 ### T17: coverage_check probe가 사용자 cflags(-D 등) 안 받음 — silent skip 🟢
 
@@ -1817,6 +2117,90 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v8 — Bundle L hot-fixes (2026-05-27)
+
+내가 직접 짠 Bundle L. v6/v7에서 새로 발견한 18개 OPEN 중 **6개 닫음**
+(F12, F15, F16, F17, F18, T14). 다 1~3줄짜리 hot-fix family — 묶어서
+한 commit, ~50 LoC.
+
+**무엇이 닫혔나**:
+- **F12**: `cli.py:1223` `parse_valgrind_log` → `parse_valgrind_log_with_stats`
+  로 교체 (T3 정신과 통일) + smoke test.
+- **F15**: shared_cflags validator를 `model_fields_set` 기반으로 교체.
+  주석이 거짓말이었던 "object identity" 표현도 폐기.
+- **F16**: `ct.seed`/`dudect.seed` 모두 `Field(gt=0)`. README §재현성
+  단락 추가. ct 쪽 swap (`harness_generic.c.j2:42`) 도 같은 family라
+  같이 막음 (F16 본문은 dudect만 언급했지만).
+- **F17**: `model_copy(update=)` → `model_validate({**dump, **updates})`.
+  pydantic v2 시맨틱 차이로 T8 cap이 CLI에서 뚫리던 거.
+- **F18**: KAT default pattern 앵커링 + `re.MULTILINE`. PQClean
+  `PASSED: 100 tests` 라인 형식 그대로 매치되도록 `(?:\s|$)` 트레일링.
+- **T14**: 세 yaml에 `-fno-lto` 추가 + examples lint test 박음.
+
+**테스트**: 228 → **237 passed** (9개 회귀 방어 신규).
+
+**Bundle L에 안 들어간 거 (다음 차례)**:
+- F13/F14 — sk-leak/cache-balance 의미적 leak detection 수정 (Bundle M).
+  C 템플릿 + warm step 매크로 인자 + README KEM leak axes 갱신 필요.
+- T12/T18/T21 — subprocess/encoding hygiene (Bundle N). 7곳 일괄 +
+  `_run_text` 헬퍼.
+- T20/T13/T22/T17/T16/T15/T19 — polish & follow-ups (Bundle O/P).
+
+### v7 — internal post-impl audit, LLM-typical bug hunt (2026-05-27)
+
+이번엔 외부 리뷰어 안 부르고 **LLM이 코드 짤 때 ㅈ같이 잘 싸는 패턴**
+위주로 직접 코드 씹어봤음. 결과: **7개 confirmed**, 그 중 2개가 🚨
+verdict-affecting (F17, F18). Total 46 → **53 issues** (46 prior + 7 new).
+
+**ㅈㄴ 어이없는 1번 — F17: T8 cap이 CLI 한 줄로 뚫림.**
+T8에서 `measurements: Field(ge=100, le=10_000_000)` 박아놓고
+known_issues 문서에 "config 로드 단계에서 거부" 라고 적었는데, cli.py가
+`dud.model_copy(update={'measurements': 99999999})` 패턴으로 override.
+직접 검증:
+```python
+>>> M(x=Field(ge=0, le=100)).model_copy(update={'x': 99999}).x
+99999  # 검증 안 함 ㅋㅋㅋ
+```
+pydantic v2 `model_copy(update=)` 는 재검증 안 하는 게 *공식 동작*.
+LLM이 v1 시절 패턴 그대로 짜면서 v2 시맨틱 못 따라간 거. 결과적으로
+T8 acceptance 약속이 yaml 입력에만 걸리고 CLI는 free pass. 같은 패턴으로
+미래 F16 (seed=0 거부) validator도 `--seed 0` 으로 뚫림.
+
+**다음 큰 거 — F18: KAT regex가 `re.search` (anywhere match).**
+default pattern `r"PASSED:?\s*(\d+)"` + `re.search` 조합 = stdout 어디든
+"PASSED: 100" 박혀 있으면 매치. 실제로 KAT runner가 progress log 에
+"WARNING: vector 50 differs. PASSED: 100 prior" 같은 거 한 줄만 박고
+exit 0 로 끝나도 false PASS. F1 (Bundle E-1) 에서 fix 했다고 자랑했던
+"no-op runner도 PASS 박는 문제" 의 *다른 각도* 가 여전히 살아있음.
+`^...$` 앵커 + `re.MULTILINE` 만 박았으면 됐는데, LLM이 `re.search` vs
+`re.match` vs `re.fullmatch` 헷갈리는 typical 패턴.
+
+**나머지 confirmed (전부 LLM-typical mistake)**:
+- **T18**: `subprocess.run(..., text=True)` 7군데 모두 `errors='replace'`
+  없음. 하네스가 garbage bytes 뱉으면 `UnicodeDecodeError` raw traceback.
+  T6 try/except이 이 예외는 안 잡음 → fail-open 다 채워놓고 마지막에
+  새는 거. LLM이 `text=True` 까지만 박고 끝내는 게 typical.
+- **T19**: `harness_{name}.c` 동시 write race. 같은 yaml 두 ctkat 프로세스
+  parallel run 시 마지막 writer wins → silent corruption. tempfile +
+  atomic rename 패턴은 LLM이 명시 요청 없으면 안 씀.
+- **T20**: F6 coverage probe `_render_sentinel_c` 가 yaml `header`/
+  `prefix` 무검증 interpolate. T7이 `name` 만 regex 박고 나머지 follow-up
+  남겨놨던 surface의 *coverage probe* 버전. LLM이 codegen에서 f-string
+  user input interpolate 자주 함.
+- **T21**: 6군데 `Path.read_text()`/`write_text()` 에 encoding 미지정 →
+  native Windows (MinGW) 에서 cp1252 fallback → 깨짐. U3 의 "MSVC 미지원"
+  caveat 와는 *다른 차원* 문제.
+- **T22**: dudect summary table ERROR row 가 `n0=0, mean=0.0, |t|=0.00`
+  으로 표시 → 사용자가 "측정은 됐는데 ERROR 떴구나" 로 오해. status
+  cell 외 cell들이 sentinel 인지 시각적 구분 없음. U6 (LOW_RISK rename)
+  과 같은 family — "라벨/표시가 정직해야" 정책 위반.
+
+**Note**: 외부 리뷰 v5 (post-Bundle-K) 가 11개 잡고, 이번 internal v6
+post-impl audit 이 추가 7개. 6번이나 review 돌렸는데도 LLM-typical 한
+구멍 (특히 F17/F18) 이 안 잡혔던 게 ㅈㄴ 의미심장. 다음 audit은
+*보안 분석 도구의 fail-modes* 외에 *AI 코드의 fail-modes* 도 별도
+체크리스트로 두고 돌려야 함.
 
 ### v6 — external review pass 5: post-implementation audit (2026-05-26)
 

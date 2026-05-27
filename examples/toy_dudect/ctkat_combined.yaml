@@ -48,7 +48,7 @@ dudect:
   generated_dir: ./_generated_dudect
   compiler:
     cc: gcc
-    cflags: [-O2, -g, -fno-omit-frame-pointer]
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
   harnesses:
     - name: leaky
       template: generic

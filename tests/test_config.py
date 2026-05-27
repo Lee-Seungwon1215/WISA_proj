@@ -493,6 +493,106 @@ def test_shared_cflags_unset_leaves_defaults(tmp_path: Path):
     assert "-O0" in cfg.ct.cflags
 
 
+def test_example_yamls_have_fno_lto_when_overriding_dudect_cflags(tmp_path: Path):
+    """T14 regression: example yamls that override dudect.compiler.cflags
+    must keep `-fno-lto` — otherwise LTO can elide the very function being
+    measured. README §"dudect 측정 강화" warns about this; the default
+    factory includes the flag, but explicit yaml overrides drop it unless
+    the author remembers to re-add it.
+    """
+    import yaml as _yaml
+    examples_dir = Path(__file__).parent.parent / "examples"
+    offenders: list[str] = []
+    for yaml_path in examples_dir.glob("*/ctkat*.yaml"):
+        body = _yaml.safe_load(yaml_path.read_text())
+        if not body:
+            continue
+        dud = body.get("dudect")
+        if not isinstance(dud, dict):
+            continue
+        compiler = dud.get("compiler")
+        if not isinstance(compiler, dict):
+            continue
+        cflags = compiler.get("cflags")
+        if cflags is None:
+            continue  # using default factory, which already includes -fno-lto
+        if "-fno-lto" not in cflags:
+            offenders.append(str(yaml_path.relative_to(examples_dir.parent)))
+    assert not offenders, (
+        f"Example yamls override dudect cflags but drop `-fno-lto`: {offenders}. "
+        "Add the flag explicitly — its absence silently lets LTO elide the "
+        "measured function (see T14)."
+    )
+
+
+def test_dudect_seed_zero_rejected(tmp_path: Path):
+    # F16: yaml `dudect.seed: 0` was silently swapped to 0xC0FFEE inside the
+    # generated C harness while Python logged `0x0` — two layers in
+    # disagreement. Validator must refuse the input outright.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  seed: 0\n"
+        "  harnesses:\n"
+        "    - {name: h, template: generic, function: foo}\n"
+    )
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        load_config(_write(tmp_path, body))
+
+
+def test_dudect_seed_null_still_allowed(tmp_path: Path):
+    # `null` (Python None) means "pick a random seed at run time and log it"
+    # — that path must remain working after F16 (the gt=0 bound applies only
+    # to non-None values).
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  seed: null\n"
+        "  harnesses:\n"
+        "    - {name: h, template: generic, function: foo}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.dudect.seed is None
+
+
+def test_ct_seed_zero_rejected(tmp_path: Path):
+    # Same family as the dudect side — harness_generic.c.j2 also has the
+    # `CTKAT_SEED ? CTKAT_SEED : 0xC0FFEE` swap.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  seed: 0\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        load_config(_write(tmp_path, body))
+
+
+def test_shared_cflags_yields_when_user_explicit_matches_default(tmp_path: Path):
+    # F15 regression: a user who explicitly sets `ct.cflags` to a list that
+    # happens to equal the default factory output must NOT be silently
+    # overridden by `shared_cflags`. The earlier `==` check did exactly that;
+    # the model_fields_set check fixes it.
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "shared_cflags: ['-O3']\n"
+        "ct:\n"
+        "  cflags: ['-O0', '-g', '-fno-inline', '-fno-omit-frame-pointer']\n"
+        "  harnesses:\n"
+        "    - {name: h, binary: ./x}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    # User's explicit list (even though == default) must win over shared.
+    assert cfg.ct.cflags == ["-O0", "-g", "-fno-inline", "-fno-omit-frame-pointer"]
+
+
 # --- Bundle I (T2): lookup_function_patterns yaml field ------------------
 
 

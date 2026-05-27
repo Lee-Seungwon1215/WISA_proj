@@ -166,7 +166,13 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
     # verdict CSV's `kat_count` column carries useful diagnostic info
     # whenever the pattern happens to match.
     count: Optional[int] = None
-    m = re.search(cfg.kat.expected_pattern, r.stdout or "")
+    # F18: match with re.MULTILINE so the default anchored pattern
+    # `^PASSED:?\s*(\d+)\s*$` only fires on a *standalone summary line*,
+    # not on substring occurrences like "ERROR vector 50 differs. PASSED:
+    # 100 prior". Anchored matching is the safe default in a security
+    # tool; users who deliberately want anywhere-match can still set
+    # `kat.expected_pattern` to an unanchored regex.
+    m = re.search(cfg.kat.expected_pattern, r.stdout or "", re.MULTILINE)
     if m is not None:
         try:
             count = int(m.group(1))
@@ -840,7 +846,13 @@ def dudect(
         else:
             updates["seed"] = int(seed, 0)
     if updates:
-        dud = dud.model_copy(update=updates)
+        # F17: `model_copy(update=...)` does NOT re-run validators in
+        # pydantic v2, so `--measurements 100000000` would bypass the T8
+        # Field(le=10_000_000) bound and silently allocate ~800MB BSS.
+        # Round-tripping through `model_validate` forces full validation
+        # of the merged dict so CLI overrides are constrained identically
+        # to yaml input.
+        dud = DudectConfig.model_validate({**dud.model_dump(), **updates})
 
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
     results = _do_dudect(dud, cfg_dir, cfg.project.name, out_dir, crop=crop)
@@ -1220,7 +1232,12 @@ def parse(
 ):
     """Parse a single Valgrind log and print findings (debugging helper)."""
     text = log.read_text()
-    findings = parse_valgrind_log(text)
+    findings, dropped = parse_valgrind_log_with_stats(text)
+    if dropped > 50:
+        console.print(
+            f"[dim]Note: {dropped} unrecognized Valgrind messages dropped — "
+            "parser whitelist may need updating.[/]"
+        )
     if not findings:
         console.print("[green]No findings.[/]")
         return
