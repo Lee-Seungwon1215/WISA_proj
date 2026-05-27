@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from ._proc import run_text
+
 from rich.console import Console
 
 
@@ -107,15 +109,12 @@ def check_secret_region_coverage(
         td_path = Path(td)
         src_path = td_path / "ctkat_coverage_probe.c"
         bin_path = td_path / "ctkat_coverage_probe"
-        src_path.write_text(src)
+        src_path.write_text(src, encoding="utf-8")
         cmd = [cc, "-O0", str(src_path), "-o", str(bin_path)]
         for d in include_dirs:
             cmd.extend(["-I", str(d)])
         try:
-            proc = subprocess.run(
-                cmd, cwd=str(workdir),
-                capture_output=True, text=True, timeout=30,
-            )
+            proc = run_text(cmd, cwd=workdir, timeout=30)
         except (FileNotFoundError, subprocess.TimeoutExpired) as e:
             _console.print(
                 f"[yellow][CTKAT] F6 coverage check skipped for "
@@ -132,10 +131,7 @@ def check_secret_region_coverage(
             )
             return None
         try:
-            run = subprocess.run(
-                [str(bin_path)],
-                capture_output=True, text=True, timeout=10,
-            )
+            run = run_text([str(bin_path)], timeout=10)
         except subprocess.TimeoutExpired:
             _console.print(
                 f"[yellow][CTKAT] F6 coverage check skipped for "

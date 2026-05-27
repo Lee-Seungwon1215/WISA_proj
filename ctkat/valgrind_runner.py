@@ -1,7 +1,15 @@
+"""Bundle N (T12 + T18): subprocess goes through `_proc.run_text`.
+A hung valgrind run (rare, but possible on some interception edge cases)
+is now bounded by `cfg.ct.valgrind_timeout`; the caller catches
+TimeoutExpired and lands the harness as status=ERROR → INCONCLUSIVE.
+"""
+
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
+from ._proc import run_text
 
 
 @dataclass
@@ -10,6 +18,7 @@ class ValgrindResult:
     log_path: Path
     stdout: str
     stderr: str
+    timed_out: bool = False
 
 
 def run_valgrind(
@@ -17,6 +26,8 @@ def run_valgrind(
     log_path: Path,
     valgrind_flags: List[str],
     workdir: Path,
+    *,
+    timeout: float,
 ) -> ValgrindResult:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -25,12 +36,18 @@ def run_valgrind(
         f"--log-file={log_path}",
         str(binary.resolve()),
     ]
-    proc = subprocess.run(
-        cmd,
-        cwd=str(workdir),
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = run_text(cmd, cwd=workdir, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Caller routes timed_out=True into status=ERROR. Picked a recognizable
+        # rc to keep the path through `_do_ct`'s "rc not in (0, 99)" check.
+        return ValgrindResult(
+            returncode=124,
+            log_path=log_path,
+            stdout="",
+            stderr=f"[ctkat] valgrind exceeded timeout={timeout}s",
+            timed_out=True,
+        )
     return ValgrindResult(
         returncode=proc.returncode,
         log_path=log_path,

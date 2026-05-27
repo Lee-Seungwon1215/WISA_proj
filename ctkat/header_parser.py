@@ -213,7 +213,13 @@ def _parse_functions_impl(
 
 
 def parse_header_file(path: Path) -> List[FunctionSig]:
-    return parse_functions(path.read_text(), source_file=str(path))
+    # T21: header files are usually ASCII but third-party headers can
+    # carry non-utf-8 bytes in comments / author names. Replace keeps the
+    # parser from raising on encoding errors.
+    return parse_functions(
+        path.read_text(encoding="utf-8", errors="replace"),
+        source_file=str(path),
+    )
 
 
 def discover_headers(root: Path) -> List[Path]:

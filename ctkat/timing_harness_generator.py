@@ -9,13 +9,13 @@ the templates and code-generation concerns are different:
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from ._proc import run_text
 from .harness_generator import HarnessGenerationError, TEMPLATE_DIR
 
 
@@ -60,7 +60,10 @@ def _compile(
     include_dirs: List[Path],
     cflags: List[str],
     workdir: Path,
+    *,
+    timeout: float,
 ) -> str:
+    import subprocess as _sp
     binary_path.parent.mkdir(parents=True, exist_ok=True)
     cmd: List[str] = [cc]
     cmd.extend(cflags)
@@ -69,10 +72,14 @@ def _compile(
     cmd.extend(str(s) for s in sources)
     cmd.extend(["-o", str(binary_path)])
 
-    proc = subprocess.run(
-        cmd, cwd=str(workdir), capture_output=True, text=True,
-    )
     cmd_str = " ".join(cmd)
+    try:
+        proc = run_text(cmd, cwd=workdir, timeout=timeout)
+    except _sp.TimeoutExpired:
+        raise HarnessGenerationError(
+            f"timing harness compile exceeded timeout={timeout}s ({cmd_str}). "
+            "Bump cfg.dudect.compile_timeout or diagnose the hang."
+        )
     if proc.returncode != 0:
         raise HarnessGenerationError(
             f"failed to compile timing harness ({cmd_str}):\n"
@@ -91,13 +98,15 @@ def generate_and_compile_timing(
     cflags: List[str],
     cc: str,
     workdir: Path,
+    *,
+    timeout: float,
 ) -> GeneratedTimingHarness:
     output_dir.mkdir(parents=True, exist_ok=True)
     source_path = output_dir / f"timing_{name}.c"
     binary_path = output_dir / f"timing_{name}"
 
     code = render_timing_harness(template, context)
-    source_path.write_text(code)
+    source_path.write_text(code, encoding="utf-8")
 
     cmd_str = _compile(
         cc=cc,
@@ -107,6 +116,7 @@ def generate_and_compile_timing(
         include_dirs=include_dirs,
         cflags=cflags,
         workdir=workdir,
+        timeout=timeout,
     )
     return GeneratedTimingHarness(
         source_path=source_path,

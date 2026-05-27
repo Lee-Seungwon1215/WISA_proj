@@ -46,7 +46,10 @@ def detect_qemu_emulation() -> bool:
     signals = 0
     for path, needle in _CANDIDATES:
         try:
-            text = path.read_text()
+            # T21: /proc and /sys/dmi entries are mostly ASCII but locale
+            # quirks (or DMI strings with vendor garbage) can break utf-8 —
+            # errors="replace" keeps detection from raising in the parent.
+            text = path.read_text(encoding="utf-8", errors="replace")
         except (FileNotFoundError, PermissionError, OSError):
             continue
         if needle in text:

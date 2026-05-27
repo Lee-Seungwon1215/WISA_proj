@@ -229,8 +229,9 @@ def test_valgrind_unexpected_returncode_yields_error(monkeypatch, tmp_path):
     from ctkat import cli as cli_module
     from ctkat.valgrind_runner import ValgrindResult
 
-    def fake_run_valgrind(binary, log_path, flags, workdir):
+    def fake_run_valgrind(binary, log_path, flags, workdir, **kwargs):
         # Deliberately do NOT write any log — simulates a crashed harness.
+        # **kwargs absorbs the new Bundle N `timeout=` keyword.
         return ValgrindResult(
             returncode=137,
             log_path=log_path,
@@ -455,6 +456,23 @@ def test_build_fails_when_expected_artifact_missing(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Build: FAIL" in out
     assert "missing" in out
+
+
+def test_build_timeout_yields_fail_not_hang(tmp_path, capsys):
+    """Bundle N (T12) regression: a hung build script must surface as
+    `Build: FAIL` (rc=124) instead of stalling. Use `sleep 5` with a
+    0.1-second timeout to keep the test under a second."""
+    from ctkat.cli import _do_build
+    cfg = CtkatConfig(
+        project=ProjectConfig(name="t"),
+        build=BuildConfig(command="sleep 5", workdir=tmp_path, timeout=1),
+    )
+    # Note: BuildConfig.timeout has ge=1 — the smallest value the validator
+    # accepts. We rely on `sleep 5` taking longer than 1 second.
+    assert _do_build(cfg, tmp_path) is False
+    out = capsys.readouterr().out
+    assert "Build: FAIL" in out
+    assert "timeout" in out.lower()
 
 
 def test_build_unset_expected_artifacts_warns(tmp_path, capsys):
@@ -689,7 +707,8 @@ def _stub_ct_setup(monkeypatch, *, returncode: int, stdout: str, write_log: bool
     from ctkat import cli as cli_module
     from ctkat.valgrind_runner import ValgrindResult
 
-    def fake_run_valgrind(binary, log_path, flags, workdir):
+    def fake_run_valgrind(binary, log_path, flags, workdir, **kwargs):
+        # **kwargs absorbs Bundle N's keyword-only `timeout=`.
         if write_log:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_path.write_text("==1== ERROR SUMMARY: 0 errors from 0 contexts\n")

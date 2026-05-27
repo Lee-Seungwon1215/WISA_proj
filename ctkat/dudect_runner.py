@@ -1,9 +1,10 @@
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
 from rich.console import Console
+
+from ._proc import run_text
 
 
 # If more than this fraction of timing rows fail to parse we warn — large
@@ -138,13 +139,11 @@ def run_timing_harness(
     workdir: Path,
     timeout: int = 600,
 ) -> TimingSamples:
-    proc = subprocess.run(
-        [str(binary)],
-        cwd=str(workdir),
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    # Bundle N (T18): routes through `_proc.run_text` for utf-8 +
+    # errors='replace'. The dudect harness emits CSV (ASCII), but a crashed
+    # one can write garbage stderr before dying; `errors='replace'` keeps
+    # that diagnostic visible instead of erroring out the parent.
+    proc = run_text([str(binary)], cwd=workdir, timeout=timeout)
     if proc.returncode != 0:
         raise RuntimeError(
             f"timing harness {binary} failed (rc={proc.returncode}):\n"

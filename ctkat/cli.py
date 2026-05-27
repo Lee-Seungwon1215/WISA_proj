@@ -104,7 +104,10 @@ def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
     desc = cfg.build.command if cfg.build.command is not None else " ".join(cfg.build.argv or [])
     console.print(f"[bold cyan]==> Build[/]: {desc}")
     workdir = _resolve(cfg_dir, cfg.build.workdir)
-    r = run_step(command=cfg.build.command, argv=cfg.build.argv, workdir=workdir)
+    r = run_step(
+        command=cfg.build.command, argv=cfg.build.argv,
+        workdir=workdir, timeout=cfg.build.timeout,
+    )
     if not r.ok:
         console.print("[bold red][CTKAT] Build: FAIL[/]")
         if r.stdout:
@@ -154,7 +157,10 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
     desc = cfg.kat.command if cfg.kat.command is not None else " ".join(cfg.kat.argv or [])
     console.print(f"[bold cyan]==> KAT[/]: {desc}")
     workdir = _resolve(cfg_dir, cfg.kat.workdir)
-    r = run_step(command=cfg.kat.command, argv=cfg.kat.argv, workdir=workdir)
+    r = run_step(
+        command=cfg.kat.command, argv=cfg.kat.argv,
+        workdir=workdir, timeout=cfg.kat.timeout,
+    )
     if r.stdout:
         console.print(r.stdout)
     if not r.ok:
@@ -275,6 +281,7 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
                 include_dirs=include_dirs,
                 cflags=cflags,
                 workdir=ct_cwd,
+                timeout=cfg.ct.compile_timeout,
             )
         except HarnessGenerationError as e:
             console.print(f"[bold red][CTKAT] Harness generation FAIL ({h.name})[/]")
@@ -378,7 +385,10 @@ def _do_ct(
         console.print(
             f"[bold cyan]==> Valgrind[/]: harness=[bold]{h.name}[/] bin={binary}"
         )
-        result = run_valgrind(binary, log_path, cfg.ct.valgrind_flags, ct_cwd)
+        result = run_valgrind(
+            binary, log_path, cfg.ct.valgrind_flags, ct_cwd,
+            timeout=cfg.ct.valgrind_timeout,
+        )
         # F2: expected Valgrind exit codes are 0 (clean) and 99 (findings,
         # via --error-exitcode). Anything else = harness crashed or
         # Valgrind itself failed. Treating that as zero findings used to
@@ -417,7 +427,10 @@ def _do_ct(
                 )
                 results.append((h.name, "ERROR", []))
                 continue
-        text = log_path.read_text()
+        # T21: valgrind log lines may contain shared-library symbol names
+        # with arbitrary bytes; utf-8 + replace lets us survive odd locales
+        # without raising in the parser.
+        text = log_path.read_text(encoding="utf-8", errors="replace")
         findings, dropped = parse_valgrind_log_with_stats(
             text, lookup_patterns=cfg.ct.lookup_function_patterns,
         )
@@ -689,6 +702,7 @@ def _do_dudect(
                 cflags=dud.compiler.cflags,
                 cc=dud.compiler.cc,
                 workdir=workdir,
+                timeout=dud.compile_timeout,
             )
         except HarnessGenerationError as e:
             console.print(f"[bold red][CTKAT] Timing harness gen FAIL ({h.name})[/]")
@@ -1231,7 +1245,7 @@ def parse(
     log: Path = typer.Argument(..., help="Path to a valgrind log file"),
 ):
     """Parse a single Valgrind log and print findings (debugging helper)."""
-    text = log.read_text()
+    text = log.read_text(encoding="utf-8", errors="replace")
     findings, dropped = parse_valgrind_log_with_stats(text)
     if dropped > 50:
         console.print(

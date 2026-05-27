@@ -6,11 +6,11 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-27 (v9 — Bundle M landed: sk-leak/cache-balance semantics)
-- **Pipeline progress**: **42 fully closed** (Bundle 0~M), **1 deferred**
-  (F9 #4, out of scope per spec), **10 still open** (T12, T13, T15, T16,
-  T17, T18, T19, T20, T21, T22).
-- **Resolved so far** (42/43 prior closed except deferred F9 #4):
+- **Last updated**: 2026-05-27 (v10 — Bundle N landed: subprocess/encoding hygiene)
+- **Pipeline progress**: **45 fully closed** (Bundle 0~N), **1 deferred**
+  (F9 #4, out of scope per spec), **7 still open** (T13, T15, T16, T17,
+  T19, T20, T22).
+- **Resolved so far** (45/46 prior closed except deferred F9 #4):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
@@ -39,6 +39,12 @@ commits and PRs.
   - **F13, F14** — Bundle M (sk-leak 정상 dec path 측정 + cache-balance
     warm step이 측정 path와 일치하도록 매크로 재설계). README §"KEM
     leak axes" 갱신 — 광고와 실측이 비로소 정합.
+  - **T12, T18, T21** — Bundle N (subprocess/encoding hygiene). `_proc.run_text`
+    헬퍼 신설: timeout 필수 + encoding='utf-8' + errors='replace' 정책
+    한 곳에 집중. 5개 subprocess call site (builder × 2, valgrind, compile
+    × 2) + 6개 read/write_text 일괄 적용. yaml 필드 신규: `build.timeout`,
+    `kat.timeout`, `ct.compile_timeout`, `ct.valgrind_timeout`,
+    `dudect.compile_timeout` (default 모두 600초).
   - F9 #4 — deferred future work (multi-cflags matrix; out of scope per
     spec, requires new CSV schema + matrix-aware verdict computation).
 - **Audit sources**:
@@ -1614,7 +1620,17 @@ completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하
 
 ### T12: subprocess 호출 4곳에 timeout 무방어 (CI hang 위험) 🚨→🟡
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle N.** 신규 `ctkat/_proc.py` 의 `run_text(argv,
+*, timeout, ...)` 헬퍼가 timeout 인자를 keyword-only 필수로 강제 (default
+없음 — type error로 거부됨). 5개 call site 일괄 교체: `builder.run_shell`,
+`builder.run_argv`, `valgrind_runner.run_valgrind`, `harness_generator.compile_harness`,
+`timing_harness_generator._compile`. coverage_check도 같은 헬퍼로 통일.
+yaml 필드 신규: `BuildConfig.timeout`, `KatConfig.timeout`,
+`CtConfig.compile_timeout`/`valgrind_timeout`, `DudectConfig.compile_timeout`
+(`DudectConfig.timeout`은 T6에서 이미 도입됨). TimeoutExpired → 각 stage의
+ERROR/INCONCLUSIVE 흐름으로 wrap. 회귀 테스트
+`test_build_timeout_yields_fail_not_hang` + `test_run_text_requires_timeout_keyword`
++ `test_run_text_timeout_raises_timeoutexpired` 박힘.
 
 - **Where**: 5개 subprocess.run() call site 중 `dudect_runner.py`만 T6
   에서 timeout 받음. 나머지는 무방어:
@@ -1720,7 +1736,11 @@ completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하
 
 ### T18: subprocess `text=True` 가 `errors='replace'` 없음 → 하네스가 garbage 뱉으면 UnicodeDecodeError raw traceback 🟡
 
-**Status: OPEN (v7 internal post-impl audit).**
+**Status: RESOLVED in Bundle N.** T12와 같은 헬퍼 (`_proc.run_text`) 에
+`encoding='utf-8', errors='replace'` 정책 박혀 — 7곳 모두 한 번에 적용됨.
+하네스가 invalid utf-8 bytes 뱉어도 Python parent는 raw traceback 안 던지고
+U+FFFD replacement character로 surface. 회귀 테스트
+`test_run_text_garbage_bytes_do_not_raise_unicodedecodeerror` 박힘.
 
 - **Where**: 7개 call site 전부 동일 패턴:
   - `ctkat/builder.py:25` (`run_shell`)
@@ -1837,7 +1857,13 @@ completed task를 그대로 두지 말고 새 Bundle용 task를 새로 생성하
 
 ### T21: `Path.write_text` / `read_text` 인코딩 미지정 → Windows에서 cp1252 로 시도 → 깨짐 🟢
 
-**Status: OPEN (v7 internal post-impl audit).**
+**Status: RESOLVED in Bundle N.** 6개 read/write 사이트에 명시적 인코딩
+박힘:
+- write (생성하는 utf-8 source): `harness_generator`, `timing_harness_generator`,
+  `coverage_check` — `encoding="utf-8"` (errors 불필요, 우리가 만든 utf-8).
+- read (외부 출력 / 미지의 헤더): `cli` (valgrind log × 2), `qemu_detect`
+  (/proc DMI), `header_parser` — `encoding="utf-8", errors="replace"`
+  (외부 데이터는 garbage 가능성 있어 replace 정책).
 
 - **Where**: 인코딩 미지정 read/write 다수:
   - `ctkat/harness_generator.py:97` (`source_path.write_text(code)`)
@@ -2143,6 +2169,35 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v10 — Bundle N: subprocess/encoding hygiene (2026-05-27)
+
+Bundle M 후속. T12/T18/T21 한 commit, ~250 LoC. 헬퍼 하나로 정책 집중 →
+다음 LLM이 같은 함정 빠질 표면을 없앰.
+
+**무엇이 닫혔나**:
+- **T12** (subprocess timeout 4곳 무방어): `ctkat/_proc.py` 신설.
+  `run_text(argv, *, timeout, ...)` — timeout이 keyword-only, default
+  없어서 호출자가 까먹으면 type error로 죽음 (T12가 막으려던 그 실수
+  자체를 type system이 막음). 5개 sub site + coverage probe 2곳 일괄
+  교체. yaml: `build/kat.timeout`, `ct.compile_timeout`/`valgrind_timeout`,
+  `dudect.compile_timeout` (기존 `dudect.timeout`은 T6에서 도입됨).
+- **T18** (text=True + errors='replace' 누락): 같은 헬퍼 안에 정책
+  포함 — `encoding='utf-8', errors='replace'`. invalid utf-8 → U+FFFD,
+  raw traceback 없음.
+- **T21** (read/write_text 인코딩 미지정): 6곳 모두 명시적
+  `encoding="utf-8"`. read 쪽 (외부 출력) 은 `errors="replace"` 추가.
+
+**테스트**: 241 → **246 passed**. 신규 5개:
+- `test_run_text_requires_timeout_keyword` — type-level invariant
+- `test_run_text_garbage_bytes_do_not_raise_unicodedecodeerror` — T18 핵심
+- `test_run_text_timeout_raises_timeoutexpired` — T12 핵심
+- `test_run_text_shell_mode_works` — builder backward-compat
+- `test_build_timeout_yields_fail_not_hang` — cli 흐름까지 end-to-end
+
+**남은 OPEN 7개**:
+- Bundle O (T7 follow-up validator family): T20
+- Bundle P (polish): T13, T22, T17, T16, T15, T19
 
 ### v9 — Bundle M: sk-leak/cache-balance semantics (2026-05-27)
 

@@ -67,6 +67,10 @@ class BuildConfig(BaseModel):
     # Empty list (default) preserves prior exit-code-only behavior with a
     # one-time per-run warning that the artifact check was skipped.
     expected_artifacts: List[Path] = Field(default_factory=list)
+    # Bundle N (T12): kill the build subprocess after `timeout` seconds.
+    # Prevents a hung build script (`sleep infinity`, infinite Make recursion)
+    # from stalling CI silently. Configurable per-yaml; default 600s.
+    timeout: int = Field(default=600, ge=1)
 
     @model_validator(mode="after")
     def _check_mode(self) -> "BuildConfig":
@@ -101,6 +105,8 @@ class KatConfig(BaseModel):
     # line — anchored, so substring matches inside error messages don't
     # falsely satisfy `expected_min` (F18).
     expected_pattern: str = r"^PASSED:?\s*(\d+)(?:\s|$)"
+    # Bundle N (T12): kill the KAT subprocess after `timeout` seconds.
+    timeout: int = Field(default=600, ge=1)
 
     @model_validator(mode="after")
     def _check_mode(self) -> "KatConfig":
@@ -253,6 +259,13 @@ class CtConfig(BaseModel):
     # function names cause false positives (e.g. `verify_table_size`).
     # Set to `[]` to disable the substring-based promotion entirely.
     lookup_function_patterns: Optional[List[str]] = None
+    # Bundle N (T12): timeouts (seconds) for the two subprocess steps
+    # cli._do_ct fires per harness — `gcc` (compile_timeout) and `valgrind`
+    # (valgrind_timeout). A hung compile or runaway valgrind no longer
+    # stalls CI; instead the per-harness path lands as status=ERROR →
+    # verdict INCONCLUSIVE.
+    compile_timeout: int = Field(default=600, ge=1)
+    valgrind_timeout: int = Field(default=600, ge=1)
 
 
 class ReportConfig(BaseModel):
@@ -379,7 +392,12 @@ class DudectConfig(BaseModel):
     # turns into status=ERROR / verdict=INCONCLUSIVE rather than letting a
     # raw Python traceback escape. Bump for slow targets (e.g. QEMU + many
     # measurements); shrink in CI to surface infinite-loop bugs faster.
-    timeout: int = 600
+    timeout: int = Field(default=600, ge=1)
+    # Bundle N (T12): timeout for the timing-harness *compile* step (gcc).
+    # T6 only covered the runtime; the compile path could still hang on a
+    # cyclic include or pathological optimization. Separate knob so users
+    # can keep the compile tight while the runtime is long.
+    compile_timeout: int = Field(default=600, ge=1)
     # Bundle G (R2): the multi-cutoff cropping protocol takes max |t| over
     # 5 correlated tests, which inflates the per-test Type-I rate. When
     # True, scale `threshold_warning` and `threshold_fail` by
