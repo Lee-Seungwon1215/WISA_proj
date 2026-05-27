@@ -39,7 +39,11 @@ from .harness_generator import (
     HarnessGenerationError,
     generate_and_compile,
 )
-from .header_parser import discover_headers, parse_header_file
+from .header_parser import (
+    discover_headers,
+    parse_header_file,
+    parse_header_file_with_stats,
+)
 from .qemu_detect import detect_qemu_emulation
 from .report import finding_to_row, write_csv, write_json
 from .secret_infer import InferredFunction, infer_functions
@@ -311,6 +315,10 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
                 secret_region_lengths=[r.length for r in h.secret_regions],
                 include_dirs=include_dirs,
                 workdir=ct_cwd,
+                # T17: forward `-D`/`-U`/`-isystem`/`-iquote` from the
+                # harness's effective cflags so the probe sees the same
+                # preprocessor state the real harness will.
+                extra_compile_args=cflags,
             )
     return paths
 
@@ -810,11 +818,24 @@ def _print_dudect_summary(
             "PASS": "green",
             "WARNING": "yellow",
             "FAIL": "bold red",
+            "ERROR": "bold magenta",
         }.get(r.status, "")
         status_cell = f"[{style}]{r.status}[/]" if style else r.status
         crop_cell = (
             f"{r.cropped_at:.2f}" if r.cropped_at is not None else "-"
         )
+        # T22: an ERROR row means measurement never completed — the
+        # underlying WelchResult is _error_welch's all-zeros sentinel.
+        # Rendering `n0=0 mean=0.00 |t|=0.00` makes the row visually
+        # indistinguishable from a real successful measurement that
+        # happened to score 0, so we collapse the numeric cells to `-`
+        # and let the magenta status cell carry the signal.
+        if r.status == "ERROR":
+            table.add_row(
+                name, "-", "-", "-", "-", "-",
+                crop_cell, status_cell, "-",
+            )
+            continue
         table.add_row(
             name, str(r.n0), str(r.n1),
             f"{r.mean0:.1f}", f"{r.mean1:.1f}",
@@ -1217,14 +1238,25 @@ def infer(
         raise typer.Exit(0)
 
     all_funcs: List[InferredFunction] = []
+    total_skipped = 0
     for h in headers:
-        sigs = parse_header_file(h)
+        sigs, skipped = parse_header_file_with_stats(h)
+        total_skipped += skipped
         if function:
             sigs = [s for s in sigs if s.name == function]
         if not sigs:
             continue
         console.print(f"[cyan]==> {h}[/] [dim]({len(sigs)} function(s))[/]")
         all_funcs.extend(infer_functions(sigs))
+    # T13: surface what the strict regex couldn't parse so the user knows
+    # the inferred list is incomplete (function-pointer params, variadic,
+    # nested-paren signatures).
+    if total_skipped > 0:
+        console.print(
+            f"[dim]note: {total_skipped} declaration(s) skipped by the "
+            f"strict regex (function pointers / variadic / nested-paren "
+            f"signatures). Inferred list may be incomplete.[/]"
+        )
 
     if not all_funcs:
         console.print("[yellow]No matching functions found.[/]")

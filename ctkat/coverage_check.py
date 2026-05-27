@@ -82,6 +82,30 @@ def _render_sentinel_c(
     )
 
 
+def _filter_probe_cflags(cflags: List[str]) -> List[str]:
+    """Bundle P (T17): keep only the user cflags that affect *which* macros
+    / headers the preprocessor sees. We don't want to inherit `-O*`,
+    `-fno-lto`, `-g`, etc. — those don't influence which `#ifdef CONFIG_X`
+    branches the probe takes, and propagating them blindly could break
+    the probe in unrelated ways (probe is intentionally `-O0`).
+    """
+    keep: List[str] = []
+    skip_next = False
+    for flag in cflags:
+        if skip_next:
+            keep.append(flag)
+            skip_next = False
+            continue
+        if flag.startswith(("-D", "-U", "-isystem", "-iquote", "-I")):
+            keep.append(flag)
+            # `-isystem path` / `-iquote path` / `-I path` use a separate
+            # argv slot for the value. `-Dx`, `-Dx=1`, `-Ipath` (no space)
+            # are single-arg and don't need this.
+            if flag in ("-isystem", "-iquote", "-I", "-D", "-U"):
+                skip_next = True
+    return keep
+
+
 def check_secret_region_coverage(
     *,
     harness_name: str,
@@ -92,6 +116,7 @@ def check_secret_region_coverage(
     include_dirs: List[Path],
     workdir: Path,
     cc: str = "gcc",
+    extra_compile_args: Optional[List[str]] = None,
     threshold: float = DEFAULT_COVERAGE_WARN_THRESHOLD,
 ) -> Optional[CoverageResult]:
     """Compile + run the sentinel probe.
@@ -113,6 +138,13 @@ def check_secret_region_coverage(
         cmd = [cc, "-O0", str(src_path), "-o", str(bin_path)]
         for d in include_dirs:
             cmd.extend(["-I", str(d)])
+        # T17: propagate `-D`/`-U`/`-isystem` so user headers gated on
+        # `#ifdef CONFIG_X` reach the probe with the same preprocessor
+        # state the real harness will see. Without this, complex header
+        # chains silently fail to compile the probe → "F6 coverage check
+        # skipped" yellow note → F6 effectively a no-op.
+        if extra_compile_args:
+            cmd.extend(_filter_probe_cflags(extra_compile_args))
         try:
             proc = run_text(cmd, cwd=workdir, timeout=30)
         except (FileNotFoundError, subprocess.TimeoutExpired) as e:

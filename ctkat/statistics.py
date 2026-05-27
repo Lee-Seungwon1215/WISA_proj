@@ -204,15 +204,45 @@ def welch_with_cropping(
 
     Caller must ensure cutoffs starts with 1.0 — otherwise the uncropped
     fields will be left as None and the all-cropping-fails fallback is lost.
+
+    Bundle P (T15): sort each class ONCE instead of once-per-cutoff. The
+    previous loop called `upper_crop(samples, p)` for every cutoff, and
+    each call ran `sorted(samples)` — 10 sorts (5 cutoffs × 2 classes)
+    at O(N log N) each. With 100k measurements that's ~15M comparisons
+    repeated for no reason. We now sort each class once and slice the
+    prefix per cutoff. Result is bit-identical (same sort, same cutoff
+    indexing); only the runtime changes.
     """
+    sorted_c0 = sorted(class0)
+    sorted_c1 = sorted(class1)
+    n0_total = len(sorted_c0)
+    n1_total = len(sorted_c1)
+
     best: Optional[WelchResult] = None
     best_at: Optional[float] = None
     uncropped_t: Optional[float] = None
     uncropped_abs_t: Optional[float] = None
 
     for p in cutoffs:
-        c0 = upper_crop(class0, p)
-        c1 = upper_crop(class1, p)
+        if p >= 1.0:
+            c0 = sorted_c0
+            c1 = sorted_c1
+        elif p <= 0.0:
+            continue
+        else:
+            # Same indexing as `upper_crop` to keep results bit-identical:
+            # threshold_idx = min(int(n*p), n-1), then keep all samples
+            # with value <= sorted[threshold_idx]. On the sorted list
+            # that's a prefix of length `bisect_right(sorted, threshold)`.
+            from bisect import bisect_right
+            idx0 = min(int(n0_total * p), n0_total - 1) if n0_total else 0
+            idx1 = min(int(n1_total * p), n1_total - 1) if n1_total else 0
+            if not n0_total or not n1_total:
+                continue
+            thr0 = sorted_c0[idx0]
+            thr1 = sorted_c1[idx1]
+            c0 = sorted_c0[:bisect_right(sorted_c0, thr0)]
+            c1 = sorted_c1[:bisect_right(sorted_c1, thr1)]
         if len(c0) < 2 or len(c1) < 2:
             continue
         r = welch_t_test(c0, c1, warning_threshold, fail_threshold)

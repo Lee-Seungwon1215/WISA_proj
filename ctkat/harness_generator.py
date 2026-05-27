@@ -1,3 +1,5 @@
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -5,6 +7,37 @@ from typing import Any, Dict, List
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from ._proc import run_text
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Bundle P (T19): write `path` atomically. The tempfile + rename
+    pattern means concurrent `ctkat` runs sharing the same `_generated/`
+    directory can't see a half-written `harness_*.c` — either the old
+    contents or the complete new contents, never a mix. Important for
+    CI matrix builds that fan out the same yaml across OS / seed.
+
+    `os.replace` is atomic on POSIX (rename(2)) and on Windows (the
+    underlying ReplaceFile API). `tempfile` lives in the same directory
+    so the rename is within one filesystem (otherwise rename can fall
+    back to a non-atomic copy)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_name, path)
+    except BaseException:
+        # Best-effort cleanup if rename never happened — don't shadow the
+        # original exception.
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -106,7 +139,7 @@ def generate_and_compile(
     binary_path = output_dir / f"harness_{name}"
 
     code = render_harness(template, context)
-    source_path.write_text(code, encoding="utf-8")
+    _atomic_write_text(source_path, code)
 
     cmd_str = compile_harness(
         source_path=source_path,

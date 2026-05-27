@@ -222,6 +222,17 @@ def parse_header_file(path: Path) -> List[FunctionSig]:
     )
 
 
+def parse_header_file_with_stats(path: Path) -> tuple[List[FunctionSig], int]:
+    """Bundle P (T13): file-level wrapper around `parse_functions_with_stats`.
+    Returns `(sigs, skipped_count)` so cli `infer` can surface declarations
+    the strict regex couldn't parse (function pointers, variadic, nested-
+    paren signatures) instead of dropping them silently."""
+    return parse_functions_with_stats(
+        path.read_text(encoding="utf-8", errors="replace"),
+        source_file=str(path),
+    )
+
+
 def discover_headers(root: Path) -> List[Path]:
     """Find .h files under `root` (recursive)."""
     return sorted(p for p in root.rglob("*.h") if p.is_file())

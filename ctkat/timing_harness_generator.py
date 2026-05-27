@@ -16,7 +16,11 @@ from typing import Any, Dict, List
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from ._proc import run_text
-from .harness_generator import HarnessGenerationError, TEMPLATE_DIR
+from .harness_generator import (
+    HarnessGenerationError,
+    TEMPLATE_DIR,
+    _atomic_write_text,
+)
 
 
 TIMING_TEMPLATE_FILES = {
@@ -106,7 +110,7 @@ def generate_and_compile_timing(
     binary_path = output_dir / f"timing_{name}"
 
     code = render_timing_harness(template, context)
-    source_path.write_text(code, encoding="utf-8")
+    _atomic_write_text(source_path, code)
 
     cmd_str = _compile(
         cc=cc,

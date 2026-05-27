@@ -458,6 +458,60 @@ def test_build_fails_when_expected_artifact_missing(tmp_path, capsys):
     assert "missing" in out
 
 
+def test_dudect_summary_error_row_hides_numeric_cells(monkeypatch):
+    """T22 regression: an ERROR row used to render with `n0=0`, `mean=0.00`,
+    `|t|=0.00` — visually indistinguishable from a real measurement that
+    happened to be all zeros. The fix collapses every numeric cell to `-`
+    so the magenta status badge carries the signal alone."""
+    import io
+    from rich.console import Console as _RichConsole
+    from ctkat import cli as cli_module
+    from ctkat.cli import _print_dudect_summary, _error_welch
+    from ctkat.dudect_runner import TimingSamples
+    # Rich's auto-attached terminal doesn't write through capsys; replace
+    # the module-level console with one that writes to a StringIO so we
+    # can inspect what would have hit the user's terminal.
+    buf = io.StringIO()
+    monkeypatch.setattr(
+        cli_module, "console",
+        _RichConsole(file=buf, force_terminal=False, width=120),
+    )
+    err_result = _error_welch()
+    samples = TimingSamples()
+    _print_dudect_summary([("crashed_harness", samples, err_result, [])])
+    out = buf.getvalue()
+    assert "ERROR" in out
+    # The 0.00 / 0 sentinel values must NOT leak into the row body.
+    body_lines = [line for line in out.splitlines() if "crashed_harness" in line]
+    assert body_lines, f"crashed_harness row missing from rendered table:\n{out}"
+    body = "\n".join(body_lines)
+    assert "0.00" not in body
+    assert "-" in body
+
+
+def test_infer_surfaces_skipped_declaration_count(tmp_path, capsys):
+    """T13 regression: `parse_functions_with_stats` was added in Bundle H2
+    (T11) but the CLI `infer` subcommand still called `parse_header_file`
+    (list-only), so users were never told how many function-pointer /
+    variadic decls the strict regex skipped. Fix wires the stats path
+    through and surfaces a dim note."""
+    header = tmp_path / "tricky.h"
+    header.write_text(
+        # One parseable decl + one function-pointer parameter (skipped by
+        # the strict regex).
+        "int normal_fn(int x);\n"
+        "int register_cb(int (*cb)(int));\n",
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["infer", "--header", str(header)])
+    assert result.exit_code == 0
+    assert "normal_fn" in result.stdout
+    # The skip-count note must appear (Rich may wrap; collapse first).
+    collapsed = " ".join(result.stdout.split())
+    assert "1 declaration(s) skipped" in collapsed
+
+
 def test_build_timeout_yields_fail_not_hang(tmp_path, capsys):
     """Bundle N (T12) regression: a hung build script must surface as
     `Build: FAIL` (rc=124) instead of stalling. Use `sleep 5` with a

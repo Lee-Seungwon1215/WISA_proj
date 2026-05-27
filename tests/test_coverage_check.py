@@ -125,3 +125,34 @@ def test_total_zero_returns_result_but_skips_comparison(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "WARNING" not in out
     assert "total=0" in out
+
+
+# --- Bundle P (T17): user cflags propagation to probe ----------------
+
+
+def test_filter_probe_cflags_keeps_define_and_include_only():
+    """T17 regression: ct cflags like `-O2 -g -fno-lto -DCONFIG_X=1
+    -isystem /usr/include/foo` had only `-I` paths reach the probe.
+    The filter must keep `-D`/`-U`/`-isystem`/`-iquote`/`-I` (everything
+    that influences which headers / macros the preprocessor sees) and
+    drop the rest (`-O*`, `-g`, `-fno-lto`, etc.) since the probe is
+    intentionally `-O0` and incompatible with some flags."""
+    from ctkat.coverage_check import _filter_probe_cflags
+    cflags = [
+        "-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto",
+        "-DCONFIG_X=1", "-D", "CONFIG_Y=2", "-UFOO",
+        "-isystem", "/usr/include/foo",
+        "-Ipath/inline", "-I", "path/separated",
+        "-Wall", "-Werror",
+    ]
+    kept = _filter_probe_cflags(cflags)
+    assert "-DCONFIG_X=1" in kept
+    assert "-D" in kept and "CONFIG_Y=2" in kept
+    assert "-UFOO" in kept
+    assert "-isystem" in kept and "/usr/include/foo" in kept
+    assert "-Ipath/inline" in kept
+    assert "-I" in kept and "path/separated" in kept
+    # Noise must be dropped.
+    for noise in ("-O2", "-g", "-fno-lto", "-fno-omit-frame-pointer",
+                  "-Wall", "-Werror"):
+        assert noise not in kept, f"{noise} leaked through filter"

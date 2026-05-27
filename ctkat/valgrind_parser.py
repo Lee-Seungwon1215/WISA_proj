@@ -48,6 +48,13 @@ _FRAME_RE = re.compile(
     r"^==\d+==\s+(?:at|by)\s+(0x[0-9A-Fa-f]+):\s+(.+?)\s+\((.+)\)\s*$"
 )
 _FILE_LINE_RE = re.compile(r"^(.+):(\d+)$")
+# Bundle P (T16): binary-only frame locations look like `in /lib/libc.so.6`
+# (no source mapping — common when leaks surface inside shared libs without
+# `-g`). `_FILE_LINE_RE` doesn't match these and used to leak through as
+# file="in /lib/...", line=None. Now we recognize them explicitly: file
+# is the binary path, line stays None, and downstream code can render
+# "(/lib/libc.so.6:?)" instead of the ambiguous "(in /lib/...)".
+_BINARY_LOCATION_RE = re.compile(r"^in\s+(.+)$")
 
 
 # Whitelist of message prefixes that start a real finding. Anything else
@@ -141,6 +148,12 @@ def _parse_frame_location(location: str) -> tuple[Optional[str], Optional[int]]:
             return m.group(1).strip(), int(m.group(2))
         except ValueError:
             return location, None
+    # T16: binary-only location, e.g. "in /lib/x86_64-linux-gnu/libc.so.6".
+    # Strip the "in " prefix so the rendered output is the raw binary path
+    # (`/lib/libc.so.6:?` after the cli's `file:line` formatter).
+    bm = _BINARY_LOCATION_RE.match(location)
+    if bm:
+        return bm.group(1).strip(), None
     return location, None
 
 

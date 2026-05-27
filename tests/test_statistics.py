@@ -136,6 +136,45 @@ def test_welch_with_cropping_too_few_samples_raises():
         welch_with_cropping([1.0], [2.0, 3.0])
 
 
+# --- Bundle P (T15): sort-once optimization preserves results -----------
+
+
+def test_welch_with_cropping_bit_identical_after_T15_optimization():
+    """T15 regression: the sort-once + prefix-slice rewrite must yield
+    bit-identical results to the old "sort per cutoff" version. Compare
+    against a reimplementation of the prior logic over a stress input.
+    """
+    from bisect import bisect_right
+    from ctkat.statistics import (
+        upper_crop, welch_t_test as wtt, welch_with_cropping, CROP_PERCENTILES,
+    )
+    rng = random.Random(42)
+    c0 = [rng.gauss(100, 5) for _ in range(2000)] + [1e6, 5e5, 8e5]
+    c1 = [rng.gauss(110, 5) for _ in range(2000)] + [9e5]
+
+    # Reference: original "sort per cutoff" semantics.
+    expected = None
+    expected_at = None
+    for p in CROP_PERCENTILES:
+        a = upper_crop(c0, p)
+        b = upper_crop(c1, p)
+        if len(a) < 2 or len(b) < 2:
+            continue
+        r = wtt(a, b)
+        if expected is None or r.abs_t_score > expected.abs_t_score:
+            expected = r
+            expected_at = p
+
+    got = welch_with_cropping(c0, c1)
+    # Same winning cutoff.
+    assert got.cropped_at == expected_at
+    # Same n0/n1 → same sample counts survived cropping.
+    assert got.n0 == expected.n0
+    assert got.n1 == expected.n1
+    # |t| bit-identical (within float fuzz).
+    assert abs(got.abs_t_score - expected.abs_t_score) < 1e-12
+
+
 # --- Bundle G: Cohen's d (S3) ----------------------------------------------
 
 

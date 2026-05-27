@@ -6,11 +6,10 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-27 (v11 — Bundle O landed: T20 + T7 follow-up validators)
-- **Pipeline progress**: **46 fully closed** (Bundle 0~O), **1 deferred**
-  (F9 #4, out of scope per spec), **6 still open** (T13, T15, T16, T17,
-  T19, T22).
-- **Resolved so far** (46/47 prior closed except deferred F9 #4):
+- **Last updated**: 2026-05-27 (v12 — Bundle P landed: 마지막 polish 6개)
+- **Pipeline progress**: **52 fully closed** (Bundle 0~P), **1 deferred**
+  (F9 #4, out of scope per spec), **0 still open**. 🎉
+- **Resolved so far** (52/53; F9 #4만 deferred):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
   - F1, F3, F7, F8, F10, F11, T6 — Bundle E-1 (fail-open closure +
@@ -50,6 +49,12 @@ commits and PRs.
     regex 검증. `_check_yaml_identifiers` 모듈 레벨 함수로 두 모델
     (Harness/DudectHarness) 공유. F6 coverage probe도 같은 validator 거친
     값만 받으므로 C-source injection surface 자동 차단.
+  - **T13, T15, T16, T17, T19, T22** — Bundle P (polish, ~150 LoC):
+    parse_header_file_with_stats plumbing + cli infer skip note,
+    welch_with_cropping 한 번 sort + prefix slice 최적화, FRAME parser
+    binary-only location 인식, coverage probe에 -D/-I/-isystem propagate,
+    `_atomic_write_text` 헬퍼로 harness write race 차단, dudect summary
+    ERROR row의 numeric cell을 `-`로 분리.
   - F9 #4 — deferred future work (multi-cflags matrix; out of scope per
     spec, requires new CSV schema + matrix-aware verdict computation).
 - **Audit sources**:
@@ -1660,7 +1665,10 @@ ERROR/INCONCLUSIVE 흐름으로 wrap. 회귀 테스트
 
 ### T13: `parse_functions_with_stats` skip count → CLI에서 안 씀 (T11 미완) 🟢
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle P.** `header_parser.parse_header_file_with_stats`
+wrapper 신설, cli `infer` 서브가 `parse_header_file` → `parse_header_file_with_stats`
+로 갈음. 헤더별 skip 합산 → 0보다 크면 dim note "N declaration(s) skipped
+by the strict regex" 출력. 회귀 테스트 `test_infer_surfaces_skipped_declaration_count`.
 
 - **Where**: `ctkat/header_parser.py:158 parse_functions_with_stats`,
   `cli.py:1195 parse_header_file(h)` 호출.
@@ -1703,7 +1711,12 @@ ERROR/INCONCLUSIVE 흐름으로 wrap. 회귀 테스트
 
 ### T15: `upper_crop`이 cutoff마다 sort 다시 함 🟢
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle P.** `welch_with_cropping`을 redesign:
+c0/c1 각자 한 번씩 sort 후 cutoff별로 `bisect_right`로 prefix 인덱스만
+계산, 그 위치까지 슬라이스. 5×2=10번 호출되던 O(N log N) sort가 2번으로
+줄어듦. 결과값은 bit-identical (회귀 테스트
+`test_welch_with_cropping_bit_identical_after_T15_optimization`이 기존
+"sort per cutoff" 로직 reimpl과 결과 일치 검증).
 
 - **Where**: `ctkat/statistics.py:190 sorted(samples)` inside
   `upper_crop`. `welch_with_cropping`이 5 cutoff × 2 class = 10번 호출.
@@ -1720,7 +1733,11 @@ ERROR/INCONCLUSIVE 흐름으로 wrap. 회귀 테스트
 
 ### T16: `_FRAME_RE`가 `(in /lib/...)` 형식 location의 file:line 분리 못 함 🟢
 
-**Status: OPEN (v6 external review pass 5, partial accuracy).**
+**Status: RESOLVED in Bundle P.** 신규 `_BINARY_LOCATION_RE = ^in\s+(.+)$`
+패턴을 `_parse_frame_location`에 추가. `(in /lib/libc.so.6)` 형식 location은
+file=`/lib/libc.so.6`, line=None으로 명시적 surface — 이전엔 file=`in /lib/...`
+literal string으로 새서 stack trace render시 혼란. 회귀 테스트
+`test_frame_with_binary_only_location_keeps_path_as_file`.
 
 - **Where**: `ctkat/valgrind_parser.py:47-49 _FRAME_RE`, `:50 _FILE_LINE_RE`.
 - **Symptom (실측)**: `_FRAME_RE` 자체는 `(in /lib/...)` 형식도 match —
@@ -1784,7 +1801,15 @@ U+FFFD replacement character로 surface. 회귀 테스트
 
 ### T19: `harness_{name}.c` 파일이 동일 yaml 두 ctkat 프로세스 동시 실행 시 race (TOCTOU) 🟢
 
-**Status: OPEN (v7 internal post-impl audit).**
+**Status: RESOLVED in Bundle P.** `harness_generator._atomic_write_text`
+헬퍼 신설 — `tempfile.mkstemp(dir=path.parent)` 로 같은 디렉토리에
+임시 파일 만들고 `os.replace()` 로 atomic rename (POSIX rename(2) +
+Windows ReplaceFile 모두 atomic). 동시 실행하는 두 ctkat 프로세스가
+같은 `_generated/harness_foo.c`에 쓰더라도 reader는 항상 *어느 한 쪽의
+완전한 내용* 만 보게 됨 (절반 쓴 파일 노출 없음). harness_generator와
+timing_harness_generator 둘 다 사용. 회귀 테스트 두 개
+(`test_atomic_write_text_replaces_full_content`,
+`test_atomic_write_text_uses_utf8_encoding`).
 
 - **Where**: `ctkat/harness_generator.py:93-97` (`source_path = output_dir /
   f"harness_{name}.c"; ...; source_path.write_text(code)`),
@@ -1921,7 +1946,11 @@ U+FFFD replacement character로 surface. 회귀 테스트
 
 ### T22: dudect summary table이 ERROR row를 `n0=0, mean=0.0` 으로 표시 — 진짜 측정처럼 보임 🟢
 
-**Status: OPEN (v7 internal post-impl audit).**
+**Status: RESOLVED in Bundle P.** `_print_dudect_summary`에 `r.status ==
+"ERROR"` 분기 추가 — n0/n1/mean/|t|/batch_max cell 모두 `-` 출력, crop@과
+status cell만 정상. ERROR status는 bold magenta 색상으로 시각적 구분.
+회귀 테스트 `test_dudect_summary_error_row_hides_numeric_cells` (Rich
+Console 출력을 StringIO로 capture해서 검증).
 
 - **Where**: `ctkat/cli.py:785-805` (`_print_dudect_summary` loop),
   `ctkat/cli.py:519-524` (`_error_welch` — `n0=0, mean0=0.0, ...`).
@@ -1949,7 +1978,14 @@ U+FFFD replacement character로 surface. 회귀 테스트
 
 ### T17: coverage_check probe가 사용자 cflags(-D 등) 안 받음 — silent skip 🟢
 
-**Status: OPEN (v6 external review pass 5).**
+**Status: RESOLVED in Bundle P.** `check_secret_region_coverage`에
+`extra_compile_args` 인자 추가. cli `_do_generate`가 해당 harness의 effective
+cflags를 그대로 전달. probe 빌드 명령 형성 시 `_filter_probe_cflags` 헬퍼가
+preprocessor-affecting flag (`-D`/`-U`/`-isystem`/`-iquote`/`-I`)만 골라
+넣고, `-O*`/`-g`/`-fno-lto` 등은 dropping (probe는 의도적으로 `-O0`,
+다른 flag와 충돌 가능). `#ifdef CONFIG_X` chain 박힌 사용자 헤더도 이제
+probe가 동일 macro state로 컴파일 → F6 효과 환경 의존성 제거. 회귀 테스트
+`test_filter_probe_cflags_keeps_define_and_include_only`.
 
 - **Where**: `ctkat/coverage_check.py:111 cmd = [cc, "-O0", str(src_path),
   "-o", str(bin_path)]`. include_dirs는 받지만 `-D` 매크로, 사용자 custom
@@ -2194,6 +2230,32 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v12 — Bundle P: 마지막 polish 6개, 모든 OPEN 닫힘 🎉 (2026-05-27)
+
+Bundle O 후속, 마지막 OPEN 6개 한 commit (~250 LoC).
+
+**무엇이 닫혔나**:
+- **T22**: dudect summary table ERROR row가 `n0=0, mean=0.0, |t|=0.00`로
+  찍히던 거 → ERROR row는 모든 numeric cell `-` + status cell bold magenta.
+  status가 ERROR임이 시각적으로 명확.
+- **T13**: `parse_header_file_with_stats` wrapper + cli `infer`가 skip
+  count > 0이면 dim note 출력. T11 plumbing 미완 완료.
+- **T16**: `_BINARY_LOCATION_RE` 추가 → `(in /lib/libc.so.6)` 형식
+  location의 file/line 명시적 분리.
+- **T17**: coverage probe가 ct cflags의 preprocessor-affecting flag
+  (`-D`/`-U`/`-isystem`/`-iquote`/`-I`) 만 propagate. `_filter_probe_cflags`
+  헬퍼가 `-O*`/`-g`/`-fno-lto` 같은 noise drop.
+- **T15**: `welch_with_cropping`이 c0/c1 각자 한 번씩 sort + cutoff별
+  `bisect_right`로 prefix slice. 10번 sort → 2번. 결과 bit-identical
+  (회귀 테스트가 prior "sort per cutoff" 로직 reimpl과 결과 일치 검증).
+- **T19**: `_atomic_write_text` 헬퍼 신설 — `tempfile + os.replace()`.
+  CI matrix에서 같은 yaml 동시 실행해도 reader는 완전한 파일만 봄.
+
+**테스트**: 254 → **261 passed** (7개 신규 회귀 방어).
+
+**전체 상태**: 53 issue 중 52 closed (Bundle 0~P), 1 deferred (F9 #4 multi-cflags
+matrix — out of scope per spec, CSV schema 재설계 필요). **OPEN 0개**.
 
 ### v11 — Bundle O: T20 + T7 follow-up validator family (2026-05-27)
 

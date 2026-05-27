@@ -243,3 +243,22 @@ def test_dropped_count_zero_on_pure_findings_log():
     )
     _, dropped = parse_valgrind_log_with_stats(text)
     assert dropped == 0
+
+
+def test_frame_with_binary_only_location_keeps_path_as_file():
+    """T16 regression: frames with `(in /lib/.../libfoo.so)` locations
+    (shared libs without source mapping) used to leak the literal `in `
+    prefix into the `file` field. Now we strip it so the rendered output
+    is the binary path with line=None — clearly "no source line known"
+    instead of the ambiguous "in /lib/..." string."""
+    text = (
+        "==1== Conditional jump or move depends on uninitialised value(s)\n"
+        "==1==    at 0x4ABCDEF: __strcmp_avx2 (in /lib/x86_64-linux-gnu/libc.so.6)\n"
+        "==1== \n"
+    )
+    findings = parse_valgrind_log(text)
+    assert len(findings) == 1
+    frame = findings[0].frames[0]
+    assert frame.function == "__strcmp_avx2"
+    assert frame.file == "/lib/x86_64-linux-gnu/libc.so.6"
+    assert frame.line is None

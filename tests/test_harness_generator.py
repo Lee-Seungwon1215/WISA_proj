@@ -190,3 +190,31 @@ def test_sign_render_secret_regions_partial_taint():
 def test_unknown_template_raises():
     with pytest.raises(HarnessGenerationError):
         render_harness("nonsense", {})
+
+
+# --- Bundle P (T19): atomic write helper -------------------------------
+
+
+def test_atomic_write_text_replaces_full_content(tmp_path):
+    """T19 regression: `_atomic_write_text` must produce the final file
+    via rename, not via incremental append/truncate. Verified by writing
+    twice and asserting only the second content survives intact."""
+    from ctkat.harness_generator import _atomic_write_text
+    target = tmp_path / "harness_foo.c"
+    _atomic_write_text(target, "first contents\n")
+    _atomic_write_text(target, "second contents\n")
+    assert target.read_text(encoding="utf-8") == "second contents\n"
+    # No leftover .tmp files from the rename pattern.
+    leftover = [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
+    assert not leftover, f"atomic_write left tmp files behind: {leftover}"
+
+
+def test_atomic_write_text_uses_utf8_encoding(tmp_path):
+    """`_atomic_write_text` opens the tempfile with encoding='utf-8'
+    explicitly so a non-utf-8 locale (Windows cp1252) doesn't corrupt
+    Korean comments / non-ASCII source. T19 + T21 family."""
+    from ctkat.harness_generator import _atomic_write_text
+    target = tmp_path / "harness.c"
+    body = "/* 한글 주석 */\nint main(void){return 0;}\n"
+    _atomic_write_text(target, body)
+    assert target.read_bytes() == body.encode("utf-8")
