@@ -6,9 +6,17 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-27 (v12 — Bundle P landed: 마지막 polish 6개)
-- **Pipeline progress**: **52 fully closed** (Bundle 0~P), **1 deferred**
-  (F9 #4, out of scope per spec), **0 still open**. 🎉
+- **Last updated**: 2026-05-28 (v16 — 또 다른 모델 cross-audit: validator regex + bonferroni batch)
+- **Pipeline progress (광고 / 실제)**:
+  - **광고**: 52 closed (Bundle 0~P) + 1 deferred + 18 reopened
+    (v13: 9, v14: 3, v15: 4, v16: 2)
+  - **실제 코드 fix**: 52 + 0 (v13-v16 finding은 모두 코드 그대로 —
+    audit이 광고만 하고 fix 안 함. CLAUDE.md §9.6 audit≠fix 패턴)
+- **v16 핵심 발견**: 또 다른 모델로 한 번 더 cross-audit. v13/v14/v15가
+  못 본 또 다른 layer 2개 — validator regex 자체의 무결성 (`.match()` vs
+  `.fullmatch()` 기초 Python 함정) + bonferroni가 `batch_t_scores` 까지
+  영향주는 F20 사각지대 + test docstring 광고와 실제 검증 범위 mismatch.
+  §9.2 의 "가끔 다른 모델 cross-check이 새 layer 발견" 효과 재실증.
 - **Resolved so far** (52/53; F9 #4만 deferred):
   - R1 Option A — PQClean reproducibility caveat in README (Quick Docs commit).
   - F9 #1+#2 — cflags asymmetry banner + README warning (Bundle E-3).
@@ -64,8 +72,8 @@ commits and PRs.
   - External independent reviewer, pass 3 (audited v2 + whole repo)
   - External independent reviewer, pass 4 (audited v3 + cross-stage interactions)
   - Verification pass 5 (audited v4 line references against `main`)
-- **Total findings**: 5 tiers, 53 issues (v1: 20 → v2: 23 → v3: 26 → v4: 35
-  → v5: 35 → v6: 46 → v7: 53)
+- **Total findings**: 6 tiers (Tier 0 신설), 71 issues (v1: 20 → v2: 23
+  → v3: 26 → v4: 35 → v5: 35 → v6: 46 → v7: 53 → v13: 62 → v14: 65 → v15: 69 → v16: 71)
   - v5: no new issues — all 35 v4 findings re-verified against `main`;
     line-reference drift corrected in 7 places (F1, F4, F5, F7, F9, R1,
     T6, T8). R1's sk-leak branch line was a real mis-cite (L102 → L157),
@@ -86,6 +94,16 @@ commits and PRs.
     T20 (F6 probe C-source injection T7 follow-up surface),
     T21 (Path.read/write_text 인코딩 미지정 → Windows 깨짐),
     T22 (dudect summary table ERROR row가 진짜 측정처럼 보임).
+  - v13: post-Bundle-P anchor-free meta-audit. 9 new issues (Tier 0 신설):
+    T23 (T20 미완 — 4종 yaml 필드 5개 template raw-interp 🚨),
+    F19 (F16 우회 — `secrets.randbits(63)` 0 corner 🚨),
+    T24 (T21 미완 — `open()` 6곳 encoding 미지정 🟡),
+    F20 (bonferroni `--no-crop` 거짓말 🟡),
+    F21 (F6 미완 — region overlap/OOB 미검사 🟡),
+    T25 (dead code 2곳 🟢), T26 (bisect import hot loop 🟢),
+    T27 (sink 주석 거짓 🟢), T28 (silent parse-fail 2곳 🟢).
+    핵심 관찰: 5회 review + 7개 Bundle을 거쳐도 같은 패턴이 새 site에서
+    나옴. CLAUDE.md §9 "LLM 협업 메타-룰" 신설.
 - **Verification**: All Tier 1 (F1–F11) and Tier 2 (F6, R1–R3) claims
   verified against `main` (commit `d678617` or later) by reading the
   cited source lines. Earlier passes (v1–v3) focused tightly on the
@@ -113,6 +131,513 @@ Each issue has:
 - **Suggested bundle**: which proposed work bundle (E/F/G/Docs) covers it.
 
 Tiers are ordered by severity. Within a tier, order is not significant.
+
+---
+
+## Tier 0: Post-Bundle-P Meta-Audit Findings (v13 + v14 + v15 + v16)
+
+이 섹션은 v13/v14/v15/v16 meta-audit에서 발견된 18개 finding (v13: 9 +
+v14: 3 + v15: 4 + v16: 2) 을 모아둠. **별도 Tier로 분리한 이유**: Bundle L-P가
+"닫았다"고 광고한 issue들이 실제로는 일부만 닫혔거나 같은 패턴이 다른
+site에 그대로 남아있던 사례들이라, 정상 tier (1-5)에 흩어 놓으면
+"Bundle X에서 닫혔다"는 이전 status 광고가 사실로 보이게 됨. v13/v14
+는 정직성을 위해 별도 시각화.
+
+**⚠️ audit ≠ fix 경고**: 아래 12개 finding은 **모두 코드 fix 안 됨**.
+v13/v14 audit이 적기만 하고 코드 commit 안 함. v14가 v13 광고를 코드
+grep으로 verify해서 finding 9개 다 살아있음을 확인 (+ 3개 새). 이게
+정확히 CLAUDE.md §9.1 ("광고 ≠ 검증") 의 재귀적 사례 — audit이 자기
+audit의 광고가 됨. §9.6 신설.
+
+심각도 표기는 동일 (🚨 verdict-affecting / 🟡 correctness / 🟢 hygiene).
+
+### T23: T20 미완 — 4종 yaml 필드가 5개 template에서 raw-interpolation 🚨
+
+**Status: OPEN.** Bundle O (T20)이 `prefix/header/extra_headers/function/
+return_type` 5개 필드에 `_check_yaml_identifiers` 추가했지만 같은 surface
+인 4종 yaml 필드가 validator 거치지 않고 그대로 C로 들어감.
+
+- **Where**: 5개 template × 4종 필드
+  - `BufferSpec.name` (config.py:189) → `harness_generic.c.j2:46,47,51,
+    61,64,81,82`, `timing_generic.c.j2:90,91,96,102,117,123,125`
+  - `BufferSpec.size` (config.py:190) → 위와 동일 site (배열 크기 자리)
+  - `HarnessConfig.args` / `DudectHarnessConfig.args` (config.py:242, 397)
+    → `harness_generic.c.j2:55,57`, `timing_generic.c.j2:104,131,134`
+  - `SecretRegion.offset` / `.length` (config.py:205-206) →
+    `harness_kem.c.j2:39,49`, `harness_sign.c.j2:37,47`
+- **Symptom**: yaml에 `name: "x; system(\"rm -rf /\"); int dummy"` 박으면
+  그대로 C 컴파일됨. `args: ["\`evil\`"]` 동상. `SecretRegion.offset`은
+  "C 표현식 허용" 정책이라 그렇다 쳐도 newline/quote 무필터.
+- **Why solve**: Bundle O가 광고한 "C-source injection surface 자동
+  차단"이 사실이 아님. T20의 의도된 closure가 미완 — 같은 surface 5개
+  template × 4종 필드 추가 차단 필요. T20의 광고를 정정하지 않으면
+  다음 안전 audit이 anchor에 끌림 (정확히 CLAUDE.md §9.1).
+- **Acceptance criteria**:
+  1. `_check_yaml_identifiers` 에 `buffer_names`/`buffer_sizes`/
+     `arg_exprs`/`region_offsets`/`region_lengths` 파라미터 추가.
+  2. `BufferSpec.name`은 C identifier regex (`_C_IDENT_PATTERN`).
+  3. `BufferSpec.size`, `args`, `SecretRegion.offset/length`는 "C
+     expression-like" — `[A-Za-z0-9_+\-*/() ]+` 정도. quote/semicolon/
+     backslash/newline 명시 거부.
+  4. `BufferSpec` / `SecretRegion` / `HarnessConfig` / `DudectHarnessConfig`
+     의 `_check_mode` 또는 model_validator에서 호출.
+  5. evil-input 시연 테스트 (CLAUDE.md §9.4): `name: 'x; system'` yaml 박으면
+     ValidationError 떨어지는 stdout 캡쳐 + 해당 메시지에 필드명 포함.
+- **Related**: T20 (이게 닫혔다고 광고했던 issue), T7 (filename surface).
+- **Suggested bundle**: Q-1 (validator family extension, ~80 LoC).
+
+### F19: F16 우회 — `secrets.randbits(63)` 0 corner 🚨
+
+**Status: OPEN.** Bundle L (F16)이 yaml seed에 `Field(gt=0)` 추가해서
+0 거부했지만 CLI fallback path가 `secrets.randbits(63)`로 0 반환할 수
+있음 (확률 2^-63). 0 나오면 Python은 `0x0` 로깅, C는 `seed ? seed :
+0xC0FFEE` swap → F16이 막은 두 layer 불일치 시나리오 재현.
+
+- **Where**: `ctkat/cli.py:663`
+  ```python
+  effective_seed = dud.seed if dud.seed is not None else secrets.randbits(63)
+  ```
+- **Symptom**: 매우 낮은 확률이지만 logical hole. F16이 "seed=0 거부"라
+  광고했는데 fallback path가 그대로 우회.
+- **Why solve**: 확률은 작지만 "두 layer가 같은 값이라 보장"이라는
+  invariant가 무너지면 deterministic reproducibility claim도 무너짐.
+  CLAUDE.md §4 layer contract 위반.
+- **Acceptance criteria**:
+  1. `effective_seed = ... or 0xC0FFEE` 한 줄 추가 (또는 `secrets.randbits(63)
+     or 0xC0FFEE`).
+  2. test로 `secrets.randbits` mock해서 0 반환시 effective_seed가
+     0xC0FFEE인지 검증.
+- **Related**: F16 (이게 닫혔다고 광고했던 issue).
+- **Suggested bundle**: Q-1 (F19 + T23 묶음).
+
+### T24: T21 미완 — `open()` 6곳 encoding 미지정 🟡
+
+**Status: OPEN.** Bundle N (T21)이 `Path.read_text/write_text`에 encoding
+지정 추가했지만 `open()` 직접 호출은 안 봄. Windows non-UTF-8 locale에서
+깨질 수 있음.
+
+- **Where**:
+  - `config.py:561` — `with open(path) as f:` (yaml load, **가장 critical**)
+  - `cli.py:564, 571, 982` — CSV write (`newline=""`만 있고 encoding 없음)
+  - `report.py:62, 72` — CSV/JSON write
+- **Symptom**: Windows cp1252 locale에서 yaml의 비-ASCII (한글 주석 등)
+  깨지거나, CSV 출력이 cp1252로 박혀 다른 시스템에서 못 읽음.
+- **Why solve**: T21의 광고("Windows 깨짐 차단")가 read/write_text만
+  덮음. `open()` 직접 호출은 그대로 → 같은 user impact 잔존.
+- **Acceptance criteria**:
+  1. 6곳 모두 `encoding="utf-8"` 추가.
+  2. yaml load는 `errors="strict"` (default) 유지하되 명시.
+  3. CSV write는 `newline=""` 유지.
+- **Related**: T21 (이게 닫혔다고 광고했던 issue), T18.
+- **Suggested bundle**: Q-2 (housekeeping, ~10 LoC).
+
+### F20: bonferroni_correct + --no-crop 거짓말 🟡
+
+**Status: OPEN.** `config.py:496-504` docstring은 "multi-cutoff cropping
+protocol takes max |t| over 5 correlated tests"라 명시해 cropping 한정
+보정이라 주장. 근데 `cli.py:682-687`은 `crop` 플래그와 무관하게
+sqrt(5) 곱함. `--no-crop` 키면 single Welch test 1번 도는데 거기에도
+보정 들어감 → threshold가 이유 없이 빡빡해짐.
+
+- **Where**: `ctkat/cli.py:682-687`, `ctkat/config.py:496-504`
+- **Symptom**: `bonferroni_correct: true` + `--no-crop` 조합에서 single
+  Welch에 sqrt(5) scaling 적용 (통계적 근거 0). 실제 leak에서 PASS,
+  false PASS 가능성 발생.
+- **Why solve**: 주석 ≠ 코드 (CLAUDE.md §3). docstring claim과 코드
+  동작 불일치는 user를 혼란시키고 verdict 신뢰도 깎음.
+- **Acceptance criteria**: 둘 중 하나
+  1. (Option A) `if dud.bonferroni_correct and crop:` 로 가드 추가.
+     docstring과 코드 정합.
+  2. (Option B) docstring 수정해서 "scale both crop and no-crop for
+     consistent threshold across whole report" 명시. user는 헷갈리지만
+     의도된 design 유지.
+  - 추천: Option A (docstring을 정답으로 두고 코드 정정).
+- **Related**: R2 (Bundle G에서 도입).
+- **Suggested bundle**: Q-2.
+
+### F21: F6 미완 — secret_regions overlap / OOB 미검사 🟡
+
+**Status: OPEN.** Bundle F (F6) coverage probe는 `sum(length) / total`
+ratio만 검사. overlap (두 region 같은 byte 덮음) 미검사 → sum > total
+→ ratio > 1.0 가능. out-of-bounds (`offset: 999999, length: 32`) 미검사
+→ harness가 `sk + 999999` 위치 (스택 외부) taint.
+
+- **Where**: `ctkat/coverage_check.py:189` (`ratio = covered / total`)
+- **Symptom**:
+  - Overlap case: 두 region이 같은 byte 덮으면 100% 넘어가도 경고 없음.
+  - OOB case: `offset` 큰 값 박으면 sk 배열 밖 stack을 VALGRIND_MAKE_MEM_UNDEFINED.
+    실제 secret 아닌 stack을 taint해서 false-positive findings 발생 가능.
+- **Why solve**: F6이 광고한 "yaml typo로 인한 인 false PASS 차단"이
+  shrunk-length typo만 잡고 expanded-length / OOB는 미커버. F6 자체가
+  diagnostic이지만 "advertised vs actual coverage"가 일치해야 함.
+- **Acceptance criteria**:
+  1. coverage probe가 `max(offset + length)`도 emit (sentinel C에 추가).
+  2. python side에서 `max_offset_plus_length > total`이면 OOB warn.
+  3. region 쌍별 overlap check (offset_i + length_i > offset_j 등).
+     overlap 있으면 warn (가능한 의도지만 user에게 surface).
+- **Related**: F6.
+- **Suggested bundle**: Q-3 (F6 expansion).
+
+### T25: dead code 2곳 — cleanup 🟢
+
+**Status: OPEN.** v13 audit이 발견한 도달 불가 분기 2곳.
+
+- **Where**:
+  - `ctkat/cli.py:189` — `except (IndexError, ValueError): count = None`
+    의 `IndexError`. regex pattern에 `(\d+)` capture group이 강제되므로
+    `m.group(1)` 절대 missing 안 됨. `IndexError` raise되지 않음.
+  - `ctkat/config.py:44` — `if prefix is not None and prefix != "" and
+    not _C_IDENT_PATTERN.match(prefix):` 의 `is not None` guard.
+    `HarnessConfig.prefix: str = ""` (default `""`, Optional 아님)
+    이라 prefix가 None일 일이 없음.
+- **Symptom**: 둘 다 dead defensive code. 동작 영향 없지만 reader 혼란.
+- **Acceptance criteria**:
+  1. cli.py:189 — `except ValueError:` 로 좁힘.
+  2. config.py:44 — `is not None` 제거, `prefix != ""` 만 유지.
+- **Related**: 없음.
+- **Suggested bundle**: Q-4 (cleanup).
+
+### T26: bisect import hot loop 안 🟢
+
+**Status: OPEN.** `ctkat/statistics.py:237` `from bisect import
+bisect_right`가 `welch_with_cropping`의 for 루프 안에 있음. Python의
+import cache 덕분에 실제 비용은 매우 낮지만 (5회 iter × cache lookup)
+hot loop 안 import는 코드 위생 부적합.
+
+- **Where**: `ctkat/statistics.py:237`
+- **Symptom**: micro-perf. 측정 영향 없음.
+- **Acceptance criteria**: `bisect_right` import를 module 최상단으로.
+- **Related**: T15 (welch_with_cropping 최적화 작업).
+- **Suggested bundle**: Q-4.
+
+### T27: harness_generic sink 주석 거짓 🟢
+
+**Status: OPEN.** `templates/harness_generic.c.j2:67-79` sink 주석:
+"XOR-accumulate pattern is intentional: it consumes every byte without
+depending on a particular type for the return value." 실제 코드는
+`__ctkat_sink ^= (uint64_t)(uintptr_t)&__ctkat_ret;` + `^= sizeof(...)`
+— 값이 아니라 주소+크기만 XOR. mechanism은 `-fno-lto` + 주소 escape로
+작동하지만 주석은 거짓.
+
+- **Where**: `ctkat/templates/harness_generic.c.j2:67-79`
+- **Symptom**: code reading 시 혼란. mechanism이 실제로는 address-escape
+  기반이라 user/maintainer가 "값 소비"라 오해하면 향후 변경에서
+  실수할 위험.
+- **Why solve**: CLAUDE.md §3 "주석 ≠ 코드" 위반. 비교: `harness_kem.c.j2:
+  61-65`는 `ctkat_sink ^= ss_actual[i]` (실제로 값 소비) — 주석 정확.
+- **Acceptance criteria**: 주석을 정확하게 — "force allocation of
+  __ctkat_ret via address escape; combined with -fno-lto this prevents
+  dead-store elimination of the function call".
+- **Related**: 없음 (F15 family).
+- **Suggested bundle**: Q-4.
+
+### T28: silent parse-fail 2곳 🟢
+
+**Status: OPEN.** edge case지만 KAT/coverage 두 곳에서 regex가 matched
+는데 capture group 파싱 fail시 silent.
+
+- **Where**:
+  - `ctkat/cli.py:189-190` — `int(m.group(1))` ValueError 시 `count=None`.
+    `expected_min` 미설정이면 `return True, count` (PASS) — note는 출력
+    되지만 "regex matched but value unparseable" 시나리오는 logging 없이
+    PASS. user override pattern에서 발생 가능 (예: `(\w+)`).
+  - `ctkat/coverage_check.py:179` — sentinel regex parse fail시 yellow
+    note + return None. probe 실행은 성공한 거라 명시적 ERROR가 더
+    적절.
+- **Symptom**: 두 곳 모두 edge case. KAT는 user override pattern시 false
+  PASS 가능; coverage는 F6 자체가 diagnostic이라 영향 작음.
+- **Acceptance criteria**:
+  1. cli.py: regex matched + count parse fail시 명시적 warn (yellow note
+     "expected_pattern matched but capture group is non-numeric").
+  2. coverage_check.py: probe 실행 성공 + parse fail은 yellow note에
+     "probe ran successfully but stdout format unexpected" 명시.
+- **Related**: F1 (KAT validation), F6 (coverage diagnostic).
+- **Suggested bundle**: Q-4.
+
+### F22: coverage probe도 injection surface — T23/T20의 미발견 site 🚨 (v14)
+
+**Status: OPEN.** v13 T23이 5개 template에서 raw-interpolation 잡았지만
+**`coverage_check._render_sentinel_c`도 같은 surface**. F6 probe의 C
+source가 yaml 값 raw embed.
+
+- **Where**: `ctkat/coverage_check.py:69`
+  ```python
+  sum_expr = " + ".join(f"({length})" for length in secret_region_lengths) or "0"
+  ```
+  + line 75 `size_t covered = (size_t)({sum_expr})` — `SecretRegion.length`
+  원소가 그대로 C로.
+- **Symptom**: evil yaml의 `secret_regions: [{offset: 0, length: '32);
+  system("evil"); /*'}]` 박으면 F6 probe의 C source에 박힘. probe는
+  `-O0`이고 gcc로 compile → 실행 가능.
+- **Why solve**: T23이 광고한 "C-source injection 차단" 의 또 다른
+  미커버 surface. v13 T23 본문이 template만 다루고 coverage probe는
+  안 적음. CLAUDE.md §9.3 메타-grep 위반의 재발 사례 — `grep '({{' .`
+  대신 `grep -r "f.*\\\\(.*{.*}.*\\\\)" coverage_check.py` 같은
+  string-interpolation까지 메타-grep해야 했음.
+- **Acceptance criteria**:
+  1. T23의 `BufferSpec`/`SecretRegion` validator extension에 합류 —
+     `SecretRegion.length` regex validator가 추가되면 자동 차단.
+  2. coverage_check 호출 site (`cli.py` 어딘가) 에서 secret_region_lengths
+     를 SecretRegion 모델 거친 값만 받도록 type-narrow.
+  3. evil-input 시연 테스트.
+- **Related**: T23 (template injection), F6 (coverage probe).
+- **Suggested bundle**: Q-1 (T23 + F22 묶음 — 같은 fix가 둘 다 닫음).
+
+### T29: `ctkat run` smoke test 0개 — F12 패턴 재현 위험 🟢 (v14)
+
+**Status: OPEN.** `tests/test_cli.py`에서 `runner.invoke(app, ["run", ...])`
+호출 0개. infer/ct/kat/dudect/parse는 다 smoke test 있는데 `run`만 없음.
+README/tutorial이 `run`을 entry point로 광고하는데 backend unit test가
+커버한다고 가정한 상태.
+
+- **Where**: `tests/test_cli.py` (run subcommand 호출 0개), `cli.py:1018`
+  (`run` 정의)
+- **Symptom**: F12 (parse NameError) 와 정확히 같은 패턴 재현 가능 —
+  backend 함수 rename / 호출 chain 변경 시 `run` subcommand가 NameError
+  로 죽어도 잡지 못함. F12 가 정확히 이 시나리오로 user에게 노출됨.
+- **Why solve**: CLAUDE.md §1 "user-visible surface 각각에 smoke test
+  최소 1개" 위반. `run`이 가장 큰 user-visible surface인데 cover 0.
+  F12를 만든 root cause가 그대로 재현 가능.
+- **Acceptance criteria**:
+  1. `tests/test_cli.py` 에 `runner.invoke(app, ["run", "--config",
+     str(tmp_yaml)])` smoke test 최소 1개.
+  2. 다른 subcommand의 acceptance 항목 (예: stdout에 `KAT: PASS`,
+     `Constant-Time Check: PASS`, `dudect: PASS` 모두 나옴) 동일하게
+     검증.
+  3. 추가 fixture: KAT + ct + dudect 다 통과하는 minimal yaml + dummy
+     header / sources.
+- **Related**: F12 (parse NameError, 같은 패턴 v6에서 발생).
+- **Suggested bundle**: Q-3 (test 추가).
+
+### T31: `_ATTRIBUTE` regex가 nested paren 못 처리 → 함수 silently disappear 🟡 (v15)
+
+**Status: OPEN.** `header_parser.py:42`의 `_ATTRIBUTE` regex
+`__attribute__\s*\(\([^)]*\)\)` 가 `[^)]*` 라서 첫 `)` 에서 멈춤.
+`__attribute__((nonnull(1)))` 같은 nested paren 안에 있는 attribute
+들어오면 regex match가 `__attribute__((nonnull(1))` (마지막 `)` 미아).
+sub 결과로 미아 `)` 가 declaration에 박혀서 `_DECL_RE`/`_DECL_LOOSE_RE`
+둘 다 못 매치 → 함수 silently drop.
+
+T11이 함수 `_DECL_LOOSE_RE` + `skipped` 카운트로 "infer 누락 surfacing"
+이라 광고했지만 이 케이스는 **카운트조차 안 됨**. T11 광고 우회.
+
+- **Where**: `ctkat/header_parser.py:42` (`_ATTRIBUTE` regex)
+- **Symptom**: 실측:
+  ```
+  # 입력
+  int with_attr(uint8_t *bar) __attribute__((nonnull(1)));
+  # parse_functions_with_stats 출력
+  Parsed: []
+  Skipped: 0   ← skipped 카운트에도 안 잡힘
+  ```
+- **Why solve**: T11이 "skipped count로 infer 완성도 보장"이라 광고했는데
+  이 surface가 우회. `__attribute__((nonnull(N)))` `__attribute__((warn_unused_result))`
+  `__attribute__((format(printf, 1, 2)))` 등 표준 libc/PQClean 외 헤더에
+  흔함. `ctkat infer` 가 "skip 0"이라 보고해도 실제로는 누락 가능.
+  CLAUDE.md §8 (test corpus가 reference set만은 아닌가) 위반 — PQClean
+  헤더엔 안 쓰지만 다른 PQC 구현 / libc 헤더엔 흔함.
+- **Acceptance criteria**:
+  1. `_ATTRIBUTE` regex를 nested paren 1단계 허용으로 — `r"__attribute__\s*\((?:[^()]|\([^()]*\))*\)"`.
+  2. test fixture에 `__attribute__((nonnull(1)))` 케이스 추가 → parsed
+     list에 함수가 잡히는지 검증.
+  3. T13이 광고한 skip-count surfacing도 영향 받음 — 함수가 silent
+     disappear하면 skip count조차 0이라 user 혼란. T31 fix가 T11/T13
+     광고를 truthful하게 만듦.
+- **Related**: T11 (function-pointer params), T13 (skip count plumbing).
+- **Suggested bundle**: Q-3 (parser hardening).
+
+### T32: `_parse_param` 익명 다중포인터 (uint8_t **) 파싱 망가짐 🟡 (v15)
+
+**Status: OPEN.** `header_parser.py:121` `if name == "*":` 가드가 단일
+포인터만 처리. `uint8_t **` (이름 없는 이중포인터) 같은 케이스 → tokens
+= `["uint8_t", "**"]` → `name = "**"` (C 식별자 아님) → `type = "uint8_t"`
+(`**` 사라짐) → `is_pointer = False` (틀림).
+
+bare type name (`size_t` 단독, 이름 없는 파라미터) 도 같은 패턴: tokens
+= `["size_t"]` → `name = "size_t"` (이름이 타입으로) → `type = ""` (빔).
+
+실측:
+```
+int weird(uint8_t **, size_t);
+  → param: name='**', type='uint8_t', is_pointer=False   # 1번 깨짐
+  → param: name='size_t', type='', is_pointer=False      # 2번도 깨짐
+```
+
+- **Where**: `ctkat/header_parser.py:121-128`
+- **Symptom**:
+  - `infer` 가 yaml에 `args: ["**"]` 출력 — user 복붙하면 C compile error.
+  - `secret_infer._heuristic_role(param)` 가 `is_pointer=False`로 "scalar"
+    분류 — 실제로는 buffer인데 "이건 buffer 아님" 잘못된 hint.
+- **Why solve**: T11과 다른 surface (T11은 function pointer, T32는
+  bare type / 익명 다중포인터). PQClean API는 파라미터에 이름 다 있어
+  실측 안 터지지만, ctkat이 자기 광고를 "general PQC infer"로 잡으면
+  바로 터짐. CLAUDE.md §7 (같은 일반 문제 다른 site) 위반 — `name == "*"`
+  가드가 `*` 단일만 처리, multi-`*` / 익명 케이스 무관심.
+- **Acceptance criteria**:
+  1. `name` 이 C identifier regex (`^[A-Za-z_]\w*$`) 매치 안 하면 익명
+     처리: `name = f"_arg{index}"`, `type_tokens = tokens`.
+  2. test fixture에 `uint8_t **`, `size_t`, `const void *` 익명 케이스
+     추가.
+  3. `is_pointer` 가 `**` 케이스에도 True.
+- **Related**: T11, T13.
+- **Suggested bundle**: Q-3.
+
+### T33: `--seed abc` 같은 invalid CLI 입력이 Python traceback으로 노출 🟢 (v15)
+
+**Status: OPEN.** `cli.py:882` `updates["seed"] = int(seed, 0)` 가 예외
+처리 없음. `--seed abc` 또는 `--seed 1e5` 같은 그럴듯해 보이는 비숫자
+입력 → `ValueError: invalid literal for int() with base 0: 'abc'` →
+typer가 안 잡고 Python traceback이 그대로 사용자에게 노출.
+
+- **Where**: `ctkat/cli.py:882`
+- **Symptom**: `ctkat dudect --config foo.yaml --seed abc` 에서 typer
+  의 일반 user-friendly error 대신 Python stack trace. user는 "도구가
+  깨졌나" 의심.
+- **Why solve**: CLAUDE.md §1 (user-visible surface 각각 smoke test).
+  CLI input validation이 yaml validation (pydantic) 만 있고 direct CLI
+  `int()` call은 빈손. F17 (model_copy → model_validate) 이후 yaml
+  path는 안전하지만 CLI path는 그대로.
+- **Acceptance criteria**:
+  1. `try: updates["seed"] = int(seed, 0) except ValueError: console.print(
+     f"[red]Invalid --seed {seed!r}: use integer (0x prefix allowed) or
+     'random'[/]"); raise typer.Exit(1)`.
+  2. test: `runner.invoke(app, ["dudect", "--config", ..., "--seed",
+     "abc"])` 가 exit_code=1 + stderr 메시지 확인.
+- **Related**: F19 (seed random fallback).
+- **Suggested bundle**: Q-4.
+
+### S5: timing CSV에서 `cls ∉ {0, 1}` row가 silent하게 분석 제외 🟡 (v15)
+
+**Status: OPEN.** `dudect_runner.py:95` `samples.classes.append(cls)` 가
+cls 값 범위 검사 안 함. cls=2 같은 invalid row가 들어오면 `raw_n_total`
+에는 카운트되지만 downstream `c0 = [c for cls,c in ... if cls == 0]` /
+`c1` split에서 둘 다 빠짐 → gap. `_MALFORMED_WARN_THRESHOLD` 에도 안
+잡힘 (parse는 성공한 거라).
+
+실측:
+```
+parse_timing_csv("sample_id,class,cycles\n0,2,1000\n1,0,1001\n2,1,999\n")
+  → raw_n_total=3, c0=[1001], c1=[999], gap=1, no warning
+```
+
+- **Where**: `ctkat/dudect_runner.py:95`
+- **Symptom**: timing harness가 mid-run crash해서 garbage 출력하거나,
+  외부 binary output을 재사용했을 때 cls 값이 2/3/-1 등 들어올 수 있음.
+  CSV 의 raw_n_total과 (n0 + n1) 차이가 있는데 user에게 surface 안 됨.
+  통계 왜곡 가능.
+- **Why solve**: F4/S1 family ("per-class drop tracking, raw-count CSV
+  columns") 가 zero-cycle / malformed row는 잡지만 cls range 위반은
+  미커버. CLAUDE.md §2 (semantic invariant 검증) 위반 — "cls는 {0,1}
+  중 하나"라는 invariant가 docstring/주석에도 명시 안 됨.
+- **Acceptance criteria**:
+  1. `parse_timing_csv` 에서 `cls not in (0, 1)` 이면 `skipped_malformed`
+     로 분류 + counter 추가 (`samples.dropped_invalid_class`).
+  2. CSV report 에 `dropped_invalid_class_n` column 추가 또는 기존
+     malformed 카운트에 합산하되 warn 메시지에 "invalid class" 명시.
+  3. test fixture에 cls=2 row 추가 → drop count 증가 확인.
+- **Related**: F4 (per-class drop tracking), S1 (raw-count CSV columns),
+  T6 (timing harness fail-open).
+- **Suggested bundle**: Q-3.
+
+### T34: `_check_yaml_identifiers` 의 `.match()` 가 trailing `\n` 통과 🟢 (v16)
+
+**Status: OPEN.** `config.py:44, 50, 58, 64, 69` 의 `_C_IDENT_PATTERN`,
+`_HEADER_PATTERN`, `_C_TYPE_PATTERN` 셋 다 `.match()` 사용. Python `re`
+스펙: `$` 앵커는 "문자열 끝" 또는 "**문자열 마지막 `\n` 직전**"에서
+매치됨. `.match()` 는 시작 위치만 고정 → trailing `\n` 있으면 통과.
+T23/F22가 막으려 만든 validator 본인의 무결성에 구멍.
+
+실측:
+```python
+>>> _check_yaml_identifiers('test', prefix='PQCLEAN_\n')
+# 통과 (raise 안 함) — 'PQCLEAN_' 까지만 match, '\n' 묵인
+```
+
+- **Where**: `ctkat/config.py:44, 50, 58, 64, 69` (.match() 5개 site)
+- **Symptom**: yaml `prefix: "PQCLEAN_MLKEM768_CLEAN_\n"` (YAML 더블쿼티
+  `\n` 이스케이프) 가 validator 통과 → Jinja 렌더 시 C 소스에
+  `PQCLEAN_MLKEM768_CLEAN_\ncrypto_kem_dec(...)` 박힘 → gcc 컴파일 에러.
+  silent injection은 아니지만 validator가 막아야 할 값을 통과시키는 게 팩트.
+- **Why solve**: 보안 도구의 validator는 "엄밀히 거부"가 contract. trailing
+  `\n` 같은 기초 corner를 통과시키면 광고 ≠ 실제. 같은 family인 T23/F22
+  의 fix가 어차피 `_check_yaml_identifiers` 확장이라 같이 막아야 truthful.
+  CLAUDE.md §3 (주석 ≠ 코드) + §9.4 (test 광고 ≠ 실제) 둘 다 표본 —
+  `test_config.py`에 trailing-newline 케이스 0건.
+- **Acceptance criteria**:
+  1. 5개 site 모두 `.match()` → `.fullmatch()` 교체.
+  2. test 추가: `prefix='X\n'`, `header='api.h\n'`, `return_type='int\n'`
+     셋 다 ValidationError 떨어지는지 확인.
+- **Related**: T23 (template injection — 같은 validator), F22 (coverage
+  probe — 같은 validator).
+- **Suggested bundle**: Q-1 (T23 + F22 + T34 묶음 — 같은 validator family).
+
+### F23: `bonferroni_correct` 가 `batch_t_scores` threshold도 올림 — F20 사각지대 🟡 (v16)
+
+**Status: OPEN.** F20이 `bonferroni_correct` + `--no-crop` 조합의
+거짓말을 짚었지만, F20 본문에 `batch_t_scores` 언급 없음. `cli.py:782-783`
+이 corrected threshold를 batch_t_scores에도 그대로 전달 — 단일 검정에
+다중비교 보정 적용 (통계적 근거 없음).
+
+`cli.py:679-680` 본인 주석:
+> "Only the cropping path needs this (batch_t_scores remains uncropped
+> per its own docstring), but we scale both calls so a single yaml flag
+> means 'be conservative across the whole report'."
+
+= "필요 없다고 인정 + 그래도 줌". 주석이 코드 모순을 자기 자백.
+
+추가 §9.4 위반: `test_cli.py:931-969` docstring 광고:
+> "_do_dudect must pass scaled thresholds to welch_with_cropping /
+> welch_t_test / **batch_t_scores**"
+
+근데 실제 monkeypatch는 `welch_with_cropping` 하나뿐, `batch_t_scores`
+는 캡처 0. test 통과해도 "광고된 일" 안 검증함.
+
+- **Where**:
+  - `ctkat/cli.py:782-783` (batch_t_scores 호출에 corrected threshold)
+  - `ctkat/cli.py:679-680` (자기 모순 주석)
+  - `tests/test_cli.py:931-969` (광고와 다른 검증 범위)
+- **Symptom**: `bonferroni_correct=True` 면 batch별 단일 Welch에도
+  sqrt(5)≈2.236배 inflated threshold 적용. 결과:
+  - t=5.5 → 정상 WARNING이 PASS로
+  - t=8.0 → 정상 FAIL이 WARNING으로
+  배치별 환경 불안정 신호가 false PASS로 묻힘.
+- **Why solve**: F20 fix Option A (`if bonferroni and crop` guard) 가
+  main Welch만 고치고 batch_t_scores는 그대로. F20만 닫으면 이 사각지대
+  잔존. test 광고도 거짓이라 §9.4 표본.
+- **Acceptance criteria**: 둘 중 하나
+  1. (Option A 권장) `batch_t_scores` 호출에는 보정 안 한 원본
+     `dud.threshold_warning` / `dud.threshold_fail` 전달. 단일 검정이므로
+     통계적으로 정합.
+  2. (Option B) docstring/주석에 "batch에도 의도적으로 보수적 적용"
+     명시하되 test_cli 검증 범위를 docstring과 맞춤.
+  3. `test_bonferroni_correction_scales_thresholds` 가 실제로 batch_t_scores
+     의 threshold도 monkeypatch 캡처 + assert.
+- **Related**: F20 (bonferroni --no-crop), R2 (bonferroni 도입).
+- **Suggested bundle**: Q-2 (F20 + F23 묶음 — 통계 정합성 한 번에).
+
+### T30: welch_with_cropping `cutoffs[0]==1.0` honor-system 🟢 (v14)
+
+**Status: OPEN.** `statistics.py:201-203` docstring 명시:
+> "Caller must ensure cutoffs starts with 1.0 — otherwise the uncropped
+> fields will be left as None and the all-cropping-fails fallback is lost."
+
+근데 함수 본문에 `assert cutoffs[0] == 1.0` 같은 enforce 없음. caller
+가 cutoffs override해서 1.0 안 넣으면 silent malfunction — `uncropped_t`
+가 None으로 남아 verdict 계산에 영향.
+
+- **Where**: `ctkat/statistics.py:194-203`
+- **Symptom**: caller (현재는 cli.py 하나) 가 default `CROP_PERCENTILES`
+  쓰면 OK. 그러나 향후 yaml에서 cutoffs override 옵션 추가 등이 일어
+  나면 silent malfunction 가능. test 0.
+- **Why solve**: CLAUDE.md §3 "주석 ≠ 코드" — docstring이 invariant
+  claim하면 코드에서 enforce해야 함. T15 작업 (welch_with_cropping
+  최적화) 때 손댄 함수인데도 honor-system 그대로.
+- **Acceptance criteria**:
+  1. 함수 진입 시 `if not cutoffs or cutoffs[0] != 1.0: raise
+     ValueError("cutoffs must start with 1.0 — see docstring")`.
+  2. test로 `cutoffs=[0.5, 1.0]` 등 invalid 던지면 raise 확인.
+- **Related**: T15 (welch_with_cropping 최적화), R2.
+- **Suggested bundle**: Q-4.
 
 ---
 
@@ -2230,6 +2755,199 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v16 — 또 다른 모델 cross-audit (2026-05-28)
+
+v15 직후 또 다른 모델로 한 번 더. v15 finding (header_parser, CSV row,
+CLI input) 영역은 이미 다뤄졌고, **v16은 또 다른 angle에서 2개 layer
+발견** — validator 자체의 regex 무결성 + bonferroni의 batch_t_scores
+사각지대 + test docstring 광고와 실제 검증 범위 mismatch.
+
+**2 new findings**:
+- **T34** 🟢: `_check_yaml_identifiers` 의 `.match()` 가 trailing `\n`
+  통과. Python `re` 의 `$` 는 "문자열 끝 또는 마지막 `\n` 직전" 매치라
+  `.match()` 로는 trailing newline 검증 못 함. 5개 site 다 `.fullmatch()`
+  필요. T23/F22 fix가 어차피 같은 validator family라 묶어서 닫기 좋음.
+  보안 도구의 validator 자체에 구멍이라 🟢여도 시급.
+- **F23** 🟡: F20 (bonferroni --no-crop) 의 사각지대 — corrected
+  threshold가 `batch_t_scores` 까지 전달. 단일 검정에 다중비교 보정
+  적용이라 통계적 근거 없음. cli.py 본인 주석이 "필요 없다고 인정 +
+  그래도 줌" 으로 자기 모순. 추가로 `test_cli.py:931-969` docstring이
+  "batch_t_scores 도 검증한다" 광고하지만 실제 monkeypatch는
+  welch_with_cropping 하나뿐 — §9.4 (test 광고 ≠ 실제) 표본.
+
+**메타 통찰**:
+
+1. **다른 모델의 attention domain 효과 또 입증**: v15가 header_parser/
+   CSV row 같은 deep layer 잡았다면, v16은 validator 자체의 regex 무결성
+   같은 또 다른 layer. anchor 자체가 무한 layer로 재귀하니까 audit 한
+   번에 다 잡는 건 불가능. 다만 정기 cross-check 가 ROI 좋다는 건 v15/v16
+   에서 일관되게 보임.
+2. **test가 광고를 backstop 못 함의 또 다른 사례**: F23의 test는
+   batch_t_scores 검증한다고 docstring에 적었지만 monkeypatch 안 함.
+   pytest 통과해도 "광고된 일"은 검증 안 됨. §9.4의 가장 명백한 표본.
+3. **anchor 재귀의 실용적 의미**: §9.6의 "이게 마지막 audit인가" 질문이
+   매번 No로 답 나옴 (v13→v14→v15→v16). 결론은 "한 번에 다 잡으려
+   하지 말고 정기 audit 으로 누적된 layer 천천히 깎기" 가 현실적.
+   매번 다른 모델 의무화는 과함, 큰 변경 끝나면 가끔 다른 모델 1pass
+   정도면 충분 (CLAUDE.md §9.2 톤 다운 반영).
+
+**v16의 의의**:
+- 18개 OPEN finding (v13:9 + v14:3 + v15:4 + v16:2). 모두 코드 그대로.
+- §9.2 "가끔 다른 모델 cross-check" 의 일관된 효과 입증.
+- CLAUDE.md §9.2/§9.6 톤 다운 (강박 → 가벼운 권장) 반영.
+
+### v15 — cross-model audit: 다른 layer 4 new (2026-05-27)
+
+CLAUDE.md §9.2 ("같은 모델 N회 review ≠ 사람 N회 review") 의 첫 실험.
+v13/v14 작성 모델과 **다른 모델 1pass** 로 anchor-free audit. v13/v14
+가 자랑한 "anchor-free"가 실제로는 own attention domain (template/config/
+CLI flag interaction) 에 anchor됨이 드러남. **4개 새 finding 다 깊은
+layer** — header_parser regex, CSV row validation, CLI input handling
+— v13/v14가 한 번도 안 본 영역.
+
+**4 new findings**:
+- **T31** 🟡: `_ATTRIBUTE` regex 가 `[^)]*` 라 nested paren 못 처리.
+  `__attribute__((nonnull(1)))` 들어있는 함수가 **silently disappear**
+  (skip count 에도 안 잡힘 — T11/T13 광고 우회).
+- **T32** 🟡: `_parse_param` 의 `if name == "*":` 가드가 단일 포인터만
+  처리. 익명 `uint8_t **` → `name='**', type='uint8_t', is_pointer=False`
+  완전 깨짐. bare type (`size_t` 단독) 도 동상. `secret_infer` 가 buffer
+  를 scalar로 분류해 wrong hint.
+- **T33** 🟢: `cli.py:882` `int(seed, 0)` 예외 처리 없음. `--seed abc`
+  → Python traceback. CLI input validation이 yaml validation에만 있고
+  direct CLI path는 무방어.
+- **S5** 🟡: `parse_timing_csv` 가 `cls ∉ {0, 1}` row 를 silent하게
+  분석 제외. raw_n_total ≠ n0+n1 gap 생기는데 warn 0. F4/S1 family
+  미커버 site.
+
+**메타 통찰** (CLAUDE.md §9.2 표본):
+
+1. **"anchor-free" 자랑의 함정**: v13/v14 가 anchor-free라 자랑했지만
+   own attention domain에 anchor됨. anchor-free는 절대 개념이 아니라
+   상대 개념 — "어느 anchor로부터 free인가" 가 항상 따라옴. v13/v14
+   는 "Bundle commit message anchor"에서 free였지만 "본인의 audit
+   scope anchor"에는 갇힘. v15는 다른 모델이라 다른 attention domain
+   가져옴.
+2. **§9.2 의 ROI 실증**: cross-model 1pass 가 같은 모델 N pass 보다
+   확실히 새 layer 발견. v15 finding 4개가 다 **v13/v14가 한 번도 안
+   본 file** 에서 나옴 (header_parser.py, dudect_runner.py CSV path,
+   CLI input parse). same-model N pass였으면 또 template/config 만 봤을 것.
+3. **anchor 무한 재귀**: v13 (Bundle anchor에서 free) → v14 (v13 anchor
+   에서 free) → v15 (v13/v14 anchor에서 free). 다음 layer 가 또 있을
+   것 (v15가 못 본 deep layer). 결론은 "anchor 완전 제거 불가, 가장
+   가까운 anchor만 풀 수 있음" — 정기 audit + 모델 다양성이 필수.
+4. **사용자 워크플로우 implication**: Bundle Q를 v13/v14/v15 작성 모델
+   다 다른 모델로 짜야 §9.6 위반 회피. 또는 Q 끝나면 또 다른 모델로
+   audit-of-Q 필수.
+
+**v15의 의의**:
+- §9.2의 첫 실증 — cross-model 효과 입증.
+- 16개 OPEN finding으로 확장 (v13:9 + v14:3 + v15:4).
+- "anchor-free 자랑은 또 다른 anchor" 라는 메타-메타 통찰.
+
+### v14 — meta-meta-audit: v13 광고 vs 코드 verify + 3 new (2026-05-27)
+
+v13가 9개 finding을 known_issues.md에 적은 직후, **다른 세션이** v13의
+광고를 코드 grep으로 verify. 결과: v13 finding 9개 다 코드에 그대로
+살아있음 + 3개 새 hole. v13가 적기만 하고 fix commit 안 한 게 드러남.
+
+**3 new findings**:
+- **F22** 🚨: coverage probe도 injection surface — `coverage_check._render_sentinel_c`
+  의 `secret_region_lengths` raw embed. v13 T23이 template 5개는 잡았지만
+  coverage probe site 누락. CLAUDE.md §9.3 메타-grep을 string-interpolation
+  까지 확장해야 한다는 교훈.
+- **T29** 🟢: `ctkat run` smoke test 0개. infer/ct/kat/dudect/parse는 있는데
+  `run`만 없음. F12 (parse NameError) 와 정확히 같은 root cause 재현 가능.
+  v13 audit이 backend 함수 / template / config 중심이라 test corpus 자체의
+  gap을 못 봄.
+- **T30** 🟢: `welch_with_cropping` docstring "cutoffs must start with 1.0"
+  honor-system. assert 없음. T15 작업이 함수 만지면서도 enforce 안 넣음.
+
+**메타 메타 통찰** (CLAUDE.md §9.6 신설):
+
+1. **v13 itself가 §9.1 표본**: v13가 "anchor-free audit으로 9개 잡음"이라
+   광고했지만 v14가 verify해보니 그 광고 자체가 또 광고만이고 코드는 그대로.
+   **audit이 의식(ritual)이 되면 audit도 광고로 변함**. 즉 §9.1이 audit
+   layer에도 재귀적으로 적용됨.
+2. **audit ≠ fix lag**: 같은 모델이 audit과 fix 둘 다 하면 자기 finding
+   scope에 anchor됨. T23이 args 광고에 포함했지만, fix bundle 단계에서
+   anchor 강해지면 args 빼먹을 가능성. **audit과 fix는 다른 세션으로
+   분리**가 안전.
+3. **"이게 마지막 audit"이라는 가정 자체가 위험**: 보통 finding N개 적은
+   직후가 anchor 가장 강한 시점이라 다음 audit이 또 같은 hole 본다는 게
+   v14의 의의. 정기 audit (§9.5) 의 implication이 "한 번 했으니 OK" 가
+   아니라 "한 번 했으니 다음에 또 해야 함" 인 이유.
+4. **사용자 워크플로우 implication**: v13 finding 적은 LLM이 Bundle Q
+   짜면 §9.6 위반 위험. Bundle Q는 **다른 모델 / 다른 세션** 으로
+   짜거나, 사용자가 fix 시작 prompt에 "v13/v14 적은 모델 아님" 명시.
+
+**v14의 의의**:
+- v13 광고 verify로 12개 finding (v13:9 + v14:3) 모두 코드 그대로임을
+  확인. known_issues.md status 의 "광고 / 실제" 분리 도입.
+- CLAUDE.md §9.6 "audit ≠ fix" 신설. §9.5 (정기 audit) 와 짝.
+- 후속 안전 절차: Bundle Q 작성 모델 ≠ v13/v14 작성 모델. cross-session
+  enforcement. Q 끝나면 다시 audit-of-Q (다른 세션).
+
+### v13 — post-Bundle-P anchor-free meta-audit (2026-05-27)
+
+v12의 "0 still open. 🎉" claim 직후 진행된 메타 audit. 핵심 차이:
+**기존 audit이 anchored ("Bundle X가 닫았다고 한 게 맞나" 검증)였다면,
+v13은 anchor-free ("known_issues.md / Bundle commit message 무시하고
+코드만 grep")**. 결과: 9개 new finding.
+
+**9 new findings**:
+
+- **T23** 🚨: T20 (Bundle O) 미완 — `BufferSpec.name`, `BufferSpec.size`,
+  `args` 항목, `SecretRegion.offset/length` 4종 yaml 필드가 5개 template
+  에서 raw-interpolation. Bundle O가 "C-source injection surface 자동
+  차단" 광고했지만 검증된 surface는 5개 필드만, 나머지 4종은 그대로.
+  v13에서 가장 큰 finding — 광고와 실제 차이가 명백.
+- **F19** 🚨: F16 (Bundle L) 우회 — `cli.py:663` `secrets.randbits(63)`
+  fallback이 0 반환 가능 (2^-63). 0 corner에서 Python/C layer 불일치
+  재현. `or 0xC0FFEE` 한 줄로 닫음.
+- **T24** 🟡: T21 (Bundle N) 미완 — `open()` 6곳 encoding 미지정.
+  `Path.read/write_text`만 잡았고 `open()` 직접 호출은 미점검.
+  `config.py:561` (yaml load) 가장 critical.
+- **F20** 🟡: docstring ≠ 코드 — `bonferroni_correct: true` + `--no-crop`
+  조합에서 single Welch에 sqrt(5) scaling 잘못 적용. docstring은
+  cropping 한정이라 명시.
+- **F21** 🟡: F6 (Bundle F) 미완 — coverage probe가 ratio만 검사.
+  region overlap (sum > total) / OOB (offset 큰 값으로 stack taint)
+  미검사.
+- **T25** 🟢: dead code 2곳 — `cli.py:189` IndexError unreachable,
+  `config.py:44` `prefix is not None` guard dead.
+- **T26** 🟢: `statistics.py:237` `bisect_right` import가 for 루프
+  안. micro-perf.
+- **T27** 🟢: `harness_generic.c.j2:67-79` sink 주석 거짓 ("consumes
+  every byte"라 했지만 실제론 주소+sizeof만 XOR).
+- **T28** 🟢: silent parse-fail 2곳 (cli.py:189 KAT count, coverage_check.py:179
+  sentinel).
+
+**메타 통찰** (CLAUDE.md §9에 protocol화):
+
+1. **광고 ≠ 검증**: review가 "X가 X인가"만 검증, "X 외 같은 패턴 다른
+   site"는 검증 안 됨. T20 미완이 정확한 예 — 5개 필드 검증만 했고
+   `grep '{{' templates/` 메타-grep 안 함.
+2. **같은 모델 N회 review의 한계**: 5회 외부 review pass가 같은 LLM
+   패밀리면 attention bias 공유. 사람 review가 ~5배 효과인데 LLM은
+   ~1.5배. v13이 잡은 9개 finding은 prompt를 anchor-free로 비대칭화한
+   덕분.
+3. **anchor의 함정**: known_issues.md `"0 still open. 🎉"` 같은 정리된
+   status가 다음 audit의 LLM context에 들어가면 "닫혔다"는 강한 bias
+   생성. anchor 명시적으로 제거해야 새 hole 보임.
+4. **CLAUDE.md self-check이 honor system**: §5/§7가 "신규 API grep" /
+   "메타-grep" 적었지만 작업 prompt에 강제하지 않으면 LLM이 본인 룰
+   어김. v13에서 발견된 T20 미완이 정확히 본인 §5 위반.
+
+**의의**:
+- v13의 9개 finding 자체보다 **"5회 review + 7개 Bundle을 거쳐도 같은
+  패턴 회귀가 새 site에서 나온다"는 메타 사실이 더 중요**.
+- CLAUDE.md §9 "LLM 협업 메타-룰" 신설 — prompt 비대칭화, anchor-free
+  audit, 메타-grep 의무, cross-model review.
+- 후속: Bundle Q (Q-1 ~ Q-4)로 9개 finding 닫음. 단 닫는 commit message
+  자체가 또 anchor가 될 수 있으므로 Q 다음 분기 1회 anchor-free re-audit
+  스케줄 (CLAUDE.md §9.5).
 
 ### v12 — Bundle P: 마지막 polish 6개, 모든 OPEN 닫힘 🎉 (2026-05-27)
 
