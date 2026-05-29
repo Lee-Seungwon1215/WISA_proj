@@ -79,6 +79,15 @@ def parse_timing_csv(text: str) -> TimingSamples:
         except ValueError:
             skipped_malformed += 1
             continue
+        if cls not in (0, 1):
+            # S5: the harness only ever emits class 0 or 1. A row with any
+            # other class is corrupt output (interleaved stdout, truncated
+            # write). Count it as malformed so the malformed-rate warning can
+            # fire — otherwise it was appended to samples and then silently
+            # dropped by the downstream `if cls == 0/1` t-test filtering,
+            # inflating raw_n_total with no trace.
+            skipped_malformed += 1
+            continue
         if cls == 0:
             raw_n0 += 1
         elif cls == 1:

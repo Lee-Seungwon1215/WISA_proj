@@ -638,6 +638,34 @@ def test_example_yamls_have_fno_lto_when_overriding_dudect_cflags(tmp_path: Path
     )
 
 
+def test_mlkem_dudect_harnesses_omit_randombytes_for_reproducibility():
+    """T38 regression: the ML-KEM example advertises reproducible dudect
+    timings (README §"재현성 (seed)") via the weak `randombytes` override
+    (R1 Option B). That only works if the dudect harnesses do NOT also link
+    PQClean's strong `common/randombytes.c`, which would shadow the override
+    with OS entropy. The ct/Valgrind harness, by contrast, MUST keep it (no
+    override in that template). Lints the actual example so the advertised
+    reproducibility can't silently drift away again."""
+    import yaml as _yaml
+    cfg = _yaml.safe_load(
+        (Path(__file__).parent.parent
+         / "examples" / "pqc_mlkem768" / "ctkat.yaml").read_text()
+    )
+    for h in cfg["dudect"]["harnesses"]:
+        srcs = h.get("sources", [])
+        assert not any("randombytes.c" in s for s in srcs), (
+            f"dudect harness {h['name']!r} links common/randombytes.c — it "
+            "shadows the weak override and breaks reproducibility (T38)."
+        )
+    # The ct harness keeps it (Valgrind harness has no override and needs the
+    # strong symbol to link) — guard against an over-eager removal.
+    ct_srcs = [s for h in cfg["ct"]["harnesses"] for s in h.get("sources", [])]
+    assert any("randombytes.c" in s for s in ct_srcs), (
+        "ct harness should still link common/randombytes.c (no weak override "
+        "in the Valgrind template)."
+    )
+
+
 def test_dudect_seed_zero_rejected(tmp_path: Path):
     # F16: yaml `dudect.seed: 0` was silently swapped to 0xC0FFEE inside the
     # generated C harness while Python logged `0x0` — two layers in
@@ -843,3 +871,72 @@ def test_validator_fullmatch_rejects_trailing_newline():
         HarnessConfig.model_validate(
             {"name": "h", "template": "generic", "function": "f\n"}
         )
+
+
+# --- R-4 (T37/T39): config robustness regressions ---------------------------
+
+
+def test_duplicate_ct_harness_names_rejected(tmp_path: Path):
+    """T37: two ct harnesses with the same name key the same generated-binary
+    slot and harness_<name>.c path — one silently overwrites the other."""
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: dup, binary: ./a}\n"
+        "    - {name: dup, binary: ./b}\n"
+    )
+    with pytest.raises(ValidationError, match=r"duplicate harness name"):
+        load_config(_write(tmp_path, body))
+
+
+def test_duplicate_dudect_harness_names_rejected(tmp_path: Path):
+    """T37: same collision in the dudect list."""
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - {name: dup, template: generic, function: f}\n"
+        "    - {name: dup, template: generic, function: g}\n"
+    )
+    with pytest.raises(ValidationError, match=r"duplicate harness name"):
+        load_config(_write(tmp_path, body))
+
+
+def test_same_name_across_ct_and_dudect_is_allowed(tmp_path: Path):
+    """T37: a ct harness and a dudect harness deliberately share a name to
+    pair in the combined verdict matrix (examples/pqc_mlkem768 does this).
+    Uniqueness is per-list, so this must NOT be rejected."""
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "ct:\n"
+        "  harnesses:\n"
+        "    - {name: kem_dec, binary: ./a}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - {name: kem_dec, template: generic, function: f}\n"
+    )
+    cfg = load_config(_write(tmp_path, body))
+    assert cfg.ct.harnesses[0].name == "kem_dec"
+    assert cfg.dudect.harnesses[0].name == "kem_dec"
+
+
+def test_build_empty_argv_rejected(tmp_path: Path):
+    """T39: `argv: []` passes the exactly-one check but crashes subprocess
+    with a raw IndexError (no program to exec)."""
+    body = "project: {name: demo}\nbuild: {argv: []}\n"
+    with pytest.raises(ValidationError, match=r"argv must be a non-empty"):
+        load_config(_write(tmp_path, body))
+
+
+def test_kat_empty_argv_rejected(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "kat: {argv: []}\n"
+    )
+    with pytest.raises(ValidationError, match=r"argv must be a non-empty"):
+        load_config(_write(tmp_path, body))

@@ -561,14 +561,14 @@ def _emit_dudect_report(
     raw_path = out_dir / "dudect_raw_timings.csv"
     summary_path = out_dir / "dudect_summary.csv"
 
-    with open(raw_path, "w", newline="") as f:
+    with open(raw_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["project", "harness", "sample_id", "class", "cycles"])
         for harness_name, samples, _, _ in results:
             for i, (cls, cyc) in enumerate(zip(samples.classes, samples.cycles)):
                 w.writerow([project, harness_name, i, cls, cyc])
 
-    with open(summary_path, "w", newline="") as f:
+    with open(summary_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         # IMPORTANT: columns 1-14 are stable for backward compatibility —
         # scripts/run_phase4.sh parses $11 (status) via awk and we don't
@@ -1008,7 +1008,7 @@ def _emit_verdicts(
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "ctkat_verdict.csv"
     kat_count_str = "" if kat_count is None else str(kat_count)
-    with open(path, "w", newline="") as f:
+    with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow([
             "project", "harness",
@@ -1303,7 +1303,10 @@ def infer(
 
 @app.command()
 def parse(
-    log: Path = typer.Argument(..., help="Path to a valgrind log file"),
+    log: Path = typer.Argument(
+        ..., exists=True, file_okay=True, dir_okay=False, readable=True,
+        help="Path to a valgrind log file",
+    ),
 ):
     """Parse a single Valgrind log and print findings (debugging helper)."""
     text = log.read_text(encoding="utf-8", errors="replace")

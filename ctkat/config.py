@@ -86,6 +86,28 @@ def _check_header(where: str, label: str, value: str) -> None:
         )
 
 
+def _check_unique_names(where: str, names: List[str]) -> None:
+    """T37: harness names key the generated-binary map (cli `generated[name]`)
+    and the `{generated_dir}/harness_<name>.c` path. Two harnesses sharing a
+    name in the SAME list silently overwrite each other's source/binary and
+    one disappears from the report with no error. Reject duplicates at load.
+    (ct and dudect lists are checked independently — a ct harness and a dudect
+    harness deliberately share a name to pair in the verdict matrix.)"""
+    seen: set[str] = set()
+    dups: List[str] = []
+    for n in names:
+        if n in seen and n not in dups:
+            dups.append(n)
+        seen.add(n)
+    if dups:
+        raise ValueError(
+            f"{where}: duplicate harness name(s) {dups} — names must be unique "
+            "within a list (they key the generated-binary map and the "
+            "harness_<name>.c path; a collision silently overwrites one "
+            "harness with another)."
+        )
+
+
 def _check_yaml_identifiers(
     where: str,
     *,
@@ -196,6 +218,15 @@ class BuildConfig(BaseModel):
                 "build: exactly one of `command` (shell=True, legacy) or "
                 "`argv` (shell=False, T4 safer alternative) must be set"
             )
+        # T39: `argv: []` passes the exactly-one check (it's not None) but
+        # `run_argv([])` → subprocess.run([]) raises a raw IndexError. The
+        # first element is the program to exec, so an empty list is never
+        # valid — reject it at load with a clear message.
+        if self.argv is not None and len(self.argv) == 0:
+            raise ValueError(
+                "build: argv must be a non-empty list — its first element is "
+                "the program to execute (T39)."
+            )
         return self
 
 
@@ -231,6 +262,12 @@ class KatConfig(BaseModel):
             raise ValueError(
                 "kat: exactly one of `command` (shell=True, legacy) or "
                 "`argv` (shell=False, T4 safer alternative) must be set"
+            )
+        # T39: empty argv would crash subprocess with a raw IndexError.
+        if self.argv is not None and len(self.argv) == 0:
+            raise ValueError(
+                "kat: argv must be a non-empty list — its first element is "
+                "the program to execute (T39)."
             )
         return self
 
@@ -437,6 +474,11 @@ class CtConfig(BaseModel):
     compile_timeout: int = Field(default=600, ge=1)
     valgrind_timeout: int = Field(default=600, ge=1)
 
+    @model_validator(mode="after")
+    def _check_unique_harness_names(self) -> "CtConfig":
+        _check_unique_names("ct.harnesses", [h.name for h in self.harnesses])
+        return self
+
 
 class ReportConfig(BaseModel):
     # `populate_by_name=True` lets us keep the friendly YAML keys (`csv`, `json`)
@@ -600,6 +642,8 @@ class DudectConfig(BaseModel):
                 f"dudect.clock='rdtsc' requires an x86_64 host (current: "
                 f"{platform.machine()}). Use 'auto' (default) or 'monotonic'."
             )
+        # T37: reject duplicate harness names within the dudect list.
+        _check_unique_names("dudect.harnesses", [h.name for h in self.harnesses])
         return self
 
 
@@ -644,7 +688,10 @@ class CtkatConfig(BaseModel):
 
 
 def load_config(path: Path) -> CtkatConfig:
-    with open(path) as f:
+    # T24: explicit utf-8 so a yaml authored on one OS (or carrying non-ASCII
+    # comments) loads identically regardless of the host locale's default
+    # encoding (Windows cp1252 vs POSIX utf-8).
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict):
         raise ValueError(f"Config root must be a mapping, got {type(raw).__name__}")

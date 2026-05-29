@@ -89,7 +89,14 @@ dudect:
         - clean/symmetric-shake.c
         - clean/verify.c
         - common/fips202.c
-        - common/randombytes.c
+        # T38/R1 Option B: common/randombytes.c is intentionally OMITTED for
+        # the dudect harnesses. The generated timing harness ships a weak
+        # `randombytes` override seeded by dudect.seed, so keypair/enc become
+        # reproducible (bit-identical raw timings across runs with the same
+        # seed). Linking the strong PQClean def here would shadow that weak
+        # symbol and pull OS entropy, breaking the advertised reproducibility.
+        # The ct/Valgrind harness above keeps it on purpose: that template has
+        # no override and Valgrind is deterministic regardless.
 
     # ct-leak axis (Bundle D): class 0 fixed ct vs class 1 fresh ct, sk
     # held constant. Detects ct-content leaks (e.g. ct-indexed branches).
@@ -114,7 +121,8 @@ dudect:
         - clean/symmetric-shake.c
         - clean/verify.c
         - common/fips202.c
-        - common/randombytes.c
+        # T38/R1: common/randombytes.c omitted (weak override → reproducible);
+        # see the kem_dec dudect harness above for the full rationale.
 
 report:
   output_dir: ./reports

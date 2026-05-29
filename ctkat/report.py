@@ -59,7 +59,7 @@ def finding_to_row(project: str, harness: str, finding: Finding) -> Dict[str, st
 
 def write_csv(rows: List[Dict[str, str]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="") as f:
+    with open(path, "w", newline="", encoding="utf-8") as f:
         # lineterminator="\n" to keep awk/grep-friendly LF endings; csv's
         # Excel-flavored CRLF default trips downstream Unix tooling.
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, lineterminator="\n")
@@ -69,5 +69,5 @@ def write_csv(rows: List[Dict[str, str]], path: Path) -> None:
 
 def write_json(payload: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, default=str)

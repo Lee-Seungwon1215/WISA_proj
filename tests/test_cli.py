@@ -1095,3 +1095,13 @@ def test_dudect_summary_csv_error_harness_has_zero_raw_counts(tmp_path):
     assert by_name["crashed"][17] == "0"
     assert by_name["crashed"][18] == "0"
     assert by_name["crashed"][19] == "0"
+
+
+def test_parse_subcommand_missing_file_exits_cleanly():
+    """T40: `ctkat parse <missing>` used to raise a raw FileNotFoundError
+    traceback. typer's exists=True now produces a clean error + exit 2."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["parse", "/nonexistent/does_not_exist.log"])
+    assert result.exit_code == 2
+    # No raw Python traceback leaked to the user.
+    assert "Traceback" not in result.stdout

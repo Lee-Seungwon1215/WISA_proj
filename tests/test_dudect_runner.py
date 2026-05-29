@@ -140,3 +140,28 @@ def test_per_class_warning_silent_when_one_class_empty(capsys):
     parse_timing_csv(text)
     err = capsys.readouterr().err.lower()
     assert "asymmetric" not in err
+
+
+def test_invalid_class_value_counted_as_malformed():
+    """S5: the harness only ever emits class 0 or 1. A row with any other
+    class is corrupt output. It must NOT be appended to samples (where the
+    downstream `if cls == 0/1` filter would silently drop it from the t-test
+    while it still inflated raw_n_total) — instead it counts as malformed so
+    the malformed-rate warning path sees it."""
+    text = "sample_id,class,cycles\n0,0,100\n1,1,200\n2,2,150\n3,0,110\n"
+    s = parse_timing_csv(text)
+    # class-2 row excluded from samples entirely
+    assert 2 not in s.classes
+    assert len(s.classes) == 3
+    # and it didn't masquerade as a valid sample
+    assert all(c in (0, 1) for c in s.classes)
+
+
+def test_invalid_class_high_rate_warns(capsys):
+    """S5: a flood of bad-class rows should trip the malformed warning rather
+    than vanish silently."""
+    rows = ["0,0,100"] + [f"{i},2,100" for i in range(1, 20)]
+    text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
+    parse_timing_csv(text)
+    err = capsys.readouterr().err
+    assert "malformed" in err.lower()
