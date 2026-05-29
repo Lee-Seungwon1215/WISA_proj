@@ -39,7 +39,13 @@ class FunctionSig:
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _LINE_COMMENT = re.compile(r"//[^\n]*")
-_ATTRIBUTE = re.compile(r"__attribute__\s*\(\([^)]*\)\)")
+# T31: the old `\(\([^)]*\)\)` stopped at the first inner `)`, so attributes
+# with nested parens — `__attribute__((nonnull(1)))`,
+# `__attribute__((format(printf, 1, 2)))` — were only partially stripped.
+# The leftover `)` then broke `_DECL_RE`, making the whole function silently
+# vanish from `infer` (and uncounted by the T11/T13 skip total). Allow one
+# level of nested parens, same as `_DECL_LOOSE_RE`.
+_ATTRIBUTE = re.compile(r"__attribute__\s*\(\((?:[^()]|\([^()]*\))*\)\)")
 _EXTERN_C = re.compile(r'extern\s+"C"\s*\{?|^\s*\}\s*(?:/\*.*?\*/)?\s*$', re.MULTILINE)
 
 # A function declaration. We require the params to be enclosed in a single
@@ -85,13 +91,33 @@ _DECL_LOOSE_RE = re.compile(
 _DIRECTIVE_LINE = re.compile(r"^\s*#.*$", re.MULTILINE)
 
 
+def _blank_keep_newlines(m: "re.Match[str]") -> str:
+    """Replace a stripped region with a single space plus exactly as many
+    newlines as it contained (T36). `_line_of` derives a declaration's
+    reported source line from its byte offset in the *stripped* text, so any
+    removal that drops newlines shifts every later decl's line number up.
+    Collapsing a multi-line `/* ... */` to one space used to do exactly that.
+    Preserving the newline count keeps stripped-text line numbers aligned
+    with the original file; the leading space keeps token boundaries intact
+    (so `int/* */foo` doesn't fuse into `intfoo`)."""
+    return " " + "\n" * m.group(0).count("\n")
+
+
 def _strip_preprocessing(text: str) -> str:
-    """Remove comments and preprocessor directives from header text."""
-    text = _BLOCK_COMMENT.sub(" ", text)
+    """Remove comments and preprocessor directives from header text.
+
+    Removals that can span multiple lines (block comments, attributes, the
+    `extern "C"` wrapper) are blanked with newline-preserving replacements so
+    reported source-line numbers stay accurate (T36). Single-line removals
+    (line comments, `#` directives) can't drop a newline, so a plain blank is
+    fine — directive lines keep their trailing newline because `.` doesn't
+    match it under the default flags.
+    """
+    text = _BLOCK_COMMENT.sub(_blank_keep_newlines, text)
     text = _LINE_COMMENT.sub(" ", text)
     text = _DIRECTIVE_LINE.sub("", text)
-    text = _ATTRIBUTE.sub("", text)
-    text = _EXTERN_C.sub("", text)
+    text = _ATTRIBUTE.sub(_blank_keep_newlines, text)
+    text = _EXTERN_C.sub(_blank_keep_newlines, text)
     return text
 
 
@@ -117,15 +143,26 @@ def _parse_param(text: str, index: int = 0) -> Optional[ParamInfo]:
     if not tokens:
         return None
 
-    name = tokens[-1]
-    if name == "*":
-        # No identifier given (e.g. `int foo(uint8_t *);`). Synthesize a
-        # name from the positional index — using hash() here would be
-        # non-deterministic across Python processes (PYTHONHASHSEED), making
-        # successive parses of the same header disagree.
+    last = tokens[-1]
+    if re.fullmatch(r"\*+", last):
+        # Trailing token is all asterisks — an ANONYMOUS pointer parameter
+        # (`uint8_t *`, `uint8_t **`). T32: the old `== "*"` check only caught
+        # single-pointer; `**` slipped through as a bogus identifier name with
+        # is_pointer=False, so secret_infer mis-classified a double-pointer
+        # buffer as a scalar (no taint). Synthesize a name and keep every
+        # token as the type. Index-based (not hash()) for cross-process
+        # determinism (PYTHONHASHSEED).
+        name = f"_arg{index}"
+        type_tokens = tokens
+    elif len(tokens) == 1:
+        # A single identifier is an unnamed parameter whose token is the TYPE,
+        # not a name (`int f(size_t)`, `int f(int)`). T32: previously this set
+        # name=<type>, type="" — a buffer/scalar with no usable type. Treat
+        # the lone token as the type and synthesize the name.
         name = f"_arg{index}"
         type_tokens = tokens
     else:
+        name = last
         type_tokens = tokens[:-1]
 
     type_str = " ".join(type_tokens).strip()

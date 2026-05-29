@@ -149,3 +149,64 @@ def test_parse_functions_with_stats_zero_skips_on_clean_header():
     text = "int foo(int x);\nvoid bar(void);\n"
     _, skipped = parse_functions_with_stats(text)
     assert skipped == 0
+
+
+# --- R-3 (T31/T32/T36): header parser correctness regressions ---------------
+
+
+def test_attribute_with_nested_parens_does_not_drop_function():
+    """T31: `__attribute__((nonnull(1)))` has nested parens. The old strip
+    regex stopped at the first inner `)`, leaving a stray `)` that broke the
+    decl regex — the whole function vanished from `infer` and wasn't even
+    counted in the skip total. It must now parse normally."""
+    from ctkat.header_parser import parse_functions_with_stats
+    text = (
+        "int with_attr(unsigned char *bar) __attribute__((nonnull(1)));\n"
+        "int plain(unsigned char *x);\n"
+    )
+    sigs, skipped = parse_functions_with_stats(text)
+    names = [s.name for s in sigs]
+    assert "with_attr" in names
+    assert "plain" in names
+    assert skipped == 0
+
+
+def test_attribute_format_printf_nested_parens():
+    """T31: a second nested-paren attribute shape."""
+    text = 'int logf(const char *fmt) __attribute__((format(printf, 1, 2)));\n'
+    sigs = parse_functions(text)
+    assert [s.name for s in sigs] == ["logf"]
+
+
+def test_anonymous_double_pointer_is_pointer():
+    """T32: `uint8_t **` is an anonymous double pointer. The old code set
+    name='**', is_pointer=False, so secret_infer treated a double-pointer
+    buffer as a scalar (never tainted). It must be is_pointer=True with a
+    synthesized name."""
+    from ctkat.header_parser import _parse_param
+    p = _parse_param("unsigned char **", 0)
+    assert p is not None
+    assert p.is_pointer is True
+    assert p.name == "_arg0"
+    assert "*" in p.type
+
+
+def test_bare_type_param_keeps_type_not_name():
+    """T32: a lone `size_t` is an unnamed param whose token is the TYPE. The
+    old code stored name='size_t', type='' — losing the type entirely."""
+    from ctkat.header_parser import _parse_param
+    p = _parse_param("size_t", 1)
+    assert p is not None
+    assert p.type == "size_t"
+    assert p.name == "_arg1"
+    assert p.is_pointer is False
+
+
+def test_source_line_accurate_after_multiline_comment():
+    """T36: a multi-line `/* ... */` before a declaration used to collapse to
+    a single space, shifting the reported source_line up by the comment
+    height. The function below is on original line 4."""
+    text = "/* line1\n   line2\n   line3 */\nint foo(void);\n"
+    sigs = parse_functions(text)
+    assert sigs[0].name == "foo"
+    assert sigs[0].source_line == 4
