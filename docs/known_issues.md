@@ -6,14 +6,29 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-29 (v18 — anchor-free 외부 audit 1개 신규: T41
-  dudect 서브커맨드 ERROR/empty fail-open. run/ct는 막혔는데 dudect standalone만
-  ERROR-status 비대칭으로 뚫림 — F7/F8(섹션없음 비대칭)은 잡고 ERROR-status는 놓침)
+- **Last updated**: 2026-05-30 (v18 — anchor-free 외부 audit 1개 신규(T41) +
+  **R-1~R-4 실제 코드 fix 14개: audit≠fix 패턴 처음으로 깨짐**)
 - **Pipeline progress (광고 / 실제)**:
   - **광고**: 52 closed (Bundle 0~P) + 1 deferred + 25 reopened
     (v13: 9, v14: 3, v15: 4, v16: 2, v17: 6, v18: 1)
-  - **실제 코드 fix**: 52 + 0 (v13-v18 finding은 모두 코드 그대로 —
-    audit이 광고만 하고 fix 안 함. CLAUDE.md §9.6 audit≠fix 패턴)
+  - **실제 코드 fix**: 52 + **14** (v18 R-1~R-4 — v13-v17 reopened 누적분 중
+    14개를 실제 코드로 닫음. 나머지 reopened(F19/F20/F21/T33 등)는 여전히 그대로).
+
+### v18 R-1~R-4 — 실제 코드 fix (audit≠fix 깨짐, 2026-05-30)
+
+아래 14개는 **코드+테스트로 실제 닫힘** (전체 pytest 289 passed, examples 8종
+무회귀). 각 항목 본문의 `Status: OPEN` 헤더는 이 로그가 supersede.
+
+- **R-1** `7e4ebba` — **T41** (dudect 서브 ERROR/empty fail-open).
+- **R-2** `209c15d` — **T23 · T35 · T34 · F22** (yaml→C source injection 전면
+  봉쇄: BufferSpec.name/size, args, SecretRegion.offset/length/comment,
+  header `..` traversal, `.fullmatch`, coverage probe).
+- **R-3** `18fab50` — **T31 · T32 · T36** (attribute nested-paren 함수 증발,
+  `**`/맨타입 오파싱, 멀티라인 주석 줄번호 드리프트).
+- **R-4** `dc38549` — **T37 · T39 · T40 · S5 · T24** (harness name 유일성,
+  `argv: []`, parse missing-file, invalid-class row, CSV/yaml encoding) +
+  **T38** (ML-KEM example reproducibility, Option A; Docker compile-smoke 잔여).
+- **여전히 OPEN (미fix)**: F19, F20, F21, T33, 그 외 reopened 잔여 — 후속.
 - **v17 핵심 발견**: 같은 모델 1회 anchor-free + 메타-grep 강제
   (`grep "{{ r\." templates/*.j2`, `grep "harnesses:" examples/*/`,
   `grep "Argument(" cli.py`) 가 v13~v16 5회 audit이 못 본 6개 추가
