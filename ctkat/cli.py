@@ -725,11 +725,14 @@ def _do_dudect(
         )
         # Bundle E-1 (T6): wrap every uncaught failure mode of the timing
         # harness (timeout, crash rc!=0, empty stdout, malformed CSV header)
-        # into a status=ERROR result instead of a raw Python traceback. The
-        # ERROR flows through _compute_verdicts → INCONCLUSIVE so the verdict
-        # CSV reflects "couldn't verify" rather than silently dropping the
-        # harness. Bundle F (S4) will preserve already-completed harnesses'
-        # data the same way; the `continue` here is the foundation.
+        # into a status=ERROR result instead of a raw Python traceback.
+        # In the `run` pipeline the ERROR flows through _compute_verdicts →
+        # INCONCLUSIVE so the verdict CSV reflects "couldn't verify". The
+        # standalone `dudect` subcommand does NOT go through the verdict
+        # matrix, so it gates on this status directly via its own `any_err`
+        # check (T41) — keep both paths in sync when changing the sentinel.
+        # Bundle F (S4) will preserve already-completed harnesses' data the
+        # same way; the `continue` here is the foundation.
         try:
             samples = run_timing_harness(
                 gen.binary_path, workdir, timeout=dud.timeout
@@ -893,10 +896,36 @@ def dudect(
     results = _do_dudect(dud, cfg_dir, cfg.project.name, out_dir, crop=crop)
     _print_dudect_summary(results)
 
+    # T41: an empty result set means no harness actually ran — nothing was
+    # measured, so reporting PASS would be a fail-open (same shape as F8 for
+    # the `ct` subcommand). Refuse it with a gating exit code.
+    if not results:
+        console.print(
+            "[bold red][CTKAT] dudect Timing Check: ERROR[/] — no dudect "
+            "harnesses ran (empty `dudect.harnesses`?). Nothing was measured; "
+            "refusing to report PASS."
+        )
+        raise typer.Exit(2)
+
     any_fail = any(r.status == "FAIL" for _, _, r, _ in results)
     any_warn = any(r.status == "WARNING" for _, _, r, _ in results)
+    # T41: an ERROR status (timeout / crash / insufficient samples = the
+    # `_error_welch` sentinel) must gate exactly like the `ct` subcommand's
+    # `any_ct_error` and the `run` pipeline's INCONCLUSIVE. The standalone
+    # `dudect` subcommand never goes through the verdict matrix, so without
+    # this check an ERROR harness fell through to the bold-green PASS below
+    # and exited 0 — `ctkat dudect -c x.yaml && deploy` would green-light a
+    # run whose timing analysis never completed.
+    any_err = any(r.status == "ERROR" for _, _, r, _ in results)
     if any_fail:
         console.print("[bold red][CTKAT] dudect Timing Check: FAIL[/]")
+        raise typer.Exit(2)
+    if any_err:
+        console.print(
+            "[bold yellow][CTKAT] dudect Timing Check: INCOMPLETE[/] "
+            "(see ERROR lines above) — analysis did not complete for at "
+            "least one harness; this is NOT a PASS."
+        )
         raise typer.Exit(2)
     if any_warn:
         # WARNING must NOT exit 0 — that would be indistinguishable from

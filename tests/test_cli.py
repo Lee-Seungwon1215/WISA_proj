@@ -9,8 +9,10 @@ a real Docker + Valgrind environment. What we cover here:
     its matrix coverage isn't reachable through verdict.combine() alone.
 """
 
+import textwrap
 from pathlib import Path
 from typing import List, Tuple
+from unittest import mock
 
 from typer.testing import CliRunner
 
@@ -93,6 +95,75 @@ def test_parse_subcommand_runs_on_valid_log(tmp_path):
     result = runner.invoke(app, ["parse", str(log)])
     assert result.exit_code == 0
     assert "no findings" in result.stdout.lower()
+
+
+# --- T41: dudect subcommand must gate on ERROR / empty (v18 regression) -----
+
+
+def _write_dudect_config(tmp_path) -> Path:
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent("""
+        project: {name: demo}
+        build: {command: "true"}
+        dudect:
+          enabled: true
+          harnesses:
+            - name: h1
+              template: generic
+              function: f
+    """))
+    return cfg
+
+
+def _error_dudect_results(*_a, **_k):
+    err = WelchResult(
+        n0=0, n1=0, mean0=0.0, mean1=0.0, var0=0.0, var1=0.0,
+        t_score=0.0, abs_t_score=0.0, status="ERROR",
+    )
+    return [("h1", TimingSamples(), err, [])]
+
+
+def test_dudect_subcommand_error_status_exits_nonzero(tmp_path):
+    """T41: a timed-out / crashed harness (status=ERROR, the _error_welch
+    sentinel) must NOT report PASS. The standalone `dudect` subcommand never
+    goes through the verdict matrix, so it gates on ERROR itself — same as
+    `ct` (any_ct_error) and the `run` pipeline (INCONCLUSIVE). Before v18 this
+    fell through to a bold-green PASS + exit 0."""
+    cfg = _write_dudect_config(tmp_path)
+    runner = CliRunner()
+    with mock.patch("ctkat.cli._do_dudect", side_effect=_error_dudect_results):
+        result = runner.invoke(app, ["dudect", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "Timing Check: PASS" not in result.stdout
+    assert "INCOMPLETE" in result.stdout
+
+
+def test_dudect_subcommand_empty_results_exits_nonzero(tmp_path):
+    """T41: no harness actually ran -> nothing was measured -> not a PASS."""
+    cfg = _write_dudect_config(tmp_path)
+    runner = CliRunner()
+    with mock.patch("ctkat.cli._do_dudect", side_effect=lambda *a, **k: []):
+        result = runner.invoke(app, ["dudect", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "Timing Check: PASS" not in result.stdout
+
+
+def test_dudect_subcommand_fail_still_exits_two(tmp_path):
+    """Control: a real FAIL keeps exiting 2 — the new ERROR/empty guards
+    didn't disturb the normal gating path."""
+    cfg = _write_dudect_config(tmp_path)
+
+    def _fail(*_a, **_k):
+        r = WelchResult(
+            n0=10, n1=10, mean0=1.0, mean1=2.0, var0=1.0, var1=1.0,
+            t_score=99.0, abs_t_score=99.0, status="FAIL",
+        )
+        return [("h1", TimingSamples(), r, [])]
+
+    runner = CliRunner()
+    with mock.patch("ctkat.cli._do_dudect", side_effect=_fail):
+        result = runner.invoke(app, ["dudect", "--config", str(cfg)])
+    assert result.exit_code == 2
 
 
 # --- _compute_verdicts (the ct+dudect merger) -------------------------------
