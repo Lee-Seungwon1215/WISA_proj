@@ -66,6 +66,12 @@ def _render_sentinel_c(
     prefix: str,
     secret_region_lengths: List[str],
 ) -> str:
+    # F22/T23: `header`, `extra_headers`, `prefix` and each length flow in
+    # from an already-validated HarnessConfig / SecretRegion (config.py
+    # `_check_header` / `_check_c_expr` / `_C_IDENT_PATTERN`), so the values
+    # interpolated below are injection-safe by construction. The config-load
+    # validators are the single chokepoint; don't re-derive these from
+    # unvalidated input without re-validating.
     sum_expr = " + ".join(f"({length})" for length in secret_region_lengths) or "0"
     total_macro = f"{prefix}CRYPTO_SECRETKEYBYTES"
     includes = [f'#include "{header}"'] + [f'#include "{h}"' for h in extra_headers]

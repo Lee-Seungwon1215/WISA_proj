@@ -4,7 +4,13 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from ctkat.config import CtkatConfig, load_config
+from ctkat.config import (
+    BufferSpec,
+    CtkatConfig,
+    HarnessConfig,
+    SecretRegion,
+    load_config,
+)
 
 
 MINIMAL_YAML = """
@@ -726,3 +732,114 @@ def test_lookup_function_patterns_user_override(tmp_path: Path):
     )
     cfg = load_config(_write(tmp_path, body))
     assert cfg.ct.lookup_function_patterns == ["my_table"]
+
+
+# --- R-2 (T23/T35/T34/F22): yaml -> C source injection lockdown -------------
+#
+# Bundle O (T20) validated prefix/header/extra_headers/function/return_type
+# but left BufferSpec.name/size, HarnessConfig.args, and SecretRegion.
+# offset/length/comment emitted into generated C unvalidated. Each of these
+# could smuggle arbitrary C (incl. `system(...)`) into a harness that CT-KAT
+# compiles and executes. R-2 closes them at config-load time.
+
+
+def test_buffer_name_injection_rejected():
+    """T23: buffer name is emitted as a C variable name. A non-identifier
+    must be rejected, not compiled into the harness."""
+    with pytest.raises(ValidationError, match=r"buffer name"):
+        BufferSpec.model_validate(
+            {"name": 'x[1]; system("id"); char y', "size": "8", "role": "secret"}
+        )
+
+
+def test_buffer_size_injection_rejected():
+    """T23: buffer size is emitted as a C array dimension."""
+    with pytest.raises(ValidationError, match=r"size"):
+        BufferSpec.model_validate(
+            {"name": "x", "size": '8]; system("id"); char z[1', "role": "secret"}
+        )
+
+
+def test_buffer_legitimate_values_pass():
+    """Regression guard: real configs use plain idents + integer / sizeof
+    sizes — these must NOT be rejected by the injection validator."""
+    for size in ("16", "sizeof(secret)", "CRYPTO_BYTES"):
+        BufferSpec.model_validate({"name": "secret", "size": size, "role": "secret"})
+
+
+def test_harness_args_injection_rejected():
+    """T23: args are emitted into `function(args...)`."""
+    with pytest.raises(ValidationError, match=r"args"):
+        HarnessConfig.model_validate(
+            {
+                "name": "h",
+                "template": "generic",
+                "function": "f",
+                "args": ['a);} system("id"); ((void)(0'],
+            }
+        )
+
+
+def test_harness_args_legitimate_values_pass():
+    HarnessConfig.model_validate(
+        {
+            "name": "h",
+            "template": "generic",
+            "function": "f",
+            "args": ["secret", "out", "sizeof(secret)"],
+        }
+    )
+
+
+def test_secret_region_length_injection_rejected():
+    """T23: secret_region length is emitted inside VALGRIND_MAKE_MEM_*(...)."""
+    with pytest.raises(ValidationError, match=r"length"):
+        SecretRegion.model_validate(
+            {"offset": "0", "length": '32);} system("id"); int z=(0'}
+        )
+
+
+def test_secret_region_comment_injection_rejected():
+    """T35: comment is emitted inside `/* ... */`; a `*/` would break out."""
+    with pytest.raises(ValidationError, match=r"comment"):
+        SecretRegion.model_validate(
+            {"offset": "0", "length": "32", "comment": '*/ system("id"); /*'}
+        )
+
+
+def test_secret_region_legitimate_values_pass():
+    """Regression guard: pqc_mlkem768 uses macro arithmetic offsets/lengths."""
+    SecretRegion.model_validate(
+        {
+            "offset": "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES",
+            "length": "KYBER_INDCPA_SECRETKEYBYTES",
+            "comment": "indcpa secret key bytes",
+        }
+    )
+
+
+def test_header_path_traversal_rejected():
+    """The header validator advertises 'provably contained' but used to allow
+    `..` traversal and absolute paths through the charset (`.`/`/` allowed)."""
+    for bad in ("../../../etc/passwd", "/etc/hosts", "a/../../b.h"):
+        with pytest.raises(ValidationError, match=r"header|traversal|relative"):
+            HarnessConfig.model_validate(
+                {"name": "h", "template": "kem", "header": bad}
+            )
+
+
+def test_header_legitimate_relative_paths_pass():
+    for good in ("api.h", "pqclean/include/foo.h", "gmp-6.h"):
+        HarnessConfig.model_validate(
+            {"name": "h", "template": "kem", "header": good}
+        )
+
+
+def test_validator_fullmatch_rejects_trailing_newline():
+    """T34: validators used `.match()`, whose `$` also matches before a
+    trailing `\\n`, so `function: "f\\n"` smuggled a newline into the C
+    identifier. `.fullmatch()` rejects it."""
+    with pytest.raises(ValidationError, match=r"function"):
+        HarnessConfig.model_validate(
+            {"name": "h", "template": "generic", "function": "f\n"}
+        )

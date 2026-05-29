@@ -27,6 +27,63 @@ _C_IDENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # generated C will compile-fail noisily if the type is nonsense, but a
 # value with quotes / semicolons / braces is rejected up front.
 _C_TYPE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_:* ]*$")
+# C expression — array sizes (BufferSpec.size), secret-region offset/length,
+# and function-call args. Legitimately contains identifiers/macros
+# (`KYBER_SECRETKEYBYTES`), integer literals, whitespace, arithmetic, parens
+# (`sizeof(secret)`), and address-of/subscript/member (`&buf` `a[0]` `s.x`).
+# Deliberately EXCLUDES `/`: no real CT-KAT size/offset/arg needs division,
+# and banning `/` makes the C comment tokens `/*`, `*/`, `//` unrepresentable
+# — closing the comment-breakout injection vector (T35) without a separate
+# substring scan. Quotes, semicolons, braces and backslashes are absent from
+# the charset, so a yaml value can't smuggle a statement into generated C
+# (T23). `+` quantifier => empty string is rejected.
+_C_EXPR_PATTERN = re.compile(r"[A-Za-z0-9_ +\-*()&\[\].,]+")
+
+
+def _check_c_expr(where: str, label: str, value: str) -> None:
+    """Validate a yaml value emitted verbatim into generated C as an
+    expression. See `_C_EXPR_PATTERN`. Raises ValueError on injection-prone
+    input so it surfaces at config load, not as a compile error 200 lines
+    deep (or — worse — a successfully-compiled malicious harness)."""
+    if not _C_EXPR_PATTERN.fullmatch(value):
+        raise ValueError(
+            f"{where}: {label}={value!r} must be a simple C expression — "
+            "identifiers / macros, integer literals, whitespace and "
+            "`+ - * ( ) & [ ] . ,` only. Quotes, semicolons, braces, "
+            "backslashes, `/` and comment tokens are rejected to prevent "
+            f"C-source injection (matches {_C_EXPR_PATTERN.pattern!r})."
+        )
+
+
+def _check_c_comment(where: str, value: str) -> None:
+    """A SecretRegion.comment is emitted inside `/* ... */` in the harness.
+    Reject the comment tokens and newlines so a yaml comment can't break out
+    of the C comment and inject code (T35)."""
+    if "*/" in value or "/*" in value or "\n" in value or "\r" in value:
+        raise ValueError(
+            f"{where}: comment={value!r} may not contain `*/`, `/*`, or "
+            "newlines — it is emitted inside a C `/* ... */` comment and "
+            "those would let it break out (T35)."
+        )
+
+
+def _check_header(where: str, label: str, value: str) -> None:
+    """Validate a header path emitted into `#include \"{value}\"`. Beyond the
+    charset (quotes/backslash/newline already excluded), reject absolute paths
+    and `..` traversal segments so the include is provably project-contained —
+    a yaml `header: ../../etc/x` must not pull a file from outside the tree."""
+    if not _HEADER_PATTERN.fullmatch(value):
+        raise ValueError(
+            f"{where}: {label}={value!r} contains characters that would "
+            "break the generated `#include` directive "
+            f"(allowed: {_HEADER_PATTERN.pattern!r})"
+        )
+    if value.startswith("/") or ".." in value.split("/"):
+        raise ValueError(
+            f"{where}: {label}={value!r} must be a project-relative path "
+            "without `..` segments — absolute paths and parent-directory "
+            "traversal are rejected (header is emitted into an #include)."
+        )
 
 
 def _check_yaml_identifiers(
@@ -41,32 +98,27 @@ def _check_yaml_identifiers(
     """Apply Bundle O regex checks to the subset of fields present on the
     caller. Empty `prefix` is allowed (default). Other Optional fields are
     skipped when None."""
-    if prefix is not None and prefix != "" and not _C_IDENT_PATTERN.match(prefix):
+    # T34: `.fullmatch()` not `.match()`. The patterns are `^...$`-anchored,
+    # but Python's `$` also matches just before a trailing `\n`, so `.match()`
+    # would accept e.g. `function: "f\n"` and inject a newline into the
+    # generated identifier. `fullmatch` requires the whole string to match.
+    if prefix is not None and prefix != "" and not _C_IDENT_PATTERN.fullmatch(prefix):
         raise ValueError(
             f"{where}: prefix={prefix!r} must be empty or a valid C "
             "identifier (matches "
             f"{_C_IDENT_PATTERN.pattern!r})"
         )
-    if header is not None and not _HEADER_PATTERN.match(header):
-        raise ValueError(
-            f"{where}: header={header!r} contains characters that would "
-            "break the generated `#include` directive "
-            f"(allowed: {_HEADER_PATTERN.pattern!r})"
-        )
+    if header is not None:
+        _check_header(where, "header", header)
     if extra_headers is not None:
         for h in extra_headers:
-            if not _HEADER_PATTERN.match(h):
-                raise ValueError(
-                    f"{where}: extra_headers entry {h!r} contains characters "
-                    "that would break the generated `#include` directive "
-                    f"(allowed: {_HEADER_PATTERN.pattern!r})"
-                )
-    if function is not None and not _C_IDENT_PATTERN.match(function):
+            _check_header(where, "extra_headers entry", h)
+    if function is not None and not _C_IDENT_PATTERN.fullmatch(function):
         raise ValueError(
             f"{where}: function={function!r} must be a valid C identifier "
             f"(matches {_C_IDENT_PATTERN.pattern!r})"
         )
-    if return_type is not None and not _C_TYPE_PATTERN.match(return_type):
+    if return_type is not None and not _C_TYPE_PATTERN.fullmatch(return_type):
         raise ValueError(
             f"{where}: return_type={return_type!r} must look like a C "
             f"type expression (matches {_C_TYPE_PATTERN.pattern!r})"
@@ -190,6 +242,21 @@ class BufferSpec(BaseModel):
     size: str
     role: Literal["secret", "public", "output"]
 
+    @model_validator(mode="after")
+    def _check_c_safety(self) -> "BufferSpec":
+        # T23: `name` is emitted as a C variable name and `size` as an array
+        # dimension (harness_generic.c.j2 / timing_generic.c.j2). Both were
+        # previously unvalidated — a yaml `name: 'x[1]; system("id"); char y'`
+        # injected arbitrary C into the compiled-and-executed harness.
+        if not _C_IDENT_PATTERN.fullmatch(self.name):
+            raise ValueError(
+                f"buffer name={self.name!r} must be a valid C identifier "
+                f"(matches {_C_IDENT_PATTERN.pattern!r}) — it is emitted as a "
+                "C variable name in the generated harness (T23)."
+            )
+        _check_c_expr(f"buffer {self.name!r}", "size", self.size)
+        return self
+
 
 class SecretRegion(BaseModel):
     """A byte range inside a larger buffer that is the actual secret.
@@ -205,6 +272,19 @@ class SecretRegion(BaseModel):
     offset: str
     length: str
     comment: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check_c_safety(self) -> "SecretRegion":
+        # T23/T35: offset/length are emitted as C expressions inside
+        # VALGRIND_MAKE_MEM_*(sk + (offset), (length)) and the F6 coverage
+        # probe; comment is emitted inside `/* ... */`. All three were
+        # unvalidated — `length: '32);} system("id"); ('` or
+        # `comment: '*/ system("id"); /*'` injected executable C.
+        _check_c_expr("secret_region", "offset", self.offset)
+        _check_c_expr("secret_region", "length", self.length)
+        if self.comment is not None:
+            _check_c_comment("secret_region", self.comment)
+        return self
 
 
 class HarnessConfig(BaseModel):
@@ -287,6 +367,9 @@ class HarnessConfig(BaseModel):
             function=self.function,
             return_type=self.return_type,
         )
+        # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
+        for i, a in enumerate(self.args):
+            _check_c_expr(f"ct harness {self.name!r}", f"args[{i}]", a)
         return self
 
 
@@ -442,6 +525,9 @@ class DudectHarnessConfig(BaseModel):
             function=self.function,
             return_type=self.return_type,
         )
+        # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
+        for i, a in enumerate(self.args):
+            _check_c_expr(f"dudect harness {self.name!r}", f"args[{i}]", a)
         return self
 
 
