@@ -6,12 +6,22 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-28 (v16 — 또 다른 모델 cross-audit: validator regex + bonferroni batch)
+- **Last updated**: 2026-05-29 (v18 — anchor-free 외부 audit 1개 신규: T41
+  dudect 서브커맨드 ERROR/empty fail-open. run/ct는 막혔는데 dudect standalone만
+  ERROR-status 비대칭으로 뚫림 — F7/F8(섹션없음 비대칭)은 잡고 ERROR-status는 놓침)
 - **Pipeline progress (광고 / 실제)**:
-  - **광고**: 52 closed (Bundle 0~P) + 1 deferred + 18 reopened
-    (v13: 9, v14: 3, v15: 4, v16: 2)
-  - **실제 코드 fix**: 52 + 0 (v13-v16 finding은 모두 코드 그대로 —
+  - **광고**: 52 closed (Bundle 0~P) + 1 deferred + 25 reopened
+    (v13: 9, v14: 3, v15: 4, v16: 2, v17: 6, v18: 1)
+  - **실제 코드 fix**: 52 + 0 (v13-v18 finding은 모두 코드 그대로 —
     audit이 광고만 하고 fix 안 함. CLAUDE.md §9.6 audit≠fix 패턴)
+- **v17 핵심 발견**: 같은 모델 1회 anchor-free + 메타-grep 강제
+  (`grep "{{ r\." templates/*.j2`, `grep "harnesses:" examples/*/`,
+  `grep "Argument(" cli.py`) 가 v13~v16 5회 audit이 못 본 6개 추가
+  발견. **핵심 사례 T35**: T23 본문의 acceptance criteria #3 list가
+  4종 필드만 명시 → v14/v15/v16 audit이 그 list 따라가서 `r.comment`
+  사이트를 통째로 못 봄. CLAUDE.md §9.1 (광고 anchor) 의 재귀적
+  발현 — T23 광고가 자기 후속 audit의 anchor. §9.3 (메타-grep 의무)
+  가 list-anchor 회피의 유일한 백업.
 - **v16 핵심 발견**: 또 다른 모델로 한 번 더 cross-audit. v13/v14/v15가
   못 본 또 다른 layer 2개 — validator regex 자체의 무결성 (`.match()` vs
   `.fullmatch()` 기초 Python 함정) + bonferroni가 `batch_t_scores` 까지
@@ -72,8 +82,8 @@ commits and PRs.
   - External independent reviewer, pass 3 (audited v2 + whole repo)
   - External independent reviewer, pass 4 (audited v3 + cross-stage interactions)
   - Verification pass 5 (audited v4 line references against `main`)
-- **Total findings**: 6 tiers (Tier 0 신설), 71 issues (v1: 20 → v2: 23
-  → v3: 26 → v4: 35 → v5: 35 → v6: 46 → v7: 53 → v13: 62 → v14: 65 → v15: 69 → v16: 71)
+- **Total findings**: 6 tiers (Tier 0 신설), 77 issues (v1: 20 → v2: 23
+  → v3: 26 → v4: 35 → v5: 35 → v6: 46 → v7: 53 → v13: 62 → v14: 65 → v15: 69 → v16: 71 → v17: 77)
   - v5: no new issues — all 35 v4 findings re-verified against `main`;
     line-reference drift corrected in 7 places (F1, F4, F5, F7, F9, R1,
     T6, T8). R1's sk-leak branch line was a real mis-cite (L102 → L157),
@@ -134,20 +144,23 @@ Tiers are ordered by severity. Within a tier, order is not significant.
 
 ---
 
-## Tier 0: Post-Bundle-P Meta-Audit Findings (v13 + v14 + v15 + v16)
+## Tier 0: Post-Bundle-P Meta-Audit Findings (v13 + v14 + v15 + v16 + v17)
 
-이 섹션은 v13/v14/v15/v16 meta-audit에서 발견된 18개 finding (v13: 9 +
-v14: 3 + v15: 4 + v16: 2) 을 모아둠. **별도 Tier로 분리한 이유**: Bundle L-P가
+이 섹션은 v13/v14/v15/v16/v17 meta-audit에서 발견된 24개 finding (v13: 9 +
+v14: 3 + v15: 4 + v16: 2 + v17: 6) 을 모아둠. **별도 Tier로 분리한 이유**: Bundle L-P가
 "닫았다"고 광고한 issue들이 실제로는 일부만 닫혔거나 같은 패턴이 다른
 site에 그대로 남아있던 사례들이라, 정상 tier (1-5)에 흩어 놓으면
 "Bundle X에서 닫혔다"는 이전 status 광고가 사실로 보이게 됨. v13/v14
 는 정직성을 위해 별도 시각화.
 
-**⚠️ audit ≠ fix 경고**: 아래 12개 finding은 **모두 코드 fix 안 됨**.
-v13/v14 audit이 적기만 하고 코드 commit 안 함. v14가 v13 광고를 코드
-grep으로 verify해서 finding 9개 다 살아있음을 확인 (+ 3개 새). 이게
-정확히 CLAUDE.md §9.1 ("광고 ≠ 검증") 의 재귀적 사례 — audit이 자기
-audit의 광고가 됨. §9.6 신설.
+**⚠️ audit ≠ fix 경고**: 아래 24개 finding은 **모두 코드 fix 안 됨**.
+v13/v14/v15/v16/v17 audit이 적기만 하고 코드 commit 안 함. v14가 v13
+광고를 코드 grep으로 verify해서 finding 9개 다 살아있음을 확인 (+ 3개
+새). v17이 v13 T23 본문의 acceptance criteria #3 list가 audit anchor가
+되어 후속 4회 cross-audit이 같은 family 한 site (`r.comment`) 를
+통째로 못 본 사례를 적음. 이게 정확히 CLAUDE.md §9.1 ("광고 ≠ 검증")
+의 재귀적 발현 — audit 본문 자체가 광고가 되어 다음 audit의 anchor.
+§9.6 신설.
 
 심각도 표기는 동일 (🚨 verdict-affecting / 🟡 correctness / 🟢 hygiene).
 
@@ -638,6 +651,303 @@ T23/F22가 막으려 만든 validator 본인의 무결성에 구멍.
   2. test로 `cutoffs=[0.5, 1.0]` 등 invalid 던지면 raise 확인.
 - **Related**: T15 (welch_with_cropping 최적화), R2.
 - **Suggested bundle**: Q-4.
+
+### T35: T23 본문 누락 — `SecretRegion.comment` 도 raw-interp surface 🚨 (v17)
+
+**Status: OPEN.** v13 T23이 `BufferSpec.name/size`, `args`,
+`SecretRegion.offset/length` 4종은 적었지만 **`SecretRegion.comment`
+사이트는 통째로 누락**. v14 F22가 coverage probe까지 확장했지만 그
+사이에도 comment는 미언급. v15/v16 cross-audit 도 못 잡음.
+
+5회 audit이 같은 family를 한 site 미커버한 직접 사례 — CLAUDE.md §9.1
+("광고 ≠ 검증") 의 재귀적 패턴: T23 본문 자체가 anchor가 되어 후속
+audit이 그 acceptance criteria #3 list (`buffer_names`/`buffer_sizes`/
+`arg_exprs`/`region_offsets`/`region_lengths`) 만 따라가서 comment를
+못 봄.
+
+- **Where**:
+  - `ctkat/templates/harness_kem.c.j2:38` —
+    `{% if r.comment %}/* {{ r.comment }} */{% endif %}`
+  - `ctkat/templates/harness_sign.c.j2:36` — 동일
+  - `ctkat/config.py:207` — `SecretRegion.comment: Optional[str] = None`
+    (validator 0)
+- **Symptom**: 실측 (v17 verify pass)
+  ```python
+  >>> from ctkat.config import HarnessConfig, SecretRegion
+  >>> HarnessConfig(name='test', template='kem', header='api.h', prefix='X_',
+  ...   secret_regions=[SecretRegion(offset='0', length='32',
+  ...     comment='*/ #include "evil.h" /*')])
+  # 통과. Jinja render시 C source에:
+  # /* */ #include "evil.h" /* */
+  # → C comment break-out + 임의 header include.
+  ```
+- **Why solve**: T23/F22 family와 정확히 같은 위협 모델. T23 fix가
+  comment surface 빠진 채 merge되면 "C-source injection 차단" 광고가
+  또 정확하지 않게 됨. CLAUDE.md §9.3 (메타-grep 의무) 위반의 직접
+  사례 — `grep -n "{{ r\." templates/*.j2` 한 줄이면 즉시 잡힘.
+- **Acceptance criteria**:
+  1. T23 fix 시 `_check_yaml_identifiers` (또는 `SecretRegion` 자체
+     validator) 에 `comment` 인자 추가. 정책: `[A-Za-z0-9_ .,;:()\-]*`
+     같은 보수적 regex, 또는 `*/` substring 명시 거부.
+  2. evil-input test (§9.4): `comment='*/ x /*'` yaml 박으면
+     ValidationError 떨어지는 stdout 캡쳐.
+  3. T23 acceptance criteria #3에 `region_comments` 추가 명시.
+- **Related**: T23 (template injection family — comment site는 본문
+  미언급), F22 (coverage probe surface).
+- **Suggested bundle**: Q-1 (T23 + F22 + T34 + T35 묶음 — 같은
+  validator family extension 한 commit).
+
+### T36: `header_parser._line_of` 가 stripped text 기준 → `infer` 출력 line이 거짓 🟡 (v17)
+
+**Status: OPEN.** `header_parser._parse_functions_impl` 가
+`_strip_preprocessing(text)` 거친 **stripped text 안의 offset** 으로
+`_line_of` 호출. stripped 과정의 `_BLOCK_COMMENT.sub(" ", text)` 가
+multi-line block comment를 **단일 공백 한 칸**으로 치환 — comment
+내부 newline 죄다 증발. 결과 stripped text의 line N과 raw header의
+line N이 불일치.
+
+사용자가 보는 `ctkat infer` 출력의 `Function: foo (api.h:25)` 가
+api.h의 실제 line 25 아님. silent wrong attribution.
+
+- **Where**: `ctkat/header_parser.py:88-95` (`_strip_preprocessing`,
+  block comment 공백 치환), `:98-100` (`_line_of`), `:171-198`
+  (`_parse_functions_impl` 가 stripped text 의 offset 으로 호출).
+- **Symptom**: 실측 (v17 verify pass)
+  ```python
+  >>> src = '/* hello\n   world\n   foo */\nint bar(void);\n'
+  >>> _parse_functions_impl(src, source_file='api.h')[0][0].source_line
+  2     # raw header에서는 line 4 (int bar 줄)
+  ```
+- **Why solve**: CLAUDE.md §3 "주석 ≠ 코드" 위반 — `FunctionSig.
+  source_line` docstring/사용 모두 "raw header line"으로 암시 (cli
+  `_print_inferred` 가 `(file.h:25)` 형식으로 보임). pytest parser
+  unit test 통과는 stripped text 안 line 검증만 — 사용자에게 노출
+  되는 file:line semantics는 검증 안 됨. F15/T27 family (intent vs
+  code mismatch).
+- **Acceptance criteria**:
+  1. `_strip_preprocessing`의 block comment 치환을 newline-preserving
+     으로: 매치된 텍스트의 newline 개수만큼 `\n` 유지 + 나머지를 공백.
+     `lambda m: "\n" * m.group(0).count("\n") + " "` 같은 형태.
+  2. line directive 치환 (`_DIRECTIVE_LINE.sub("", text)`) 도 동일하게
+     newline 유지하도록 점검 (현재는 `^...$` per-line이라 newline은
+     보존됨 — `.sub("", text)` 라도 trailing `\n` 보존). 일단 확인만.
+  3. test fixture에 multi-line block comment 박힌 header → parsed
+     `source_line` 이 raw header line과 일치 검증.
+- **Related**: F15 (intent vs code), T27 (sink 주석 거짓), T11/T13
+  (parser plumbing).
+- **Suggested bundle**: Q-3 (parser hardening, T31/T32와 묶음).
+
+### T37: `CtConfig.harnesses` / `DudectConfig.harnesses` name uniqueness 미검증 → silent overwrite 🟡 (v17)
+
+**Status: OPEN.** `HarnessConfig.name` / `DudectHarnessConfig.name`
+각각 정규식 검증은 있지만 **list 단위 uniqueness validator 없음**.
+사용자가 yaml에 같은 name 두 번 박으면 통과 → 후속 dict-keyed 자료
+구조에서 silent overwrite.
+
+F12 패턴 직접 재현 — backend 함수가 dict 생성 시 last-wins, user는
+yaml에 박은 harness 중 하나가 verdict CSV 에서 사라진 걸 모름.
+
+- **Where**: `ctkat/config.py:311-355` (`CtConfig.harnesses`,
+  uniqueness validator 없음), `:484` (`DudectConfig.harnesses`,
+  동일).
+- **Silent overwrite 사이트**:
+  - `ctkat/cli.py:298` `paths[h.name] = result.binary_path`
+  - `ctkat/harness_generator.py:138-139` `output_dir / f"harness_{name}.c"`
+    — 같은 path를 두 번 atomic-write
+  - `ctkat/cli.py:927` `ct_map = {name: (status, findings) for ...}`
+  - `ctkat/cli.py:928` `dud_map = {name: (r, batches) for ...}`
+- **Symptom**: 실측 (v17 verify pass)
+  ```python
+  >>> CtConfig(harnesses=[
+  ...   HarnessConfig(name='dup', template='generic', function='foo'),
+  ...   HarnessConfig(name='dup', template='generic', function='bar'),
+  ... ])
+  # 통과. _do_generate → _do_ct 흐름에서 'foo' 호출 harness가 'bar'
+  # 호출 harness 결과로 덮어쓰여 verdict CSV 에 1줄만 나옴.
+  ```
+- **Why solve**: F12와 정확히 같은 패턴 (user yaml은 valid해보이는데
+  framework silently 잡아먹음). CLAUDE.md §1 (user-visible behavior
+  검증) + §2 (semantic invariant — "harness name = primary key") 둘
+  다 위반. T29 (`run` smoke test 0개) sibling — 다른 surface인 dup-
+  name도 cover 0.
+- **Acceptance criteria**:
+  1. `CtConfig` 및 `DudectConfig` 에 `@model_validator(mode="after")`
+     추가: `names = [h.name for h in self.harnesses]; if len(names) !=
+     len(set(names)): raise ValueError(f"duplicate harness names: ...")`.
+  2. evil-input test: 같은 name 두 번 박힌 yaml → ValidationError +
+     중복 name 메시지 포함.
+- **Related**: F12 (광고 기능 사망), T29 (`run` smoke test 부재).
+- **Suggested bundle**: Q-3 (validator extension).
+
+### T38: `examples/pqc_mlkem768/ctkat.yaml` 가 R1 Option B 본인을 우회 — 광고와 example drift 🟡 (v17)
+
+**Status: OPEN.** Bundle J가 weak `randombytes` interpose로 PQClean
+dudect 재현성 확보 (R1 Option B). README `§"재현성 (seed)"` 광고:
+"PQClean common/randombytes.c를 sources에서 빼면 weak override가 적용
+되어 bit-identical reproducible." 그런데 **example yaml 본인이 그
+sources에 `common/randombytes.c` 박아둠** — 3개 harness 모두.
+
+→ example 따라 만든 yaml에서 `dudect.seed: 0xC0FFEE` 박아도 keypair/
+enc는 OS getrandom으로 entropy 가져옴. reproducibility 광고와 실제
+동작 불일치.
+
+- **Where**:
+  ```
+  $ grep -n randombytes examples/pqc_mlkem768/ctkat.yaml
+  52:        - common/randombytes.c
+  92:        - common/randombytes.c
+  117:        - common/randombytes.c
+  ```
+  ct.harnesses[kem_dec] (line 52) + dudect.harnesses[kem_dec] (92) +
+  dudect.harnesses[kem_dec_ct] (117) 셋 다. ct stage는 reproducibility
+  무관 (Valgrind 결정론적) 이지만 dudect 둘은 R1 광고 적용 site.
+- **Symptom**: example yaml로 `ctkat run`을 두 번 돌리면
+  `dudect_raw_timings.csv` 가 매번 다름 (random keypair entropy
+  변동). 광고는 "동일 seed → bit-identical".
+- **Why solve**: CLAUDE.md §6 "example yaml과 default drift 방지"
+  직접 위반. v17이 정확히 이 site를 적는 이유: T14 (yaml `-fno-lto`
+  누락) 가 lint test로 한 번 잡혀야 함 광고했는데, 같은 family인
+  randombytes 우회 site는 lint에 미커버. example이 광고를 정정하지
+  않으면 사용자가 example 그대로 박고 reproducibility 가정 → CI
+  flaky verdict.
+- **Acceptance criteria**: 둘 중 하나
+  1. (Option A 권장) `examples/pqc_mlkem768/ctkat.yaml` dudect 두
+     harness의 `sources` 에서 `common/randombytes.c` 제거. 두 ct
+     stage는 그대로 (Valgrind 무관).
+  2. (Option B) README/tutorial에 "ML-KEM example은 reproducibility
+     non-goal — Valgrind 분석 + 정성 timing 비교만" 명시. example
+     주석에도 한 줄 추가.
+  3. 어느 쪽이든 T14 yaml lint test 에 `examples/*/ctkat.yaml`
+     reproducibility check 추가 — Option A는 randombytes.c 미포함
+     검증, Option B는 README cross-link 검증.
+- **Related**: R1 (PQClean reproducibility), T14 (yaml lint family).
+- **Suggested bundle**: Q-2 (housekeeping + example sweep).
+
+### T39: `BuildConfig.argv=[]` 통과 → `run_argv([])` IndexError raw 🟢 (v17)
+
+**Status: OPEN.** `BuildConfig._check_mode` 가 `(command is None) ==
+(argv is None)` 만 검사 — `argv: []` + `command: null` 박으면
+(False == False) → 통과. `builder.run_step` 가 `if argv is not None`
+분기에서 `run_argv([])` 호출 → `subprocess.run([])` → `IndexError:
+list index out of range` raw Python traceback.
+
+`KatConfig._check_mode` 도 동일 패턴 (line 176-183).
+
+- **Where**: `ctkat/config.py:140-147` (`BuildConfig._check_mode`),
+  `:176-183` (`KatConfig._check_mode`), `ctkat/builder.py:88-90`
+  (`run_step` 분기).
+- **Symptom**: 실측 (v17 verify pass)
+  ```python
+  >>> BuildConfig(argv=[], workdir='.', timeout=600)  # 통과
+  >>> run_step(command=None, argv=[], workdir=Path('.'), timeout=10)
+  IndexError: list index out of range
+  ```
+- **Why solve**: T33 (`--seed abc` traceback) sibling — user-facing
+  surface에서 raw Python traceback. T4 (shell=False argv 옵션) 이
+  광고한 "구조적 안전성" 이 본인의 빈-list corner 미커버.
+- **Acceptance criteria**:
+  1. `BuildConfig._check_mode` 및 `KatConfig._check_mode` 에 `if
+     argv is not None and len(argv) == 0:` 케이스 추가, ValueError
+     로 거부. 메시지: `"argv must be a non-empty list (got [])"`.
+  2. test로 `argv: []` yaml ValidationError 확인.
+- **Related**: T4 (shell=False argv 옵션), T33 (CLI input 미검증).
+- **Suggested bundle**: Q-4 (cleanup).
+
+### T40: `ctkat parse <missing.log>` raw FileNotFoundError traceback 🟢 (v17)
+
+**Status: OPEN.** `cli.py:1280` `text = log.read_text(...)`. typer
+`Argument(..., help=...)` 는 type 검증만, `exists=True` 옵션 없음.
+미존재 path 박으면 `FileNotFoundError` raw traceback이 user 에게.
+
+T33 family — CLI input validation 비대칭. parse 서브가 F12 (`ctkat
+parse` 광고 기능 사망) fix의 직접 surface인데 missing-file path는
+그대로 fragile.
+
+- **Where**: `ctkat/cli.py:1275-1281` (parse 서브 정의 + read_text).
+- **Symptom**: 실측 (v17 verify pass)
+  ```
+  $ python3 -m ctkat parse /nonexistent/foo.log
+  ╭───── Traceback ─────╮
+  │ cli.py:1280 in parse                 │
+  │ FileNotFoundError: ...               │
+  ```
+- **Why solve**: F12 fix가 광고 기능 살린 직후 surface인데 정작
+  user input validation은 빈손. CLAUDE.md §1 (user-visible surface
+  smoke test) + §9.4 (evil-input 시연 의무).
+- **Acceptance criteria**:
+  1. typer 시그니처 `log: Path = typer.Argument(..., exists=True,
+     file_okay=True, readable=True, help=...)` 로 교체. typer가
+     "File '...' does not exist" 자동 메시지 + Exit(2) 처리.
+  2. test로 `runner.invoke(app, ["parse", "/nonexistent.log"])` 의
+     exit_code==2 + traceback 없음 확인.
+- **Related**: F12 (parse 광고 기능 사망), T33 (CLI input 미검증).
+- **Suggested bundle**: Q-4 (cleanup).
+
+### T41: standalone `ctkat dudect` 서브커맨드가 ERROR/empty를 PASS exit 0으로 처리 🚨 (v18)
+
+**Status: OPEN.** `cli.py:896-907` (dudect 서브 종결 로직). 오직
+`status == "FAIL"` / `"WARNING"` 만 체크하고 `"ERROR"` (timeout / crash /
+insufficient-samples = `_error_welch()` 센티넬, cli.py:540-551)를 아무도
+안 봄. 모든 하니스가 ERROR면 `any_fail=any_warn=False` → 907줄로 굴러떨어져
+초록불 `PASS` + **exit 0**. 빈 하니스(`harnesses: []`)도 `any(...)`가 빈
+시퀀스에 False → 측정 0개인데 동일하게 PASS exit 0.
+
+```python
+# cli.py:896-907 — ERROR 분기가 없음
+any_fail = any(r.status == "FAIL"    for _, _, r, _ in results)
+any_warn = any(r.status == "WARNING" for _, _, r, _ in results)
+if any_fail: ... Exit(2)
+if any_warn: ... Exit(2)
+console.print("[bold green][CTKAT] dudect Timing Check: PASS[/]")  # ← ERROR/empty 여기로
+```
+
+F2/F5/T6가 `run` 파이프라인에서 "ERROR → INCONCLUSIVE → exit 2"로 막은
+fail-open이, **verdict 레이어를 안 거치는 standalone `dudect` 서브커맨드에
+그대로 재현됨.** `_do_dudect` 주석(cli.py:728-729)은 "ERROR가
+`_compute_verdicts` → INCONCLUSIVE로 흐른다"고 광고하지만 그건 `run()`에서만
+참 — `dudect()`는 `_do_dudect` 결과를 verdict 레이어 없이 직접 소비함
+(주석 claim ≠ 코드, CLAUDE.md §3).
+
+- **Where**: `ctkat/cli.py:850-907` (`dudect` 서브), 종결 로직 896-907.
+  ERROR 생산 site: cli.py:743 / 750 / 757 / 768 (timeout / crash / unparseable /
+  insufficient-samples 전부 `_error_welch()` append).
+- **비대칭 증거** (§7 scope 한정 함정 — 같은 fail-open이 다른 site에):
+  - `run()` : `any_inconclusive` 체크 → Exit(2) (cli.py:1093, 1097) ✅
+  - `ct()`  : `any_ct_error` 체크 → Exit(2) (cli.py:1127, 1138) ✅
+  - `dudect()` : **ERROR/empty 무점검** → PASS exit 0 (cli.py:896-907) ❌
+  - cf. F7/F8은 "섹션 없음(`cfg.dudect is None`)" 비대칭만 닫음(cli.py:870)
+    — "ERROR-status" 비대칭은 통째로 놓침.
+- **Symptom**: 실측 (v18 verify pass, `typer.testing.CliRunner` + `_do_dudect`
+  를 ERROR/empty 리턴으로 mock):
+  ```
+  Case A (ERROR 하니스):  exit_code = 0,  stdout 에 "Timing Check: PASS"
+  Case B (빈 results)  :  exit_code = 0,  stdout 에 "Timing Check: PASS"
+  Control (FAIL 하니스) :  exit_code = 2   ← 러너 정상 동작 확인
+  ```
+  `ctkat dudect -c x.yaml && deploy` CI 게이트가 타이밍 측정이 통째로
+  실패(또는 미정의)해도 배포함.
+- **Why solve**: Tier-1 verdict-integrity 불변식("못 verify했으면 못
+  했다고 말하라")을 정면 위반. 단일-stage 서브커맨드는 CI 게이트용으로
+  명시 설계(F7/F8 본문) — 그 exit code는 contract. CLAUDE.md §9.4
+  (evil/edge-input 시연 의무)로 잡힘.
+- **Acceptance criteria**:
+  1. `dudect()`에 `any_err = any(r.status == "ERROR" for _, _, r, _ in results)`
+     추가, `if any_fail or any_err: Exit(2)` (ct() 패턴 미러). ERROR 행은
+     INCONCLUSIVE/INCOMPLETE 메시지로 표기.
+  2. 빈 `results` 가드 — 하니스 0개면 빨간 메시지 + Exit(2) (측정 안 했으면
+     PASS 금지). dudect.harnesses 빈 list 거부 또는 명시 경고.
+  3. `_do_dudect` 주석(cli.py:728-729)의 "ERROR → INCONCLUSIVE" 문구를
+     "`run`에서만; `dudect` 서브는 별도 게이트 필요"로 정정.
+  4. test: `runner.invoke(app, ["dudect", ...])` 가 ERROR/empty 결과에서
+     `exit_code == 2` (위 실측을 회귀 테스트로 박제).
+- **Related**: F2/F5/T6 (ERROR status 생산 — `run`에선 INCONCLUSIVE),
+  F7/F8 (서브커맨드 "섹션없음" 비대칭 — 닫힘), F3 (INCONCLUSIVE 정책),
+  CLAUDE.md §7 (메타-grep) / §9.4 (evil-input 시연).
+- **부가 관찰 (미카탈로그, LOW)**: `_HEADER_PATTERN` (config.py:22) 주석은
+  "provably contained"라 광고하나 `.`/`/`/`-` 허용으로 `header:
+  ../../../etc/passwd` · `/etc/hosts` path traversal 통과 → 임의 파일이
+  `#include` 대상이 됨. T20/T23 injection surface의 미커버 axis.
+- **Suggested bundle**: R-1 (verdict-integrity hot-fix; T41 #1+#2 우선).
 
 ---
 
@@ -2755,6 +3065,79 @@ U3, U4, U6 (Option B if not renaming), R1 (Option A), R3.
     case ~350 is too big to land in one commit.
   - **Bundle F closes F6 now** (not "deferred to F"): F6 is part of
     F's scope, ~170 LoC total.
+
+### v17 — anchor-free + 메타-grep 재발견 (2026-05-28)
+
+v16 직후 같은 모델 1회 더, 단 prompt 비대칭화 (CLAUDE.md §9.2): anchor
+무시 + 메타-grep 명시 첫 step (`grep "{{ r\." templates/*.j2`,
+`grep "harnesses:" examples/*/`, `grep "Argument(" cli.py`,
+`grep "open(\|read_text\|write_text" ctkat/`). v13~v16 5회 audit 의
+finding 24개 (v13:9 + v14:3 + v15:4 + v16:2 + v17:6, 보정 후) 중 v17
+이 추가한 6개 모두 코드 grep + repro로 verify 완료.
+
+**6 new findings (전부 실측 검증)**:
+- **T35** 🚨: v13 T23 본문 누락 — `SecretRegion.comment` 가 5개
+  template 중 2개 (`harness_kem`, `harness_sign`) 에서 raw-interp.
+  T23 acceptance criteria #3 list (`buffer_names`/`buffer_sizes`/
+  `arg_exprs`/`region_offsets`/`region_lengths`) 가 audit anchor 가
+  되어 v14/v15/v16 4회 cross-audit 모두 `r.comment` 미발견. **v17의
+  메타-grep `grep "{{ r\." templates/*.j2` 한 줄이 즉시 잡아냄**.
+  CLAUDE.md §9.1 (광고 anchor) 의 재귀적 발현 직접 사례 — T23 본문
+  자체가 자기 후속 audit의 anchor가 됨.
+- **T36** 🟡: `header_parser._strip_preprocessing` 가 multi-line
+  block comment를 단일 공백으로 치환 → `_line_of` 가 stripped text
+  기준 line 반환 → `ctkat infer` 출력의 `(file.h:N)` 가 raw header
+  의 실제 line과 불일치. user-visible behavior 깨짐. 파서 unit
+  test 통과는 stripped 안 line만 검증 — §1 위반. F15/T27 family
+  (intent vs code mismatch).
+- **T37** 🟡: `CtConfig.harnesses` / `DudectConfig.harnesses` name
+  uniqueness validator 부재. yaml 에 같은 name 두 번 박으면 통과 →
+  `_do_generate` / `ct_map` / `dud_map` dict 생성 시 last-wins
+  silent overwrite. F12 패턴 (광고 기능 사망) 직접 재현 — verdict
+  CSV 에 사용자 yaml 의 harness 중 하나가 사라짐.
+- **T38** 🟡: `examples/pqc_mlkem768/ctkat.yaml` 의 dudect harness
+  3곳 (line 52, 92, 117) 가 sources 에 `common/randombytes.c` 박아둠
+  → R1 Option B (weak randombytes interpose) 가 strong link 우선에
+  무력화. README 광고 "동일 seed → bit-identical" 과 실제 동작
+  drift. example yaml lint 미커버. T14 sibling.
+- **T39** 🟢: `BuildConfig._check_mode` 가 `argv=[]` 통과 →
+  `subprocess.run([])` IndexError raw traceback. KatConfig 도 같은
+  패턴. T33 (`--seed abc`) sibling — CLI/yaml input 미검증 family.
+- **T40** 🟢: `ctkat parse <missing.log>` 가 typer `Argument(...,
+  exists=True)` 없어서 FileNotFoundError raw traceback. T33 sibling.
+
+**메타 통찰**:
+
+1. **list-anchor 함정 직접 입증**: T23 본문이 acceptance criteria
+   #3 에 4종 필드 명시 → v14/v15/v16 cross-audit 이 그 list 따라가서
+   같은 family 한 site (`r.comment`) 통째로 미커버. v15 의 "다른
+   모델 cross-check" 도 list anchor 자체는 못 깸. §9.3 메타-grep 의무
+   가 list-anchor 회피의 유일한 백업이라는 것 재확인.
+
+2. **메타-grep 강제 prompt 효과**: v13 §9.3 적었지만 honor system
+   이라 LLM 자주 어김 (v14, v15, v16 셋 다 메타-grep 단계 명시 안
+   함). v17 prompt 에서 첫 step 으로 `grep "{{" templates/*.j2`,
+   `grep "Argument(" cli.py`, `grep "harnesses:" examples/*/` 박은
+   결과 T35 + T39 + T40 + T38 4개가 그 grep 직접 결과. 메타-grep을
+   prompt 의 step #1 으로 명시하면 LLM 의 working memory 에 site
+   list 가 들어와서 list-anchor 우회 효과.
+
+3. **24개 OPEN 누적**: v13:9 + v14:3 + v15:4 + v16:2 + v17:6 = 24개.
+   모두 코드 그대로. Bundle Q (제안) 가 validator family (Q-1) +
+   통계 정합 (Q-2) + parser hardening / test smoke / example sweep
+   (Q-3) + cleanup (Q-4) 로 묶으면 ~20개 닫음. 다만 Q-1 정의 시
+   T35 (comment) 명시적으로 포함해야 또 anchor 재발 안 함.
+
+4. **§9.6 audit ≠ fix lag 재확인**: v13 audit 후 v14/v15/v16/v17
+   네 번 더 audit. fix 0. audit ritual 패턴 그대로. 사용자가 다음
+   action 으로 Bundle Q 분기/시간 잡고 실제 fix commit 해야 lag 끊김.
+
+5. **anchor-free + 메타-grep 조합 ROI**: 같은 모델 1회 + prompt
+   비대칭화로 6개 새 finding. v15 가 다른 모델 1회로 4개, v16 이 또
+   다른 모델 1회로 2개. **§9.2 가설 (cross-model 효과) 와 §9.3 가설
+   (메타-grep 효과) 둘 다 실측 — cross-model 없이도 메타-grep prompt
+   엔지니어링으로 비슷한 ROI 가능**. cross-model 은 매번 의무 아니라
+   는 §9.2 결론 강화.
 
 ### v16 — 또 다른 모델 cross-audit (2026-05-28)
 
