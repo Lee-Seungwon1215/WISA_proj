@@ -1105,3 +1105,139 @@ def test_parse_subcommand_missing_file_exits_cleanly():
     assert result.exit_code == 2
     # No raw Python traceback leaked to the user.
     assert "Traceback" not in result.stdout
+
+
+# --- R-5: dudect threshold routing + CLI input + run smoke ------------------
+
+
+def test_dudect_invalid_seed_exits_cleanly(tmp_path):
+    """T33: `--seed abc` used to raise a raw ValueError traceback at
+    int(seed, 0). Now it exits 2 with a clear message."""
+    cfg = _write_dudect_config(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, ["dudect", "--config", str(cfg), "--seed", "abc"])
+    assert result.exit_code == 2
+    assert "Invalid --seed" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+class _FakeGen:
+    source_path = Path("/tmp/x.c")
+    binary_path = Path("/tmp/x")
+    compile_command = "gcc"
+
+
+def _fake_samples(*_a, **_k):
+    s = TimingSamples()
+    s.classes = [0, 1] * 50
+    s.cycles = [100.0, 200.0] * 50
+    return s
+
+
+def _patch_dudect_pipeline(monkeypatch, spy):
+    """Mock the gcc/run/stats layer of _do_dudect so we can assert which
+    thresholds reach the cropping vs batch vs uncropped calls, without
+    compiling anything."""
+    import ctkat.cli as cli
+
+    def fake_cropping(c0, c1, warning_threshold, fail_threshold, **k):
+        spy["crop"] = (round(warning_threshold, 2), round(fail_threshold, 2))
+        return WelchResult(len(c0), len(c1), 100, 200, 1, 1, -5, 5, "PASS")
+
+    def fake_welch(c0, c1, wt, ft, **k):
+        spy["nocrop"] = (wt, ft)
+        return WelchResult(len(c0), len(c1), 100, 200, 1, 1, -5, 5, "PASS")
+
+    def fake_batch(classes, cycles, batches, warning_threshold, fail_threshold, **k):
+        spy["batch"] = (warning_threshold, fail_threshold)
+        return []
+
+    monkeypatch.setattr(cli, "detect_qemu_emulation", lambda: False)
+    monkeypatch.setattr(cli, "generate_and_compile_timing", lambda **k: _FakeGen())
+    monkeypatch.setattr(cli, "run_timing_harness", _fake_samples)
+    monkeypatch.setattr(cli, "welch_with_cropping", fake_cropping)
+    monkeypatch.setattr(cli, "welch_t_test", fake_welch)
+    monkeypatch.setattr(cli, "batch_t_scores", fake_batch)
+    monkeypatch.setattr(cli, "_emit_dudect_report", lambda *a, **k: (Path("/tmp/a"), Path("/tmp/b")))
+
+
+def _dud_cfg(**kw):
+    from ctkat.config import DudectConfig, DudectHarnessConfig
+    return DudectConfig(
+        harnesses=[DudectHarnessConfig(name="h", template="generic", function="f")],
+        **kw,
+    )
+
+
+def test_bonferroni_scales_only_cropping_not_batch(monkeypatch):
+    """F23: with cropping on, the bonferroni scale applies to the cropping
+    welch call but NOT batch_t_scores (which never crops)."""
+    import math
+    import ctkat.cli as cli
+    spy = {}
+    _patch_dudect_pipeline(monkeypatch, spy)
+    cli._do_dudect(_dud_cfg(bonferroni_correct=True), Path("/tmp"), "p", Path("/tmp"), crop=True)
+    scale = math.sqrt(5)
+    assert spy["crop"] == (round(4.5 * scale, 2), round(10.0 * scale, 2))
+    assert spy["batch"] == (4.5, 10.0)  # unscaled
+
+
+def test_bonferroni_ignored_when_no_crop(monkeypatch):
+    """F20: with --no-crop there is no multi-cutoff family — the bonferroni
+    scale must NOT apply to the single uncropped test."""
+    import ctkat.cli as cli
+    spy = {}
+    _patch_dudect_pipeline(monkeypatch, spy)
+    cli._do_dudect(_dud_cfg(bonferroni_correct=True), Path("/tmp"), "p", Path("/tmp"), crop=False)
+    assert spy["nocrop"] == (4.5, 10.0)  # unscaled
+    assert spy["batch"] == (4.5, 10.0)
+
+
+def test_seed_zero_randbits_falls_back_to_coffee(monkeypatch, capsys):
+    """F19: the ~2^-63 case where secrets.randbits returns 0 must log the
+    same 0xC0FFEE the C harness swaps to, not 0x0."""
+    import ctkat.cli as cli
+    spy = {}
+    _patch_dudect_pipeline(monkeypatch, spy)
+    monkeypatch.setattr(cli.secrets, "randbits", lambda n: 0)
+    cli._do_dudect(_dud_cfg(seed=None), Path("/tmp"), "p", Path("/tmp"), crop=True)
+    out = capsys.readouterr().out
+    assert "seed = 0xC0FFEE" in out
+    assert "0x0" not in out
+
+
+def test_run_smoke_build_only_exits_zero(tmp_path):
+    """T29: `ctkat run` had no smoke test (F12-class risk). A minimal
+    build-only config must wire through and exit 0."""
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text('project: {name: demo}\nbuild: {command: "true"}\n')
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", "--config", str(cfg)])
+    assert result.exit_code == 0
+    assert "Build: PASS" in result.stdout
+
+
+def test_run_smoke_build_fail_exits_one(tmp_path):
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text('project: {name: demo}\nbuild: {command: "false"}\n')
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", "--config", str(cfg)])
+    assert result.exit_code == 1
+    assert "Build: FAIL" in result.stdout
+
+
+def test_kat_nonnumeric_capture_group_warns(tmp_path):
+    """T28: pattern matched but capture group non-numeric → loud note instead
+    of silently returning PASS with no count."""
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(
+        'project: {name: demo}\n'
+        'build: {command: "true"}\n'
+        'kat:\n'
+        '  command: "echo RESULT: abc"\n'
+        "  expected_pattern: 'RESULT: (\\w+)'\n"
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["kat", "--config", str(cfg)])
+    assert result.exit_code == 0  # expected_min unset → still PASS...
+    assert "non-numeric" in result.stdout  # ...but the misconfig is surfaced

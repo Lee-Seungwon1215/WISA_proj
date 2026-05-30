@@ -187,7 +187,21 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
         try:
             count = int(m.group(1))
         except (IndexError, ValueError):
+            # T28: the pattern matched but the capture group is missing
+            # (user override with no group → IndexError) or non-numeric
+            # (`(\w+)` matched "abc" → ValueError). Previously this silently
+            # left count=None; with expected_min unset that returns PASS with
+            # no count, hiding a misconfigured pattern. Surface it loudly.
+            # (IndexError is genuinely reachable here — the DEFAULT pattern
+            # has a group, but `kat.expected_pattern` is user-overridable.)
             count = None
+            console.print(
+                "[bold yellow][CTKAT] note:[/] kat.expected_pattern "
+                f"{cfg.kat.expected_pattern!r} matched, but its capture group "
+                "is missing or non-numeric — no test count could be read. "
+                "Use a pattern with a single numeric group like "
+                r"'^PASSED:?\s*(\d+)'. (T28)"
+            )
     if cfg.kat.expected_min is not None:
         if count is None:
             console.print(
@@ -313,6 +327,9 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
                 extra_headers=list(h.extra_headers),
                 prefix=h.prefix,
                 secret_region_lengths=[r.length for r in h.secret_regions],
+                # F21: pass offsets too so the probe can flag out-of-bounds
+                # regions (offset+length past CRYPTO_SECRETKEYBYTES).
+                secret_region_offsets=[r.offset for r in h.secret_regions],
                 include_dirs=include_dirs,
                 workdir=ct_cwd,
                 # T17: forward `-D`/`-U`/`-isystem`/`-iquote` from the
@@ -660,7 +677,14 @@ def _do_dudect(
             "`taskset -c 0 python -m ctkat dudect ...`[/]"
         )
 
-    effective_seed = dud.seed if dud.seed is not None else secrets.randbits(63)
+    # F19: `or 0xC0FFEE` guards the ~2^-63 case where randbits returns 0 —
+    # the C harness swaps seed 0 to 0xC0FFEE (xorshift stuck-at-zero), so
+    # without this Python would log `seed = 0x0` while the binary ran with
+    # 0xC0FFEE. Astronomically unlikely, but the layers must not disagree
+    # (same invariant F16 enforced for yaml seed).
+    effective_seed = (
+        dud.seed if dud.seed is not None else (secrets.randbits(63) or 0xC0FFEE)
+    )
     console.print(f"[dim]dudect seed = 0x{effective_seed:X}[/]")
     clock_display = (
         f"{dud.clock}→{effective_clock}" if dud.clock == "auto"
@@ -673,23 +697,38 @@ def _do_dudect(
     )
 
     # Bundle G (R2): bonferroni-like correction for multi-cutoff cropping.
-    # When enabled, scale both thresholds by sqrt(N_cutoffs) so the
-    # family-wise Type-I rate of "max |t| over N cropping cutoffs"
-    # approximates a single Welch test's per-test rate. Only the cropping
-    # path needs this (batch_t_scores remains uncropped per its own
-    # docstring), but we scale both calls so a single yaml flag means
-    # "be conservative across the whole report".
+    # The correction only makes sense for the cropping protocol — it accounts
+    # for taking max |t| over N cropping cutoffs, which inflates the per-test
+    # Type-I rate. It does NOT apply to:
+    #   - F20: the uncropped (--no-crop) path — a single test, no family to
+    #     correct, so scaling there would just be wrongly conservative.
+    #   - F23: batch_t_scores — those never crop (they measure raw stability),
+    #     so they keep the unscaled thresholds. (Batch status doesn't feed the
+    #     verdict, but keeping it honest avoids a misleading display column.)
+    # So we keep `warn_t`/`fail_t` as the unscaled thresholds for batch + the
+    # uncropped path, and compute a separate scaled pair used ONLY for the
+    # cropping welch call below.
     warn_t = dud.threshold_warning
     fail_t = dud.threshold_fail
+    crop_warn_t = warn_t
+    crop_fail_t = fail_t
     if dud.bonferroni_correct:
-        scale = math.sqrt(len(CROP_PERCENTILES))
-        warn_t = dud.threshold_warning * scale
-        fail_t = dud.threshold_fail * scale
-        console.print(
-            f"[dim]bonferroni correction: scaling thresholds by "
-            f"sqrt({len(CROP_PERCENTILES)})={scale:.3f} → "
-            f"warning={warn_t:.2f} fail={fail_t:.2f}[/]"
-        )
+        if crop:
+            scale = math.sqrt(len(CROP_PERCENTILES))
+            crop_warn_t = warn_t * scale
+            crop_fail_t = fail_t * scale
+            console.print(
+                f"[dim]bonferroni correction: scaling the cropping thresholds "
+                f"by sqrt({len(CROP_PERCENTILES)})={scale:.3f} → "
+                f"warning={crop_warn_t:.2f} fail={crop_fail_t:.2f} "
+                f"(batch + uncropped keep {warn_t}/{fail_t})[/]"
+            )
+        else:
+            console.print(
+                "[yellow]Note:[/] bonferroni_correct is set but cropping is "
+                "off (--no-crop) — there is no multi-cutoff family to correct, "
+                "so the correction is ignored this run (F20)."
+            )
 
     workdir = _resolve(cfg_dir, dud.workdir)
     gen_dir = _resolve(cfg_dir, dud.generated_dir)
@@ -772,12 +811,15 @@ def _do_dudect(
             continue
 
         if crop:
+            # Cropping path: the only place the bonferroni-scaled thresholds
+            # (crop_warn_t/crop_fail_t) apply — see F20/F23 note above.
             overall = welch_with_cropping(
                 c0, c1,
-                warning_threshold=warn_t,
-                fail_threshold=fail_t,
+                warning_threshold=crop_warn_t,
+                fail_threshold=crop_fail_t,
             )
         else:
+            # Uncropped single test: unscaled thresholds (F20).
             overall = welch_t_test(c0, c1, warn_t, fail_t)
         batches = batch_t_scores(
             samples.classes, samples.cycles,
@@ -882,7 +924,17 @@ def dudect(
         if seed.lower() == "random":
             updates["seed"] = None
         else:
-            updates["seed"] = int(seed, 0)
+            # T33: `int(seed, 0)` on "abc" / "1e5" / "" raised a raw
+            # ValueError traceback. Catch it and exit cleanly (mirrors typer's
+            # own invalid-option handling and the T40 parse fix).
+            try:
+                updates["seed"] = int(seed, 0)
+            except ValueError:
+                console.print(
+                    f"[red]Invalid --seed {seed!r}:[/] use an integer "
+                    "(decimal, or 0x-prefixed hex) or 'random'."
+                )
+                raise typer.Exit(2)
     if updates:
         # F17: `model_copy(update=...)` does NOT re-run validators in
         # pydantic v2, so `--measurements 100000000` would bypass the T8

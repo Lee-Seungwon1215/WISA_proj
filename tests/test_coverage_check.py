@@ -156,3 +156,36 @@ def test_filter_probe_cflags_keeps_define_and_include_only():
     for noise in ("-O2", "-g", "-fno-lto", "-fno-omit-frame-pointer",
                   "-Wall", "-Werror"):
         assert noise not in kept, f"{noise} leaked through filter"
+
+
+@needs_cc
+def test_coverage_oob_region_warns(tmp_path, capsys):
+    """F21: a region whose offset+length exceeds CRYPTO_SECRETKEYBYTES taints
+    stack memory past `sk`. The probe computes max(offset+length) and warns."""
+    _write_fake_header(tmp_path, total=100, parts={})
+    result = check_secret_region_coverage(
+        harness_name="kem_oob", header="fake_api.h", extra_headers=[],
+        prefix="TEST_", secret_region_lengths=["80"],
+        secret_region_offsets=["40"],   # 40+80=120 > 100, ratio 0.8 (no low warn)
+        include_dirs=[tmp_path], workdir=tmp_path,
+    )
+    assert result is not None
+    out = capsys.readouterr().out
+    assert "out-of-bounds" in out
+    assert "F21" in out
+
+
+@needs_cc
+def test_coverage_overlap_sum_exceeds_total_warns(tmp_path, capsys):
+    """F21: regions summing past the total overlap / double-count."""
+    _write_fake_header(tmp_path, total=100, parts={})
+    result = check_secret_region_coverage(
+        harness_name="kem_overlap", header="fake_api.h", extra_headers=[],
+        prefix="TEST_", secret_region_lengths=["80", "80"],
+        secret_region_offsets=["0", "0"],   # sum 160 > 100, max_end 80 (no OOB)
+        include_dirs=[tmp_path], workdir=tmp_path,
+    )
+    assert result is not None
+    out = capsys.readouterr().out
+    assert "overlap" in out
+    assert "F21" in out

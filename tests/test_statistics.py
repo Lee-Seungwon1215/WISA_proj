@@ -269,3 +269,16 @@ def test_multi_cutoff_under_null_typeI_rate_pinned():
     # The over-3 bound is more loose — the multi-cutoff inflation is
     # observable here, just not catastrophic.
     assert rate_3 < 0.40, f"rate over 3.0 = {rate_3:.1%} too high"
+
+
+def test_welch_with_cropping_rejects_cutoffs_not_starting_at_one():
+    """T30: cutoffs[0]==1.0 (the no-crop pass) was an honor-system docstring
+    precondition. A caller passing cutoffs that don't start with 1.0 silently
+    lost the uncropped baseline + fallback — now it raises."""
+    import pytest
+    c0 = [float(x) for x in range(20)]
+    c1 = [float(x) + 1.0 for x in range(20)]
+    with pytest.raises(ValueError, match="start with"):
+        welch_with_cropping(c0, c1, cutoffs=[0.95, 0.99])
+    with pytest.raises(ValueError, match="start with"):
+        welch_with_cropping(c0, c1, cutoffs=[])

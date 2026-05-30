@@ -16,6 +16,7 @@ variance and mask leak signal; cropping the top 1-5% typically recovers it.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from math import sqrt
 from statistics import mean, variance
@@ -213,6 +214,17 @@ def welch_with_cropping(
     prefix per cutoff. Result is bit-identical (same sort, same cutoff
     indexing); only the runtime changes.
     """
+    # T30: the uncropped diagnostic fields (`t_score_uncropped`, the
+    # all-cropping-fails fallback) depend on cutoffs[0] being the no-crop
+    # 1.0 pass. Enforce it instead of leaving it an honor-system docstring
+    # precondition — a caller passing e.g. [0.95, 0.99] would silently lose
+    # the uncropped baseline and the fallback.
+    if not cutoffs or cutoffs[0] != 1.0:
+        raise ValueError(
+            "welch_with_cropping: cutoffs must be non-empty and start with "
+            f"1.0 (the no-crop pass); got {list(cutoffs)!r}."
+        )
+
     sorted_c0 = sorted(class0)
     sorted_c1 = sorted(class1)
     n0_total = len(sorted_c0)
@@ -234,7 +246,8 @@ def welch_with_cropping(
             # threshold_idx = min(int(n*p), n-1), then keep all samples
             # with value <= sorted[threshold_idx]. On the sorted list
             # that's a prefix of length `bisect_right(sorted, threshold)`.
-            from bisect import bisect_right
+            # T26: `bisect_right` is imported at module top, not here in the
+            # per-cutoff loop body.
             idx0 = min(int(n0_total * p), n0_total - 1) if n0_total else 0
             idx1 = min(int(n1_total * p), n1_total - 1) if n1_total else 0
             if not n0_total or not n1_total:

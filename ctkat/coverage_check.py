@@ -46,7 +46,11 @@ _console = Console()
 
 # Single line, locale-independent. Anything else and we treat parsing as
 # failed and bail.
-_SENTINEL_RE = re.compile(r"^CTKAT-COVERAGE\s+(\d+)\s+(\d+)\s*$", re.MULTILINE)
+# Third group (max_end = max(offset+length)) is optional — only emitted when
+# offsets are supplied (F21). Old two-field callers still parse.
+_SENTINEL_RE = re.compile(
+    r"^CTKAT-COVERAGE\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*$", re.MULTILINE
+)
 
 # Default warn threshold. Anything below this and the user almost
 # certainly mis-numbered a length field.
@@ -65,9 +69,10 @@ def _render_sentinel_c(
     extra_headers: List[str],
     prefix: str,
     secret_region_lengths: List[str],
+    secret_region_offsets: Optional[List[str]] = None,
 ) -> str:
-    # F22/T23: `header`, `extra_headers`, `prefix` and each length flow in
-    # from an already-validated HarnessConfig / SecretRegion (config.py
+    # F22/T23: `header`, `extra_headers`, `prefix` and each offset/length flow
+    # in from an already-validated HarnessConfig / SecretRegion (config.py
     # `_check_header` / `_check_c_expr` / `_C_IDENT_PATTERN`), so the values
     # interpolated below are injection-safe by construction. The config-load
     # validators are the single chokepoint; don't re-derive these from
@@ -75,16 +80,38 @@ def _render_sentinel_c(
     sum_expr = " + ".join(f"({length})" for length in secret_region_lengths) or "0"
     total_macro = f"{prefix}CRYPTO_SECRETKEYBYTES"
     includes = [f'#include "{header}"'] + [f'#include "{h}"' for h in extra_headers]
-    return (
+    head = (
         "#include <stddef.h>\n"
         "#include <stdio.h>\n"
         + "\n".join(includes) + "\n"
         "int main(void) {\n"
         f"    size_t covered = (size_t)({sum_expr});\n"
         f"    size_t total = (size_t)({total_macro});\n"
-        '    printf("CTKAT-COVERAGE %zu %zu\\n", covered, total);\n'
-        "    return 0;\n"
-        "}\n"
+    )
+    if secret_region_offsets is not None:
+        # F21: also compute max(offset + length) so the caller can detect an
+        # out-of-bounds region (offset+length > CRYPTO_SECRETKEYBYTES), which
+        # would taint stack memory past `sk`. The macros are only known to the
+        # C preprocessor, so the arithmetic has to happen here, not in Python.
+        ends = ", ".join(
+            f"({o}) + ({l})"
+            for o, l in zip(secret_region_offsets, secret_region_lengths)
+        ) or "0"
+        return (
+            head
+            + f"    size_t ends[] = {{ {ends} }};\n"
+            + "    size_t max_end = 0;\n"
+            + "    for (size_t i = 0; i < sizeof(ends)/sizeof(ends[0]); i++)\n"
+            + "        if (ends[i] > max_end) max_end = ends[i];\n"
+            + '    printf("CTKAT-COVERAGE %zu %zu %zu\\n", covered, total, max_end);\n'
+            + "    return 0;\n"
+            + "}\n"
+        )
+    return (
+        head
+        + '    printf("CTKAT-COVERAGE %zu %zu\\n", covered, total);\n'
+        + "    return 0;\n"
+        + "}\n"
     )
 
 
@@ -124,6 +151,7 @@ def check_secret_region_coverage(
     cc: str = "gcc",
     extra_compile_args: Optional[List[str]] = None,
     threshold: float = DEFAULT_COVERAGE_WARN_THRESHOLD,
+    secret_region_offsets: Optional[List[str]] = None,
 ) -> Optional[CoverageResult]:
     """Compile + run the sentinel probe.
 
@@ -135,7 +163,10 @@ def check_secret_region_coverage(
     if not secret_region_lengths:
         # No secret_regions = full-sk taint policy, nothing to cross-check.
         return None
-    src = _render_sentinel_c(header, extra_headers, prefix, secret_region_lengths)
+    src = _render_sentinel_c(
+        header, extra_headers, prefix, secret_region_lengths,
+        secret_region_offsets=secret_region_offsets,
+    )
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
         src_path = td_path / "ctkat_coverage_probe.c"
@@ -184,14 +215,20 @@ def check_secret_region_coverage(
             return None
         m = _SENTINEL_RE.search(run.stdout)
         if m is None:
+            # T28: the probe compiled AND ran (rc=0) — reaching here means its
+            # stdout didn't match the sentinel format, not that the probe
+            # failed. Say so explicitly rather than the ambiguous "skipped".
             _console.print(
-                f"[yellow][CTKAT] F6 coverage check skipped for "
-                f"[bold]{harness_name}[/]: probe output unparseable "
-                f"({run.stdout!r}).[/]"
+                f"[yellow][CTKAT] F6 coverage check for "
+                f"[bold]{harness_name}[/]: probe ran successfully but its "
+                f"stdout format was unexpected (no CTKAT-COVERAGE line): "
+                f"{run.stdout!r}. Skipping comparison.[/]"
             )
             return None
         covered = int(m.group(1))
         total = int(m.group(2))
+        # F21: max(offset+length) over all regions, when offsets were supplied.
+        max_end = int(m.group(3)) if m.group(3) is not None else None
         ratio = covered / total if total > 0 else 0.0
         result = CoverageResult(covered=covered, total=total, ratio=ratio)
         if total <= 0:
@@ -199,6 +236,27 @@ def check_secret_region_coverage(
                 f"[yellow][CTKAT] F6 coverage check for "
                 f"[bold]{harness_name}[/]: total=0 ({prefix}CRYPTO_"
                 f"SECRETKEYBYTES mis-defined?). Skipping comparison.[/]"
+            )
+            return result
+        # F21: out-of-bounds — a region extends past CRYPTO_SECRETKEYBYTES, so
+        # the harness would VALGRIND_MAKE_MEM_UNDEFINED stack memory beyond
+        # `sk` and surface false-positive findings. Diagnostic, never gates.
+        if max_end is not None and max_end > total:
+            _console.print(
+                f"[bold yellow][CTKAT] WARNING:[/] harness [bold]"
+                f"{harness_name}[/] has a secret_region ending at byte "
+                f"{max_end} but {prefix}CRYPTO_SECRETKEYBYTES is only {total} "
+                f"— an out-of-bounds offset/length taints memory past `sk` "
+                f"(likely a yaml typo). (F21)"
+            )
+        # F21: covered (sum of lengths) exceeding total means the regions
+        # overlap or double-count — ratio would read >100%.
+        if covered > total:
+            _console.print(
+                f"[bold yellow][CTKAT] WARNING:[/] harness [bold]"
+                f"{harness_name}[/] secret_regions sum to {covered} bytes but "
+                f"{prefix}CRYPTO_SECRETKEYBYTES is only {total} — regions "
+                f"overlap or double-count (sum > total). (F21)"
             )
             return result
         if ratio < threshold:

@@ -7,17 +7,19 @@ commits and PRs.
 ## Status
 
 - **Last updated**: 2026-05-30 (v18 — anchor-free 외부 audit 1개 신규(T41) +
-  **R-1~R-4 실제 코드 fix 14개: audit≠fix 패턴 처음으로 깨짐**)
+  **R-1~R-5 실제 코드 fix 24개: reopened 백로그 사실상 소진**)
 - **Pipeline progress (광고 / 실제)**:
   - **광고**: 52 closed (Bundle 0~P) + 1 deferred + 25 reopened
     (v13: 9, v14: 3, v15: 4, v16: 2, v17: 6, v18: 1)
-  - **실제 코드 fix**: 52 + **14** (v18 R-1~R-4 — v13-v17 reopened 누적분 중
-    14개를 실제 코드로 닫음. 나머지 reopened(F19/F20/F21/T33 등)는 여전히 그대로).
+  - **실제 코드 fix**: 52 + **24** (v18 R-1~R-5 — v13-v18 reopened 25개 중 24개를
+    실제 코드+테스트로 닫음. 남은 1개(T25)는 reviewed → won't-fix(전제 오류)).
+  - **남은 OPEN finding: 0** (T25 제외). audit≠fix 백로그 소진.
 
-### v18 R-1~R-4 — 실제 코드 fix (audit≠fix 깨짐, 2026-05-30)
+### v18 R-1~R-5 — 실제 코드 fix (audit≠fix 깨짐, 2026-05-30)
 
-아래 14개는 **코드+테스트로 실제 닫힘** (전체 pytest 289 passed, examples 8종
-무회귀). 각 항목 본문의 `Status: OPEN` 헤더는 이 로그가 supersede.
+아래 24개는 **코드+테스트로 실제 닫힘** (전체 pytest 299 passed, examples 8종
+무회귀, gcc로 dudect/coverage e2e 검증). 각 항목 본문의 `Status: OPEN` 헤더는
+이 로그가 supersede.
 
 - **R-1** `7e4ebba` — **T41** (dudect 서브 ERROR/empty fail-open).
 - **R-2** `209c15d` — **T23 · T35 · T34 · F22** (yaml→C source injection 전면
@@ -28,7 +30,19 @@ commits and PRs.
 - **R-4** `dc38549` — **T37 · T39 · T40 · S5 · T24** (harness name 유일성,
   `argv: []`, parse missing-file, invalid-class row, CSV/yaml encoding) +
   **T38** (ML-KEM example reproducibility, Option A; Docker compile-smoke 잔여).
-- **여전히 OPEN (미fix)**: F19, F20, F21, T33, 그 외 reopened 잔여 — 후속.
+- **R-5** (this commit) — **F19 · F20 · F21 · F23 · T26 · T27 · T28 · T29 · T30
+  · T33** (cleanup 묶음):
+  - F19 randbits=0 → 0xC0FFEE fallback. F20/F23 bonferroni를 cropping path에만
+    적용(batch/uncropped는 unscaled). F21 coverage probe OOB/overlap 경고.
+  - T26 bisect import top-level. T27 sink 주석 정정(address-escape). T28 KAT
+    capture-group parse-fail loud warn + coverage parse-fail wording. T29
+    `ctkat run` smoke test 2개. T30 cropping cutoffs[0]==1.0 가드. T33 `--seed`
+    invalid → Exit(2).
+  - **T25** = reviewed → **won't-fix**: 문서가 "dead code"라 한 cli.py `except
+    IndexError`는 `kat.expected_pattern` user-override(capture group 없는 패턴)로
+    실제 도달 가능 → 제거 시 오히려 crash. config.py `prefix is not None`는
+    재사용 validator의 의도적 None-guard. 둘 다 유지가 정답. (CLAUDE.md §3 —
+    문서 claim 불신, 코드로 검증.)
 - **v17 핵심 발견**: 같은 모델 1회 anchor-free + 메타-grep 강제
   (`grep "{{ r\." templates/*.j2`, `grep "harnesses:" examples/*/`,
   `grep "Argument(" cli.py`) 가 v13~v16 5회 audit이 못 본 6개 추가

@@ -68,9 +68,15 @@ int main(void) {
      * Volatile sink — forces the compiler to keep the target call and any
      * output buffer writes even at -O2. Without this, dead-code elimination
      * can remove the entire function call if its result is unused, leaving
-     * Valgrind with nothing to analyze. The XOR-accumulate pattern is
-     * intentional: it consumes every byte without depending on a particular
-     * type for the return value.
+     * Valgrind with nothing to analyze. Two distinct mechanisms (T27):
+     *   - return value: we XOR the captured-return variable's ADDRESS and its
+     *     sizeof, NOT its value. Taking the address forces that variable to be
+     *     allocated and written; combined with -fno-lto (callee body not
+     *     visible) this stops the compiler from eliding the call as a dead
+     *     store. Using the address avoids needing a per-type value read for
+     *     arbitrary return types.
+     *   - output buffers: consumed BY VALUE (the byte XOR loop below), since
+     *     those are plain uint8_t arrays we can always read.
      */
     volatile uint64_t __ctkat_sink = 0;
     {% if return_type and return_type != "void" -%}
