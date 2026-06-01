@@ -1132,6 +1132,16 @@ def run(
     any_finding = False
     any_ct_error = False
     if cfg.ct is not None:
+        # R-6: an empty `ct.harnesses` analyzes nothing but used to fall
+        # through to a green PASS / exit 0 (same fail-open class R-1 closed
+        # for the standalone dudect subcommand). Refuse it.
+        if not cfg.ct.harnesses:
+            console.print(
+                "[bold red][CTKAT] config error:[/] `ct` section has no "
+                "harnesses — nothing to analyze. Add at least one harness or "
+                "remove the `ct` section."
+            )
+            raise typer.Exit(2)
         generated = _do_generate(cfg, cfg_dir)
         ct_results = _do_ct(cfg, cfg_dir, generated)
         any_finding = any(s == "FAIL" for _, s, _ in ct_results)
@@ -1151,6 +1161,15 @@ def run(
     any_dudect_fail = False
     any_dudect_warn = False
     if cfg.dudect is not None and cfg.dudect.enabled:
+        # R-6: dudect enabled but no harnesses measures nothing — same
+        # fail-open. (Set dudect.enabled=false to intentionally skip the stage.)
+        if not cfg.dudect.harnesses:
+            console.print(
+                "[bold red][CTKAT] config error:[/] `dudect` is enabled but "
+                "has no harnesses — nothing to measure. Add a harness or set "
+                "`dudect.enabled: false`."
+            )
+            raise typer.Exit(2)
         out_dir = _resolve(cfg_dir, cfg.report.output_dir)
         dud_results = _do_dudect(
             cfg.dudect, cfg_dir, cfg.project.name, out_dir, crop=crop,
@@ -1201,6 +1220,13 @@ def ct(
     # Exit(2) and the new F7 fix for the kat subcommand.
     if cfg.ct is None:
         console.print("[red]No `ct` section in config.[/]")
+        raise typer.Exit(2)
+    # R-6: empty harness list = nothing analyzed; don't report a green PASS.
+    if not cfg.ct.harnesses:
+        console.print(
+            "[bold red][CTKAT] config error:[/] `ct` section has no harnesses "
+            "— nothing to analyze."
+        )
         raise typer.Exit(2)
     generated = _do_generate(cfg, cfg_dir)
     ct_results = _do_ct(cfg, cfg_dir, generated)

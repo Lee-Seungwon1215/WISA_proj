@@ -6,14 +6,33 @@ commits and PRs.
 
 ## Status
 
-- **Last updated**: 2026-05-30 (v18 — anchor-free 외부 audit 1개 신규(T41) +
-  **R-1~R-5 실제 코드 fix 24개: reopened 백로그 사실상 소진**)
+- **Last updated**: 2026-06-01 (v18 — R-1~R-5 fix 24개 + **R-6 재감사: 내 R-1/R-2
+  fix에서 큰 구멍 3개 발견·재fix** (CLAUDE.md §9.1 "내가 내 fix를 믿는 anchor" 실증))
 - **Pipeline progress (광고 / 실제)**:
   - **광고**: 52 closed (Bundle 0~P) + 1 deferred + 25 reopened
     (v13: 9, v14: 3, v15: 4, v16: 2, v17: 6, v18: 1)
-  - **실제 코드 fix**: 52 + **24** (v18 R-1~R-5 — v13-v18 reopened 25개 중 24개를
-    실제 코드+테스트로 닫음. 남은 1개(T25)는 reviewed → won't-fix(전제 오류)).
-  - **남은 OPEN finding: 0** (T25 제외). audit≠fix 백로그 소진.
+  - **실제 코드 fix**: 52 + **27** (R-1~R-5 24개 + R-6 3개). 남은 reopened 1개(T25)는
+    reviewed → won't-fix(전제 오류).
+  - **남은 OPEN finding: 0** (T25 제외).
+
+### v18 R-6 — 재감사 (R-1/R-2 fix 자체의 구멍 3개, 2026-06-01)
+
+R-1~R-5 push 후 anchor-free 멀티에이전트 재감사. **내가 "닫았다"고 push한
+R-1(fail-open)·R-2(injection) 각각에 구멍이 남아 있었다** — 정확히 CLAUDE.md §9.1
+("광고≠검증, 내 fix를 믿는 anchor")의 실증. cross-check이 잡음. 전체 pytest 307
+passed, 회귀 테스트 20개, 우회 시도 13종 차단 확인.
+
+- **RA-1** 🚨 (HIGH, R-2 결함): `_C_EXPR_PATTERN`이 `sizeof()` 허용하려 `( ) , &`를
+  열어둬서 **comma operator** (`length: '32, 0'` → `(32, 0)` == 0 → 비밀 0바이트
+  taint → 누수 코드 CLEAN 오판, verdict 거짓-음성) + **함수 호출** (`size: 'abort()'`,
+  `(&abort)()` 포인터 호출) 우회 가능. → fix: charset에서 `,` 제거 + 괄호/대괄호
+  balance + `sizeof(` 외 호출형(`ident(`, `)(`,  `](`) 거부.
+- **RA-2** (MED, R-1 미완): R-1이 standalone `dudect` 서브만 빈-결과 가드 추가하고
+  `run()`/`ct()`는 놓침 → `ct: {harnesses: []}` 로 `ctkat run`이 exit 0 + green PASS.
+  → fix: run()/ct()에 빈-하니스 가드(exit 2). dudect enabled:false는 의도적 skip 허용.
+- **RA-3** (MED, 기존+1차 audit 미발견): `report.csv`/`report.json`이 무검증 →
+  `csv: '../../tmp/x.csv'` 로 output_dir 밖 임의 쓰기. → fix: 순수 파일명(`/`·`..`·
+  절대경로 금지) validator.
 
 ### v18 R-1~R-5 — 실제 코드 fix (audit≠fix 깨짐, 2026-05-30)
 

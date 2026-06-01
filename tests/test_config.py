@@ -940,3 +940,63 @@ def test_kat_empty_argv_rejected(tmp_path: Path):
     )
     with pytest.raises(ValidationError, match=r"argv must be a non-empty"):
         load_config(_write(tmp_path, body))
+
+
+# --- R-6 (re-audit): C-expr validator tightening + report traversal ---------
+
+
+def test_secret_region_comma_operator_rejected():
+    """R-6: `length: '32, 0'` renders `(32, 0)` which the C comma operator
+    collapses to 0 -> ZERO secret bytes tainted -> false-negative CLEAN
+    verdict on leaky code. The comma must be rejected."""
+    with pytest.raises(ValidationError, match=r"length"):
+        SecretRegion.model_validate({"offset": "0", "length": "32, 0"})
+    with pytest.raises(ValidationError, match=r"offset"):
+        SecretRegion.model_validate({"offset": "10, 0", "length": "32"})
+
+
+def test_c_expr_function_call_rejected():
+    """R-6: a function call in a size/arg lands in a VLA size / call arg that C
+    evaluates at runtime -> the function executes when the harness runs."""
+    for bad in ("abort()", "system(0)", "fork()", "__builtin_trap()"):
+        with pytest.raises(ValidationError, match=r"size"):
+            BufferSpec.model_validate({"name": "b", "size": bad, "role": "secret"})
+
+
+def test_c_expr_call_through_pointer_rejected():
+    """R-6: calling through a pointer/array result `(&abort)()` / `(abort)()` /
+    `fns[0]()` dodges the identifier-head check but still calls a function."""
+    for bad in ("(&abort)()", "(abort)()", "fns[0]()", "sizeof(abort())"):
+        with pytest.raises(ValidationError, match=r"size"):
+            BufferSpec.model_validate({"name": "b", "size": bad, "role": "secret"})
+
+
+def test_c_expr_unbalanced_parens_rejected():
+    """R-6: a stray `)`/`]` could close the surrounding macro/array early."""
+    for bad in ("0)", "16]", "(0", "a[0"):
+        with pytest.raises(ValidationError, match=r"size"):
+            BufferSpec.model_validate({"name": "b", "size": bad, "role": "secret"})
+
+
+def test_c_expr_sizeof_and_arithmetic_still_pass():
+    """Regression guard: the legitimate values real configs use must still pass
+    after the R-6 tightening (sizeof, macro arithmetic, grouping)."""
+    BufferSpec.model_validate({"name": "b", "size": "sizeof(secret)", "role": "secret"})
+    BufferSpec.model_validate({"name": "b", "size": "(16 + 8) * 2", "role": "secret"})
+    SecretRegion.model_validate(
+        {"offset": "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", "length": "KYBER_SYMBYTES"}
+    )
+    HarnessConfig.model_validate(
+        {"name": "h", "template": "generic", "function": "f", "args": ["secret", "sizeof(secret)"]}
+    )
+
+
+def test_report_filename_traversal_rejected():
+    """R-6: report.csv/json are written inside output_dir; a path-separator /
+    `..` / absolute value would escape it (arbitrary file write)."""
+    from ctkat.config import ReportConfig
+    for bad in ("../../tmp/x.csv", "/tmp/abs.csv", "a/b.csv", "..", "sub\\x.csv"):
+        with pytest.raises(ValidationError, match=r"plain filename"):
+            ReportConfig.model_validate({"csv": bad})
+    # plain filenames still accepted
+    ReportConfig.model_validate({"csv": "ctkat_report.csv", "json": "out.json"})

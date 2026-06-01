@@ -31,27 +31,81 @@ _C_TYPE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_:* ]*$")
 # and function-call args. Legitimately contains identifiers/macros
 # (`KYBER_SECRETKEYBYTES`), integer literals, whitespace, arithmetic, parens
 # (`sizeof(secret)`), and address-of/subscript/member (`&buf` `a[0]` `s.x`).
-# Deliberately EXCLUDES `/`: no real CT-KAT size/offset/arg needs division,
-# and banning `/` makes the C comment tokens `/*`, `*/`, `//` unrepresentable
-# — closing the comment-breakout injection vector (T35) without a separate
-# substring scan. Quotes, semicolons, braces and backslashes are absent from
-# the charset, so a yaml value can't smuggle a statement into generated C
-# (T23). `+` quantifier => empty string is rejected.
-_C_EXPR_PATTERN = re.compile(r"[A-Za-z0-9_ +\-*()&\[\].,]+")
+# Deliberately EXCLUDES:
+#   - `/`  — no real size/offset/arg needs division, and banning it makes the
+#            C comment tokens `/*`, `*/`, `//` unrepresentable (T35).
+#   - `,`  — the C comma operator silently collapses a parenthesized value:
+#            `length: '32, 0'` renders `(32, 0)` which evaluates to 0, marking
+#            ZERO secret bytes undefined → a false-negative CLEAN verdict on
+#            leaky code (R-6 re-audit finding). A single offset/length/size/arg
+#            never legitimately needs a comma (the args LIST is joined with
+#            commas at a higher level, not inside one entry).
+# Quotes, semicolons, braces and backslashes are absent from the charset, so a
+# yaml value can't smuggle a statement into generated C (T23). `+` quantifier
+# => empty string is rejected.
+_C_EXPR_PATTERN = re.compile(r"[A-Za-z0-9_ +\-*()&\[\].]+")
+# A function-call head: an identifier immediately followed by `(`. Only
+# `sizeof` may appear here — anything else (`abort()`, `system(0)`, `fork()`)
+# would CALL that function when the harness runs, because the value lands in a
+# VLA array-size or a function argument that C evaluates at runtime (R-6).
+_C_CALL_HEAD = re.compile(r"([A-Za-z_]\w*)\s*\(")
+# A `(` immediately after `)` or `]` = call through a pointer/array result
+# (`(&abort)()`, `(abort)()`, `fns[0]()`) — dodges the identifier-head check.
+_C_CALL_THRU = re.compile(r"[)\]]\s*\(")
 
 
 def _check_c_expr(where: str, label: str, value: str) -> None:
     """Validate a yaml value emitted verbatim into generated C as an
-    expression. See `_C_EXPR_PATTERN`. Raises ValueError on injection-prone
-    input so it surfaces at config load, not as a compile error 200 lines
-    deep (or — worse — a successfully-compiled malicious harness)."""
+    expression. Raises ValueError on injection-prone input so it surfaces at
+    config load, not as a compile error 200 lines deep (or — worse — a
+    successfully-compiled / silently-mistainting harness).
+
+    Three checks: (1) charset (no comma/quote/semicolon/brace/slash);
+    (2) balanced `()` and `[]` so the value can't close the surrounding macro
+    or array early; (3) the only call syntax allowed is `sizeof(...)`."""
     if not _C_EXPR_PATTERN.fullmatch(value):
         raise ValueError(
             f"{where}: {label}={value!r} must be a simple C expression — "
             "identifiers / macros, integer literals, whitespace and "
-            "`+ - * ( ) & [ ] . ,` only. Quotes, semicolons, braces, "
+            "`+ - * ( ) & [ ] .` only. Commas, quotes, semicolons, braces, "
             "backslashes, `/` and comment tokens are rejected to prevent "
-            f"C-source injection (matches {_C_EXPR_PATTERN.pattern!r})."
+            f"C-source injection / value-collapse (matches {_C_EXPR_PATTERN.pattern!r})."
+        )
+    depth_p = depth_b = 0
+    for ch in value:
+        if ch == "(":
+            depth_p += 1
+        elif ch == ")":
+            depth_p -= 1
+        elif ch == "[":
+            depth_b += 1
+        elif ch == "]":
+            depth_b -= 1
+        if depth_p < 0 or depth_b < 0:
+            raise ValueError(
+                f"{where}: {label}={value!r} has unbalanced parentheses or "
+                "brackets — a stray `)`/`]` could close the surrounding macro "
+                "or array early."
+            )
+    if depth_p != 0 or depth_b != 0:
+        raise ValueError(
+            f"{where}: {label}={value!r} has unbalanced parentheses or brackets."
+        )
+    for m in _C_CALL_HEAD.finditer(value):
+        if m.group(1) != "sizeof":
+            raise ValueError(
+                f"{where}: {label}={value!r}: function-call syntax "
+                f"`{m.group(1)}(...)` is not allowed (only `sizeof(...)`). It "
+                "would call that function when the generated harness runs."
+            )
+    # A `(` right after `)` or `]` is a call through a pointer/array result
+    # — e.g. `(&abort)()`, `(abort)()`, `fns[0]()` — which dodges the
+    # identifier-head check above and still calls a function at runtime (R-6).
+    if _C_CALL_THRU.search(value):
+        raise ValueError(
+            f"{where}: {label}={value!r}: a `(` following `)` or `]` is a "
+            "call through a pointer/array result and is not allowed — it "
+            "would invoke a function when the generated harness runs."
         )
 
 
@@ -489,6 +543,29 @@ class ReportConfig(BaseModel):
     output_dir: Path = Path("./reports")
     csv_file: str = Field(default="ctkat_report.csv", alias="csv")
     json_file: str = Field(default="ctkat_report.json", alias="json")
+
+    @model_validator(mode="after")
+    def _check_report_filenames(self) -> "ReportConfig":
+        # R-6 re-audit: csv_file/json_file are joined onto output_dir and
+        # written. Unvalidated, `csv: '../../tmp/pwned.csv'` or `/tmp/x.csv`
+        # escapes the output dir → arbitrary file write. They are meant to be
+        # plain filenames; reject path separators, parent traversal, and
+        # absolute paths. (output_dir is the configurable directory; these are
+        # just the file names within it.)
+        for label, name in (("csv", self.csv_file), ("json", self.json_file)):
+            if (
+                "/" in name
+                or "\\" in name
+                or ".." in name
+                or Path(name).is_absolute()
+                or name in ("", ".")
+            ):
+                raise ValueError(
+                    f"report.{label}={name!r} must be a plain filename "
+                    "(no '/', '\\', '..', or absolute path) — it is written "
+                    "inside report.output_dir."
+                )
+        return self
 
 
 def _default_dudect_cflags() -> List[str]:

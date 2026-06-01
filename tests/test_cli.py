@@ -1241,3 +1241,30 @@ def test_kat_nonnumeric_capture_group_warns(tmp_path):
     result = runner.invoke(app, ["kat", "--config", str(cfg)])
     assert result.exit_code == 0  # expected_min unset → still PASS...
     assert "non-numeric" in result.stdout  # ...but the misconfig is surfaced
+
+
+# --- R-6 (re-audit): empty-harness fail-open in run() and ct() --------------
+
+
+def test_run_empty_harness_lists_exit_nonzero(tmp_path):
+    """R-6: `run` with present-but-empty ct.harnesses + dudect.harnesses used
+    to analyze nothing yet exit 0 with a green PASS — the same fail-open R-1
+    closed only for the standalone dudect subcommand."""
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent("""
+        project: {name: d}
+        build: {command: "true"}
+        ct: {harnesses: []}
+        dudect: {enabled: true, harnesses: []}
+    """))
+    result = CliRunner().invoke(app, ["run", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "Constant-Time Check: PASS" not in result.stdout
+
+
+def test_ct_subcommand_empty_harnesses_exit_nonzero(tmp_path):
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text('project: {name: d}\nbuild: {command: "true"}\nct: {harnesses: []}\n')
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "Constant-Time Check: PASS" not in result.stdout
