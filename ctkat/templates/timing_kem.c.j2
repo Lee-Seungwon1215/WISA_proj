@@ -181,8 +181,10 @@ int main(void) {
 {% elif leak_target | default("sk") == "ct" %}
     /* === ct-leak mode ===
      * sk is held constant across BOTH classes; ct is the fixed-vs-random
-     * axis. Detects branches/lookups indexed by ct content. NOT effective
-     * against adversarially-rare ct triggers (e.g. KyberSlash). */
+     * axis. Detects branches/lookups indexed by common ct content. NOT
+     * effective against rare/adversarial ct triggers or operand-latency leaks
+     * such as KyberSlash; those need dedicated vectors or div/mul operand
+     * analysis. */
     uint8_t pk_fixed  [{{ prefix }}CRYPTO_PUBLICKEYBYTES];
     uint8_t sk_fixed  [{{ prefix }}CRYPTO_SECRETKEYBYTES];
     uint8_t ct_fixed  [{{ prefix }}CRYPTO_CIPHERTEXTBYTES];

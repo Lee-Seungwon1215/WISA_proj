@@ -165,7 +165,7 @@
         <li>그래서 <strong>지금 코드로 취약 Kyber를 돌리면 → <span class="bad">CLEAN</span>(놓침).</strong></li>
         <li>이 “연산자(operand) 타이밍” 탐지를 <strong>CT-KAT에 4번째 검사로 넣으면</strong> 분기·메모리·연산자
           <strong>3축을 다 커버</strong>해서 도구가 훨씬 완성도 높아진다.</li>
-        <li><span class="pill">솔직</span> 이건 <strong>새 연구가 아니다.</strong> Binsec/Rel·KyberSlash 논문의 패치드
+        <li><span class="pill">솔직</span> 이걸 <strong>새 연구로 팔기는 약하다.</strong> Binsec/Rel·KyberSlash 논문의 패치드
           Valgrind·saferewrite·FaCT 등 <strong>이미 여러 도구가 하는 “operand model”</strong>이다.
           여기선 그냥 <em>CT-KAT을 더 쓸모있게 만드는 기능</em>으로 본다 (§4.6).</li>
       </ul>
@@ -297,8 +297,10 @@ t &amp;= 1;</code></pre>
     <ol>
       <li><code>poly.c</code>의 <code>poly_tomsg</code>에서 <code>t &lt;&lt;= 1; t += 1665; t *= 80635; t &gt;&gt;= 28;</code>를 지우고
         주석 원본 <code>t = (((t &lt;&lt; 1) + KYBER_Q/2)/KYBER_Q) &amp; 1;</code>로 교체 (poly_compress도 동일).</li>
-      <li><strong>반드시 <code>gcc -Os</code>(또는 RISC-V/ARM)로 컴파일</strong> — <code>-O2/-O3</code>면 컴파일러가 다시 곱셈으로 바꿔 취약점이 사라짐(§2.4).</li>
-      <li>이러면 “취약 코드 + 취약하게 컴파일된 binary” = <strong>시험용 양성 샘플</strong>. 고친 버전은 그대로 <strong>음성 샘플</strong>.</li>
+      <li>CT-KAT 통합 테스트용이면 ct 기본 <code>-O0</code>로 컴파일한 뒤 <code>objdump</code>에서
+        <code>div/idiv/udiv/sdiv</code>가 실제로 나오는지 확인한다. 배포 취약성 재현용이면
+        <code>gcc -Os</code>, RISC-V/ARM 등 KyberSlash 논문이 문제 삼은 조합을 따로 본다.</li>
+      <li>이러면 “취약 코드 + DIV가 실제로 남은 binary” = <strong>시험용 양성 샘플</strong>. 고친 버전은 그대로 <strong>음성 샘플</strong>.</li>
     </ol>
     <div class="callout tip">참고: KAT(정확성)는 두 버전 다 PASS여야 정상 (수학적으로 같은 결과).
       차이는 <em>오직 시간/명령어</em>에만 있음 → 새 기능이 봐야 할 바로 그 축.</div>
@@ -316,9 +318,11 @@ t &amp;= 1;</code></pre>
       <strong>맨 아랫줄 빈칸을 메우는 게 이 기능.</strong></p>
 
     <h3 id="s3-4">3.4 README 면책 표현 정정거리 (덤)</h3>
-    <p>README/템플릿 주석은 KyberSlash를 <em>“adversarial-input / 희귀 ct 트리거 류”</em>로 묶어놨는데
-      <strong>부정확하다.</strong> KyberSlash1은 <strong>정상 decap 중 비밀 디코딩</strong>에서 새는 거지 희귀 ct
-      트리거가 아님. <code>ct</code>-leak 모드 한계와는 <strong>별개 축(= 산술 명령어 타이밍).</strong> → 문서 한 줄 고치면 좋음.</p>
+    <p>KyberSlash를 <em>“adversarial-input / 희귀 ct 트리거 류”</em>로만 묶으면
+      <strong>부정확하다.</strong> KyberSlash1은 <strong>정상 decap 중 비밀 디코딩</strong>에서 새는 거고,
+      KyberSlash2도 정상 재암호화/압축 경로의 operand-timing 문제다. <code>ct</code>-leak 모드의
+      랜덤샘플 한계와도 관련은 있지만, 본질은 <strong>산술 명령어 latency</strong> 쪽이다. README와
+      템플릿 주석은 v3에서 이 둘을 분리해 고쳤다.</p>
 
     <h2 id="s4">4. 기능을 어떻게 넣나 — “어셈블리 등” <a class="anchor" href="#s4">#</a></h2>
     <h3>4.0 “어셈블리”가 무슨 뜻이었나</h3>
@@ -334,21 +338,22 @@ t &amp;= 1;</code></pre>
 uint16_t t = secret_coeff;
 r = ((t &lt;&lt; 1) + 1664) / 3329;
 
-x86-64 gcc -O3  →  imul + shr   (곱셈+시프트, 상수시간)      ← 안전
+x86-64 gcc -O3  →  imul + shr   (곱셈+시프트, 대체로 안전)    ← 보통 안전
 x86-64 gcc -Os  →  div          (나눗셈 명령, 피연산자 의존)  ← 취약
-riscv  gcc -O*  →  divu         (나눗셈)                     ← 취약</code></pre>
+Apple clang -O0/-Oz(x86/arm64) → div/udiv/sdiv 가능          ← ct 단계에서 보임
+riscv  gcc -O*  →  divu         (나눗셈)                     ← 취약 가능</code></pre>
     <p>확인: <code>objdump -d &lt;binary&gt; | grep -E 'div|idiv|udiv|divu'</code> 또는 Godbolt.
       → <strong>CT-KAT의 F9(ct=-O0/dudect=-O2)가 바로 이 축이다.</strong></p>
 
     <h3 id="s4-2">4.2 구현 방법 3가지 (난이도/정확도 순)</h3>
-    <h4>(A) 정적 스캔 — objdump/Capstone 디스어셈 <span class="pill">추천 시작점</span></h4>
+    <h4>(A) 정적 스캔 — objdump/Capstone 디스어셈 <span class="pill">PoC 시작점</span></h4>
     <ul>
       <li>컴파일된 하니스 디스어셈 → <code>div/idiv</code>(x86), <code>udiv/sdiv</code>(ARM), <code>div/divu</code>(RISC-V) 찾음.</li>
       <li>그 명령의 <strong>피연산자가 비밀에서 유래했는지</strong> 역추적 (use-def, 또는 보수적으로 “비밀 버퍼 만지는 함수 안에 div 있나”).</li>
       <li><strong>장점</strong>: gcc만 있으면 됨, <strong>x86/QEMU에서도 동작</strong>(타이밍 불필요), 끼우기 쉬움.</li>
       <li><strong>단점</strong>: 정밀 taint 아님 → false +/− 존재. PoC·1차 스크리닝엔 충분.</li>
     </ul>
-    <h4>(B) Valgrind/VEX 패치 — Memcheck 확장 (정밀, 빡셈)</h4>
+    <h4>(B) Valgrind/VEX 패치 — Memcheck 확장 <span class="pill">정밀 최종형</span></h4>
     <ul>
       <li>KyberSlash 저자가 한 방식. VEX IR로 올릴 때 <strong>tainted shadow가 <code>Iop_DivU*/DivS*</code> 등 나눗셈 op에 도달하면 경고.</strong></li>
       <li><strong>장점</strong>: CT-KAT가 <em>이미 Valgrind 래핑</em> → 일관, 정밀 taint(이미 <code>VALGRIND_MAKE_MEM_UNDEFINED</code>로 비밀 마킹).</li>
@@ -362,27 +367,35 @@ riscv  gcc -O*  →  divu         (나눗셈)                     ← 취약</co
       valgrind에 알려준다(<code>harness_kem.c.j2</code>). (B)는 이 shadow를 div-체크에 재사용 → 별도 taint 불필요.
       (A)는 이 offset/length(R-2에서 검증됨)를 비밀 범위 힌트로 써서 역추적 시드로 활용.</p>
 
-    <h3 id="s4-4">4.4 asm_scan PoC 흐름 (방법 A 최소 구현)</h3>
-    <pre><code>compile_harness() 직후:
-  1. objdump -d {binary}   (또는 capstone으로 디스어셈)
-  2. 명령 스트림에서 div/idiv/udiv/sdiv/divu 위치 수집
-  3. (보수적) 비밀 버퍼를 받는 함수(crypto_kem_dec → poly_tomsg …) 호출그래프 안의 div만 필터
-  4. 발견 시 Finding(type=SECRET_DEPENDENT_DIVISION, severity=HIGH,
-       message="div on secret-derived data", frames=[func:addr])
-  5. 기존 report/verdict 파이프라인에 합류 (verdict matrix에 새 행)</code></pre>
-    <p><code>valgrind_parser.py</code>의 <code>FindingType</code>에 <code>SECRET_DEPENDENT_DIVISION</code> 하나 추가하면
-      CSV/JSON/verdict까지 자동으로 흐른다. 새 모듈 <code>ctkat/asm_scan.py</code> + <code>cli._do_ct</code> 뒤 한 단계.</p>
+    <h3 id="s4-4">4.4 asm_scan 실제 구현 (v8 — 멀티-opt, warn-only)</h3>
+    <div class="callout note"><p><strong>v8 업데이트</strong>: 아래는 처음 구상한 흐름과 다르다. Phase 0
+      실측(<code>docs/kyberslash_direction.md</code> §8.7)에서 <em>gcc는 상수 <code>/KYBER_Q</code>를
+      <code>-O0</code>에서도 역수곱으로 죽인다</em>는 게 드러났다. 그래서 "ct(-O0) 한 빌드만 보고
+      Finding으로 verdict에 합류"하는 옛 방식은 폐기했다(그 빌드엔 div가 아예 없어 0개 탐지).
+      실제 구현은 <strong>여러 -O로 컴파일해 어느 빌드에서 div가 살아남나</strong>를 보고, 결과는
+      <strong>verdict와 분리된 warn-only artifact</strong>로 낸다.</p></div>
+    <pre><code>ctkat asm-scan -c ctkat.yaml   (독립 서브커맨드):
+  1. ct.harnesses[].sources 각각을 -O0/-Os/-O2(+ct의 실제 -O)로 -c 컴파일
+  2. objdump -d → div/idiv/udiv/sdiv/divu/rem 위치 수집 (mul/FP-div 제외)
+  3. nm 심볼테이블로 함수명 보정 (Mach-O ltmp0 → 실제 함수명)
+  4. (source, function)별로 "어느 -O에서 div가 살아남나" 집계
+  5. ctkat_varlat_candidates.csv/json 으로 출력 — verdict는 절대 안 건드림</code></pre>
+    <p><strong>taint 없음</strong>: 비밀 여부를 증명하지 않고 sources 안의 모든 division을 후보로 낸다
+      (그래서 fips202의 public division도 뜬다). 그래서 <em>warn-only</em>다 — 정밀 taint는 patched
+      Valgrind(방법 B, 아직 보류)의 몫이다. <code>FindingType</code>에 합류시키면 "finding 있으면 FAIL"
+      규칙 때문에 오탐이 CI를 깨므로, 의도적으로 별도 artifact로 분리했다.</p>
 
     <h3>4.5 컴파일러/최적화 매트릭스 (덤)</h3>
     <p>CT-KAT는 이미 <code>dudect.compiler.cflags</code>/<code>ct.cflags</code>/<code>shared_cflags</code>로 플래그 제어 +
-      <code>qemu_detect</code>/<code>clock=auto</code>로 멀티아키 인지 + F9 비대칭 컴파일을 한다. → 같은 소스를 여러
-      <code>{-O, arch}</code>로 돌려 “어디서 div가 박히나” 비교하는 옵션을 곁들이면 더 쓸모 있어진다.</p>
+      <code>qemu_detect</code>/<code>clock=auto</code>로 타이밍 환경을 인지한다. 단 이건 cross-toolchain
+      매트릭스가 아니다. 같은 소스를 여러 <code>{compiler, -O, target}</code>로 컴파일해서 “어디서 div가
+      박히나” 비교하려면 별도 cross-compiler/실하드웨어 또는 QEMU 실행 매트릭스가 필요하다.</p>
 
-    <h3 id="s4-6">4.6 솔직: 이건 이미 있는 기능이다 (신규성 ❌) <span class="pill warn" style="background:var(--note-bg);color:var(--warn)">정직</span></h3>
+    <h3 id="s4-6">4.6 솔직: 논문 novelty로 팔기 약하다 <span class="pill warn" style="background:var(--note-bg);color:var(--warn)">정직</span></h3>
     <div class="callout note">
-      <p>이 “비밀→div/mul 탐지”는 <strong>CT 분야에서 이미 이름까지 붙은 표준 누수 모델</strong>(operand /
-        variable-time instruction model)이고, <strong>여러 도구가 이미 한다.</strong> 새 연구 아니다 — 그냥
-        <em>CT-KAT한테 없는 기능을 채우는 것</em>일 뿐.</p>
+      <p>이 “비밀→div/mul 탐지”는 <strong>CT 분야에서 이미 알려진 누수 모델</strong>(operand /
+        variable-time instruction model)이고, <strong>여러 도구가 이미 한다.</strong> CT-KAT에 넣는 건
+        새 원리 발명이 아니라 <em>이 프로젝트에 빠진 축을 통합하는 일</em>에 가깝다.</p>
       <table>
         <thead><tr><th>도구</th><th>타입</th><th>비밀 div/mul 탐지?</th></tr></thead>
         <tbody>
@@ -403,16 +416,17 @@ riscv  gcc -O*  →  divu         (나눗셈)                     ← 취약</co
     <table>
       <thead><tr><th>단계</th><th>내용</th><th>난이도</th><th>산출물</th></tr></thead>
       <tbody>
-        <tr><td><strong>P0</strong></td><td>시험용 취약 Kyber(§3.2) 만들어 현재 CT-KAT가 CLEAN 내는 것 실측 (= 빈칸 확인)</td><td>낮음</td><td>“지금은 못 잡는다” 증거</td></tr>
-        <tr><td><strong>P1</strong></td><td><code>asm_scan.py</code>(방법 A): objdump div 스캔 → <code>SECRET_DEPENDENT_DIVISION</code> finding 통합</td><td>중</td><td>4번째 검사 v0</td></tr>
+        <tr><td><strong>P0</strong></td><td>시험용 취약 Kyber(§3.2) 실측 — gcc <code>-O0</code>은 상수 <code>/KYBER_Q</code>를 역수곱으로 죽여 div 안 남고, <code>-Os</code>에서만 살아남</td><td>낮음</td><td class="c"><span class="ok">✅ 완료</span> (§8.7 매트릭스)</td></tr>
+        <tr><td><strong>P1</strong></td><td><code>asm_scan.py</code> + <code>ctkat asm-scan</code>: 여러 <code>-O</code>로 컴파일해 div 살아남는 빌드 탐지. <strong>warn-only 별도 artifact</strong>(<code>ctkat_varlat_candidates.csv/json</code>) — finding/verdict 통합 <em>아님</em>(오탐이 FAIL 못 만들게)</td><td>중</td><td class="c"><span class="ok">✅ 완료</span> (멀티-opt, taint 없음)</td></tr>
         <tr><td><strong>P2</strong></td><td>비밀 use-def 정밀화 (or 방법 B Valgrind 패치로 정밀 taint)</td><td>높음</td><td>오탐 줄인 정밀 탐지</td></tr>
-        <tr><td><strong>P3</strong></td><td><code>{-O, arch}</code> 매트릭스 옵션 (기존 cflags/qemu 활용)으로 “어디서 div 박히나” 비교</td><td>중</td><td>비교 표 / CI 옵션</td></tr>
+        <tr><td><strong>P3</strong></td><td><code>{compiler, -O, arch}</code> 매트릭스 — “어디서 div 박히나” 비교</td><td>중</td><td>부분(<code>--cc</code> 옵션) / 본격 매트릭스는 future</td></tr>
         <tr><td><strong>(옵션)</strong></td><td>덜 감사된 다른 PQC/임베디드 구현 스캔 → 새 누수 헌팅</td><td>중~높</td><td>(운 좋으면) 진짜 발견</td></tr>
       </tbody>
     </table>
-    <div class="callout"><strong>바로 다음 스텝(택1):</strong>
-      ① <strong>P0</strong> — 취약본 박아서 “CLEAN 뜨는 것” 실측 박제 + README 면책 표현 정정,
-      또는 ② <strong>P1</strong> — <code>asm_scan.py</code> div 스캔 PoC 설계(CT-KAT 최소 변경 스케치).</div>
+    <div class="callout"><strong>현재 상태</strong>: P0·P1 완료. KyberSlash 취약본은 gcc <code>-O0</code>(ct 스테이지)
+      에선 안 잡히고 <code>-Os</code>에서 잡히므로 <code>ctkat asm-scan</code>이 여러 <code>-O</code>를 떠서
+      warn-only 후보로 보고한다. 다음 후보는 <strong>P3 컴파일러 매트릭스 확장</strong> 또는
+      <strong>P2 patched Valgrind</strong>(보류). 상세: <code>docs/kyberslash_direction.md</code> §8.6~§8.8.</div>
 
     <h2 id="appendix">부록 A. 용어 사전 <a class="anchor" href="#appendix">#</a></h2>
     <ul>

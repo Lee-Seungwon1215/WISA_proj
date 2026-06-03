@@ -3,6 +3,7 @@ import math
 import platform
 import re
 import secrets
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -24,6 +25,14 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from .asm_scan import (
+    DEFAULT_OPT_LEVELS,
+    AsmScanError,
+    extract_opt_level,
+    scan_harness,
+    write_varlat_csv,
+    write_varlat_json,
+)
 from .builder import run_step
 from .config import (
     CtkatConfig,
@@ -1247,6 +1256,144 @@ def ct(
         # `ctkat ct --config ... && deploy` patterns must see "couldn't
         # verify" as a gating failure, not green-light.
         raise typer.Exit(2)
+
+
+@app.command(name="asm-scan")
+def asm_scan(
+    config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
+    opt: Optional[List[str]] = typer.Option(
+        None, "--opt",
+        help="Optimization level to scan (repeatable). Default: -O0 -Os -O2. "
+             "The ct stage's own -O level is always added on top.",
+    ),
+    cc: str = typer.Option(
+        "gcc", "--cc",
+        help="Compiler used for the scan builds (e.g. gcc, clang). Different "
+             "compilers strength-reduce constant division differently, so this "
+             "widens the leak surface you can probe.",
+    ),
+):
+    """Warn-only scan for variable-latency instruction *candidates* (integer
+    division etc.) in the harness sources, across optimization levels.
+
+    WHY multi-opt: a constant divisor (KyberSlash's `/KYBER_Q`) is
+    strength-reduced away at the ct stage's gcc -O0 and only re-appears as a
+    real `div` at -Os, so a single-build scan would find nothing (see
+    docs/kyberslash_direction.md §8.7/§8.8). This compiles each source at
+    several opt levels and reports which build a division survives in.
+
+    NOT a taint analysis: it reports every division-family instruction in the
+    sources, secret or not (so public divisions, e.g. Keccak rate math, also
+    show up). Output is a SEPARATE artifact (ctkat_varlat_candidates.csv/json)
+    and never affects the FAIL verdict — these are candidates, not proven
+    secret-dependent.
+
+    Exit codes: 0 whether or not candidates are found (warn-only); 2 only on a
+    config/toolchain error — no `ct` harnesses, or the requested compiler /
+    objdump is missing. A security tool must not silently exit 0 with an empty
+    result just because its toolchain wasn't installed (fail-closed, like F2/F8).
+    """
+    cfg = load_config(config)
+    cfg_dir = config.parent.resolve()
+    if cfg.ct is None or not cfg.ct.harnesses:
+        console.print("[red]No `ct` harnesses to scan.[/]")
+        raise typer.Exit(2)
+    base_opts = tuple(opt) if opt else DEFAULT_OPT_LEVELS
+    ct_cwd = _resolve(cfg_dir, cfg.ct.workdir)
+    out_dir = _resolve(cfg_dir, cfg.report.output_dir)
+
+    auto = [h for h in cfg.ct.harnesses if h.template is not None and h.sources]
+    if not auto:
+        console.print(
+            "[yellow]asm-scan: no template harnesses with `sources` to scan "
+            "(manual-binary harnesses are skipped).[/]"
+        )
+        raise typer.Exit(0)
+
+    # Fail-closed if the toolchain is missing: scanning depends on `cc` and
+    # `objdump`, and a FileNotFoundError mid-scan would otherwise escape as a
+    # traceback that contradicts the warn-only "exits 0" contract. `nm` is
+    # optional — its absence just disables Mach-O symbol-name recovery.
+    missing = [t for t in (cc, "objdump") if shutil.which(t) is None]
+    if missing:
+        console.print(
+            f"[bold red][CTKAT] asm-scan: required tool(s) not found on PATH: "
+            f"{', '.join(missing)}.[/] Install them (e.g. add to the Docker image) "
+            f"or pick a different [bold]--cc[/]. This is a config/toolchain error, "
+            f"not a clean 'no candidates' result, so exit code is 2."
+        )
+        raise typer.Exit(2)
+
+    console.print(
+        f"[bold cyan]==> asm-scan[/]: cc={cc} base opt levels = {' '.join(base_opts)} "
+        "[dim](warn-only; does not affect verdict)[/]"
+    )
+    candidates = []
+    scanned: set = set()
+    try:
+        for h in auto:
+            include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
+            sources = [_resolve(cfg_dir, s) for s in h.sources]
+            source_display = [str(s) for s in h.sources]
+            base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
+            # Always scan the ct stage's own -O level so the "absent at <ct opt>"
+            # note is grounded in an actual build, not a hardcoded "-O0" (which
+            # would lie for a yaml whose ct.cflags is -O2).
+            ct_opt = extract_opt_level(base_cflags)
+            harness_opts = tuple(dict.fromkeys((ct_opt, *base_opts)))
+            scanned.update(harness_opts)
+            cands = scan_harness(
+                harness=h.name,
+                sources=sources,
+                source_display=source_display,
+                include_dirs=include_dirs,
+                base_cflags=base_cflags,
+                workdir=ct_cwd,
+                opt_levels=harness_opts,
+                timeout=cfg.ct.compile_timeout,
+                cc=cc,
+                on_warn=lambda m: console.print(f"[dim][CTKAT] asm-scan note:[/dim] {m}"),
+            )
+            candidates.extend(cands)
+    except AsmScanError as e:
+        # Disassembly failed (objdump errored, or `--cc` ran but produced no
+        # object — e.g. a stub/wrong wrapper that passed the which() preflight).
+        # Fail-closed like the missing-tool case rather than letting the
+        # traceback escape as exit 1.
+        console.print(
+            f"[bold red][CTKAT] asm-scan: disassembly failed[/] — {e}\n"
+            f"[dim]This usually means --cc isn't a real compiler (it ran but "
+            f"emitted no object) or objdump can't read the output. Treating as a "
+            f"config/toolchain error (exit 2).[/]"
+        )
+        raise typer.Exit(2)
+
+    csv_path = out_dir / "ctkat_varlat_candidates.csv"
+    json_path = out_dir / "ctkat_varlat_candidates.json"
+    write_varlat_csv(candidates, csv_path)
+    write_varlat_json(
+        cfg.project.name, candidates, json_path,
+        opt_levels=tuple(sorted(scanned)),
+    )
+
+    if candidates:
+        table = Table(title="Variable-latency candidates in harness sources (warn-only)")
+        for col in ("harness", "source", "function", "mnem", "opt levels", "n"):
+            table.add_column(col)
+        for c in candidates:
+            table.add_row(
+                c.harness, c.source_file, c.function,
+                ";".join(c.mnemonics), ";".join(c.opt_levels), str(c.count),
+            )
+        console.print(table)
+        console.print(
+            f"[yellow]{len(candidates)} variable-latency candidate(s)[/] — "
+            "review manually; these are NOT proven secret-dependent."
+        )
+    else:
+        console.print("[green]asm-scan: no division-family instructions found.[/]")
+    console.print(f"[dim]varlat CSV : {csv_path}[/]")
+    console.print(f"[dim]varlat JSON: {json_path}[/]")
 
 
 @app.command()
