@@ -434,6 +434,52 @@ def test_asm_scan_cli_all_requested_compilers_missing_exits_2(tmp_path: Path):
     assert "not found" in result.stdout
 
 
+_TWO_HARNESS_YAML = textwrap.dedent(
+    """
+    project: {name: testproj, language: c, root: .}
+    build: {command: "true", workdir: .}
+    ct:
+      workdir: .
+      generated_dir: ./_generated
+      harnesses:
+        - {name: h1, template: kem, header: api.h, prefix: "P_", include_dirs: ["."], sources: ["foo.c"]}
+        - {name: h2, template: kem, header: api.h, prefix: "P_", include_dirs: ["."], sources: ["bar.c"]}
+    report: {output_dir: ./reports}
+    """
+)
+
+
+def test_asm_scan_cli_failed_compiler_discards_partial_candidates(tmp_path: Path):
+    # A compiler that succeeds on h1 but errors on h2 must contribute NOTHING:
+    # its partial h1 candidates are discarded and it is absent from
+    # scanned_compilers (it only appears in errors). A healthy compiler still
+    # produces full results. This is the regression the per-compiler-atomic merge
+    # fixes — with a single harness the old code looked fine, so two are needed.
+    import json
+
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(_TWO_HARNESS_YAML)
+
+    def fake_scan(*_a, **k):
+        if k["cc"] == "gcc" and k["harness"] == "h2":
+            raise AsmScanError("objdump failed: boom")  # gcc dies AFTER h1 succeeded
+        return [_cand("leaky", [("-Os", "222", "div")], harness=k["harness"],
+                      source="foo.c", compiler=k["cc"])]
+
+    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
+         mock.patch("ctkat.cli.scan_harness", side_effect=fake_scan):
+        result = CliRunner().invoke(
+            app, ["asm-scan", "-c", str(p), "--cc", "gcc", "--cc", "clang"]
+        )
+    assert result.exit_code == 0, result.stdout
+    data = json.loads((tmp_path / "reports" / "ctkat_varlat_candidates.json").read_text())
+    assert data["scanned_compilers"] == ["clang"]           # gcc dropped entirely
+    assert [e["compiler"] for e in data["errors"]] == ["gcc"]
+    # NO gcc rows survive (its partial h1 candidate was discarded); clang ran both.
+    assert {c["compiler"] for c in data["candidates"]} == {"clang"}
+    assert sorted(c["harness"] for c in data["candidates"]) == ["h1", "h2"]
+
+
 # --- guarded end-to-end (real compile) --------------------------------------
 
 _HAVE_TOOLCHAIN = shutil.which("gcc") is not None and shutil.which("objdump") is not None

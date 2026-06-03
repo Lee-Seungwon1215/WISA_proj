@@ -1359,7 +1359,11 @@ def asm_scan(
     scanned: set = set()
     scanned_ok = []
     for cc_name in available:
-        cc_failed = False
+        # Accumulate this compiler's candidates in a LOCAL list and merge into the
+        # global result only if its whole scan completes. A mid-scan AsmScanError
+        # then discards this compiler's partial output entirely, keeping the CSV
+        # rows and JSON `scanned_compilers` consistent (§4 artifact contract).
+        cc_cands = []
         try:
             for h in auto:
                 include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
@@ -1372,7 +1376,7 @@ def asm_scan(
                 ct_opt = extract_opt_level(base_cflags)
                 harness_opts = tuple(dict.fromkeys((ct_opt, *base_opts)))
                 scanned.update(harness_opts)
-                cands = scan_harness(
+                cc_cands.extend(scan_harness(
                     harness=h.name,
                     sources=sources,
                     source_display=source_display,
@@ -1386,22 +1390,26 @@ def asm_scan(
                     on_warn=lambda m, _cc=cc_name: console.print(
                         f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"
                     ),
-                )
-                candidates.extend(cands)
+                ))
         except AsmScanError as e:
-            # `--cc` ran but produced no object / objdump couldn't read it (a
-            # stub or wrong wrapper that passed the which() preflight). Per the
-            # skip-and-continue policy this is recorded as a per-compiler ERROR
-            # and the remaining compilers still run, rather than aborting all.
-            cc_failed = True
+            # `--cc` ran but produced no object / objdump couldn't read it (a stub
+            # or wrong wrapper that passed the which() preflight). Per the
+            # skip-and-continue policy this is recorded as a per-compiler ERROR and
+            # the remaining compilers still run. Any PARTIAL candidates produced
+            # before the failure are DISCARDED, not merged — an incomplete disasm
+            # can't back a trustworthy "scanned <cc>" claim, and keeping them would
+            # contradict `scanned_compilers` (CSV rows for a compiler the JSON says
+            # it never finished).
             cc_errors.append({"compiler": cc_name, "error": f"disassembly failed: {e}"})
             console.print(
                 f"[bold yellow][CTKAT] asm-scan: compiler '{cc_name}' disassembly "
                 f"failed[/] — {e}\n[dim]It ran but emitted no usable object (not a real "
-                f"compiler?) — skipped and recorded as ERROR; continuing.[/]"
+                f"compiler?) — skipped, recorded as ERROR, partial results discarded; "
+                f"continuing.[/]"
             )
-        if not cc_failed:
-            scanned_ok.append(cc_name)
+            continue
+        candidates.extend(cc_cands)
+        scanned_ok.append(cc_name)
 
     if not scanned_ok:
         # Every available compiler failed disassembly — no usable scan ran, so an
