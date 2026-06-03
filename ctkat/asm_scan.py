@@ -79,14 +79,16 @@ class Occurrence:
 
 @dataclass
 class VarLatCandidate:
-    """A (harness, source, function) that contains at least one division
-    instruction in at least one scanned optimization level. The interesting
-    case is when `ct_opt` is NOT among `opt_levels` — the division only appears
-    once optimized, so the ct/Valgrind stage at `ct_opt` would have missed it."""
+    """A (compiler, harness, source, function) that contains at least one
+    division instruction in at least one scanned optimization level. The
+    interesting case is when `ct_opt` is NOT among `opt_levels` — the division
+    only appears once optimized, so the ct/Valgrind stage at `ct_opt` would have
+    missed it *if* the ct build uses the same compiler (see `_note_for`)."""
 
     harness: str
     source_file: str          # as written in the yaml (for readability)
     function: str
+    compiler: str = "gcc"     # the scan compiler (`--cc`) this candidate came from
     ct_opt: str = "-O0"       # the ct stage's effective opt level for this harness
     occurrences: List[Occurrence] = field(default_factory=list)
 
@@ -311,6 +313,7 @@ def scan_harness(
             harness=harness,
             source_file=disp,
             function=func,
+            compiler=cc,
             ct_opt=ct_opt,
             occurrences=occ,
         )
@@ -323,6 +326,7 @@ def scan_harness(
 # --- artifact writers (separate file from the verdict CSV on purpose) -------
 
 VARLAT_CSV_FIELDS = [
+    "compiler",
     "harness",
     "source_file",
     "function",
@@ -335,22 +339,29 @@ VARLAT_CSV_FIELDS = [
 
 
 def _note_for(c: VarLatCandidate) -> str:
-    """Human-facing one-liner keyed off the ct stage's own opt level. If the
-    division only appears once optimized, the ct/Valgrind stage at `ct_opt`
-    would have missed it — that is the actionable signal."""
+    """Human-facing one-liner keyed off the ct stage's own opt level AND the
+    scan compiler. The "ct/Valgrind stage would miss this build" claim only
+    holds when the ct build uses the *same* compiler we scanned with — asm-scan
+    does not know the ct build's compiler (it runs `make`), so the claim is
+    stated conditionally on `c.compiler` rather than asserted (CLAUDE.md §4:
+    cross-layer contract — a clang-only `div` says nothing about a gcc ct
+    stage)."""
     opts = c.opt_levels
+    cc = c.compiler
     if c.ct_opt in opts and len(opts) == 1:
-        return f"division present even at the ct stage's {c.ct_opt} (variable divisor, or compiler kept it)"
+        return f"division present even at the ct stage's {c.ct_opt} under {cc} (variable divisor, or {cc} kept it)"
     if c.ct_opt not in opts:
         return (
-            f"division survives only when optimized ({';'.join(opts)}); "
-            f"absent at the ct stage's {c.ct_opt} — the ct/Valgrind stage would miss this build"
+            f"division survives only when optimized under {cc} ({';'.join(opts)}); "
+            f"absent at the ct stage's {c.ct_opt} — if the ct build also uses {cc}, "
+            f"the ct/Valgrind stage would miss this build"
         )
-    return f"division present across {';'.join(opts)} (incl. the ct stage's {c.ct_opt})"
+    return f"division present across {';'.join(opts)} under {cc} (incl. the ct stage's {c.ct_opt})"
 
 
 def candidate_to_row(c: VarLatCandidate) -> Dict[str, str]:
     return {
+        "compiler": c.compiler,
         "harness": c.harness,
         "source_file": c.source_file,
         "function": c.function,
@@ -373,12 +384,41 @@ def write_varlat_csv(candidates: List[VarLatCandidate], path: Path) -> None:
             writer.writerow(candidate_to_row(c))
 
 
+def build_matrix(candidates: List[VarLatCandidate]) -> List[Dict[str, object]]:
+    """Normalized one-row-per-(compiler, opt, source, function, mnemonic) view
+    of the candidates, so a script can mechanically compare *which compiler ×
+    opt level kept a division alive* without parsing the `;`-joined CSV columns
+    (roadmap Phase B completion criterion). The human-readable cross-opt `note`
+    lives only on the aggregated CSV rows / `candidates`; this matrix is the
+    machine-diff surface."""
+    agg: Dict[Tuple[str, str, str, str, str], int] = {}
+    for c in candidates:
+        for o in c.occurrences:
+            key = (c.compiler, o.opt, c.source_file, c.function, o.mnemonic)
+            agg[key] = agg.get(key, 0) + 1
+    rows = [
+        {
+            "compiler": comp,
+            "opt": opt,
+            "source_file": sf,
+            "function": fn,
+            "mnemonic": mn,
+            "count": n,
+        }
+        for (comp, opt, sf, fn, mn), n in agg.items()
+    ]
+    rows.sort(key=lambda r: (r["compiler"], r["opt"], r["source_file"], r["function"], r["mnemonic"]))
+    return rows
+
+
 def write_varlat_json(
     project: str,
     candidates: List[VarLatCandidate],
     path: Path,
     *,
     opt_levels: Tuple[str, ...],
+    compilers: Tuple[str, ...] = ("gcc",),
+    errors: Optional[List[Dict[str, str]]] = None,
 ) -> None:
     import json
 
@@ -388,7 +428,12 @@ def write_varlat_json(
         "kind": "varlat_candidates",
         "warn_only": True,
         "scanned_opt_levels": list(opt_levels),
+        "scanned_compilers": list(compilers),
+        # per-compiler problems (missing compiler skipped, or a disasm failure)
+        # recorded explicitly so a green CSV is never mistaken for "complete".
+        "errors": list(errors or []),
         "candidates": [candidate_to_row(c) for c in candidates],
+        "matrix": build_matrix(candidates),
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)

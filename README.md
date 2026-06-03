@@ -543,19 +543,25 @@ python -m ctkat infer --header api.h --function crypto_kem_dec
 python -m ctkat parse path/to/valgrind.log
 
 # 가변시간 명령(정수 나눗셈 등) 후보 스캔 — warn-only, verdict 무관
-python -m ctkat asm-scan --config <ctkat.yaml> [--opt -O0 --opt -Os ...] [--cc gcc|clang]
+python -m ctkat asm-scan --config <ctkat.yaml> [--opt -O0 --opt -Os ...] [--cc gcc --cc clang ...]
 ```
 
 `asm-scan`: `ct.harnesses[].sources`를 여러 최적화 레벨(`-O0/-Os/-O2` + ct의 실제
-`-O`)로 컴파일해 `objdump`로 `div/idiv/sdiv/udiv/…` 위치를 모으고, **어느 빌드에서
-나눗셈이 살아남나**를 `reports/ctkat_varlat_candidates.csv/json`에 적는다. KyberSlash
-`/KYBER_Q`는 gcc `-O0`에선 역수곱으로 사라지고 `-Os`에서만 살아나기 때문에(아래
-Limitations 참고), 단일 빌드만 보면 놓친다. **taint 분석이 아니라** 소스 안 모든
-나눗셈을 후보로 내므로(공개 나눗셈도 포함) verdict엔 절대 섞지 않는다. **exit 코드**:
-candidate 유무와 무관하게 `0`(warn-only). 단 요청한 컴파일러(`--cc`)나 `objdump`가
-PATH에 없으면 조용히 빈 결과로 exit 0 하지 않고 **config 에러로 exit 2**(fail-closed).
-기본 Docker 이미지엔 `gcc`만 있으므로 `--cc clang`은 clang 설치 후 사용. 정밀 taint는
-패치드 Valgrind 필요(미구현). 상세: `docs/kyberslash_direction.md` §8.7/§8.8.
+`-O`)과 **여러 컴파일러**(`--cc` 반복, 기본 `gcc`)로 컴파일해 `objdump`로
+`div/idiv/sdiv/udiv/…` 위치를 모으고, **어느 컴파일러 × 어느 빌드에서 나눗셈이
+살아남나**를 `reports/ctkat_varlat_candidates.csv/json`에 적는다(CSV엔 `compiler`
+컬럼, JSON엔 `scanned_compilers`·기계비교용 `matrix`·`errors`). KyberSlash `/KYBER_Q`는
+gcc `-O0`에선 역수곱으로 사라지고 `-Os`에서만 살아나기 때문에(아래 Limitations 참고),
+단일 컴파일러·단일 빌드만 보면 놓친다. **taint 분석이 아니라** 소스 안 모든 나눗셈을
+후보로 내므로(공개 나눗셈도 포함) verdict엔 절대 섞지 않는다. note의 "ct 스테이지가
+놓침" 판정은 ct 빌드가 **같은 컴파일러**를 쓸 때만 성립하도록 조건부로 적는다
+(asm-scan은 ct 빌드의 컴파일러를 모름). **exit 코드**: candidate 유무와 무관하게
+`0`(warn-only). 요청한 컴파일러 중 **일부**가 PATH에 없으면 그 컴파일러만 건너뛰고
+ERROR로 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단 `objdump`가 없거나 요청한
+컴파일러가 **하나도** 없으면 조용히 빈 결과로 exit 0 하지 않고 **config 에러로 exit
+2**(fail-closed). 기본 Docker 이미지엔 `gcc`만 있으므로 `--cc clang`은 clang 설치 후.
+정밀 taint는 패치드 Valgrind 필요(미구현). 상세: `docs/kyberslash_direction.md`
+§8.7/§8.8.
 
 `--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
 사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.

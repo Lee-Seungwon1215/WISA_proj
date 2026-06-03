@@ -1266,11 +1266,13 @@ def asm_scan(
         help="Optimization level to scan (repeatable). Default: -O0 -Os -O2. "
              "The ct stage's own -O level is always added on top.",
     ),
-    cc: str = typer.Option(
-        "gcc", "--cc",
-        help="Compiler used for the scan builds (e.g. gcc, clang). Different "
-             "compilers strength-reduce constant division differently, so this "
-             "widens the leak surface you can probe.",
+    cc: Optional[List[str]] = typer.Option(
+        None, "--cc",
+        help="Compiler(s) for the scan builds (repeatable: --cc gcc --cc clang). "
+             "Different compilers strength-reduce constant division differently, "
+             "so scanning several widens the leak surface. Default: gcc. A "
+             "requested compiler that is missing is skipped with an ERROR record "
+             "and the scan continues with the rest; if NONE are available, exit 2.",
     ),
 ):
     """Warn-only scan for variable-latency instruction *candidates* (integer
@@ -1288,10 +1290,13 @@ def asm_scan(
     and never affects the FAIL verdict — these are candidates, not proven
     secret-dependent.
 
-    Exit codes: 0 whether or not candidates are found (warn-only); 2 only on a
-    config/toolchain error — no `ct` harnesses, or the requested compiler /
-    objdump is missing. A security tool must not silently exit 0 with an empty
-    result just because its toolchain wasn't installed (fail-closed, like F2/F8).
+    Exit codes: 0 whether or not candidates are found (warn-only), even if SOME
+    requested compilers were missing — those are skipped and recorded as ERRORs
+    in the artifact while the scan continues with the rest. Exit 2 on a hard
+    config/toolchain error: no `ct` harnesses, `objdump` missing, or NONE of the
+    requested compilers are available / produced a usable scan. A security tool
+    must not silently exit 0 with an empty result just because its toolchain
+    wasn't installed (fail-closed, like F2/F8).
     """
     cfg = load_config(config)
     cfg_dir = config.parent.resolve()
@@ -1310,61 +1315,101 @@ def asm_scan(
         )
         raise typer.Exit(0)
 
-    # Fail-closed if the toolchain is missing: scanning depends on `cc` and
-    # `objdump`, and a FileNotFoundError mid-scan would otherwise escape as a
-    # traceback that contradicts the warn-only "exits 0" contract. `nm` is
-    # optional — its absence just disables Mach-O symbol-name recovery.
-    missing = [t for t in (cc, "objdump") if shutil.which(t) is None]
-    if missing:
+    # `objdump` is non-negotiable — without it NO build can be disassembled, so
+    # its absence is a hard exit 2 (an absent disassembler must not look like a
+    # clean "no candidates"). `nm` is optional (Mach-O symbol recovery only).
+    if shutil.which("objdump") is None:
         console.print(
-            f"[bold red][CTKAT] asm-scan: required tool(s) not found on PATH: "
-            f"{', '.join(missing)}.[/] Install them (e.g. add to the Docker image) "
-            f"or pick a different [bold]--cc[/]. This is a config/toolchain error, "
-            f"not a clean 'no candidates' result, so exit code is 2."
+            "[bold red][CTKAT] asm-scan: 'objdump' not found on PATH.[/] Install it "
+            "(e.g. add to the Docker image). This is a config/toolchain error, not a "
+            "clean 'no candidates' result, so exit code is 2."
         )
         raise typer.Exit(2)
 
+    # Compilers are repeatable and de-duped (default: gcc). A requested compiler
+    # that is missing is SKIPPED with an explicit ERROR record and the scan
+    # continues with the rest; but if NONE are available there is nothing to
+    # scan, which is a hard exit 2 (a green empty result would be a lie).
+    requested = list(dict.fromkeys(cc)) if cc else ["gcc"]
+    available = [c for c in requested if shutil.which(c) is not None]
+    missing_cc = [c for c in requested if shutil.which(c) is None]
+    cc_errors = [
+        {"compiler": c, "error": "compiler not found on PATH"} for c in missing_cc
+    ]
+    if not available:
+        console.print(
+            f"[bold red][CTKAT] asm-scan: requested compiler(s) not found on PATH: "
+            f"{', '.join(requested)}.[/] None are available — install one (e.g. add to "
+            f"the Docker image) or pick a different [bold]--cc[/]. Nothing to scan — "
+            f"exit code is 2."
+        )
+        raise typer.Exit(2)
+    for c in missing_cc:
+        console.print(
+            f"[yellow][CTKAT] asm-scan: compiler '{c}' not found — skipped and "
+            f"recorded as ERROR; continuing with: {', '.join(available)}.[/]"
+        )
+
     console.print(
-        f"[bold cyan]==> asm-scan[/]: cc={cc} base opt levels = {' '.join(base_opts)} "
+        f"[bold cyan]==> asm-scan[/]: compilers={','.join(available)} "
+        f"base opt levels = {' '.join(base_opts)} "
         "[dim](warn-only; does not affect verdict)[/]"
     )
     candidates = []
     scanned: set = set()
-    try:
-        for h in auto:
-            include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
-            sources = [_resolve(cfg_dir, s) for s in h.sources]
-            source_display = [str(s) for s in h.sources]
-            base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
-            # Always scan the ct stage's own -O level so the "absent at <ct opt>"
-            # note is grounded in an actual build, not a hardcoded "-O0" (which
-            # would lie for a yaml whose ct.cflags is -O2).
-            ct_opt = extract_opt_level(base_cflags)
-            harness_opts = tuple(dict.fromkeys((ct_opt, *base_opts)))
-            scanned.update(harness_opts)
-            cands = scan_harness(
-                harness=h.name,
-                sources=sources,
-                source_display=source_display,
-                include_dirs=include_dirs,
-                base_cflags=base_cflags,
-                workdir=ct_cwd,
-                opt_levels=harness_opts,
-                timeout=cfg.ct.compile_timeout,
-                cc=cc,
-                on_warn=lambda m: console.print(f"[dim][CTKAT] asm-scan note:[/dim] {m}"),
+    scanned_ok = []
+    for cc_name in available:
+        cc_failed = False
+        try:
+            for h in auto:
+                include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
+                sources = [_resolve(cfg_dir, s) for s in h.sources]
+                source_display = [str(s) for s in h.sources]
+                base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
+                # Always scan the ct stage's own -O level so the "absent at <ct
+                # opt>" note is grounded in an actual build, not a hardcoded
+                # "-O0" (which would lie for a yaml whose ct.cflags is -O2).
+                ct_opt = extract_opt_level(base_cflags)
+                harness_opts = tuple(dict.fromkeys((ct_opt, *base_opts)))
+                scanned.update(harness_opts)
+                cands = scan_harness(
+                    harness=h.name,
+                    sources=sources,
+                    source_display=source_display,
+                    include_dirs=include_dirs,
+                    base_cflags=base_cflags,
+                    workdir=ct_cwd,
+                    opt_levels=harness_opts,
+                    timeout=cfg.ct.compile_timeout,
+                    cc=cc_name,
+                    # default-arg binds cc_name per iteration (avoid late-binding)
+                    on_warn=lambda m, _cc=cc_name: console.print(
+                        f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"
+                    ),
+                )
+                candidates.extend(cands)
+        except AsmScanError as e:
+            # `--cc` ran but produced no object / objdump couldn't read it (a
+            # stub or wrong wrapper that passed the which() preflight). Per the
+            # skip-and-continue policy this is recorded as a per-compiler ERROR
+            # and the remaining compilers still run, rather than aborting all.
+            cc_failed = True
+            cc_errors.append({"compiler": cc_name, "error": f"disassembly failed: {e}"})
+            console.print(
+                f"[bold yellow][CTKAT] asm-scan: compiler '{cc_name}' disassembly "
+                f"failed[/] — {e}\n[dim]It ran but emitted no usable object (not a real "
+                f"compiler?) — skipped and recorded as ERROR; continuing.[/]"
             )
-            candidates.extend(cands)
-    except AsmScanError as e:
-        # Disassembly failed (objdump errored, or `--cc` ran but produced no
-        # object — e.g. a stub/wrong wrapper that passed the which() preflight).
-        # Fail-closed like the missing-tool case rather than letting the
-        # traceback escape as exit 1.
+        if not cc_failed:
+            scanned_ok.append(cc_name)
+
+    if not scanned_ok:
+        # Every available compiler failed disassembly — no usable scan ran, so an
+        # empty artifact would be a lie. Fail-closed (exit 2), same spirit as the
+        # missing-objdump / no-compiler cases.
         console.print(
-            f"[bold red][CTKAT] asm-scan: disassembly failed[/] — {e}\n"
-            f"[dim]This usually means --cc isn't a real compiler (it ran but "
-            f"emitted no object) or objdump can't read the output. Treating as a "
-            f"config/toolchain error (exit 2).[/]"
+            "[bold red][CTKAT] asm-scan: no compiler produced a usable scan[/] "
+            "(all failed disassembly). Treating as a config/toolchain error (exit 2)."
         )
         raise typer.Exit(2)
 
@@ -1374,24 +1419,35 @@ def asm_scan(
     write_varlat_json(
         cfg.project.name, candidates, json_path,
         opt_levels=tuple(sorted(scanned)),
+        compilers=tuple(scanned_ok),
+        errors=cc_errors,
     )
 
     if candidates:
         table = Table(title="Variable-latency candidates in harness sources (warn-only)")
-        for col in ("harness", "source", "function", "mnem", "opt levels", "n"):
+        for col in ("compiler", "harness", "source", "function", "mnem", "opt levels", "n"):
             table.add_column(col)
         for c in candidates:
             table.add_row(
-                c.harness, c.source_file, c.function,
+                c.compiler, c.harness, c.source_file, c.function,
                 ";".join(c.mnemonics), ";".join(c.opt_levels), str(c.count),
             )
         console.print(table)
         console.print(
-            f"[yellow]{len(candidates)} variable-latency candidate(s)[/] — "
-            "review manually; these are NOT proven secret-dependent."
+            f"[yellow]{len(candidates)} variable-latency candidate(s)[/] across "
+            f"{len(scanned_ok)} compiler(s) — review manually; these are NOT proven "
+            "secret-dependent."
         )
     else:
         console.print("[green]asm-scan: no division-family instructions found.[/]")
+    if cc_errors:
+        # The result is PARTIAL — loudly so a green CSV is not mistaken for a
+        # complete clean scan (the cost the skip-and-continue policy trades for).
+        console.print(
+            f"[bold yellow]asm-scan: {len(cc_errors)} compiler ERROR(s) recorded — "
+            "result is PARTIAL, not complete:[/] "
+            + "; ".join(f"{e['compiler']} ({e['error']})" for e in cc_errors)
+        )
     console.print(f"[dim]varlat CSV : {csv_path}[/]")
     console.print(f"[dim]varlat JSON: {json_path}[/]")
 

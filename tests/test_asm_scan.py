@@ -42,12 +42,13 @@ from ctkat.asm_scan import (
 from ctkat.cli import app
 
 
-def _cand(function, pairs, *, ct_opt="-O0", harness="h", source="x.c"):
+def _cand(function, pairs, *, ct_opt="-O0", harness="h", source="x.c", compiler="gcc"):
     """pairs = [(opt, addr, mnemonic), ...]"""
     return VarLatCandidate(
         harness=harness,
         source_file=source,
         function=function,
+        compiler=compiler,
         ct_opt=ct_opt,
         occurrences=[Occurrence(o, a, m) for o, a, m in pairs],
     )
@@ -190,6 +191,27 @@ def test_candidate_row_has_count_and_addresses():
     assert row["addresses"] == "-O0@0x10;-O2@0x20;-Os@0x30"
 
 
+def test_candidate_row_carries_compiler():
+    # the compiler dimension (Phase B) must reach the row; default is gcc.
+    assert candidate_to_row(_cand("f", [("-Os", "10", "div")]))["compiler"] == "gcc"
+    row = candidate_to_row(_cand("f", [("-Os", "10", "div")], compiler="clang"))
+    assert row["compiler"] == "clang"
+
+
+def test_note_is_compiler_aware_and_conditionalizes_miss():
+    # SEMANTIC INVARIANT (CLAUDE.md §2/§4): a division found only under `clang`
+    # must NOT assert the (possibly gcc) ct/Valgrind stage misses it — the claim
+    # is conditioned on the ct build using the same compiler.
+    note = candidate_to_row(
+        _cand("poly_tomsg", [("-Os", "222", "div")], ct_opt="-O0", compiler="clang")
+    )["note"]
+    assert "clang" in note
+    assert "if the ct build also uses clang" in note
+    # the unconditional old phrasing ("the ct/Valgrind stage would miss") must
+    # never stand alone without the compiler-match condition in front of it.
+    assert note.index("if the ct build also uses clang") < note.index("would miss")
+
+
 # --- artifact writers --------------------------------------------------------
 
 def test_write_varlat_csv_columns_and_rows(tmp_path: Path):
@@ -213,6 +235,36 @@ def test_write_varlat_json_marks_warn_only(tmp_path: Path):
     assert data["kind"] == "varlat_candidates"
     assert data["scanned_opt_levels"] == ["-O0", "-Os", "-O2"]
     assert data["candidates"][0]["function"] == "poly_tomsg"
+
+
+def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
+    import json
+
+    cands = [
+        _cand("poly_tomsg", [("-Os", "222", "div")], source="clean/poly.c", compiler="gcc"),
+        _cand("poly_tomsg", [("-O0", "40", "idiv"), ("-Os", "222", "idiv")],
+              source="clean/poly.c", compiler="clang"),
+    ]
+    out = tmp_path / "v.json"
+    write_varlat_json(
+        "proj", cands, out,
+        opt_levels=("-O0", "-Os", "-O2"),
+        compilers=("gcc", "clang"),
+        errors=[{"compiler": "icc", "error": "compiler not found on PATH"}],
+    )
+    data = json.loads(out.read_text())
+    assert data["scanned_compilers"] == ["gcc", "clang"]
+    assert data["errors"] == [{"compiler": "icc", "error": "compiler not found on PATH"}]
+    # normalized matrix: one row per (compiler, opt, source, function, mnemonic),
+    # so a script can compare which compiler x opt kept a division alive.
+    m = data["matrix"]
+    assert {"compiler": "gcc", "opt": "-Os", "source_file": "clean/poly.c",
+            "function": "poly_tomsg", "mnemonic": "div", "count": 1} in m
+    assert {"compiler": "clang", "opt": "-O0", "source_file": "clean/poly.c",
+            "function": "poly_tomsg", "mnemonic": "idiv", "count": 1} in m
+    gcc_opts = sorted(r["opt"] for r in m if r["compiler"] == "gcc")
+    clang_opts = sorted(r["opt"] for r in m if r["compiler"] == "clang")
+    assert gcc_opts == ["-Os"] and clang_opts == ["-O0", "-Os"]
 
 
 # --- CLI smoke (scan mocked: no toolchain needed) ----------------------------
@@ -312,6 +364,74 @@ def test_asm_scan_cli_no_ct_section_exits_2(tmp_path: Path):
     ))
     result = CliRunner().invoke(app, ["asm-scan", "-c", str(p)])
     assert result.exit_code == 2
+
+
+def test_asm_scan_cli_multiple_compilers_recorded(tmp_path: Path):
+    # --cc gcc --cc clang scans each compiler: both appear in the artifact and in
+    # JSON scanned_compilers, one scan_harness call per (compiler, harness).
+    import json
+
+    yaml_path = _write_min_yaml(tmp_path)
+
+    def fake_scan(*_a, **k):
+        cc = k["cc"]
+        return [_cand("leaky", [("-Os", "222", "div")], harness="h1",
+                      source="foo.c", compiler=cc)]
+
+    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
+         mock.patch("ctkat.cli.scan_harness", side_effect=fake_scan) as m:
+        result = CliRunner().invoke(
+            app, ["asm-scan", "-c", str(yaml_path), "--cc", "gcc", "--cc", "clang"]
+        )
+    assert result.exit_code == 0, result.stdout
+    assert m.call_count == 2  # one harness x two compilers
+    body = (tmp_path / "reports" / "ctkat_varlat_candidates.csv").read_text()
+    assert "gcc" in body and "clang" in body
+    data = json.loads((tmp_path / "reports" / "ctkat_varlat_candidates.json").read_text())
+    assert data["scanned_compilers"] == ["gcc", "clang"]
+    assert data["errors"] == []
+
+
+def _which_only(*present):
+    have = set(present)
+
+    def which(tool):
+        return ("/usr/bin/" + tool) if tool in have else None
+
+    return which
+
+
+def test_asm_scan_cli_partial_missing_compiler_continues(tmp_path: Path):
+    # Decision (D1): a missing requested compiler is SKIPPED + recorded as ERROR,
+    # the scan continues with the available ones, exit 0 (warn-only, PARTIAL).
+    # gcc + objdump present, clang absent.
+    import json
+
+    yaml_path = _write_min_yaml(tmp_path)
+    fake = [_cand("leaky", [("-Os", "222", "div")], harness="h1", source="foo.c")]
+    with mock.patch("ctkat.cli.shutil.which", side_effect=_which_only("gcc", "objdump", "nm")), \
+         mock.patch("ctkat.cli.scan_harness", return_value=fake) as m:
+        result = CliRunner().invoke(
+            app, ["asm-scan", "-c", str(yaml_path), "--cc", "gcc", "--cc", "clang"]
+        )
+    assert result.exit_code == 0, result.stdout
+    assert m.call_count == 1  # only gcc ran
+    assert "clang" in result.stdout and "skipped" in result.stdout
+    data = json.loads((tmp_path / "reports" / "ctkat_varlat_candidates.json").read_text())
+    assert data["scanned_compilers"] == ["gcc"]
+    assert data["errors"] == [{"compiler": "clang", "error": "compiler not found on PATH"}]
+
+
+def test_asm_scan_cli_all_requested_compilers_missing_exits_2(tmp_path: Path):
+    # objdump present but BOTH requested compilers absent -> nothing to scan ->
+    # hard exit 2 (a green empty result would be a lie).
+    yaml_path = _write_min_yaml(tmp_path)
+    with mock.patch("ctkat.cli.shutil.which", side_effect=_which_only("objdump", "nm")):
+        result = CliRunner().invoke(
+            app, ["asm-scan", "-c", str(yaml_path), "--cc", "gccx", "--cc", "clangx"]
+        )
+    assert result.exit_code == 2
+    assert "not found" in result.stdout
 
 
 # --- guarded end-to-end (real compile) --------------------------------------
