@@ -1,0 +1,33 @@
+project:
+  name: pqclean_mlkem768_kyberslash
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+# asm-scan demo only. The harness is never rendered or run — `ctkat asm-scan`
+# just compiles `sources` at several -O levels and disassembles them looking for
+# surviving division instructions. We point it at the FROZEN KyberSlash-
+# vulnerable poly.c (clean_kyberslash/poly.c), reusing the real example's
+# clean/ + common/ headers so only that one file is duplicated.
+#
+#   PYTHONPATH=. python -m ctkat asm-scan -c examples/pqc_mlkem768/ctkat_kyberslash.yaml
+#
+# Expected (gcc): poly_compress / poly_tomsg show a div candidate that survives
+# only at -Os (strength-reduced away at -O0/-O2). The real clean/poly.c (the
+# shipped reciprocal-multiply fix) shows none.
+ct:
+  workdir: .
+  generated_dir: ./_generated_kyberslash
+  harnesses:
+    - name: kyberslash_poly
+      template: kem
+      header: api.h
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      include_dirs: [clean, common]
+      sources: [clean_kyberslash/poly.c]
+
+report:
+  output_dir: ./reports_kyberslash

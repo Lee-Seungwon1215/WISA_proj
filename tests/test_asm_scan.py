@@ -574,3 +574,39 @@ def test_scan_kyberslash_constant_div_survives_only_when_size_optimized(tmp_path
     opts = hits[0].opt_levels
     assert "-Os" in opts, f"constant div must survive at -Os; got {opts}"
     assert "-O0" not in opts, f"constant div must be strength-reduced away at -O0; got {opts}"
+
+
+# --- real-crypto positive control: KyberSlash in PQClean ML-KEM poly.c -------
+
+_MLKEM = Path(__file__).resolve().parent.parent / "examples" / "pqc_mlkem768"
+_KYBERSLASH_POLY = _MLKEM / "clean_kyberslash" / "poly.c"
+
+
+@_needs_gnu_gcc
+@pytest.mark.skipif(not _KYBERSLASH_POLY.exists(), reason="pqc_mlkem768 kyberslash example absent")
+def test_asm_scan_flags_kyberslash_in_real_mlkem_poly(tmp_path):
+    # The same constant-division asymmetry as above, but on REAL PQClean ML-KEM
+    # code: clean_kyberslash/poly.c restores the secret-dependent `/KYBER_Q` in
+    # poly_compress/poly_tomsg (the KyberSlash leak). asm-scan must flag those
+    # functions with a div that survives at -Os but not -O0, while the shipped
+    # (reciprocal-multiply) clean/poly.c flags nothing there. Real-crypto
+    # positive control — stronger than the synthetic `% 3329` above.
+    clean, common = _MLKEM / "clean", _MLKEM / "common"
+    inc = [clean, common]
+
+    def scan(src, name):
+        return scan_harness(
+            harness=name, sources=[src], source_display=[name], include_dirs=inc,
+            base_cflags=["-g"], workdir=clean, opt_levels=("-O0", "-Os", "-O2"),
+            timeout=180, cc="gcc",
+        )
+
+    targets = ("poly_compress", "poly_tomsg")
+    vuln = [c for c in scan(_KYBERSLASH_POLY, "vuln") if c.function.endswith(targets)]
+    assert vuln, "no div candidate in vulnerable poly_compress/poly_tomsg"
+    for c in vuln:
+        assert "-Os" in c.opt_levels, f"{c.function}: KyberSlash div should survive at -Os; got {c.opt_levels}"
+        assert "-O0" not in c.opt_levels, f"{c.function}: gcc -O0 strength-reduces it away; got {c.opt_levels}"
+
+    fixed = [c.function for c in scan(clean / "poly.c", "fixed") if c.function.endswith(targets)]
+    assert not fixed, f"shipped (fixed) poly.c must not flag poly_compress/poly_tomsg; got {fixed}"
