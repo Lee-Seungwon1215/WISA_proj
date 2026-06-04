@@ -133,6 +133,12 @@ artifact 확장:
 주의: 이건 `asm-scan`보다 훨씬 큼. 기존 `ctkat_verdict.csv` schema와 verdict 정책에
 영향이 있다.
 
+**상태: 증분1 구현 완료** (`4c801a9` 외) — `ctkat ct-matrix` 서브커맨드 + 별도
+`ctkat_ct_matrix.csv/json`(verdict 무관). compilers × ct_cflags combo를
+`compile_harness(cc=)` → `run_valgrind` → 공용 `classify_valgrind_run`으로 스윕.
+combo는 `-O`/codegen만 바꾸고 harness의 preprocessor 플래그(`-D`/`-isystem` 등)는
+모든 combo에 보존해 매트릭스가 `ct` 스테이지와 *같은* 프로그램을 빌드하게 한다.
+
 권장 접근:
 
 1. 처음에는 `run` verdict에 넣지 않는다.
@@ -158,9 +164,14 @@ matrix:
 
 완료 기준:
 
-- `-O0 PASS / -O2 FAIL`, `-O0 FAIL / -O2 PASS` synthetic fixtures 확보
-- 기존 `ctkat run`의 exit code와 verdict CSV는 깨지지 않음
-- matrix artifact가 CI에서 읽기 쉬움
+- [x] `-O0 FAIL / -O2 PASS` synthetic fixture — `examples/ct_matrix_flip`
+  (secret-branch가 gcc `-O2`/`-Os`에서 branch-free로 사라짐; Docker 실측 + guarded
+  e2e). 역방향(`-O0 PASS / -O2 FAIL`, 최적화가 *만드는* 누수)은 아직 fixture 없음 —
+  후속 corpus 후보.
+- [x] 기존 `ctkat run`의 exit code / verdict CSV 불변(ct-matrix는 별도 artifact·관찰 전용).
+- [x] matrix artifact가 CI에서 읽기 쉬움(CSV/JSON, `verdict_independent` 명시).
+- 실측 참고: PQClean ML-KEM(잘 짠 CT 코드)은 gcc 전 opt PASS(빌드 robust); KyberSlash류
+  div-latency는 Valgrind 영역 밖이라 ct-matrix는 못 잡음(asm-scan 전담).
 
 ### Phase D. Real-world corpus 확장
 

@@ -17,13 +17,41 @@ the `ct` stage on an identical (cc, cflags) cell:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .ct_runner import classify_valgrind_run
 from .harness_generator import HarnessGenerationError, compile_harness
 from .valgrind_runner import run_valgrind
+
+
+_PP_TWO_TOKEN = ("-isystem", "-iquote", "-include", "-imacros", "-idirafter")
+
+
+def preprocessor_cflags(cflags: List[str]) -> List[str]:
+    """Extract the preprocessor / build-selection flags (`-D`, `-U`, `-I` and the
+    `-isystem`/`-iquote`/`-include` family) from a cflags list.
+
+    These are INVARIANT across the optimization combos and must appear in EVERY
+    matrix build: dropping a project's `-DPQCLEAN_NO_GLIBC_RANDOMBYTES`-style
+    define (or an `-isystem` path) would make the matrix compile a *different*
+    program than the `ct` stage, silently invalidating the comparison. The
+    combo owns the `-O`/`-g`/codegen flags, so those are deliberately NOT kept
+    here. Mirrors asm-scan's T17 flag forwarding."""
+    out: List[str] = []
+    i = 0
+    while i < len(cflags):
+        f = cflags[i]
+        if f in _PP_TWO_TOKEN:
+            if i + 1 < len(cflags):
+                out.extend([f, cflags[i + 1]])
+            i += 2
+            continue
+        if f.startswith(("-D", "-U", "-I")):
+            out.append(f)
+        i += 1
+    return out
 
 
 @dataclass(frozen=True)
@@ -67,12 +95,17 @@ class CtMatrixRow:
 @dataclass
 class HarnessInputs:
     """One template harness already rendered to `source_path`. The matrix
-    compiles this same source under every combo (render once, build many)."""
+    compiles this same source under every combo (render once, build many).
+
+    `extra_cflags` are the harness's preprocessor/build-selection flags (defines,
+    -isystem paths) that must be carried into EVERY combo so the matrix builds
+    the same program the ct stage does (see `preprocessor_cflags`)."""
 
     name: str
     source_path: Path
     sources: List[Path]
     include_dirs: List[Path]
+    extra_cflags: List[str] = field(default_factory=list)
 
 
 def _first_line(s: str) -> str:
@@ -114,7 +147,10 @@ def scan_ct_matrix(
                     binary_path=binary,
                     sources=h.sources,
                     include_dirs=h.include_dirs,
-                    cflags=list(combo.cflags),
+                    # combo owns -O/codegen; the harness's defines/includes are
+                    # carried into every cell so we build the SAME program the
+                    # ct stage builds, just at a different opt level.
+                    cflags=list(combo.cflags) + list(h.extra_cflags),
                     workdir=workdir,
                     timeout=compile_timeout,
                     cc=combo.cc,

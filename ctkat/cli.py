@@ -46,6 +46,7 @@ from .config import (
 from .coverage_check import check_secret_region_coverage
 from .ct_matrix import (
     expand_combos,
+    preprocessor_cflags,
     scan_ct_matrix,
     write_ct_matrix_csv,
     write_ct_matrix_json,
@@ -1527,6 +1528,11 @@ def ct_matrix(
     for h in auto:
         include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
         sources = [_resolve(cfg_dir, s) for s in h.sources]
+        # The harness's effective cflags carry build-selection flags (e.g.
+        # `-DPQCLEAN_NO_GLIBC_RANDOMBYTES`). The matrix swaps only the -O/codegen
+        # flags per combo, so these preprocessor defines must ride along into
+        # every cell — else the matrix builds a different program than `ct`.
+        base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
         source_path = generated_dir / f"harness_{h.name}.c"
         try:
             code = render_harness(h.template, _template_context(h, cfg.ct.seed))
@@ -1537,6 +1543,7 @@ def ct_matrix(
         harness_inputs.append(HarnessInputs(
             name=h.name, source_path=source_path,
             sources=sources, include_dirs=include_dirs,
+            extra_cflags=preprocessor_cflags(base_cflags),
         ))
 
     console.print(

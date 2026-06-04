@@ -23,6 +23,7 @@ from ctkat.ct_matrix import (
     CtMatrixRow,
     HarnessInputs,
     expand_combos,
+    preprocessor_cflags,
     write_ct_matrix_csv,
     write_ct_matrix_json,
 )
@@ -42,6 +43,38 @@ def test_expand_combos_cartesian_and_dedup():
 
 def test_combo_label():
     assert Combo("gcc", "release", ("-O2",)).label == "gcc_release"
+
+
+# --- preprocessor_cflags (carry defines/includes into every combo) ----------
+
+def test_preprocessor_cflags_extracts_defines_and_includes():
+    flags = ["-O2", "-g", "-fno-inline", "-DFOO=1", "-DBAR", "-Iinc",
+             "-isystem", "/sys", "-fno-lto"]
+    pp = preprocessor_cflags(flags)
+    assert pp == ["-DFOO=1", "-DBAR", "-Iinc", "-isystem", "/sys"]
+    # -O/-g/codegen flags are NOT carried — the combo owns those.
+    assert "-O2" not in pp and "-g" not in pp and "-fno-inline" not in pp
+
+
+def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monkeypatch):
+    # Regression for the dropped-define bug: a `-D...` in the harness cflags must
+    # ride into EVERY combo's compile, else the matrix builds a different program
+    # than the ct stage.
+    seen = []
+    monkeypatch.setattr(m, "compile_harness", lambda **k: seen.append(k["cflags"]) or "cmd")
+    monkeypatch.setattr(m, "run_valgrind", lambda *a, **k: object())
+    monkeypatch.setattr(m, "classify_valgrind_run", lambda *a, **k: CtRunOutcome("PASS"))
+
+    src = tmp_path / "h.c"
+    src.write_text("int main(void){return 0;}\n")
+    h = HarnessInputs(name="kem", source_path=src, sources=[], include_dirs=[],
+                      extra_cflags=["-DPQCLEAN_NO_GLIBC_RANDOMBYTES"])
+    combos = expand_combos(["gcc"], {"debug": ["-O0", "-g"], "release": ["-O2"]})
+    m.scan_ct_matrix([h], combos, workdir=tmp_path, binaries_dir=tmp_path / "b",
+                     valgrind_flags=[], compile_timeout=10, valgrind_timeout=10)
+    assert len(seen) == 2
+    assert all("-DPQCLEAN_NO_GLIBC_RANDOMBYTES" in cf for cf in seen)
+    assert seen[0][0] == "-O0"   # combo opt flags come first, define appended
 
 
 # --- scan_ct_matrix (mocked) ------------------------------------------------
