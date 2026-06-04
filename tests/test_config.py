@@ -67,6 +67,20 @@ def test_matrix_blank_compiler_rejected():
         MatrixConfig(compilers=["gcc", "  "])
 
 
+def test_matrix_compiler_with_path_separator_rejected():
+    # cc feeds the combo label -> binary/log filename; a '/' (or '..') would let
+    # a per-cell artifact escape the generated dir (path traversal).
+    with pytest.raises(ValidationError, match="PATH command name"):
+        MatrixConfig(compilers=["../../bin/gcc"])
+    with pytest.raises(ValidationError, match="PATH command name"):
+        MatrixConfig(compilers=["/usr/bin/gcc"])
+
+
+def test_matrix_compiler_common_names_allowed():
+    m = MatrixConfig(compilers=["gcc", "clang++", "gcc-13", "arm-none-eabi-gcc"])
+    assert m.compilers == ["gcc", "clang++", "gcc-13", "arm-none-eabi-gcc"]
+
+
 def test_matrix_empty_cflags_rejected():
     with pytest.raises(ValidationError, match="at least one combo"):
         MatrixConfig(ct_cflags={})

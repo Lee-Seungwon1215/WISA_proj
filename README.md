@@ -578,8 +578,23 @@ CT(Valgrind/Memcheck) 검사를 돌리고, cell별 PASS/FAIL/ERROR를
 `0`(관찰 전용 — 어떤 빌드의 FAIL은 *데이터 포인트*지 도구 실패가 아님). 단 `ct` 하니스
 없음 / 재컴파일할 template 하니스 없음 / combo 0개 / 컴파일러·`valgrind` 누락 / 모든
 cell ERROR 면 **config·toolchain 에러로 exit 2**(fail-closed). Valgrind 필요 →
-Linux/Docker 전용. yaml `matrix:` 스키마는 §"Config 레퍼런스" 참고(없으면 기본
-매트릭스 사용). 설계 배경: `docs/ctkat_direction_roadmap.md` Phase C.
+Linux/Docker 전용. 설계 배경: `docs/ctkat_direction_roadmap.md` Phase C.
+
+`matrix:` 섹션 스키마(생략하면 아래가 기본값):
+
+```yaml
+matrix:
+  # 스윕할 컴파일러 (중복 제거; PATH command 이름만, '/' 불가). 기본 [gcc]
+  compilers: [gcc, clang]
+  # 이름붙은 cflags 조합. artifact의 combo = "{cc}_{이름}", 이름은 [A-Za-z0-9_-]+
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
+```
+
+위 예시 = `compilers(2) × ct_cflags(3)` = harness당 6 combo. CSV의 `cflags`
+컬럼엔 실제 플래그가 그대로 들어간다.
 
 `--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
 사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.

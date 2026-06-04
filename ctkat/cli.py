@@ -1573,15 +1573,27 @@ def ct_matrix(
         table.add_row(r.harness, r.combo, r.cc, cell, str(r.findings), err)
     console.print(table)
 
-    # Surface the headline finding: a harness whose CT conclusion DIFFERS across
-    # build configs is exactly "same source, different build → different verdict".
+    # Surface the headline finding: a harness whose CT CONCLUSION differs across
+    # builds is exactly "same source, different build → different verdict". The
+    # diff is computed over actual verdicts {PASS, FAIL} ONLY — an ERROR cell
+    # means "couldn't measure", not a different conclusion, so mixing it in
+    # ({PASS, ERROR}) must NOT be reported as a CT disagreement. ERROR cells get
+    # their own "some cells couldn't be measured" note.
     for h in harness_inputs:
-        statuses = {r.valgrind_status for r in rows if r.harness == h.name}
-        if len(statuses) > 1:
+        h_rows = [r for r in rows if r.harness == h.name]
+        verdicts = {r.valgrind_status for r in h_rows if r.valgrind_status in ("PASS", "FAIL")}
+        errored = [r for r in h_rows if r.valgrind_status == "ERROR"]
+        if len(verdicts) > 1:
             console.print(
                 f"[bold yellow]ct-matrix: harness '{h.name}' has DIFFERENT CT "
-                f"results across builds[/] ({', '.join(sorted(statuses))}) — the "
+                f"results across builds[/] ({', '.join(sorted(verdicts))}) — the "
                 "tested binary and a differently-built binary disagree."
+            )
+        if errored:
+            console.print(
+                f"[yellow]ct-matrix: harness '{h.name}': {len(errored)} build "
+                f"cell(s) ERRORed (couldn't measure — not a CT result): "
+                f"{', '.join(r.combo for r in errored)}.[/]"
             )
 
     console.print(f"[dim]ct matrix CSV : {csv_path}[/]")

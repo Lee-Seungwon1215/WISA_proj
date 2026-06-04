@@ -195,6 +195,23 @@ def test_ct_matrix_cli_writes_artifacts_and_exits_zero(tmp_path):
     assert "DIFFERENT CT results" in result.stdout
 
 
+def test_ct_matrix_cli_error_cell_not_reported_as_ct_difference(tmp_path):
+    # {PASS, ERROR} across builds must NOT print "DIFFERENT CT results" — ERROR
+    # is "couldn't measure", not a verdict. It gets its own note instead.
+    yaml_path = _write(tmp_path, _MATRIX_YAML)
+    rows = [
+        CtMatrixRow("kem_dec", "gcc_debug", "gcc", ("-O0",), "PASS", 0, ""),
+        CtMatrixRow("kem_dec", "gcc_release", "gcc", ("-O2",), "ERROR", 0, "compile failed: x"),
+    ]
+    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
+         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
+         mock.patch("ctkat.cli.scan_ct_matrix", return_value=rows):
+        result = CliRunner().invoke(app, ["ct-matrix", "-c", str(yaml_path)])
+    assert result.exit_code == 0, result.stdout
+    assert "DIFFERENT CT results" not in result.stdout
+    assert "couldn't measure" in result.stdout       # the ERROR-cell note
+
+
 def test_ct_matrix_cli_missing_valgrind_exits_2(tmp_path):
     yaml_path = _write(tmp_path, _MATRIX_YAML)
 

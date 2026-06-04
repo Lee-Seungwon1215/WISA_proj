@@ -760,6 +760,18 @@ class MatrixConfig(BaseModel):
         for cc in self.compilers:
             if not cc.strip():
                 raise ValueError("matrix.compilers entries must be non-empty")
+            # cc lands in the combo label `{cc}_{cflags_name}`, which becomes a
+            # binary/log FILENAME fragment (ct_matrix.py). A `/` (or other path
+            # char) would let the per-cell artifact escape the generated dir —
+            # the path-traversal class this project keeps re-closing (RA-3/T20).
+            # Restrict to a PATH-command name (covers gcc, clang, g++, gcc-13,
+            # arm-none-eabi-gcc); put non-PATH compilers on PATH instead of using
+            # an absolute path.
+            if not re.fullmatch(r"[A-Za-z0-9_.+-]+", cc):
+                raise ValueError(
+                    f"matrix.compilers entry {cc!r} must match [A-Za-z0-9_.+-]+ "
+                    "(a PATH command name, no '/'); put it on PATH if it's a path"
+                )
         if not self.ct_cflags:
             raise ValueError("matrix.ct_cflags must define at least one combo")
         for name in self.ct_cflags:
