@@ -1,0 +1,57 @@
+project:
+  name: pqclean_mlkem768_kyberslash
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+# Full ML-KEM-768 kem_dec, but clean/poly.c SWAPPED for the KyberSlash-vulnerable
+# ../pqc_mlkem768/clean_kyberslash/poly.c (secret-dependent /KYBER_Q restored in
+# poly_compress/poly_tomsg). Every other source + header is the real one from
+# ../pqc_mlkem768 (no copies); secret_regions are identical to the real ML-KEM.
+#
+# Corpus purpose: a row that is ct/Valgrind PASS (Memcheck is blind to division
+# LATENCY) while asm-scan flags the secret-derived div — i.e. verdict_class =
+# varlat-secret-risk. The honest contrast to ML-KEM's `robust`.
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: kem_dec
+      template: kem
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs:
+        - ../pqc_mlkem768/clean
+        - ../pqc_mlkem768/common
+      sources:
+        - ../pqc_mlkem768/clean/kem.c
+        - ../pqc_mlkem768/clean/indcpa.c
+        - ../pqc_mlkem768/clean_kyberslash/poly.c      # <-- KyberSlash-vulnerable poly
+        - ../pqc_mlkem768/clean/polyvec.c
+        - ../pqc_mlkem768/clean/ntt.c
+        - ../pqc_mlkem768/clean/reduce.c
+        - ../pqc_mlkem768/clean/cbd.c
+        - ../pqc_mlkem768/clean/symmetric-shake.c
+        - ../pqc_mlkem768/clean/verify.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
