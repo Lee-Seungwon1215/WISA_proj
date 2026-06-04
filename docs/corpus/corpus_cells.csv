@@ -1,0 +1,7 @@
+family,target,harness,combo,cc,cc_version,opt,cflags,arch,ctkat_commit,ct_status,ct_findings,ct_error,asm_div_count,asm_div_funcs,asm_error
+ML-KEM,pqclean_mlkem768,kem_dec,gcc_debug,gcc,13.3.0,-O0,-O0 -g -fno-inline -fno-omit-frame-pointer,x86_64,8046018,PASS,0,,0,,
+ML-KEM,pqclean_mlkem768,kem_dec,gcc_release,gcc,13.3.0,-O2,-O2 -g -fno-omit-frame-pointer -fno-lto,x86_64,8046018,PASS,0,,0,,
+ML-KEM,pqclean_mlkem768,kem_dec,gcc_size,gcc,13.3.0,-Os,-Os -g -fno-omit-frame-pointer -fno-lto,x86_64,8046018,PASS,0,,2,shake128;shake256,
+ML-KEM,pqclean_mlkem768,kem_dec,clang_debug,clang,18.1.3,-O0,-O0 -g -fno-inline -fno-omit-frame-pointer,x86_64,8046018,PASS,0,,2,shake128;shake256,
+ML-KEM,pqclean_mlkem768,kem_dec,clang_release,clang,18.1.3,-O2,-O2 -g -fno-omit-frame-pointer -fno-lto,x86_64,8046018,PASS,0,,0,,
+ML-KEM,pqclean_mlkem768,kem_dec,clang_size,clang,18.1.3,-Os,-Os -g -fno-omit-frame-pointer -fno-lto,x86_64,8046018,PASS,0,,0,,
