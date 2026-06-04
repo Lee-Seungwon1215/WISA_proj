@@ -127,3 +127,13 @@ dudect:
 
 report:
   output_dir: ./reports
+
+# Phase D: compiler × cflags sweep for `ctkat ct-matrix` (observational, separate
+# artifact — never feeds the run verdict). The ct stage's
+# `-DPQCLEAN_NO_GLIBC_RANDOMBYTES` is carried into every combo automatically.
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
