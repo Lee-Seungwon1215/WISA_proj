@@ -486,6 +486,30 @@ _HAVE_TOOLCHAIN = shutil.which("gcc") is not None and shutil.which("objdump") is
 _needs_cc = pytest.mark.skipif(not _HAVE_TOOLCHAIN, reason="gcc/objdump not available")
 
 
+def _gcc_is_real_gnu() -> bool:
+    """True only for genuine GNU gcc — NOT a clang alias (macOS `gcc` is clang,
+    which strength-reduces constant division differently). The KyberSlash
+    constant-division asymmetry below is gcc-specific, so gate on it; elsewhere
+    it surfaces as an explicit skip (CLAUDE.md §8)."""
+    if not _HAVE_TOOLCHAIN:
+        return False
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["gcc", "--version"], capture_output=True, text=True, timeout=10
+        ).stdout.lower()
+    except Exception:
+        return False
+    return bool(out) and "clang" not in out
+
+
+_needs_gnu_gcc = pytest.mark.skipif(
+    not _gcc_is_real_gnu(),
+    reason="needs real GNU gcc (clang / Apple-gcc strength-reduce constant "
+           "division differently); runs in the Docker amd64 image / CI",
+)
+
+
 @_needs_cc
 def test_scan_detects_variable_divisor(tmp_path: Path):
     # `s / d` with a runtime divisor cannot be strength-reduced — it is a real
@@ -527,3 +551,26 @@ def test_scan_ignores_reciprocal_multiply_fix(tmp_path: Path):
         timeout=60,
     )
     assert cands == []
+
+
+@_needs_gnu_gcc
+def test_scan_kyberslash_constant_div_survives_only_when_size_optimized(tmp_path: Path):
+    # POSITIVE control for the actual KyberSlash shape — a CONSTANT divisor
+    # (`% KYBER_Q`), distinct from the variable-divisor case above. On real gcc
+    # the constant modulo is strength-reduced to a reciprocal multiply at -O0/-O2
+    # (NO div) but kept as a real `div` at -Os. That asymmetry is the whole
+    # premise of multi-opt asm-scan: the ct/Valgrind stage's single -O0 build
+    # would MISS it. Measured in Docker amd64 gcc 13.3 (kyberslash_direction §8.7);
+    # this locks it in as a regression guard wherever real gcc is present.
+    src = tmp_path / "ks.c"
+    src.write_text("unsigned ksmod(unsigned x){ return x % 3329u; }\n")  # 3329 = KYBER_Q
+    cands = scan_harness(
+        harness="t", sources=[src], source_display=["ks.c"], include_dirs=[],
+        base_cflags=["-g"], workdir=tmp_path,
+        opt_levels=("-O0", "-Os", "-O2"), timeout=120, cc="gcc",
+    )
+    hits = [c for c in cands if c.function.endswith("ksmod")]
+    assert hits, f"no division candidate for ksmod; got {[c.function for c in cands]}"
+    opts = hits[0].opt_levels
+    assert "-Os" in opts, f"constant div must survive at -Os; got {opts}"
+    assert "-O0" not in opts, f"constant div must be strength-reduced away at -O0; got {opts}"
