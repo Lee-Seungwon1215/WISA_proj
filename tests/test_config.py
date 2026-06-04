@@ -8,6 +8,7 @@ from ctkat.config import (
     BufferSpec,
     CtkatConfig,
     HarnessConfig,
+    MatrixConfig,
     SecretRegion,
     load_config,
 )
@@ -35,6 +36,53 @@ def test_minimal_config_validates(tmp_path: Path):
     assert cfg.ct.harnesses[0].name == "h1"
     # default valgrind flags present
     assert any(flag.startswith("--tool=") for flag in cfg.ct.valgrind_flags)
+    # Phase C: matrix is optional — absent yaml => None (subcommand falls back).
+    assert cfg.matrix is None
+
+
+# --- Phase C: MatrixConfig (ct-matrix sweep) --------------------------------
+
+def test_matrix_defaults_compilers_and_combos():
+    m = MatrixConfig()
+    assert m.compilers == ["gcc"]
+    assert set(m.ct_cflags) == {"debug", "release", "size"}
+    assert m.ct_cflags["debug"][0] == "-O0"
+    assert m.ct_cflags["release"][0] == "-O2"
+    assert m.ct_cflags["size"][0] == "-Os"
+
+
+def test_matrix_combo_name_must_be_filesystem_safe():
+    # combo name becomes an artifact label AND a binary/log filename suffix.
+    with pytest.raises(ValidationError, match="combo name"):
+        MatrixConfig(ct_cflags={"bad name!": ["-O0"]})
+
+
+def test_matrix_empty_compilers_rejected():
+    with pytest.raises(ValidationError, match="at least one compiler"):
+        MatrixConfig(compilers=[])
+
+
+def test_matrix_blank_compiler_rejected():
+    with pytest.raises(ValidationError, match="non-empty"):
+        MatrixConfig(compilers=["gcc", "  "])
+
+
+def test_matrix_empty_cflags_rejected():
+    with pytest.raises(ValidationError, match="at least one combo"):
+        MatrixConfig(ct_cflags={})
+
+
+def test_matrix_wires_into_ctkat_config():
+    cfg = CtkatConfig.model_validate({
+        "project": {"name": "d"},
+        "build": {"command": "true"},
+        "matrix": {
+            "compilers": ["gcc", "clang"],
+            "ct_cflags": {"debug": ["-O0", "-g"], "rel": ["-O2"]},
+        },
+    })
+    assert cfg.matrix.compilers == ["gcc", "clang"]
+    assert set(cfg.matrix.ct_cflags) == {"debug", "rel"}
 
 
 def test_unknown_field_rejected(tmp_path: Path):

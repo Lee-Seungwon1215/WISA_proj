@@ -218,3 +218,51 @@ def test_atomic_write_text_uses_utf8_encoding(tmp_path):
     body = "/* 한글 주석 */\nint main(void){return 0;}\n"
     _atomic_write_text(target, body)
     assert target.read_bytes() == body.encode("utf-8")
+
+
+# --- Phase C: compile_harness `cc` parameterization -------------------------
+
+class _FakeProc:
+    returncode = 0
+    stdout = ""
+    stderr = ""
+
+
+def test_compile_harness_uses_given_cc(tmp_path, monkeypatch):
+    # ct-matrix recompiles the same harness under several compilers; the cc
+    # must reach argv[0] and the returned command string.
+    from ctkat import harness_generator as hg
+    captured = {}
+
+    def fake_run_text(cmd, *a, **k):
+        captured["cmd"] = cmd
+        return _FakeProc()
+
+    monkeypatch.setattr(hg, "run_text", fake_run_text)
+    src = tmp_path / "h.c"
+    src.write_text("int main(void){return 0;}\n")
+    cmd_str = hg.compile_harness(
+        source_path=src, binary_path=tmp_path / "h", sources=[],
+        include_dirs=[], cflags=["-O2"], workdir=tmp_path, timeout=30, cc="clang",
+    )
+    assert captured["cmd"][0] == "clang"
+    assert cmd_str.startswith("clang ")
+
+
+def test_compile_harness_defaults_to_gcc(tmp_path, monkeypatch):
+    # No cc => gcc, so the single-build ct stage is unchanged.
+    from ctkat import harness_generator as hg
+    captured = {}
+
+    def fake_run_text(cmd, *a, **k):
+        captured["cmd"] = cmd
+        return _FakeProc()
+
+    monkeypatch.setattr(hg, "run_text", fake_run_text)
+    src = tmp_path / "h.c"
+    src.write_text("int main(void){return 0;}\n")
+    hg.compile_harness(
+        source_path=src, binary_path=tmp_path / "h", sources=[],
+        include_dirs=[], cflags=["-O0"], workdir=tmp_path, timeout=30,
+    )
+    assert captured["cmd"][0] == "gcc"

@@ -563,6 +563,24 @@ ERROR로 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단 `ob
 정밀 taint는 패치드 Valgrind 필요(미구현). 상세: `docs/kyberslash_direction.md`
 §8.7/§8.8.
 
+```bash
+# 컴파일러 × cflags Valgrind 매트릭스 — 관찰 전용, verdict 무관 (Phase C)
+python -m ctkat ct-matrix --config <ctkat.yaml>
+```
+
+`ct-matrix`: 각 template 하니스를 `matrix:` 의 모든 빌드 설정(compilers × 이름붙은
+cflags 조합; 기본 `gcc × debug/release/size`)으로 **재컴파일**해서 *같은* 구조적
+CT(Valgrind/Memcheck) 검사를 돌리고, cell별 PASS/FAIL/ERROR를
+`reports/ctkat_ct_matrix.csv`/`.json`에 적는다. **이건 별도 산출물이고
+`ctkat_verdict.csv`나 `run` 게이트를 절대 건드리지 않는다(관찰 전용).** 목적은 "같은
+소스인데 빌드 설정을 바꾸면 CT 판정이 달라지는가"를 보이는 것. 한 하니스가 빌드별로
+다른 status를 내면 그걸 loud하게 표시한다. **exit 코드**: PASS/FAIL 분포와 무관하게
+`0`(관찰 전용 — 어떤 빌드의 FAIL은 *데이터 포인트*지 도구 실패가 아님). 단 `ct` 하니스
+없음 / 재컴파일할 template 하니스 없음 / combo 0개 / 컴파일러·`valgrind` 누락 / 모든
+cell ERROR 면 **config·toolchain 에러로 exit 2**(fail-closed). Valgrind 필요 →
+Linux/Docker 전용. yaml `matrix:` 스키마는 §"Config 레퍼런스" 참고(없으면 기본
+매트릭스 사용). 설계 배경: `docs/ctkat_direction_roadmap.md` Phase C.
+
 `--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
 사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.
 

@@ -39,14 +39,25 @@ from .config import (
     DudectConfig,
     DudectHarnessConfig,
     HarnessConfig,
+    MatrixConfig,
     load_config,
     resolve_clock,
 )
 from .coverage_check import check_secret_region_coverage
+from .ct_matrix import (
+    expand_combos,
+    scan_ct_matrix,
+    write_ct_matrix_csv,
+    write_ct_matrix_json,
+    HarnessInputs,
+)
+from .ct_runner import classify_valgrind_run
 from .dudect_runner import TimingSamples, run_timing_harness
 from .harness_generator import (
     HarnessGenerationError,
     generate_and_compile,
+    render_harness,
+    _atomic_write_text,
 )
 from .header_parser import (
     discover_headers,
@@ -423,32 +434,28 @@ def _do_ct(
             binary, log_path, cfg.ct.valgrind_flags, ct_cwd,
             timeout=cfg.ct.valgrind_timeout,
         )
-        # F2: expected Valgrind exit codes are 0 (clean) and 99 (findings,
-        # via --error-exitcode). Anything else = harness crashed or
-        # Valgrind itself failed. Treating that as zero findings used to
-        # produce verdict=CLEAN; now it's ERROR → INCONCLUSIVE.
-        if result.returncode not in (0, 99):
+        # F2: expected Valgrind exit codes are 0 (clean) and 99 (findings, via
+        # --error-exitcode). Anything else = harness crashed / Valgrind failed /
+        # timeout, or a missing log — all ERROR (not zero-findings → CLEAN). The
+        # rc/log/parse classification lives in ct_runner so the ct-matrix sweep
+        # maps identically (T21: utf-8+replace decoding is inside the parser).
+        outcome = classify_valgrind_run(
+            result, log_path, lookup_patterns=cfg.ct.lookup_function_patterns,
+        )
+        if outcome.status == "ERROR":
             tail = (result.stderr or "").strip().splitlines()[-3:]
             console.print(
-                f"[bold red][CTKAT] ct: ERROR[/] — valgrind exited with code "
-                f"{result.returncode} on harness [bold]{h.name}[/]. Analysis "
-                f"incomplete; verdict will be INCONCLUSIVE. (F2)\n"
+                f"[bold red][CTKAT] ct: ERROR[/] — {outcome.error} on harness "
+                f"[bold]{h.name}[/]. Analysis incomplete; verdict will be "
+                f"INCONCLUSIVE. (F2)\n"
                 f"[dim]valgrind stderr tail: {tail or '(empty)'}[/]"
             )
             results.append((h.name, "ERROR", []))
             continue
-        if not log_path.exists():
-            console.print(
-                f"[bold red][CTKAT] ct: ERROR[/] — valgrind produced no log "
-                f"file at {log_path} for harness [bold]{h.name}[/]. Analysis "
-                f"incomplete; verdict will be INCONCLUSIVE. (F2)"
-            )
-            results.append((h.name, "ERROR", []))
-            continue
-        # F5: manual-binary sentinel check. Only enforced on manual mode —
-        # template-generated harnesses are known-good by construction.
-        # `require_sentinel=False` keeps legacy behavior (the per-run note
-        # above already warned).
+        # F5: manual-binary sentinel check — orthogonal to Valgrind's own status,
+        # so it stays here (ct_runner is shared with the matrix, which only ever
+        # drives template harnesses). Only enforced on manual mode;
+        # `require_sentinel=False` keeps legacy behavior (note printed above).
         if is_manual and cfg.ct.require_sentinel:
             m = re.search(cfg.ct.sentinel_pattern, result.stdout or "")
             if m is None:
@@ -461,26 +468,18 @@ def _do_ct(
                 )
                 results.append((h.name, "ERROR", []))
                 continue
-        # T21: valgrind log lines may contain shared-library symbol names
-        # with arbitrary bytes; utf-8 + replace lets us survive odd locales
-        # without raising in the parser.
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-        findings, dropped = parse_valgrind_log_with_stats(
-            text, lookup_patterns=cfg.ct.lookup_function_patterns,
-        )
-        # T3: if the parser ignored a lot of lines, surface it as a dim
-        # note. Banner/footer normally account for ~20 lines — anything
-        # much higher than that on a "no findings" log suggests Valgrind
-        # changed output format and our whitelist needs updating.
-        if dropped > 50:
+        # T3: if the parser ignored a lot of lines, surface it as a dim note.
+        # Banner/footer normally account for ~20 lines — much higher on a "no
+        # findings" log suggests Valgrind changed format and our whitelist needs
+        # an update.
+        if outcome.dropped > 50:
             console.print(
-                f"[dim][CTKAT] note:[/dim] valgrind parser ignored {dropped} "
+                f"[dim][CTKAT] note:[/dim] valgrind parser ignored {outcome.dropped} "
                 f"unrecognized lines for harness [bold]{h.name}[/]. If this "
                 f"jumps across versions, our whitelist may need an update "
                 f"(known_issues T3)."
             )
-        status = "FAIL" if findings else "PASS"
-        results.append((h.name, status, findings))
+        results.append((h.name, outcome.status, outcome.findings))
     return results
 
 
@@ -1458,6 +1457,145 @@ def asm_scan(
         )
     console.print(f"[dim]varlat CSV : {csv_path}[/]")
     console.print(f"[dim]varlat JSON: {json_path}[/]")
+
+
+@app.command(name="ct-matrix")
+def ct_matrix(
+    config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
+):
+    """Compiler × cflags Valgrind matrix — OBSERVATIONAL, verdict-independent.
+
+    Recompiles each template harness under every `matrix:` build configuration
+    (compilers × named cflags combos; default gcc × debug/release/size) and runs
+    the SAME structural-CT (Valgrind/Memcheck) check on each, recording PASS /
+    FAIL / ERROR per cell. The product is a SEPARATE artifact
+    (reports/ctkat_ct_matrix.csv/.json) — it NEVER touches ctkat_verdict.csv or
+    the `run` gate. Use it to see whether "same source, different build" changes
+    the CT conclusion.
+
+    Exit codes: 0 regardless of the PASS/FAIL distribution (observational — a
+    FAIL in some build is the interesting data point, not a tool failure). Exit 2
+    only on a hard config/toolchain error: no `ct` harnesses, no *template*
+    harness to recompile, no combos, a missing compiler / valgrind, or every
+    build cell ERRORing (no usable result). Valgrind is required, so this is a
+    Docker/Linux command.
+    """
+    cfg = load_config(config)
+    cfg_dir = config.parent.resolve()
+
+    if cfg.ct is None or not cfg.ct.harnesses:
+        console.print("[red]No `ct` harnesses to sweep.[/]")
+        raise typer.Exit(2)
+    # Only template harnesses can be recompiled per combo; a prebuilt manual
+    # binary is fixed, so it can't participate in a build-configuration sweep.
+    auto = [h for h in cfg.ct.harnesses if h.template is not None]
+    if not auto:
+        console.print(
+            "[bold red][CTKAT] ct-matrix: no template harnesses to sweep[/] — "
+            "manual prebuilt binaries can't be recompiled per build config. "
+            "This is a config error (exit 2)."
+        )
+        raise typer.Exit(2)
+
+    matrix_cfg = cfg.matrix or MatrixConfig()
+    combos = expand_combos(matrix_cfg.compilers, matrix_cfg.ct_cflags)
+    if not combos:
+        console.print("[bold red][CTKAT] ct-matrix: empty matrix (no combos).[/] exit 2")
+        raise typer.Exit(2)
+
+    # Fail-closed preflight: valgrind + every requested compiler must exist, else
+    # the sweep would silently skip cells and a green-looking matrix would lie
+    # about coverage (the fail-open this project has spent its life closing).
+    requested_compilers = list(dict.fromkeys(matrix_cfg.compilers))
+    missing = [t for t in (["valgrind", *requested_compilers]) if shutil.which(t) is None]
+    if missing:
+        console.print(
+            f"[bold red][CTKAT] ct-matrix: required tool(s) not found on PATH: "
+            f"{', '.join(missing)}.[/] Valgrind needs a Linux/Docker environment; "
+            f"install the missing compiler(s) (e.g. add to the Docker image). "
+            f"This is a config/toolchain error, so exit code is 2."
+        )
+        raise typer.Exit(2)
+
+    ct_cwd = _resolve(cfg_dir, cfg.ct.workdir)
+    generated_dir = _resolve(cfg_dir, cfg.ct.generated_dir)
+    out_dir = _resolve(cfg_dir, cfg.report.output_dir)
+
+    # Render each harness's C source ONCE (combo-independent); the matrix then
+    # compiles that same source under every (cc, cflags) cell.
+    harness_inputs: List[HarnessInputs] = []
+    for h in auto:
+        include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
+        sources = [_resolve(cfg_dir, s) for s in h.sources]
+        source_path = generated_dir / f"harness_{h.name}.c"
+        try:
+            code = render_harness(h.template, _template_context(h, cfg.ct.seed))
+        except HarnessGenerationError as e:
+            console.print(f"[bold red][CTKAT] ct-matrix: harness render FAIL ({h.name})[/]\n{e}")
+            raise typer.Exit(1)
+        _atomic_write_text(source_path, code)
+        harness_inputs.append(HarnessInputs(
+            name=h.name, source_path=source_path,
+            sources=sources, include_dirs=include_dirs,
+        ))
+
+    console.print(
+        f"[bold cyan]==> ct-matrix[/]: combos = {', '.join(c.label for c in combos)} "
+        "[dim](observational; NOT a verdict gate)[/]"
+    )
+    rows = scan_ct_matrix(
+        harness_inputs, combos,
+        workdir=ct_cwd,
+        binaries_dir=generated_dir / "matrix",
+        valgrind_flags=cfg.ct.valgrind_flags,
+        compile_timeout=cfg.ct.compile_timeout,
+        valgrind_timeout=cfg.ct.valgrind_timeout,
+        lookup_patterns=cfg.ct.lookup_function_patterns,
+        on_progress=lambda s: console.print(f"[dim][CTKAT] ct-matrix:[/dim] {s}"),
+    )
+
+    csv_path = out_dir / "ctkat_ct_matrix.csv"
+    json_path = out_dir / "ctkat_ct_matrix.json"
+    write_ct_matrix_csv(cfg.project.name, rows, csv_path)
+    write_ct_matrix_json(
+        cfg.project.name, rows, json_path,
+        combos=combos, compilers=requested_compilers,
+    )
+
+    table = Table(title="CT matrix — Valgrind per build config (observational, NOT a verdict)")
+    for col in ("harness", "combo", "cc", "status", "findings", "error"):
+        table.add_column(col)
+    _status_style = {"PASS": "green", "FAIL": "red", "ERROR": "yellow"}
+    for r in rows:
+        style = _status_style.get(r.valgrind_status, "")
+        cell = f"[{style}]{r.valgrind_status}[/]" if style else r.valgrind_status
+        err = (r.error[:40] + "…") if len(r.error) > 41 else r.error
+        table.add_row(r.harness, r.combo, r.cc, cell, str(r.findings), err)
+    console.print(table)
+
+    # Surface the headline finding: a harness whose CT conclusion DIFFERS across
+    # build configs is exactly "same source, different build → different verdict".
+    for h in harness_inputs:
+        statuses = {r.valgrind_status for r in rows if r.harness == h.name}
+        if len(statuses) > 1:
+            console.print(
+                f"[bold yellow]ct-matrix: harness '{h.name}' has DIFFERENT CT "
+                f"results across builds[/] ({', '.join(sorted(statuses))}) — the "
+                "tested binary and a differently-built binary disagree."
+            )
+
+    console.print(f"[dim]ct matrix CSV : {csv_path}[/]")
+    console.print(f"[dim]ct matrix JSON: {json_path}[/]")
+
+    # Observational => exit 0 whatever the PASS/FAIL mix. The one fail-closed
+    # case: if EVERY cell ERRORed, nothing was actually measured, so a green
+    # exit 0 would be a lie.
+    if rows and all(r.valgrind_status == "ERROR" for r in rows):
+        console.print(
+            "[bold red][CTKAT] ct-matrix: every build cell ERRORed[/] — no usable "
+            "CT result was produced. Treating as a config/toolchain error (exit 2)."
+        )
+        raise typer.Exit(2)
 
 
 @app.command()

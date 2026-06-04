@@ -1,7 +1,7 @@
 import platform
 import re
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -724,6 +724,53 @@ class DudectConfig(BaseModel):
         return self
 
 
+def _default_matrix_cflags() -> Dict[str, List[str]]:
+    # debug / release / size presets — the three build shapes whose CT
+    # properties most often diverge (branch visible at -O0 but cmov-fused at
+    # -O2; constant division kept at -Os; etc.). Matches docs/ctkat_direction_
+    # roadmap.md Phase C. Users override per project.
+    return {
+        "debug": ["-O0", "-g", "-fno-inline", "-fno-omit-frame-pointer"],
+        "release": ["-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
+        "size": ["-Os", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
+    }
+
+
+class MatrixConfig(BaseModel):
+    """Phase C: the compiler × cflags sweep for the `ct-matrix` subcommand.
+
+    Observational only — NEVER joined into `ctkat_verdict.csv` or the `run`
+    gate. Its product is a separate `ctkat_ct_matrix.csv` showing how the same
+    source's Valgrind CT result moves across build configurations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Compilers to sweep (de-duped at use; default just gcc). Same role as
+    # asm-scan's repeatable `--cc`.
+    compilers: List[str] = Field(default_factory=lambda: ["gcc"])
+    # Named cflags combos. The artifact's `combo` label is `"{cc}_{name}"`, and
+    # the per-combo binary/log carry the same suffix, so the name also becomes a
+    # filesystem fragment — hence the identifier restriction below.
+    ct_cflags: Dict[str, List[str]] = Field(default_factory=_default_matrix_cflags)
+
+    @model_validator(mode="after")
+    def _check(self) -> "MatrixConfig":
+        if not self.compilers:
+            raise ValueError("matrix.compilers must list at least one compiler")
+        for cc in self.compilers:
+            if not cc.strip():
+                raise ValueError("matrix.compilers entries must be non-empty")
+        if not self.ct_cflags:
+            raise ValueError("matrix.ct_cflags must define at least one combo")
+        for name in self.ct_cflags:
+            # combo name -> artifact label + binary/log filename suffix.
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+                raise ValueError(
+                    f"matrix.ct_cflags combo name {name!r} must match [A-Za-z0-9_-]+"
+                )
+        return self
+
+
 class CtkatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -734,6 +781,9 @@ class CtkatConfig(BaseModel):
     # only one stage configured (e.g. dudect-only timing run).
     ct: Optional[CtConfig] = None
     dudect: Optional[DudectConfig] = None
+    # Phase C: optional compiler × cflags sweep for `ctkat ct-matrix`. Absent
+    # => the subcommand falls back to a built-in default matrix.
+    matrix: Optional[MatrixConfig] = None
     report: ReportConfig = Field(default_factory=ReportConfig)
     # Bundle I (F9 #3): top-level convenience. When set, both stages
     # (ct + dudect.compiler) adopt this flag list, overriding their

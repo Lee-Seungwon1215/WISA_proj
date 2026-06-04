@@ -90,16 +90,22 @@ def compile_harness(
     workdir: Path,
     *,
     timeout: float,
+    cc: str = "gcc",
 ) -> str:
-    """Compile a generated harness with gcc. Returns the command string used.
+    """Compile a generated harness with `cc` (default gcc). Returns the command
+    string used.
 
     Bundle N (T12): `timeout` is keyword-only and required so a pathological
     compile (cyclic include, runaway optimizer) can't hang CI silently.
     Raises HarnessGenerationError on either non-zero rc or timeout.
+
+    Phase C: `cc` is parameterized so the ct-matrix can recompile the *same*
+    harness under several compilers (gcc/clang); the single-build ct stage keeps
+    the gcc default so existing behavior is unchanged.
     """
     import subprocess as _sp  # local import to keep TimeoutExpired narrow
     binary_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd: List[str] = ["gcc"]
+    cmd: List[str] = [cc]
     cmd.extend(cflags)
     cmd.extend(f"-I{d}" for d in include_dirs)
     cmd.append(str(source_path))
@@ -133,6 +139,7 @@ def generate_and_compile(
     workdir: Path,
     *,
     timeout: float,
+    cc: str = "gcc",
 ) -> GeneratedHarness:
     output_dir.mkdir(parents=True, exist_ok=True)
     source_path = output_dir / f"harness_{name}.c"
@@ -149,6 +156,7 @@ def generate_and_compile(
         cflags=cflags,
         workdir=workdir,
         timeout=timeout,
+        cc=cc,
     )
     return GeneratedHarness(
         source_path=source_path,
