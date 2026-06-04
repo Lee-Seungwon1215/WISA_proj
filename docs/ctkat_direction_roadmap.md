@@ -108,18 +108,23 @@ artifact 확장:
 | `count` | occurrence 수 |
 | `note` | ct stage에서 보이는지, 특정 opt에서만 보이는지 |
 
-정책:
+정책 (구현 완료 — commits `e6b66cc` / `a134b56` / `3a757d0`):
 
-- 여전히 warn-only다.
-- verdict에 합류시키지 않는다.
-- compiler 누락은 해당 compiler만 skip할지, 전체 exit 2로 볼지 정책 결정 필요.
-  보안 도구 관점에서는 사용자가 명시한 compiler가 없으면 exit 2가 더 정직하다.
+- 여전히 warn-only, verdict에 합류시키지 않는다.
+- compiler 누락 정책은 **결정됨**: 요청 compiler 중 *일부*가 없으면 그 compiler만
+  skip하고 JSON `errors`에 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단
+  `objdump`가 없거나 요청 compiler가 *전부* 없으면(또는 전부 disasm 실패) exit 2.
+  — "부분 결과를 버리지 않되, 빈 결과를 clean으로 오인하지 않게" PARTIAL을 loud하게 표시.
+- 한 compiler가 도중 실패하면 그 compiler의 부분 candidate는 discard하고
+  `scanned_compilers`에서 제외 — CSV row와 JSON이 어긋나지 않게(artifact contract, `a134b56`).
 
-완료 기준:
+완료 기준 (전부 충족):
 
-- gcc-only Docker에서 `--cc clang` 명시 시 exit 2 또는 명시적 per-compiler ERROR 기록
-- fixed ML-KEM에서 `poly.c`는 안 뜨고, 취약 복원본에서는 `gcc -Os` 등에서 뜨는 fixture 확보
-- JSON이 "어떤 compiler/opt에서만 div가 살아남았는지" 기계적으로 비교 가능
+- [x] 일부 compiler 누락 → skip+ERROR+계속(exit 0), 전부 누락 / objdump 없음 → exit 2.
+- [x] fixed ML-KEM의 reciprocal fix는 안 뜨고(negative control), 취약 모양 상수나눗셈은
+  `gcc -Os`에서만 뜨는 positive control 확보 — **Docker amd64 gcc 13.3 실측** + 회귀 테스트
+  (`_needs_gnu_gcc` 가드: clang 호스트에선 skip, Docker/CI에선 RUN).
+- [x] JSON `matrix`(per compiler×opt)로 어느 compiler/opt가 div를 살렸는지 기계 비교 가능.
 
 ### Phase C. CT cflags matrix: Valgrind 구조 검사 확장
 
