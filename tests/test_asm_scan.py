@@ -534,6 +534,21 @@ def test_scan_detects_variable_divisor(tmp_path: Path):
 
 
 @_needs_cc
+def test_scan_raises_when_every_compile_fails(tmp_path: Path):
+    # audit regression (F6/T17 fail-open): if EVERY compile fails, scan_harness
+    # must raise AsmScanError — returning [] would surface as a green "no
+    # divisions found" scan, indistinguishable from a genuinely clean result.
+    src = tmp_path / "bad.c"
+    src.write_text("this is not valid C @@@ #$%\n")
+    with pytest.raises(AsmScanError):
+        scan_harness(
+            harness="t", sources=[src], source_display=["bad.c"], include_dirs=[],
+            base_cflags=["-g"], workdir=tmp_path, opt_levels=("-O0", "-O2"),
+            timeout=60, cc="gcc",
+        )
+
+
+@_needs_cc
 def test_scan_ignores_reciprocal_multiply_fix(tmp_path: Path):
     # The ML-KEM fix shape (`* recip >> shift`) has no division at any opt — the
     # negative control. A regression flagging this would break CI on every

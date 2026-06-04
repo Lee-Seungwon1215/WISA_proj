@@ -287,6 +287,8 @@ def scan_harness(
     inc_flags = [f"-I{d}" for d in include_dirs]
     # key: (source_display, function) -> list[Occurrence]
     agg: Dict[Tuple[str, str], List[Occurrence]] = {}
+    attempted = 0   # (source, opt) compile attempts
+    compiled = 0    # ...that produced an object we could disassemble
 
     with tempfile.TemporaryDirectory(prefix="ctkat_asm_") as td:
         tmp = Path(td)
@@ -294,6 +296,7 @@ def scan_harness(
             for opt in opt_levels:
                 obj = tmp / f"{src.stem}_{opt.lstrip('-')}.o"
                 cmd = [cc, opt, *base, *inc_flags, "-c", str(src), "-o", str(obj)]
+                attempted += 1
                 try:
                     proc = run_text(cmd, cwd=workdir, timeout=timeout)
                 except _sp.TimeoutExpired:
@@ -305,8 +308,19 @@ def scan_harness(
                         tail = (proc.stderr or "").strip().splitlines()[-2:]
                         on_warn(f"compile failed: {disp} {opt} — {tail or '(no stderr)'}")
                     continue
+                compiled += 1
                 for func, addr, mnem in _disasm_divisions(obj, objdump, nm, timeout=timeout):
                     agg.setdefault((disp, func), []).append(Occurrence(opt, addr, mnem))
+
+    # If EVERY compile failed (toolchain/header/-D/-isystem mismatch for this
+    # cc), returning [] would be reported as a clean "no divisions found" green
+    # scan — the F6/T17 silent-skip → effect-0 trap. Raise so the caller records
+    # this compiler as an ERROR, not a completed (clean) scan.
+    if attempted and not compiled:
+        raise AsmScanError(
+            f"all {attempted} compile(s) failed for cc={cc!r} on harness "
+            f"{harness!r} — toolchain/header/-D/-isystem mismatch? (see warnings)"
+        )
 
     out = [
         VarLatCandidate(

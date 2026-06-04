@@ -1498,6 +1498,16 @@ def ct_matrix(
         )
         raise typer.Exit(2)
 
+    # Loud about partial coverage (§8): manual harnesses can't be recompiled per
+    # combo, so they're dropped — say so, else a green matrix reads as full.
+    skipped_manual = [h.name for h in cfg.ct.harnesses if h.template is None]
+    if skipped_manual:
+        console.print(
+            f"[yellow][CTKAT] ct-matrix: {len(skipped_manual)} manual-binary "
+            f"harness(es) skipped (can't be recompiled per build config): "
+            f"{', '.join(skipped_manual)}.[/]"
+        )
+
     matrix_cfg = cfg.matrix or MatrixConfig()
     combos = expand_combos(matrix_cfg.compilers, matrix_cfg.ct_cflags)
     if not combos:
@@ -1602,6 +1612,17 @@ def ct_matrix(
                 f"cell(s) ERRORed (couldn't measure — not a CT result): "
                 f"{', '.join(r.combo for r in errored)}.[/]"
             )
+
+    # Stale-parser canary (mirror _do_ct's T3 note): a high parser-dropped-line
+    # count means the Valgrind log format may have drifted and finding lines are
+    # being silently ignored (a real leak could then read as PASS).
+    worst_dropped = max((r.dropped for r in rows), default=0)
+    if worst_dropped > 50:
+        console.print(
+            f"[dim][CTKAT] note:[/dim] valgrind parser ignored up to {worst_dropped} "
+            "unrecognized lines in some cell — if this jumps across versions the "
+            "parser whitelist may need an update (known_issues T3)."
+        )
 
     console.print(f"[dim]ct matrix CSV : {csv_path}[/]")
     console.print(f"[dim]ct matrix JSON: {json_path}[/]")

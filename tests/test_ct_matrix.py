@@ -56,6 +56,17 @@ def test_preprocessor_cflags_extracts_defines_and_includes():
     assert "-O2" not in pp and "-g" not in pp and "-fno-inline" not in pp
 
 
+def test_preprocessor_cflags_keeps_spaced_define_include_value():
+    # audit regression: spaced `-D FOO` / `-I dir` / `-U X` must keep the VALUE
+    # token (dropping it would build a different/broken program than the ct stage).
+    assert preprocessor_cflags(["-D", "FOO=1"]) == ["-D", "FOO=1"]
+    assert preprocessor_cflags(["-I", "include/dir"]) == ["-I", "include/dir"]
+    assert preprocessor_cflags(["-U", "NDEBUG"]) == ["-U", "NDEBUG"]
+    # mixed glued + spaced + opt noise
+    assert preprocessor_cflags(["-O2", "-g", "-D", "PQ=1", "-DGLUED", "-I", "/inc"]) == \
+        ["-D", "PQ=1", "-DGLUED", "-I", "/inc"]
+
+
 def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monkeypatch):
     # Regression for the dropped-define bug: a `-D...` in the harness cflags must
     # ride into EVERY combo's compile, else the matrix builds a different program
@@ -75,6 +86,23 @@ def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monk
     assert len(seen) == 2
     assert all("-DPQCLEAN_NO_GLIBC_RANDOMBYTES" in cf for cf in seen)
     assert seen[0][0] == "-O0"   # combo opt flags come first, define appended
+
+
+def test_scan_carries_dropped_count_for_stale_parser_canary(tmp_path, monkeypatch):
+    # audit regression: the per-cell `dropped` (parser-ignored lines) must reach
+    # the row so the command can emit the stale-parser canary like _do_ct.
+    monkeypatch.setattr(m, "compile_harness", lambda **k: "cmd")
+    monkeypatch.setattr(m, "run_valgrind", lambda *a, **k: object())
+    monkeypatch.setattr(m, "classify_valgrind_run",
+                        lambda *a, **k: CtRunOutcome("PASS", dropped=99))
+    src = tmp_path / "h.c"
+    src.write_text("int main(void){return 0;}\n")
+    rows = m.scan_ct_matrix(
+        [HarnessInputs("kem", src, [], [])], expand_combos(["gcc"], {"debug": ["-O0"]}),
+        workdir=tmp_path, binaries_dir=tmp_path / "b",
+        valgrind_flags=[], compile_timeout=10, valgrind_timeout=10,
+    )
+    assert rows[0].dropped == 99
 
 
 # --- scan_ct_matrix (mocked) ------------------------------------------------
@@ -323,6 +351,32 @@ def test_ct_matrix_cli_uses_default_matrix_when_absent(tmp_path):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(_write(tmp_path, yaml))])
     assert result.exit_code == 0, result.stdout
     assert captured["combos"] == ["gcc_debug", "gcc_release", "gcc_size"]
+
+
+def test_ct_matrix_cli_notes_skipped_manual_harnesses(tmp_path):
+    # audit regression: a mixed (template + manual) config must LOUDLY note that
+    # manual harnesses are skipped — else a green matrix reads as full coverage.
+    yaml = textwrap.dedent(
+        """
+        project: {name: p, language: c, root: .}
+        build: {command: "true", workdir: .}
+        ct:
+          workdir: .
+          generated_dir: ./_generated
+          harnesses:
+            - {name: tmpl, template: kem, header: api.h, prefix: "P_", include_dirs: ["."], sources: ["foo.c"]}
+            - {name: prebuilt, binary: ./bin/x}
+        report: {output_dir: ./reports}
+        """
+    )
+    rows = [CtMatrixRow("tmpl", "gcc_debug", "gcc", ("-O0",), "PASS", 0)]
+    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
+         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
+         mock.patch("ctkat.cli.scan_ct_matrix", return_value=rows):
+        result = CliRunner().invoke(app, ["ct-matrix", "-c", str(_write(tmp_path, yaml))])
+    assert result.exit_code == 0, result.stdout
+    assert "manual-binary harness(es) skipped" in result.stdout
+    assert "prebuilt" in result.stdout
 
 
 # --- guarded end-to-end: the Phase C headline flip (real compile + Valgrind) -

@@ -26,29 +26,40 @@ from .harness_generator import HarnessGenerationError, compile_harness
 from .valgrind_runner import run_valgrind
 
 
-_PP_TWO_TOKEN = ("-isystem", "-iquote", "-include", "-imacros", "-idirafter")
+# Flags whose VALUE is the NEXT token when they appear bare ("-D FOO", "-I dir",
+# "-isystem path"). The glued forms ("-DFOO", "-I/inc") are kept by the
+# startswith branch below. `-D`/`-U`/`-I` are valid in BOTH forms (e.g. flags
+# copied from a make/pkg-config line), so they must be here too — dropping the
+# value token of a spaced `-D FOO` would build a different/broken program than
+# the ct stage (the exact divergence this function exists to prevent).
+_PP_BARE_VALUE = (
+    "-D", "-U", "-I",
+    "-isystem", "-iquote", "-include", "-imacros", "-idirafter", "-isysroot",
+)
 
 
 def preprocessor_cflags(cflags: List[str]) -> List[str]:
     """Extract the preprocessor / build-selection flags (`-D`, `-U`, `-I` and the
-    `-isystem`/`-iquote`/`-include` family) from a cflags list.
+    `-isystem`/`-iquote`/`-include` family) from a cflags list — both glued
+    (`-DFOO`) and spaced (`-D FOO`) forms.
 
     These are INVARIANT across the optimization combos and must appear in EVERY
     matrix build: dropping a project's `-DPQCLEAN_NO_GLIBC_RANDOMBYTES`-style
     define (or an `-isystem` path) would make the matrix compile a *different*
-    program than the `ct` stage, silently invalidating the comparison. The
-    combo owns the `-O`/`-g`/codegen flags, so those are deliberately NOT kept
-    here. Mirrors asm-scan's T17 flag forwarding."""
+    program than the `ct` stage, silently invalidating the comparison. The combo
+    owns the `-O`/`-g`/codegen flags, so those are deliberately NOT kept here.
+    Same intent as asm-scan's T17 forwarding and coverage_check's probe-flag
+    filter, but selective (only preprocessor flags)."""
     out: List[str] = []
     i = 0
     while i < len(cflags):
         f = cflags[i]
-        if f in _PP_TWO_TOKEN:
+        if f in _PP_BARE_VALUE:                 # spaced form: consume the value token
             if i + 1 < len(cflags):
                 out.extend([f, cflags[i + 1]])
             i += 2
             continue
-        if f.startswith(("-D", "-U", "-I")):
+        if f.startswith(("-D", "-U", "-I")):    # glued form: -DFOO / -I/inc
             out.append(f)
         i += 1
     return out
@@ -90,6 +101,7 @@ class CtMatrixRow:
     valgrind_status: str       # PASS | FAIL | ERROR
     findings: int = 0
     error: str = ""            # reason when status == ERROR (compile/valgrind)
+    dropped: int = 0           # parser-ignored lines (stale-parser canary; not in CSV)
 
 
 @dataclass
@@ -172,6 +184,7 @@ def scan_ct_matrix(
                 harness=h.name, combo=combo.label, cc=combo.cc,
                 cflags=combo.cflags, valgrind_status=outcome.status,
                 findings=len(outcome.findings), error=outcome.error,
+                dropped=outcome.dropped,
             ))
     return rows
 
