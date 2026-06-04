@@ -1,0 +1,51 @@
+project:
+  name: ct_matrix_flip
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+# Two generic harnesses over the same source:
+#   leaky  -> secret-dependent branch (FAIL at -O0, PASS once optimized)
+#   safe   -> branch-free arithmetic   (PASS at every opt level)
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  harnesses:
+    - name: leaky
+      template: generic
+      extra_headers: [flip.h]
+      include_dirs: [include]
+      sources: [src/flip.c]
+      function: leaky_select
+      return_type: void
+      args: [secret, out, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: out,    size: "16", role: output}
+
+    - name: safe
+      template: generic
+      extra_headers: [flip.h]
+      include_dirs: [include]
+      sources: [src/flip.c]
+      function: safe_select
+      return_type: void
+      args: [secret, out, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: out,    size: "16", role: output}
+
+report:
+  output_dir: ./reports
+
+# The compiler x cflags sweep for `ctkat ct-matrix`. gcc-only here so the demo's
+# flip is reproducible; add `clang` to compilers to see it differ per compiler.
+matrix:
+  compilers: [gcc]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
