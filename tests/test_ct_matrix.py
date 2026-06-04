@@ -6,10 +6,13 @@ are mocked so the orchestration (status per cell, ERROR-on-compile-fail, sweep
 continues) is tested without a toolchain."""
 
 import json
+import shutil
+import subprocess
 import textwrap
 from pathlib import Path
 from unittest import mock
 
+import pytest
 from typer.testing import CliRunner
 
 from ctkat import ct_matrix as m
@@ -270,3 +273,63 @@ def test_ct_matrix_cli_uses_default_matrix_when_absent(tmp_path):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(_write(tmp_path, yaml))])
     assert result.exit_code == 0, result.stdout
     assert captured["combos"] == ["gcc_debug", "gcc_release", "gcc_size"]
+
+
+# --- guarded end-to-end: the Phase C headline flip (real compile + Valgrind) -
+
+def _have_valgrind_and_gnu_gcc() -> bool:
+    if shutil.which("valgrind") is None or shutil.which("gcc") is None:
+        return False
+    try:
+        out = subprocess.run(
+            ["gcc", "--version"], capture_output=True, text=True, timeout=10
+        ).stdout.lower()
+    except Exception:
+        return False
+    return bool(out) and "clang" not in out
+
+
+_needs_valgrind_gcc = pytest.mark.skipif(
+    not _have_valgrind_and_gnu_gcc(),
+    reason="needs Valgrind + real GNU gcc (Linux/Docker); the -O0->-O2 CT flip is "
+           "gcc-specific and Valgrind doesn't run on macOS",
+)
+
+# A secret-dependent select: a conditional jump on tainted data at -O0 (Valgrind
+# FAIL), which gcc optimizes into branch-free code at -O2/-Os so Valgrind no
+# longer flags it (PASS). Measured on Docker amd64 gcc 13.3 — the empirical
+# basis for this test (NOT assumed; cf. the KyberSlash Phase 0 lesson).
+_FLIP_BRANCH_C = """\
+#include <valgrind/memcheck.h>
+int main(void){
+    volatile unsigned char secret = 0;
+    VALGRIND_MAKE_MEM_UNDEFINED((void*)&secret, 1);
+    int r;
+    if (secret & 1) r = 0x11; else r = 0x22;   /* secret-dependent control flow */
+    volatile int sink = r; (void)sink;
+    return 0;
+}
+"""
+
+
+@_needs_valgrind_gcc
+def test_ct_matrix_secret_branch_flips_fail_O0_to_pass_O2(tmp_path):
+    # THE Phase C headline: the SAME source's structural-CT verdict CHANGES with
+    # the build configuration — FAIL at -O0, PASS at -O2. This is the evidence
+    # that "the binary you tested != the binary you ship" matters for CT.
+    src = tmp_path / "flip.c"
+    src.write_text(_FLIP_BRANCH_C)
+    combos = expand_combos(["gcc"], {"O0": ["-O0", "-g"], "O2": ["-O2", "-g"]})
+    rows = m.scan_ct_matrix(
+        [HarnessInputs(name="flip", source_path=src, sources=[], include_dirs=[])],
+        combos,
+        workdir=tmp_path, binaries_dir=tmp_path / "m",
+        valgrind_flags=["--tool=memcheck", "--track-origins=yes", "--error-exitcode=99"],
+        compile_timeout=60, valgrind_timeout=180,
+    )
+    by = {r.combo: r.valgrind_status for r in rows}
+    assert by["gcc_O0"] == "FAIL", f"secret branch must leak at -O0; got {by}"
+    assert by["gcc_O2"] == "PASS", f"gcc should optimize the leak away at -O2; got {by}"
+    # the headline, stated as an invariant: NOT the same verdict across builds.
+    assert by["gcc_O0"] != by["gcc_O2"]
+
