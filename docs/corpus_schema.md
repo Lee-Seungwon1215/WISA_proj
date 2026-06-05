@@ -1,8 +1,10 @@
-# Corpus result schema — LOCKED v1
+# Corpus result schema — LOCKED v1.1
 
 > Status: **LOCKED** (review-corrected). This is the frozen Phase D result
-> schema — adding a target must not reformat it. Changes require a deliberate
-> v2 bump with a migration note.
+> schema — adding a target must not reformat it. Columns are frozen; a breaking
+> change requires a v2 bump + migration note. **v1.1**: additively added the
+> `accepted-variable-time` verdict_class (prompted by real ML-DSA data) — no
+> column change, so existing rows are unaffected.
 
 ## Framing (corrected)
 
@@ -104,11 +106,21 @@ the **triaged** varlat result:
   ct/Valgrind may still be PASS — that's the structural-check blind spot.**
 - `build-sensitive-ct` — `ct_status` flips across builds (the structural verdict
   itself depends on the build).
-- `ct-leak` — ct FAIL across all builds (secret branch / memory access).
+- `ct-leak` — ct FAIL across all builds (a secret branch / memory access that is
+  an actual leak).
+- `accepted-variable-time` — ct FAIL across all builds, BUT the flagged
+  secret-dependent branches are an analyzed-safe part of the scheme's design, not
+  a key-recovery leak (**v1.1**, added from real ML-DSA data: Dilithium signing's
+  rejection sampling — `poly_chknorm` norm checks, `make_hint` — is secret-branch
+  by design per FIPS 204). Auto-derivation can't tell `ct-leak` from this; it
+  requires the manual `--verdict <h>=accepted-variable-time` override + a note
+  naming the functions. The honest distinction: the tool's signal is correct
+  (real secret branch), the domain triage says "safe by design".
 - `tool-problem` / `env-noise` — false positive/negative, or QEMU/timing artifact.
 
-**Do not** read "has div candidate" as "KyberSlash-grade risk" — that's the
-`untriaged → public|secret-risk` distinction this taxonomy exists to force.
+**Do not** read "has div candidate" as "KyberSlash-grade risk" — nor "ct FAIL" as
+"broken". Both need triage: `untriaged → public|secret-risk` for asm-scan, and
+`ct-leak` vs `accepted-variable-time` for a ct FAIL.
 
 ## Completion target (roadmap Phase D)
 

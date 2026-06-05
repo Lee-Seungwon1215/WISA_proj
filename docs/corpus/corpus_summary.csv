@@ -1,3 +1,4 @@
 family,target,harness,ct_flips,ct_status_set,varlat_candidates,varlat_triage,dudect_status,dudect_abs_t,dudect_measurements,dudect_leak_target,dudect_seed,dudect_threshold,verdict_class,notes
 ML-KEM,pqclean_mlkem768,kem_dec,no,{PASS},clang:-O0;gcc:-Os,public,WARNING,5.470,10000,sk,12648430,4.5/10.0,robust,dudect WARNING — likely QEMU env-noise; confirm natively
 ML-KEM,pqclean_mlkem768_kyberslash,kem_dec,no,{PASS},clang:-O0;gcc:-Os,secret-risk,,,,,,,varlat-secret-risk,
+ML-DSA,pqclean_mldsa65,sign,no,{FAIL},clang:-O0;gcc:-Os,public,,,,,,,accepted-variable-time,"ct FAIL = Dilithium rejection sampling (poly_chknorm/make_hint/poly_challenge) — secret-branch BY DESIGN per FIPS 204, analyzed-safe, NOT key-recovery"

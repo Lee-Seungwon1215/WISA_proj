@@ -86,7 +86,8 @@ def _dudect_cfg(project_dir: Path) -> dict:
         return {}
 
 
-def build(project_dir, family, target, cc_versions, arch, commit, triage):
+def build(project_dir, family, target, cc_versions, arch, commit, triage,
+          verdict_override=None, note_override=None):
     reports = project_dir / "reports"
     ctm = _read_csv(reports / "ctkat_ct_matrix.csv")
     varlat = _read_csv(reports / "ctkat_varlat_candidates.csv")
@@ -148,6 +149,10 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage):
             vclass = "ct-clean-untriaged"
         else:
             vclass = "tool-problem"
+        # Domain triage can't be auto-derived (e.g. a ct FAIL that is a scheme's
+        # analyzed-safe rejection sampling, not a leak) — allow a manual override.
+        if verdict_override and h in verdict_override:
+            vclass = verdict_override[h]
 
         meas = cf.get("measurements", "")
         if not meas and d:
@@ -162,6 +167,8 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage):
             pass
         elif tri == "untriaged":
             notes.append("asm-scan candidates present but not yet triaged (public vs secret-derived)")
+        if note_override and h in note_override:
+            notes.append(note_override[h])
 
         summary.append({
             "family": family, "target": target, "harness": h,
@@ -196,14 +203,21 @@ def main() -> None:
     ap.add_argument("--ctkat-commit", default="")
     ap.add_argument("--cc-version", action="append", default=[], metavar="cc=version")
     ap.add_argument("--triage", action="append", default=[], metavar="harness=public|secret-risk|none")
+    ap.add_argument("--verdict", action="append", default=[], metavar="harness=verdict_class",
+                    help="manual verdict_class override (domain triage, e.g. accepted-variable-time)")
+    ap.add_argument("--note", action="append", default=[], metavar="harness=text",
+                    help="append a manual note to a harness row")
     ap.add_argument("--out-dir", type=Path, default=Path("docs/corpus"))
     a = ap.parse_args()
 
     cc_versions = dict(x.split("=", 1) for x in a.cc_version)
     triage = dict(x.split("=", 1) for x in a.triage)
+    verdict_override = dict(x.split("=", 1) for x in a.verdict)
+    note_override = dict(x.split("=", 1) for x in a.note)
 
     cells, summary = build(
         a.project_dir, a.family, a.target, cc_versions, a.arch, a.ctkat_commit, triage,
+        verdict_override, note_override,
     )
     cp = merge_write(a.out_dir, a.target, cells, CELLS_FIELDS, "corpus_cells.csv")
     sp = merge_write(a.out_dir, a.target, summary, SUMMARY_FIELDS, "corpus_summary.csv")
