@@ -1,0 +1,58 @@
+project:
+  name: pqclean_mldsa65
+  language: c
+  root: .
+
+build:
+  command: "true"
+  workdir: .
+
+# PQClean ML-DSA-65 (Dilithium, FIPS 204) sign harness. robust 대조군 #2 (ML-DSA
+# 패밀리). secret_regions are derived from the ACTUAL sk packing order in
+# clean/packing.c (pack_sk): sk = rho | key | tr | s1 | s2 | t0, where rho/tr are
+# PUBLIC and key/s1/s2/t0 are secret. Offsets/lengths use the params.h macros so
+# they track the scheme, not a hardcoded byte count. fips202/randombytes are
+# reused from ../pqc_mlkem768/common (identical PQClean files, no copy).
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLDSA65_CLEAN_"
+      secret_regions:
+        - {offset: "SEEDBYTES", length: "SEEDBYTES",
+           comment: "key (deterministic signing seed K)"}
+        - {offset: "2*SEEDBYTES + TRBYTES", length: "L*POLYETA_PACKEDBYTES",
+           comment: "s1 (secret vector)"}
+        - {offset: "2*SEEDBYTES + TRBYTES + L*POLYETA_PACKEDBYTES", length: "K*POLYETA_PACKEDBYTES",
+           comment: "s2 (secret vector)"}
+        - {offset: "2*SEEDBYTES + TRBYTES + L*POLYETA_PACKEDBYTES + K*POLYETA_PACKEDBYTES",
+           length: "K*POLYT0_PACKEDBYTES", comment: "t0 (low bits of t; in sk, not pk)"}
+      include_dirs:
+        - clean
+        - ../pqc_mlkem768/common
+      sources:
+        - clean/sign.c
+        - clean/packing.c
+        - clean/polyvec.c
+        - clean/poly.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/rounding.c
+        - clean/symmetric-shake.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
