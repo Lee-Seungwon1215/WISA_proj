@@ -7,8 +7,8 @@
 
 ## Where we are
 
-Phase D corpus is done — `docs/corpus/corpus_summary.csv`, 5 rows / 3 families /
-4 verdict classes, all from real Docker amd64 gcc-13.3 / clang-18.1.3 runs:
+Phase D corpus is done — `docs/corpus/corpus_summary.csv`, 7 rows / 3 families /
+5 verdict classes, all from real Docker amd64 gcc-13.3 / clang-18.1.3 runs:
 
 | family | target | verdict_class |
 |---|---|---|
@@ -17,6 +17,8 @@ Phase D corpus is done — `docs/corpus/corpus_summary.csv`, 5 rows / 3 families
 | ML-DSA | pqclean_mldsa65 | needs-analysis |
 | synthetic | toy_lookup (leaky) | ct-leak |
 | synthetic | toy_lookup (safe) | robust |
+| synthetic | ct_matrix_flip (leaky) | build-sensitive-ct |
+| synthetic | ct_matrix_flip (safe) | robust |
 
 Tooling: `ct-matrix` (compiler×cflags Valgrind), `asm-scan` (variable-latency
 div), `dudect` (timing), the triage-aware taxonomy with **default-deny** + the
@@ -32,23 +34,25 @@ miss)?"** That is what proves each feature pulls its own weight.
 |---|---|---|---|
 | Valgrind secret memory/branch | secret → branch/address | toy_lookup `leaky` (S-box read) → `ct-leak` | ✅ in corpus |
 | asm-scan variable-latency div | secret → div latency (Valgrind blind) | KyberSlash ML-KEM → `varlat-secret-risk` (ct PASS, asm FAIL) | ✅ in corpus |
-| ct-matrix build-sensitivity | same source, verdict flips per build | `ct_matrix_flip` (O0 FAIL / O2 PASS) | ⚠️ example + guarded test, **NOT a corpus row** |
+| ct-matrix build-sensitivity | same source, verdict flips per build | `ct_matrix_flip` `leaky` (gcc_debug FAIL / release+size PASS) → `build-sensitive-ct` | ✅ in corpus |
 | dudect timing | timing leak with no structural branch | `toy_dudect` (leaky FAIL / safe PASS) | ⚠️ example exists, **NOT in corpus** |
 | taxonomy / default-deny | ct FAIL that is NOT a confirmed leak | ML-DSA → `needs-analysis` (default-deny caught an over-claim) | ✅ in corpus |
 
-So 3 of 5 features have airtight single-coverage *in the corpus table*; **dudect
-and build-sensitivity are demonstrated only in standalone examples**, not bound
-into the evidence table.
+So 4 of 5 features now have airtight single-coverage *in the corpus table*;
+**only dudect remains demonstrated in a standalone example**, not yet bound into
+the evidence table.
 
 ## Recommended next steps (in order)
 
-### 1. Add `ct_matrix_flip` to the corpus  — easy, fills `build-sensitive-ct`
+### 1. Add `ct_matrix_flip` to the corpus — ✅ DONE
 
-`ct_matrix_flip` already has ct (generic-template) harnesses, so it merges
-cleanly: `leaky` → `ct_flips=yes` → **`build-sensitive-ct`** (auto), `safe` →
-`robust`. Add a `matrix:` block to `examples/ct_matrix_flip/ctkat.yaml`, run
-`ct-matrix`, merge with `--family synthetic --target ct_matrix_flip`. This turns
-"build-sensitivity, see the guarded test" into a row in the evidence table.
+Ran `ct-matrix` on `examples/ct_matrix_flip` (gcc debug/release/size, real Docker
+amd64 Valgrind): `leaky` FAILs at `gcc_debug`, PASSes at `gcc_release`+`gcc_size`
+→ `ct_flips=yes` → **`build-sensitive-ct`** (auto); `safe` PASSes everywhere →
+`robust`. Merged via `build_corpus_table.py --family synthetic --target
+ct_matrix_flip`. Corpus is now 7 rows / 5 verdict classes; build-sensitivity is a
+row in the evidence table, not just a guarded test. `test_build_corpus_table.py`
+still passes.
 
 ### 2. Bind a dudect positive control  — needs a small choice
 
