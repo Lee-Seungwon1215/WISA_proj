@@ -35,12 +35,14 @@ miss)?"** That is what proves each feature pulls its own weight.
 | Valgrind secret memory/branch | secret → branch/address | toy_lookup `leaky` (S-box read) → `ct-leak` | ✅ in corpus |
 | asm-scan variable-latency div | secret → div latency (Valgrind blind) | KyberSlash ML-KEM → `varlat-secret-risk` (ct PASS, asm FAIL) | ✅ in corpus |
 | ct-matrix build-sensitivity | same source, verdict flips per build | `ct_matrix_flip` `leaky` (gcc_debug FAIL / release+size PASS) → `build-sensitive-ct` | ✅ in corpus |
-| dudect timing | timing leak with no structural branch | `toy_dudect` (leaky FAIL / safe PASS) | ⚠️ example exists, **NOT in corpus** |
+| dudect timing | timing leak with no structural branch | `toy_dudect` (leaky FAIL \|t\|=181.5 / safe PASS \|t\|=1.65) | ✅ appendix (`docs/corpus/dudect_appendix.csv`) |
 | taxonomy / default-deny | ct FAIL that is NOT a confirmed leak | ML-DSA → `needs-analysis` (default-deny caught an over-claim) | ✅ in corpus |
 
-So 4 of 5 features now have airtight single-coverage *in the corpus table*;
-**only dudect remains demonstrated in a standalone example**, not yet bound into
-the evidence table.
+All 5 features now have airtight single-coverage *in the evidence set*: 4 as
+`corpus_summary.csv` rows, and dudect as the committed appendix table
+`docs/corpus/dudect_appendix.csv` (per the deliberate (a)-path choice in step 2 —
+dudect is timing-keyed, not ct-matrix-keyed, so it sits beside the corpus rather
+than inside it).
 
 ## Recommended next steps (in order)
 
@@ -54,21 +56,29 @@ ct_matrix_flip`. Corpus is now 7 rows / 5 verdict classes; build-sensitivity is 
 row in the evidence table, not just a guarded test. `test_build_corpus_table.py`
 still passes.
 
-### 2. Bind a dudect positive control  — needs a small choice
+### 2. Bind a dudect positive control — ✅ DONE via (a) appendix
 
 `dudect` is per-target (timing), and the merge keys corpus rows on *ct-matrix*
-harnesses, so a dudect-only target (`toy_dudect`) produces no row today — same
-shape as the asm-scan-only case earlier. Two options:
+harnesses, so a dudect-only target (`toy_dudect`) produces no `corpus_summary.csv`
+row — same shape as the asm-scan-only case. **Chosen path: (a) appendix evidence.**
 
-- **(a, lighter) appendix evidence** — run `toy_dudect` and cite the
-  `dudect_summary.csv` (leaky FAIL / safe PASS) as an appendix table; note in the
-  report that dudect's single-coverage lives there, not in `corpus_summary.csv`.
-- **(b, cleaner) merge enhancement** — let `build_corpus_table.py` emit a row for
-  a dudect-only harness (ct fields = `NA`, dudect populated). Makes the one table
-  cover all features uniformly.
+Ran `toy_dudect` (Docker amd64): `leaky` → **FAIL** (|t|=181.5, mean 42.7 vs
+5191.7 cyc), `safe` → **PASS** (|t|=1.65). Captured the run as a committed,
+citable artifact at **`docs/corpus/dudect_appendix.csv`** (the example's own
+`reports/` is gitignored). The report cites this appendix table for dudect's
+single-coverage and notes explicitly that dudect's evidence lives here, not in
+`corpus_summary.csv` (which is keyed on ct-matrix harnesses).
 
-Recommendation: **(a)** for the report deadline, **(b)** if time allows (it's the
-honest "one table, all features" finish).
+> Note (honesty): the `leaky` run dropped 33.7% zero-cycle samples
+> *asymmetrically* (46.6% class-0 vs 20.9% class-1) under QEMU/Docker TSC skew —
+> the tool loudly warns about this. The separation is so large (|t|=181) the
+> verdict is unambiguous, but for a publication-grade number, confirm natively
+> with `taskset -c 0` + frequency scaling off. Same caveat already flagged on the
+> ML-KEM `dudect WARNING` corpus row.
+
+Option (b) (let `build_corpus_table.py` emit a dudect-only row, ct fields = `NA`)
+remains the "one table, all features" finish if time allows post-report — not
+blocking.
 
 ### 3. Build the feature-coverage table into the report
 

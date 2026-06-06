@@ -1,0 +1,3 @@
+project,harness,n0,n1,mean0,mean1,var0,var1,t_score,abs_t_score,status,batch_t_mean,batch_t_max_abs,batches,cropped_at,t_score_uncropped,abs_t_score_uncropped,raw_n_total,dropped_zero_n0,dropped_zero_n1,cohens_d
+toy_dudect,leaky,13250,19912,42.651,5191.721,7113.636,16015362.580,-181.498,181.498,FAIL,-57.411,59.894,10,1.000,-181.498,181.498,50000,11568,5270,1.660
+toy_dudect,safe,19578,19773,10269.270,10267.923,6577.669,6600.737,1.646,1.646,PASS,0.470,2.312,10,0.750,1.131,1.131,50000,0,0,-0.017
