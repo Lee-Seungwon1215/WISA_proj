@@ -106,21 +106,27 @@ the **triaged** varlat result:
   ct/Valgrind may still be PASS — that's the structural-check blind spot.**
 - `build-sensitive-ct` — `ct_status` flips across builds (the structural verdict
   itself depends on the build).
-- `ct-leak` — ct FAIL across all builds (a secret branch / memory access that is
-  an actual leak).
-- `accepted-variable-time` — ct FAIL across all builds, BUT the flagged
-  secret-dependent branches are an analyzed-safe part of the scheme's design, not
-  a key-recovery leak (**v1.1**, added from real ML-DSA data: Dilithium signing's
-  rejection sampling — `poly_chknorm` norm checks, `make_hint` — is secret-branch
-  by design per FIPS 204). Auto-derivation can't tell `ct-leak` from this; it
-  requires the manual `--verdict <h>=accepted-variable-time` override + a note
-  naming the functions. The honest distinction: the tool's signal is correct
-  (real secret branch), the domain triage says "safe by design".
+A ct FAIL is triaged on its leak-site functions (`ct_finding_funcs`, surfaced per
+cell since **v1.1**) against `docs/accepted_variable_time.md`:
+
+- `accepted-variable-time` — ct FAIL whose leak-site functions are ALL in the
+  accepted registry for the family (analyzed-safe scheme design, not a
+  key-recovery leak; e.g. Dilithium signing's `poly_chknorm`/`make_hint`/
+  `poly_challenge` per FIPS 204). The merge auto-classifies this; the registry
+  carries the per-function citation.
+- `needs-analysis` — ct FAIL with at least one leak-site function NOT in the
+  registry. **Default-deny**: an unrecognized secret branch is never auto-accepted
+  — it stays here until a reviewer either adds a cited registry entry or confirms
+  a leak.
+- `ct-leak` — a CONFIRMED leak (a real secret branch / memory access). Reached
+  only via a manual `--verdict <h>=ct-leak` (the auto path stops at
+  `needs-analysis`, never declaring a confirmed leak on its own).
 - `tool-problem` / `env-noise` — false positive/negative, or QEMU/timing artifact.
 
 **Do not** read "has div candidate" as "KyberSlash-grade risk" — nor "ct FAIL" as
 "broken". Both need triage: `untriaged → public|secret-risk` for asm-scan, and
-`ct-leak` vs `accepted-variable-time` for a ct FAIL.
+`accepted-variable-time` (cited) vs `needs-analysis` (default) vs `ct-leak`
+(confirmed) for a ct FAIL.
 
 ## Completion target (roadmap Phase D)
 

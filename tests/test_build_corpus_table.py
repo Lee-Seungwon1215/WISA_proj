@@ -26,7 +26,8 @@ def _write_reports(tmp_path, ctm, varlat, dud):
                 wr.writerow(r)
 
     w("ctkat_ct_matrix.csv",
-      ["project", "harness", "combo", "cc", "cflags", "valgrind_status", "findings", "error"], ctm)
+      ["project", "harness", "combo", "cc", "cflags", "valgrind_status", "findings",
+       "finding_funcs", "error"], ctm)
     w("ctkat_varlat_candidates.csv",
       ["compiler", "harness", "source_file", "function", "mnemonics", "opt_levels", "count", "addresses", "note"], varlat)
     w("dudect_summary.csv",
@@ -100,6 +101,30 @@ def test_build_untriaged_is_the_honest_default(tmp_path):
     _cells, summary = bct.build(tmp_path, "f", "t", {}, "", "", {})  # no --triage
     assert summary[0]["varlat_triage"] == "untriaged"
     assert summary[0]["verdict_class"] == "ct-clean-untriaged"
+
+
+def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
+    # registry auto-classify (default-deny): ct FAIL whose leak-site functions are
+    # ALL registered -> accepted-variable-time; ANY unregistered -> needs-analysis.
+    reg = {"ML-DSA": {"poly_chknorm", "make_hint"}}
+
+    def _row(funcs):
+        return {"project": "p", "harness": "sign", "combo": "gcc_debug", "cc": "gcc",
+                "cflags": "-O0", "valgrind_status": "FAIL", "findings": "2",
+                "finding_funcs": funcs, "error": ""}
+
+    # suffix-match against PFX_-prefixed names; all registered -> accepted
+    _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint")], [], [])
+    _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
+    assert s[0]["verdict_class"] == "accepted-variable-time"
+    assert "registry" in s[0]["notes"]
+    assert "poly_chknorm" in s[0]["ct_finding_funcs"]
+
+    # one unregistered function -> needs-analysis, named in the note (default-deny)
+    _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_mystery_fn")], [], [])
+    _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
+    assert s[0]["verdict_class"] == "needs-analysis"
+    assert "mystery_fn" in s[0]["notes"]
 
 
 def test_merge_write_is_idempotent_per_target(tmp_path):

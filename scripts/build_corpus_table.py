@@ -32,16 +32,40 @@ from pathlib import Path
 
 CELLS_FIELDS = [
     "family", "target", "harness", "combo", "cc", "cc_version", "opt", "cflags",
-    "arch", "ctkat_commit", "ct_status", "ct_findings", "ct_error",
+    "arch", "ctkat_commit", "ct_status", "ct_findings", "ct_finding_funcs", "ct_error",
     "asm_div_count", "asm_div_funcs", "asm_error",
 ]
 SUMMARY_FIELDS = [
-    "family", "target", "harness", "ct_flips", "ct_status_set",
+    "family", "target", "harness", "ct_flips", "ct_status_set", "ct_finding_funcs",
     "varlat_candidates", "varlat_triage",
     "dudect_status", "dudect_abs_t", "dudect_measurements", "dudect_leak_target",
     "dudect_seed", "dudect_threshold",
     "verdict_class", "notes",
 ]
+
+
+def load_registry(path=None):
+    """Parse docs/accepted_variable_time.md → {family: set(function suffixes)}.
+    Reads the markdown table rows `| family | function | ... |`. The default-deny
+    classifier consults this: a ct-FAIL harness is `accepted-variable-time` only
+    if EVERY leak-site function suffix-matches a registered one for its family."""
+    if path is None:
+        path = Path(__file__).resolve().parent.parent / "docs" / "accepted_variable_time.md"
+    reg = {}
+    p = Path(path)
+    if not p.exists():
+        return reg
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cols = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cols) < 2:
+            continue
+        fam, fn = cols[0], cols[1]
+        if fam in ("family", "") or set(fn) <= set("-: "):   # skip header/separator
+            continue
+        reg.setdefault(fam, set()).add(fn)
+    return reg
 
 
 def opt_of(cflags: str) -> str:
@@ -87,7 +111,9 @@ def _dudect_cfg(project_dir: Path) -> dict:
 
 
 def build(project_dir, family, target, cc_versions, arch, commit, triage,
-          verdict_override=None, note_override=None):
+          verdict_override=None, note_override=None, registry=None):
+    if registry is None:
+        registry = load_registry()
     reports = project_dir / "reports"
     ctm = _read_csv(reports / "ctkat_ct_matrix.csv")
     varlat = _read_csv(reports / "ctkat_varlat_candidates.csv")
@@ -113,7 +139,7 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
             "cc_version": cc_versions.get(r["cc"], ""), "opt": opt,
             "cflags": r.get("cflags", ""), "arch": arch, "ctkat_commit": commit,
             "ct_status": r.get("valgrind_status", ""), "ct_findings": r.get("findings", ""),
-            "ct_error": r.get("error", ""),
+            "ct_finding_funcs": r.get("finding_funcs", ""), "ct_error": r.get("error", ""),
             "asm_div_count": str(sum(c for _f, c in hits)),
             "asm_div_funcs": ";".join(sorted({f for f, _c in hits})),
             "asm_error": "",
@@ -136,11 +162,19 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
         d = dud_by.get(h, {})
         cf = dcfg.get(h, {})
 
+        ct_funcs = sorted({ff for c in hc for ff in c.get("ct_finding_funcs", "").split(";") if ff})
+        accepted = registry.get(family, set())
         only = statuses - {"ERROR"}
         if ct_flips == "yes":
             vclass = "build-sensitive-ct"
         elif only == {"FAIL"}:
-            vclass = "ct-leak"
+            # Triage ct-FAIL leak-site functions against the accepted registry.
+            # default-deny: ANY unregistered function -> needs-analysis (never
+            # auto-accepted). All registered (suffix-match) -> accepted-variable-time.
+            if ct_funcs and all(any(ff.endswith(rf) for rf in accepted) for ff in ct_funcs):
+                vclass = "accepted-variable-time"
+            else:
+                vclass = "needs-analysis"
         elif tri == "secret-risk":
             vclass = "varlat-secret-risk"
         elif only == {"PASS"} and tri in ("none", "public"):
@@ -161,6 +195,13 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
             except (ValueError, TypeError):
                 meas = ""
         notes = []
+        if vclass == "accepted-variable-time":
+            notes.append("ct FAIL functions all in accepted-variable-time registry "
+                         "(see docs/accepted_variable_time.md)")
+        elif vclass == "needs-analysis":
+            unreg = [ff for ff in ct_funcs if not any(ff.endswith(rf) for rf in accepted)]
+            notes.append("ct FAIL with unregistered leak-site function(s) — triage required: "
+                         + ";".join(unreg))
         if d.get("status") == "WARNING":
             notes.append("dudect WARNING — likely QEMU env-noise; confirm natively")
         if not vcells:
@@ -173,6 +214,7 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
         summary.append({
             "family": family, "target": target, "harness": h,
             "ct_flips": ct_flips, "ct_status_set": "{" + ",".join(sorted(statuses)) + "}",
+            "ct_finding_funcs": ";".join(ct_funcs),
             "varlat_candidates": ";".join(vcells) or "none", "varlat_triage": tri,
             "dudect_status": d.get("status", ""), "dudect_abs_t": d.get("abs_t_score", ""),
             "dudect_measurements": meas, "dudect_leak_target": cf.get("leak_target", ""),

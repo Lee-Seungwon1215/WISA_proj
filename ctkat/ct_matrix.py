@@ -100,6 +100,7 @@ class CtMatrixRow:
     cflags: Tuple[str, ...]
     valgrind_status: str       # PASS | FAIL | ERROR
     findings: int = 0
+    finding_funcs: str = ""    # ";"-joined leak-site functions (for accepted-vs-leak triage)
     error: str = ""            # reason when status == ERROR (compile/valgrind)
     dropped: int = 0           # parser-ignored lines (stale-parser canary; not in CSV)
 
@@ -185,6 +186,12 @@ def scan_ct_matrix(
                 cflags=combo.cflags, valgrind_status=outcome.status,
                 findings=len(outcome.findings), error=outcome.error,
                 dropped=outcome.dropped,
+                # leak-site (top-frame) functions — the triage surface that lets
+                # a human / the registry decide accepted-variable-time vs leak.
+                finding_funcs=";".join(sorted({
+                    f.frames[0].function for f in outcome.findings
+                    if getattr(f, "frames", None)
+                })),
             ))
     return rows
 
@@ -193,7 +200,7 @@ def scan_ct_matrix(
 
 CT_MATRIX_CSV_FIELDS = [
     "project", "harness", "combo", "cc", "cflags",
-    "valgrind_status", "findings", "error",
+    "valgrind_status", "findings", "finding_funcs", "error",
 ]
 
 
@@ -206,6 +213,7 @@ def row_to_dict(project: str, r: CtMatrixRow) -> Dict[str, str]:
         "cflags": " ".join(r.cflags),
         "valgrind_status": r.valgrind_status,
         "findings": str(r.findings),
+        "finding_funcs": r.finding_funcs,
         "error": r.error,
     }
 
