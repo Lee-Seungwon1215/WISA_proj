@@ -177,7 +177,9 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
                 vclass = "needs-analysis"
         elif tri == "secret-risk":
             vclass = "varlat-secret-risk"
-        elif only == {"PASS"} and tri in ("none", "public"):
+        elif only == {"PASS"} and (not vcells or tri in ("none", "public")):
+            # ct PASS with no varlat candidates (nothing to triage) OR candidates
+            # triaged public/none -> robust.
             vclass = "robust"
         elif only == {"PASS"}:
             vclass = "ct-clean-untriaged"

@@ -103,6 +103,14 @@ def test_build_untriaged_is_the_honest_default(tmp_path):
     assert summary[0]["verdict_class"] == "ct-clean-untriaged"
 
 
+def test_build_pass_no_candidates_is_robust(tmp_path):
+    # ct PASS with NO asm-scan candidates -> robust (nothing to triage), even
+    # without an explicit --triage (regression for the ct-clean-untriaged trap).
+    _write_reports(tmp_path, [_ctm("safe", "gcc_debug", "gcc", "-O0", "PASS")], [], [])
+    _c, s = bct.build(tmp_path, "syn", "t", {}, "", "", {})
+    assert s[0]["verdict_class"] == "robust"
+
+
 def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
     # registry auto-classify (default-deny): ct FAIL whose leak-site functions are
     # ALL registered -> accepted-variable-time; ANY unregistered -> needs-analysis.

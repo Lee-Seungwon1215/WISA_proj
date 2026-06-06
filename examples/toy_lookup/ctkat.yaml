@@ -37,3 +37,13 @@ ct:
 
 report:
   output_dir: ./reports
+
+# Phase D corpus: compiler × cflags sweep. The secret-indexed S-box read
+# (leaky_lookup) is a cache-timing memory-access leak that survives every build
+# — a clean `ct-leak` demonstrator vs `safe_lookup` (robust).
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
