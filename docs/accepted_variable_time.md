@@ -35,3 +35,24 @@ matches the `poly_chknorm` entry.
 > Adding an entry is a deliberate, reviewed act: it moves a finding from "flag"
 > to "accepted", so it must carry a basis a reviewer can check. When unsure,
 > leave it out → the harness stays `needs-analysis`.
+
+## Limitation: inlining blurs finding attribution (build-dependent)
+
+Finding attribution is **per build**. At `-O0 -fno-inline` Valgrind names the
+real leak-site function (e.g. `poly_chknorm`); at `-O2`/`-Os` the inliner merges
+inner functions into the caller, so the SAME accepted branch is attributed to a
+parent frame (e.g. `crypto_sign_signature_ctx`) and adjacent functions
+(`pack_sig`) appear. Because the corpus takes the UNION of leak-site functions
+across the build matrix, those optimized-build frames make a harness
+`needs-analysis` even when its debug build is cleanly accepted.
+
+Do **NOT** "fix" this by registering the inlined parent (`crypto_sign_signature_ctx`):
+a top-level frame is a catch-all that would accept anything inlined into it,
+defeating default-deny. The correct resolution is to classify accepted-vs-leak on
+the **precise-attribution debug build** (`-O0 -fno-inline`) and triage any
+genuinely-distinct optimized-build frame (e.g. `pack_sig` — packs the *public*
+signature; a candidate registry entry pending review) on its own merits.
+
+ML-DSA-65 is currently `needs-analysis` for exactly this reason: its debug build
+shows only the three registered rejection-sampling functions, but the optimized
+builds add `crypto_sign_signature_ctx` (inlining artifact) + `pack_sig`.
