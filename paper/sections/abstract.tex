@@ -1,0 +1,23 @@
+Constant-time (CT) discipline is the standard defense against timing
+side channels, but for post-quantum cryptography (PQC) a single
+checking technique is not enough. Structural CT checks based on dynamic
+taint tracking (Valgrind/Memcheck) detect secret-dependent branches and
+memory addresses, yet they pass cleanly over the KyberSlash class of
+leaks, where a secret-derived integer division leaks through
+variable-latency instructions. Moreover, whether a structural verdict
+holds at all can depend on the compiler and optimization level, and
+adding more checkers tempts a tool into over-claiming key-recovery
+leaks. We present CT-KAT, a fail-closed screening framework that binds
+three complementary checkers (Memcheck, a warn-only variable-latency
+asm-scan, and the dudect statistical timing test) under one YAML
+configuration, indexed by a compiler-by-cflags build matrix, behind a
+default-deny triage taxonomy with a cited accepted-variable-time
+registry. On a corpus of real PQC and synthetic harnesses, each layer
+shows single-coverage of a leak the others miss, and on ML-DSA-65 the
+default-deny taxonomy refused to over-claim a leak, instead surfacing
+unregistered leak-site functions for human triage. The contribution is
+the integration and the triage discipline, not a new attack or a formal
+guarantee.
+
+\keywords{post-quantum cryptography \and constant-time \and side-channel
+\and KyberSlash \and ML-KEM \and ML-DSA}

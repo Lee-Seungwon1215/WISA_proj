@@ -1,0 +1,11 @@
+# LaTeX build artifacts — keep only source under version control.
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.pdf

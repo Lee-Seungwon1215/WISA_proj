@@ -1,0 +1,162 @@
+% =====================================================================
+% WISA poster paper (Springer LNCS, 12-page limit)
+% Build-Configuration-Aware, Triage-Aware Constant-Time Screening for PQC
+%
+% Compiles on Overleaf as-is (llncs.cls + splncs04.bst are bundled in this
+% folder). Locally: pdflatex main && bibtex main && pdflatex main && pdflatex main
+%
+% TODO(author): fill in the real author name(s) and ORCID before camera-ready.
+% TODO(author): verify every reference in references.bib against its source.
+% =====================================================================
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{ragged2e}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+% hyperref last; remove this line if Overleaf reports a clash with llncs.
+\usepackage[hidelinks]{hyperref}
+% microtype tightens justification and reduces overfull lines (Springer-safe).
+\usepackage{microtype}
+% Let long snake_case identifiers (e.g. mlkem768_kyberslash) break after an
+% underscore so they do not overflow the margin; no hyphen is inserted.
+\renewcommand{\_}{\textunderscore\discretionary{}{}{}}
+
+% Float placement tuning: let more floats share a page and avoid near-empty
+% float pages (the 3 tables + figure otherwise pile up at the end).
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.5}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.7}
+
+\begin{document}
+
+\title{Build-Configuration-Aware, Triage-Aware Constant-Time Screening for
+Post-Quantum Cryptography}
+\titlerunning{Triage-Aware Constant-Time Screening for PQC}
+
+% TODO(author): replace placeholder author / affiliation.
+\author{First Author\orcidID{0000-0000-0000-0000}}
+\authorrunning{F. Author}
+\institute{Hansung University, Seoul, Republic of Korea\\
+\email{swhs007@hansung.ac.kr}}
+
+\maketitle
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\input{sections/00_intro}
+
+\input{sections/01_background}
+
+% ---- Fig. 1: pipeline -------------------------------------------------
+\begin{figure}[htbp]
+\centering
+% \resizebox guarantees the diagram never overflows \textwidth (it is wider than
+% the LNCS text block at natural size). Remove it if you re-tune the TikZ to fit.
+\resizebox{\textwidth}{!}{\input{figures/pipeline}}
+\caption{CT-KAT pipeline: one YAML config drives a compiler$\times$cflags build
+matrix feeding three checkers (Valgrind/Memcheck, asm-scan, dudect); results pass
+through a default-deny triage taxonomy with a cited accepted-variable-time
+registry to a \texttt{verdict\_class}.}
+\label{fig:pipeline}
+\end{figure}
+
+\input{sections/02_design}
+
+\input{sections/03_method}
+
+% ---- Table 2 (T2): verdict-class corpus ------------------------------
+\begin{table}[htbp]
+\centering
+\caption{Verdict-class corpus: 7 harness rows, 3 families, 5 verdict classes;
+all from real Docker amd64 runs (gcc~13.3.0 / clang~18.1.3, Valgrind).}
+\label{tab:corpus}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lllccl@{}}
+\toprule
+Family & Target & Harness & ct (matrix) & varlat & \texttt{verdict\_class}\\
+\midrule
+ML-KEM & \texttt{mlkem768} & \texttt{kem\_dec} & PASS & public & \texttt{robust}\\
+ML-KEM & \texttt{mlkem768\_kyberslash} & \texttt{kem\_dec} & PASS & secret-risk & \texttt{varlat-secret-risk}\\
+ML-DSA & \texttt{mldsa65} & \texttt{sign} & FAIL & public & \texttt{needs-analysis}\\
+synthetic & \texttt{toy\_lookup} & \texttt{leaky} & FAIL & none & \texttt{ct-leak}\\
+synthetic & \texttt{toy\_lookup} & \texttt{safe} & PASS & none & \texttt{robust}\\
+synthetic & \texttt{ct\_matrix\_flip} & \texttt{leaky} & FAIL/PASS & none & \texttt{build-sensitive-ct}\\
+synthetic & \texttt{ct\_matrix\_flip} & \texttt{safe} & PASS & none & \texttt{robust}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---- Table 1 (T1): per-feature single-coverage -----------------------
+\begin{table}[htbp]
+\centering
+\caption{Per-feature single-coverage: each layer flags a corpus case the others
+miss --- the figure that justifies every layer.}
+\label{tab:coverage}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.0cm} >{\raggedright\arraybackslash}p{2.5cm} >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}p{3.2cm}@{}}
+\toprule
+Tool layer & What only it catches & Single-coverage case & Evidence\\
+\midrule
+Valgrind taint & secret branch / memory address &
+\texttt{toy\_lookup} \texttt{leaky} (S-box read) &
+\texttt{ct-leak}: FAIL, all 6 builds\\
+asm-scan & secret division latency (Memcheck-blind) &
+KyberSlash ML-KEM &
+\texttt{varlat-secret-risk}: ct PASS, asm FAIL\\
+ct-matrix & verdict flips per build &
+\texttt{ct\_matrix\_flip} \texttt{leaky} &
+\texttt{build-sensitive-ct}: \texttt{-O0} FAIL, \texttt{-O2}/\texttt{-Os} PASS\\
+dudect & timing leak, no branch &
+\texttt{toy\_dudect} \texttt{leaky} &
+FAIL $|t|{=}181.5$ vs PASS $1.65$\\
+default-deny & ct FAIL not yet confirmed &
+ML-DSA-65 (\texttt{sign}) &
+\texttt{needs-analysis}: refused to over-claim\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---- Table 3 (A1): dudect appendix -----------------------------------
+\begin{table}[htbp]
+\centering
+\caption{dudect timing appendix on \texttt{toy\_dudect} (cycle counts, Welch
+$t$). Beside the corpus rather than in it, since dudect is timing-keyed, not
+ct-matrix-keyed.}
+\label{tab:dudect}
+\footnotesize
+\begin{tabular}{@{}llrrrrrl@{}}
+\toprule
+Target & Harness & $n_0$ & $n_1$ & mean$_0$ & mean$_1$ & $|t|$ & status\\
+\midrule
+\texttt{toy\_dudect} & \texttt{leaky} & 13250 & 19912 & 42.7 & 5191.7 & 181.5 & FAIL\\
+\texttt{toy\_dudect} & \texttt{safe}  & 19578 & 19773 & 10269.3 & 10267.9 & 1.65 & PASS\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\input{sections/04_results}
+
+\input{sections/05_discussion}
+
+\input{sections/06_conclusion}
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+
+\end{document}

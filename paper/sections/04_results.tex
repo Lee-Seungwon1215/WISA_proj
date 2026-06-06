@@ -1,0 +1,102 @@
+\section{Results}
+\label{sec:results}
+
+We evaluate CT-KAT on seven harness rows spanning two PQC families
+(ML-KEM, ML-DSA) and synthetic controls, under up to six build cells
+(\texttt{gcc} 13.3.0 and \texttt{clang} 18.1.3 across the named
+\texttt{debug}/\texttt{release}/\texttt{size} cflag sets) in a pinned Docker
+image (Ubuntu~24.04, amd64). All numbers are from real runs; the suite
+reports 381~passed, 3~skipped. Table~\ref{tab:coverage} shows every layer
+catches a leak no other sees; Table~\ref{tab:corpus} grounds every verdict
+class in a real target; Table~\ref{tab:dudect} is the timing appendix.
+
+\subsection{Per-feature single-coverage}
+\label{sec:results-coverage}
+
+Table~\ref{tab:coverage} names, per layer, one case that \emph{only} it flags.
+Two are the paper's spine.
+
+\paragraph{(i) asm-scan: structural CT alone is insufficient.}
+The KyberSlash row (\texttt{mlkem768\_kyberslash} / \texttt{kem\_dec}) passes
+the structural check \emph{clean}: Memcheck finds no secret-tainted branch or
+address, so dynamic taint~\cite{ctgrind,valgrind} reports nothing. Yet
+asm-scan flags a secret-derived integer division --- the KyberSlash bug
+class~\cite{kyberslash} --- whose latency is data-dependent on amd64. Only the
+cycle count depends on the secret, so structural taint is blind; triage marks
+it secret-derived, giving \texttt{varlat-secret-risk}. A Memcheck-only
+deployment would have shipped a known-exploitable leak with a clean bill of
+health.
+
+\paragraph{(ii) Default-deny triage: a structural FAIL the tool refused to
+call a leak.}
+On real ML-DSA-65 (\texttt{mldsa65} / \texttt{sign}) the structural check
+\emph{fails}, with leak-site functions \texttt{crypto\_sign\_signature\_ctx},
+\texttt{make\_hint}, \texttt{pack\_sig}, \texttt{poly\_challenge}, and
+\texttt{poly\_chknorm}. A naive tool would declare key-recovery. CT-KAT matches
+each against the accepted-variable-time registry. Three ---
+\texttt{poly\_chknorm}, \texttt{make\_hint}, \texttt{poly\_challenge} --- are
+variable-time by design, implementing the rejection sampling the
+Fiat--Shamir-with-aborts structure of ML-DSA requires per
+FIPS~204~\cite{fips204,dilithium}, and are registered. Two are not:
+\texttt{crypto\_sign\_signature\_ctx} (an inlining artifact under
+\texttt{-O2}/\texttt{-Os}) and \texttt{pack\_sig} (a packer for the
+\emph{public} signature). With an unrecognized leak-site remaining,
+default-deny holds the row at \texttt{needs-analysis} --- neither
+auto-accepting nor over-claiming, but surfacing the two unregistered
+functions. Attribution is itself build-dependent: the \texttt{-O0 -fno-inline}
+build shows only the three registered functions, while optimized builds inline
+them into \texttt{crypto\_sign\_signature\_ctx} and surface \texttt{pack\_sig}.
+
+\paragraph{The remaining three layers.}
+The synthetic controls fill out Table~\ref{tab:coverage}. \texttt{toy\_lookup}
+/ \texttt{leaky} reads \texttt{out[i] = sbox[secret[i]]}, a secret-indexed
+address that Memcheck flags across all six cells (\texttt{ct-leak}, the
+canonical structural case~\cite{kocher}). \texttt{ct\_matrix\_flip} /
+\texttt{leaky} has a secret-dependent branch the optimizer removes: it
+\emph{fails} at \texttt{-O0} but \emph{passes} at \texttt{-O2}/\texttt{-Os}
+(\texttt{build-sensitive-ct}), so a single-level \texttt{ct} run would judge it
+by accident and only the matrix exposes the instability. \texttt{toy\_dudect}
+isolates a timing leak with no structural branch, caught by dudect alone
+(Section~\ref{sec:results-dudect}). No four layers subsume the fifth: each row
+is a leak exactly one catches, so removing any layer opens a demonstrated blind
+spot.
+
+\subsection{Verdict-class corpus}
+\label{sec:results-corpus}
+
+Table~\ref{tab:corpus} grounds every verdict class in a real target. The two
+ML-KEM rows anchor the structural spectrum. Stock \texttt{mlkem768} /
+\texttt{kem\_dec}~\cite{pqclean,fips203,kyber} passes on all builds; asm-scan
+finds integer division candidates in FIPS~202/Keccak, but triage marks them
+\texttt{public} (the sponge rate is constant), so the row is \texttt{robust}.
+The KyberSlash variant is structurally clean but \texttt{varlat-secret-risk}
+--- triage separates the two. The ML-DSA row contributes
+\texttt{needs-analysis}, and four synthetic rows supply matched
+leaky/safe controls, so the corpus instantiates all five classes
+(\texttt{robust}, \texttt{varlat-secret-risk}, \texttt{build-sensitive-ct},
+\texttt{needs-analysis}, \texttt{ct-leak}) on concrete targets. The tool never
+auto-declares \texttt{ct-leak}: it needs an explicit human verdict, so the
+pipeline climbs to \texttt{needs-analysis} but no further. Together the two
+tables say the framework is \emph{complete} (every layer justified) and
+\emph{validated} (every class grounded in a real run) --- with no claim of
+formal completeness or proof of leak-absence.
+
+\subsection{Statistical timing appendix and its honesty caveat}
+\label{sec:results-dudect}
+
+dudect is keyed per target, not per build cell, so it lives beside
+Table~\ref{tab:corpus} as Table~\ref{tab:dudect}. The two \texttt{toy\_dudect}
+rows are unambiguous: \texttt{leaky} ($n_0=13{,}250$, $n_1=19{,}912$, mean
+cycles $42.7$ versus $5191.7$) gives $|t|=181.5$ and a FAIL; \texttt{safe}
+gives $|t|=1.65$ and a PASS.
+
+We report one caveat openly, because the tool does. On the \texttt{leaky} run,
+$33.7\%$ of samples recorded zero cycles and were dropped, and the drop was
+\emph{asymmetric} ($46.6\%$ of class-0 versus $20.9\%$ of class-1) --- an
+artifact of TSC skew under QEMU/Docker that CT-KAT warns about loudly. The
+separation is so large ($|t|=181$) that the FAIL is not in doubt, but we do not
+claim the precise $t$-statistic as publication-grade; that needs native
+measurement pinning the process to one core (\texttt{taskset -c 0}) with
+frequency scaling disabled. The same warning appears on the ML-KEM dudect
+observation (a WARNING at $t=5.47$ on stock \texttt{mlkem768}, QEMU noise, not
+a real leak) --- honesty discipline under emulation, not a one-off excuse.

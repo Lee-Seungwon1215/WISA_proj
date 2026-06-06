@@ -1,0 +1,64 @@
+\section{Introduction}
+\label{sec:intro}
+
+NIST has standardized the post-quantum schemes ML-KEM~\cite{fips203} and
+ML-DSA~\cite{fips204}, now entering widely used libraries. They must also run in
+\emph{constant time}: when secrets influence which branch is taken, which address is
+accessed, or how long an instruction takes, an attacker observing timing or
+microarchitectural state can recover them~\cite{kocher}. Rejection sampling, modular
+reduction, and polynomial arithmetic give PQC many chances to introduce
+secret-dependent behavior by accident.
+
+\paragraph{The hook: KyberSlash.}
+KyberSlash~\cite{kyberslash} is a family of timing leaks from a secret-dependent
+integer division in several Kyber and ML-KEM implementations~\cite{kyber}. Control
+flow and access pattern are identical for every input; the leak lives in the
+\emph{latency} of one division instruction, which on many platforms depends on its
+operands. The classic constant-time screen is dynamic taint tracking on
+Valgrind/Memcheck~\cite{valgrind,ctgrind}: secret bytes are marked uninitialized,
+and Memcheck flags any tainted value reaching a branch or address. KyberSlash slips
+past it---Memcheck reports the code clean while it leaks through data-dependent
+timing. A structural check alone is insufficient.
+
+\paragraph{The problem this creates for tooling.}
+KyberSlash exposes three difficulties. First, \emph{a single check has blind spots}:
+structural taint misses variable-latency instructions, and a statistical test cannot
+localize a leak to a cause. Second, \emph{the verdict is build-sensitive}: an
+optimizer may remove at \texttt{-O2} a branch present at \texttt{-O0}, or inline a
+function so a leak is misattributed, so a verdict not indexed by its build is hard to
+trust. Third, \emph{stacking checks tempts over-claiming}: when one detector fails,
+the easy move is to call the target a key-recovery leak, but many PQC ``failures''
+are variable-time \emph{by design}, like rejection sampling in
+ML-DSA~\cite{fips204,dilithium}, which branches on public values.
+
+\paragraph{Our approach.}
+We present CT-KAT, a fail-closed constant-time screening framework for PQC. Under
+one YAML configuration it binds three complementary checkers---a Valgrind/Memcheck
+structural taint check, a warn-only assembly scan for variable-latency instruction
+candidates, and a dudect-style statistical timing test~\cite{dudect}---and indexes
+every structural verdict by a compiler $\times$ cflags build matrix. A failure is
+never auto-labeled a key-recovery leak: leak-site functions are triaged against a
+cited registry of accepted variable-time behavior, and anything unrecognized is held
+at a \emph{needs-analysis} verdict until a human rules (Figure~\ref{fig:pipeline}).
+
+The phenomena are known: KyberSlash established variable-time division as a leak
+class~\cite{kyberslash}, build-sensitivity is folklore, and dudect~\cite{dudect},
+ctverif~\cite{ctverif}, and Binsec/Rel~\cite{binsecrel} predate this work. Our
+contribution is their \emph{integration}, the \emph{triage discipline} that prevents
+over-claiming, and its \emph{self-validation} on a real PQC corpus from
+PQClean~\cite{pqclean}---most sharply, the default-deny taxonomy's refusal to
+over-claim a leak on the standardized ML-DSA-65 signing routine
+(Section~\ref{sec:results-coverage}).
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item \textbf{An integrated, build-matrix-indexed framework} binding a structural
+    taint check, a variable-latency assembly scan, and a statistical timing test
+    across a compiler $\times$ cflags matrix under one YAML config.
+  \item \textbf{A default-deny triage taxonomy with a cited registry:} unrecognized
+    leak sites stay at needs-analysis, making over-claiming structurally impossible.
+  \item \textbf{A validated PQC corpus with the ML-DSA self-validation:} Docker runs
+    over three families and five verdict classes (Table~\ref{tab:corpus}), a
+    coverage analysis (Table~\ref{tab:coverage}), and a dudect appendix
+    (Table~\ref{tab:dudect}).
+\end{enumerate}

@@ -1,0 +1,36 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Self-validation: the tool kept the human honest.}
+The ML-DSA-65 result (Section~\ref{sec:results-coverage}) is the paper's
+spine. A ``louder alarms'' tool would have reported the structural CT failure
+as a key-recovery leak; CT-KAT instead recognized the registered
+rejection-sampling functions as accepted variable time, found two unregistered
+leak sites, and held the row at \emph{needs-analysis} rather than guessing.
+The taxonomy is most useful precisely where it refuses to decide. Worse,
+finding ownership is itself build-dependent --- optimized builds inline the
+rejection-sampling functions into \texttt{crypto\_sign\_signature\_ctx} and
+surface \texttt{pack\_sig} --- so a single-build verdict would misattribute;
+the build matrix (Table~\ref{tab:corpus}) makes the shift visible.
+
+\paragraph{Why orthogonal checkers, not one.}
+KyberSlash shows that structural CT checking and instruction-latency scanning
+are genuinely orthogonal: Memcheck~\cite{valgrind,ctgrind} passes the variant
+clean while asm-scan catches the secret-derived division~\cite{kyberslash}.
+Neither refines the other; each sees inputs the other is blind to. A single
+checker, however sound on its own class~\cite{ctverif,binsecrel}, would miss
+the rest --- which is why the framework binds three.
+
+\paragraph{Limitations.}
+The structural and timing checks are dynamic and see only exercised paths;
+untaken-branch leaks are out of scope. The dudect test~\cite{dudect} runs
+under QEMU/Docker with a noisy cycle counter (Table~\ref{tab:dudect}); large
+separations are unambiguous but precise statistics should be confirmed
+natively (\texttt{taskset}, frequency scaling off). Asm-scan is candidate-level
+and warn-only: flagging a variable-latency instruction~\cite{kocher} is not
+proof its operand is secret, so findings feed triage, not a verdict. The
+synthetic harnesses isolate one feature each and are deliberately not PQC, and
+the corpus covers one ML-KEM~\cite{fips203,kyber} and one
+ML-DSA~\cite{pqclean} family. None of these limits is hidden: the tool never
+claims completeness, never proves a leak's absence, and never declares
+\emph{ct-leak} without an explicit human verdict.

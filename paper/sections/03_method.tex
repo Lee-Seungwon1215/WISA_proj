@@ -1,0 +1,58 @@
+\section{Corpus and Methodology}
+\label{sec:method}
+
+\subsection{Reproducible environment}
+
+All results are real runs in one pinned container: Ubuntu~24.04 on
+\texttt{amd64}, GCC~13.3.0, Clang~18.1.3, Valgrind (Memcheck). A verdict can
+depend on compiler and optimization level, so one without the exact compiler
+version is under-specified. The suite has 381 passing and 3 skipped tests; skips
+need a native (non-emulated) timing environment.
+
+\subsection{Corpus design}
+
+The corpus pairs each layer with a case \emph{only} that layer flags, grounding
+every verdict class: real PQClean targets~\cite{pqclean} plus synthetic
+controls (Table~\ref{tab:coverage}, per-feature map;
+Table~\ref{tab:corpus}, verdict-class corpus).
+
+\paragraph{Real PQC targets.}
+For ML-KEM-768 (FIPS~203~\cite{fips203}, \texttt{mlkem768}, harness
+\texttt{kem\_dec}) we screen the plain build and a
+KyberSlash~\cite{kyberslash} variable-time-division variant
+(\texttt{mlkem768\_kyberslash}). The plain build passes structurally
+everywhere; \texttt{asm-scan}'s FIPS~202/Keccak division candidates triage
+\emph{public} (constant absorb rate). KyberSlash is the key case: Memcheck
+passes it clean---no secret-tainted branch or address---yet it leaks through a
+secret-derived integer division only \texttt{asm-scan} surfaces.
+
+\paragraph{Synthetic controls.}
+Three harnesses isolate one phenomenon each. \texttt{toy\_lookup}'s
+\texttt{leaky} variant (\texttt{out[i]=sbox[secret[i]]}) is a cache-timing leak
+Memcheck flags across all six builds; \texttt{safe} is robust.
+\texttt{ct\_matrix\_flip}'s secret-dependent branch is optimizer-removed: it
+fails under GCC debug (\texttt{-O0}) but passes under release (\texttt{-O2}) and
+size (\texttt{-Os}). \texttt{toy\_dudect} is a timing control, no structural
+branch (Table~\ref{tab:dudect}).
+
+\subsection{How a row is produced}
+
+Each row follows one pipeline (Fig.~\ref{fig:pipeline}) from one YAML config.
+\texttt{ct-matrix} recompiles per cell of the compiler~$\times$ named-cflags
+matrix (up to six cells, GCC and Clang) using the debug/release/size
+configurations of Section~\ref{ssec:matrix}, re-running the \emph{same} check in
+each. \texttt{asm-scan} runs warn-only over object code; public
+variable-latency candidates are recorded, any unrecognized leak site holds the
+row at \texttt{needs-analysis}, and the default-deny taxonomy never auto-promotes
+a structural failure to a leak. Optionally \texttt{dudect}~\cite{dudect} (a Welch
+$t$-test on cycle counts) runs on timing distributions. The ML-DSA-65 row
+(\texttt{mldsa65}, \texttt{sign}) is the central honest result: its structural
+check fails, but default-deny holds it at \texttt{needs-analysis} rather than
+declaring a leak (Section~\ref{sec:results-coverage}).
+
+\subsection{Merging the evidence}
+
+Structural and \texttt{asm-scan} signals are per build cell, the timing test per
+target. A script merges them, collapsing structural results into one verdict per
+target (build-sensitive when verdicts vary) and attaching triaged findings:
+Table~\ref{tab:corpus}, seven rows, three families, five verdict classes. The timing layer is in the dudect appendix (Table~\ref{tab:dudect}).
