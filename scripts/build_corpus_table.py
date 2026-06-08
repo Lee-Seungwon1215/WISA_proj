@@ -28,8 +28,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import re
+import sys
 from pathlib import Path
+
+# Running this as a standalone script (`python scripts/build_corpus_table.py`)
+# puts scripts/ on sys.path, not the repo root — bootstrap the root so we can
+# import the shared classifier (the single source of truth for verdict_class,
+# also used by `ctkat screen`). Mirrors the lazy path-insert in _dudect_cfg.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from ctkat.verdict_class import load_registry, opt_of, summarize  # noqa: E402
 
 CELLS_FIELDS = [
     "family", "target", "harness", "combo", "cc", "cc_version", "opt", "cflags",
@@ -45,34 +52,9 @@ SUMMARY_FIELDS = [
 ]
 
 
-def load_registry(path=None):
-    """Parse docs/accepted_variable_time.md → {family: set(function suffixes)}.
-    Reads the markdown table rows `| family | function | ... |`. The default-deny
-    classifier consults this: a ct-FAIL harness is `accepted-variable-time` only
-    if EVERY leak-site function suffix-matches a registered one for its family."""
-    if path is None:
-        path = Path(__file__).resolve().parent.parent / "docs" / "accepted_variable_time.md"
-    reg = {}
-    p = Path(path)
-    if not p.exists():
-        return reg
-    for line in p.read_text(encoding="utf-8").splitlines():
-        if not line.lstrip().startswith("|"):
-            continue
-        cols = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cols) < 2:
-            continue
-        fam, fn = cols[0], cols[1]
-        if fam in ("family", "") or set(fn) <= set("-: "):   # skip header/separator
-            continue
-        reg.setdefault(fam, set()).add(fn)
-    return reg
-
-
-def opt_of(cflags: str) -> str:
-    """The effective -O level of a cflags string (gcc honours the last)."""
-    found = [t for t in cflags.split() if re.fullmatch(r"-O\S*", t)]
-    return found[-1] if found else "-O0"
+# `load_registry` and `opt_of` now live in ctkat/verdict_class.py (imported above)
+# so this script and `ctkat screen` share one implementation. Re-exported here via
+# the import so existing callers/tests (`bct.load_registry`, `bct.opt_of`) still work.
 
 
 def _read_csv(path: Path) -> list:
@@ -174,100 +156,15 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
             "asm_error": _asm_error_for(r["cc"]),
         })
 
+    # The per-harness classification + summary rows are produced by the shared
+    # classifier (ctkat/verdict_class.py) so this script and `ctkat screen` can't
+    # drift. CSV/JSON reading + the corpus-cell join (with curation metadata
+    # family/target/cc_version/arch/commit) stay here; only the taxonomy moved.
     dud_by = {d["harness"]: d for d in dud}
-    harnesses = []
-    for c in cells:
-        if c["harness"] not in harnesses:
-            harnesses.append(c["harness"])
-
-    summary = []
-    for h in harnesses:
-        hc = [c for c in cells if c["harness"] == h]
-        statuses = {c["ct_status"] for c in hc}
-        verdicts = {s for s in statuses if s in ("PASS", "FAIL")}
-        ct_flips = "yes" if len(verdicts) > 1 else "no"
-        vcells = sorted({f"{c['cc']}:{c['opt']}" for c in hc if int(c["asm_div_count"]) > 0})
-        # N2 (verdict layer): compilers whose asm-scan ERRORED for this harness.
-        # A 0-division count from an errored scan is a blind spot, not evidence
-        # of safety, so it must NOT read as the clean "robust" verdict.
-        asm_err_ccs = sorted({c["cc"] for c in hc if c.get("asm_error")})
-        tri = triage.get(h, "untriaged")
-        d = dud_by.get(h, {})
-        cf = dcfg.get(h, {})
-
-        ct_funcs = sorted({ff for c in hc for ff in c.get("ct_finding_funcs", "").split(";") if ff})
-        accepted = registry.get(family, set())
-        only = statuses - {"ERROR"}
-        if ct_flips == "yes":
-            vclass = "build-sensitive-ct"
-        elif only == {"FAIL"}:
-            # Triage ct-FAIL leak-site functions against the accepted registry.
-            # default-deny: ANY unregistered function -> needs-analysis (never
-            # auto-accepted). All registered (suffix-match) -> accepted-variable-time.
-            if ct_funcs and all(any(ff.endswith(rf) for rf in accepted) for ff in ct_funcs):
-                vclass = "accepted-variable-time"
-            else:
-                vclass = "needs-analysis"
-        elif tri == "secret-risk":
-            vclass = "varlat-secret-risk"
-        elif only == {"PASS"} and asm_err_ccs:
-            # N2: ct PASS but asm-scan ERRORED for some build(s) — we never
-            # disassembled them, so we cannot claim division-free. NOT 'robust'.
-            vclass = "ct-clean-asm-incomplete"
-        elif only == {"PASS"} and (not vcells or tri in ("none", "public")):
-            # ct PASS with no varlat candidates (nothing to triage) OR candidates
-            # triaged public/none -> robust.
-            vclass = "robust"
-        elif only == {"PASS"}:
-            vclass = "ct-clean-untriaged"
-        else:
-            vclass = "tool-problem"
-        # Domain triage can't be auto-derived (e.g. a ct FAIL that is a scheme's
-        # analyzed-safe rejection sampling, not a leak) — allow a manual override.
-        if verdict_override and h in verdict_override:
-            vclass = verdict_override[h]
-
-        meas = cf.get("measurements", "")
-        if not meas and d:
-            try:
-                meas = str(int(d.get("n0", 0)) + int(d.get("n1", 0)))
-            except (ValueError, TypeError):
-                meas = ""
-        notes = []
-        if vclass == "accepted-variable-time":
-            notes.append("ct FAIL functions all in accepted-variable-time registry "
-                         "(see docs/accepted_variable_time.md)")
-        elif vclass == "needs-analysis":
-            unreg = [ff for ff in ct_funcs if not any(ff.endswith(rf) for rf in accepted)]
-            notes.append("ct FAIL with unregistered leak-site function(s) — triage required: "
-                         + ";".join(unreg))
-        if d.get("status") == "WARNING":
-            notes.append("dudect WARNING — likely QEMU env-noise; confirm natively")
-        if asm_err_ccs:
-            # N2: make the blind spot loud in the human-facing summary, not just
-            # the per-cell column.
-            notes.append(
-                "asm-scan incomplete/errored for " + ",".join(asm_err_ccs)
-                + " — division-free claim does NOT cover those build(s): "
-                + "; ".join(sorted({c["asm_error"] for c in hc if c.get("asm_error")}))
-            )
-        if not vcells:
-            pass
-        elif tri == "untriaged":
-            notes.append("asm-scan candidates present but not yet triaged (public vs secret-derived)")
-        if note_override and h in note_override:
-            notes.append(note_override[h])
-
-        summary.append({
-            "family": family, "target": target, "harness": h,
-            "ct_flips": ct_flips, "ct_status_set": "{" + ",".join(sorted(statuses)) + "}",
-            "ct_finding_funcs": ";".join(ct_funcs),
-            "varlat_candidates": ";".join(vcells) or "none", "varlat_triage": tri,
-            "dudect_status": d.get("status", ""), "dudect_abs_t": d.get("abs_t_score", ""),
-            "dudect_measurements": meas, "dudect_leak_target": cf.get("leak_target", ""),
-            "dudect_seed": cf.get("seed", ""), "dudect_threshold": cf.get("threshold", ""),
-            "verdict_class": vclass, "notes": "; ".join(notes),
-        })
+    summary = summarize(
+        cells, family=family, triage=triage, dud_by=dud_by, dcfg=dcfg,
+        registry=registry, verdict_override=verdict_override, note_override=note_override,
+    )
     return cells, summary
 
 
@@ -303,6 +200,15 @@ def main() -> None:
     triage = dict(x.split("=", 1) for x in a.triage)
     verdict_override = dict(x.split("=", 1) for x in a.verdict)
     note_override = dict(x.split("=", 1) for x in a.note)
+
+    # Validate --verdict against the known taxonomy, symmetric with triage.yaml's
+    # verdict field (ctkat/triage.py). A typo'd override would otherwise write a
+    # bogus verdict_class straight into the corpus.
+    from ctkat.verdict_class import VERDICT_CLASSES
+    bad = {h: v for h, v in verdict_override.items() if v not in VERDICT_CLASSES}
+    if bad:
+        ap.error(f"--verdict: unknown verdict_class(es) {bad}; "
+                 f"expected one of {list(VERDICT_CLASSES)}")
 
     cells, summary = build(
         a.project_dir, a.family, a.target, cc_versions, a.arch, a.ctkat_commit, triage,

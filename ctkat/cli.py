@@ -79,9 +79,17 @@ from .statistics import (
     welch_with_cropping,
 )
 from .timing_harness_generator import generate_and_compile_timing
+from .triage import TriageConfig, load_triage
 from .valgrind_parser import Finding, parse_valgrind_log_with_stats
 from .valgrind_runner import run_valgrind
 from .verdict import VERDICT_STYLES, HarnessVerdict, Verdict, combine
+from .verdict_class import (
+    CLEAN_CLASSES,
+    VERDICT_CLASSES,
+    load_registry,
+    opt_of,
+    summarize,
+)
 
 
 app = typer.Typer(help="CT-KAT: KAT + Valgrind based constant-time check framework")
@@ -1312,6 +1320,417 @@ def run(
         # Same reasoning as the `dudect` subcommand: WARNING must be shell-
         # distinguishable from PASS so CI can branch on it.
         raise typer.Exit(2)
+
+
+# --- Bundle R (Phase 1): `screen` — one-command pipeline + verdict_class -------
+
+SCREEN_SUMMARY_FIELDS = [
+    # A true superset-minus-provenance of the corpus SUMMARY_FIELDS, so a future
+    # adapter can promote screen_summary.csv into the curated corpus (just add
+    # family/target/cc_version/arch/commit).
+    "harness", "ct_flips", "ct_status_set", "ct_finding_funcs",
+    "varlat_candidates", "varlat_triage", "dudect_status", "dudect_abs_t",
+    "dudect_measurements", "dudect_leak_target", "dudect_seed", "dudect_threshold",
+    "verdict_class", "notes",
+]
+SCREEN_CELLS_FIELDS = [
+    "harness", "combo", "cc", "opt", "cflags", "ct_status", "ct_findings",
+    "ct_finding_funcs", "ct_error", "asm_div_count", "asm_div_funcs", "asm_error",
+]
+
+
+def _load_triage_or_exit(path: Path) -> TriageConfig:
+    """Load triage.yaml, mapping any load failure to a clean exit 2 (mirrors
+    _load_config_or_exit)."""
+    try:
+        return load_triage(path)
+    except FileNotFoundError:
+        console.print(f"[bold red][CTKAT] triage file not found:[/] {path}. (exit 2)")
+        raise typer.Exit(2)
+    except yaml.YAMLError as e:
+        console.print(f"[bold red][CTKAT] triage is not valid YAML:[/] {path}\n{e} (exit 2)")
+        raise typer.Exit(2)
+    except (ValidationError, ValueError) as e:
+        console.print(f"[bold red][CTKAT] invalid triage file:[/] {path}\n{e} (exit 2)")
+        raise typer.Exit(2)
+
+
+def _run_screen_matrix(cfg, cfg_dir, auto, matrix_cfg, out_dir):
+    """ct-matrix sweep for screen (reuses the ct-matrix handler logic). Returns
+    List[CtMatrixRow]. Preflight already done by the caller."""
+    combos = expand_combos(matrix_cfg.compilers, matrix_cfg.ct_cflags)
+    if not combos:
+        return []
+    ct_cwd = _resolve(cfg_dir, cfg.ct.workdir)
+    generated_dir = _resolve(cfg_dir, cfg.ct.generated_dir)
+    harness_inputs: List[HarnessInputs] = []
+    for h in auto:
+        include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
+        sources = [_resolve(cfg_dir, s) for s in h.sources]
+        base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
+        source_path = generated_dir / f"harness_{h.name}.c"
+        try:
+            code = render_harness(h.template, _template_context(h, cfg.ct.seed))
+        except HarnessGenerationError as e:
+            console.print(f"[bold red][CTKAT] screen: ct-matrix render FAIL ({h.name})[/]\n{e}")
+            raise typer.Exit(1)
+        _atomic_write_text(source_path, code)
+        harness_inputs.append(HarnessInputs(
+            name=h.name, source_path=source_path,
+            sources=sources, include_dirs=include_dirs,
+            # carry preprocessor defines into every cell or the matrix builds a
+            # different program than ct (and the cell join becomes meaningless).
+            extra_cflags=preprocessor_cflags(base_cflags),
+        ))
+    console.print(
+        f"[bold cyan]==> screen: ct-matrix[/] combos = {', '.join(c.label for c in combos)}"
+    )
+    rows = scan_ct_matrix(
+        harness_inputs, combos, workdir=ct_cwd,
+        binaries_dir=generated_dir / "matrix",
+        valgrind_flags=cfg.ct.valgrind_flags,
+        compile_timeout=cfg.ct.compile_timeout,
+        valgrind_timeout=cfg.ct.valgrind_timeout,
+        lookup_patterns=cfg.ct.lookup_function_patterns,
+        on_progress=lambda s: console.print(f"[dim][CTKAT] ct-matrix:[/dim] {s}"),
+    )
+    write_ct_matrix_csv(cfg.project.name, rows, out_dir / "ctkat_ct_matrix.csv")
+    write_ct_matrix_json(
+        cfg.project.name, rows, out_dir / "ctkat_ct_matrix.json",
+        combos=combos, compilers=list(dict.fromkeys(matrix_cfg.compilers)),
+    )
+    return rows
+
+
+def _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=()):
+    """asm-scan for screen (reuses the asm-scan handler loop). Returns
+    (candidates, cc_errors). A never-compiling source under a cc raises
+    AsmScanError → that cc recorded as a partial/ERROR (N2), others continue.
+
+    `extra_opts` adds the ct-matrix's configured opt levels to the scan so EVERY
+    matrix cell has a matching asm scan (else a division surviving only at a
+    custom matrix opt — e.g. KyberSlash at -Os/-O3 not in DEFAULT_OPT_LEVELS —
+    would read as 0 divisions for that cell)."""
+    ct_cwd = _resolve(cfg_dir, cfg.ct.workdir)
+    candidates: list = []
+    cc_errors: list = []
+    scanned: set = set()
+    scanned_ok: list = []
+    for cc_name in asm_ccs:
+        cc_cands: list = []
+        try:
+            for h in auto:
+                include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
+                sources = [_resolve(cfg_dir, s) for s in h.sources]
+                source_display = [str(s) for s in h.sources]
+                base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
+                ct_opt = extract_opt_level(base_cflags)
+                harness_opts = tuple(dict.fromkeys((ct_opt, *DEFAULT_OPT_LEVELS, *extra_opts)))
+                scanned.update(harness_opts)
+                cc_cands.extend(scan_harness(
+                    harness=h.name, sources=sources, source_display=source_display,
+                    include_dirs=include_dirs, base_cflags=base_cflags, workdir=ct_cwd,
+                    opt_levels=harness_opts, timeout=cfg.ct.compile_timeout, cc=cc_name,
+                    on_warn=lambda m, _cc=cc_name: console.print(
+                        f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"),
+                ))
+        except AsmScanError as e:
+            cc_errors.append({"compiler": cc_name, "error": f"disassembly failed: {e}"})
+            console.print(
+                f"[bold yellow][CTKAT] screen: asm-scan compiler '{cc_name}' failed[/] "
+                f"— {e} (recorded as PARTIAL; continuing)."
+            )
+            continue
+        candidates.extend(cc_cands)
+        scanned_ok.append(cc_name)
+    write_varlat_csv(candidates, out_dir / "ctkat_varlat_candidates.csv")
+    write_varlat_json(
+        cfg.project.name, candidates, out_dir / "ctkat_varlat_candidates.json",
+        opt_levels=tuple(sorted(scanned)), compilers=tuple(scanned_ok), errors=cc_errors,
+    )
+    return candidates, cc_errors
+
+
+def _emit_screen_report(out_dir: Path, project: str, summary: list, cells: list):
+    """Write screen_summary.{csv,json,md} + screen_cells.csv."""
+    import json as _json
+    out_dir.mkdir(parents=True, exist_ok=True)
+    sp = out_dir / "screen_summary.csv"
+    with open(sp, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=SCREEN_SUMMARY_FIELDS, lineterminator="\n")
+        w.writeheader()
+        for r in summary:
+            w.writerow({k: r.get(k, "") for k in SCREEN_SUMMARY_FIELDS})
+    cp = out_dir / "screen_cells.csv"
+    with open(cp, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=SCREEN_CELLS_FIELDS, lineterminator="\n")
+        w.writeheader()
+        for r in cells:
+            w.writerow({k: r.get(k, "") for k in SCREEN_CELLS_FIELDS})
+    jp = out_dir / "screen_summary.json"
+    with open(jp, "w", encoding="utf-8") as f:
+        _json.dump({"project": project, "kind": "screen_summary",
+                    "summary": summary, "cells": cells}, f, indent=2)
+    mp = out_dir / "screen_summary.md"
+    md = [f"# CT-KAT screen — {project}", "",
+          "| harness | ct | varlat (triage) | dudect | verdict_class | notes |",
+          "|---|---|---|---|---|---|"]
+    for r in summary:
+        md.append(
+            f"| {r['harness']} | {r['ct_status_set']} | "
+            f"{r['varlat_candidates']} ({r['varlat_triage']}) | "
+            f"{r.get('dudect_status') or '-'} | **{r['verdict_class']}** | "
+            f"{r.get('notes', '')} |"
+        )
+    mp.write_text("\n".join(md) + "\n", encoding="utf-8")
+    return sp, jp, mp
+
+
+@app.command()
+def screen(
+    config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
+    triage: Optional[Path] = typer.Option(
+        None, "--triage", help="Path to triage.yaml (human-judgment layer)."),
+    family: Optional[str] = typer.Option(
+        None, "--family",
+        help="Registry family for accepted-variable-time (e.g. ML-DSA). "
+             "Default = project name; if it doesn't match a registry family, a "
+             "ct FAIL stays needs-analysis (default-deny)."),
+    asm_cc: Optional[List[str]] = typer.Option(
+        None, "--asm-cc", help="Compiler(s) for asm-scan. Default = matrix compilers."),
+    continue_on_kat_fail: bool = typer.Option(False, "--continue-on-kat-fail"),
+    crop: bool = typer.Option(True, "--crop/--no-crop"),
+):
+    """One-command screening pipeline: build -> KAT -> ct -> ct-matrix -> asm-scan
+    -> dudect -> triage -> verdict_class, emitting a unified screen_summary
+    artifact (CSV/JSON/Markdown).
+
+    verdict_class is computed by the SAME classifier the corpus builder uses
+    (ctkat/verdict_class.py), so the tool's output and the paper corpus can't
+    drift. Heavier than any single subcommand and needs a Linux/Docker
+    environment (valgrind).
+
+    Exit codes (default-deny, mirrors `run`): 0 only when every harness is
+    robust/accepted-variable-time AND dudect is clean AND the ct run completed.
+    2 if any verdict_class is caveated/risk, OR dudect WARNING/FAIL/ERROR, OR a
+    ct run ERRORed (incomplete), OR KAT FAIL (the structural taxonomy can't see
+    the dudect/ct-error/kat signals, so the exit gate honors them separately). 1
+    on a build/KAT hard failure.
+    """
+    cfg = _load_config_or_exit(config)
+    cfg_dir = config.parent.resolve()
+    triage_cfg = _load_triage_or_exit(triage) if triage else TriageConfig()
+    reg_path = None
+    if triage is not None and triage_cfg.registry is not None:
+        reg_path = _resolve(triage.parent.resolve(), triage_cfg.registry)
+        if not reg_path.exists():
+            # An EXPLICIT registry override that doesn't exist would silently
+            # yield an empty registry (accepted-variable-time then impossible) —
+            # say so loudly. (The default-None case stays silent.)
+            console.print(
+                f"[bold yellow][CTKAT] screen: triage registry not found: {reg_path} "
+                f"— accepted-variable-time classification disabled.[/]"
+            )
+    registry = load_registry(reg_path)
+    fam = family or cfg.project.name
+
+    if cfg.ct is None or not cfg.ct.harnesses:
+        console.print(
+            "[bold red][CTKAT] screen: needs a `ct` section with harnesses[/] — the "
+            "verdict_class taxonomy is ct-status-centric. (exit 2)"
+        )
+        raise typer.Exit(2)
+
+    _print_cflags_banner(cfg)
+    out_dir = _resolve(cfg_dir, cfg.report.output_dir)
+    matrix_cfg = cfg.matrix or MatrixConfig()
+    auto = [h for h in cfg.ct.harnesses if h.template is not None and h.sources]
+    asm_ccs = (list(dict.fromkeys(asm_cc)) if asm_cc
+               else list(dict.fromkeys(matrix_cfg.compilers)))
+
+    # Fail-closed toolchain preflight for the stages that will actually run.
+    needed = ["valgrind", *matrix_cfg.compilers]
+    if any(h.template is not None for h in cfg.ct.harnesses):
+        needed.append("gcc")  # _do_generate compiles template harnesses with gcc
+    if auto:
+        needed += ["objdump", *asm_ccs]
+    if cfg.dudect is not None and cfg.dudect.enabled and cfg.dudect.harnesses:
+        needed.append(cfg.dudect.compiler.cc)
+    missing = [t for t in dict.fromkeys(needed) if shutil.which(t) is None]
+    if missing:
+        console.print(
+            f"[bold red][CTKAT] screen: required tool(s) not found on PATH: "
+            f"{', '.join(missing)}.[/] valgrind needs a Linux/Docker environment; "
+            f"install the missing compiler(s) (e.g. add to the Docker image). "
+            f"This is a config/toolchain error, so exit code is 2."
+        )
+        raise typer.Exit(2)
+
+    # 1. build
+    if not _do_build(cfg, cfg_dir):
+        raise typer.Exit(1)
+    # 2. kat
+    kat_status = "NONE"
+    if cfg.kat is not None:
+        ok, _kat_count = _do_kat(cfg, cfg_dir)
+        kat_status = "PASS" if ok else "FAIL"
+        if not ok and not continue_on_kat_fail:
+            raise typer.Exit(1)
+    # 3. ct (primary structural check + report + sentinel; covers manual harnesses)
+    generated = _do_generate(cfg, cfg_dir)
+    ct_results = _do_ct(cfg, cfg_dir, generated)
+    _emit_report(cfg, cfg_dir, ct_results)
+    # 4. ct-matrix (template harnesses -> build-sensitivity)
+    matrix_rows = _run_screen_matrix(cfg, cfg_dir, auto, matrix_cfg, out_dir) if auto else []
+    # 5. asm-scan (template harnesses with sources). Scan the matrix's opt levels
+    #    too so every matrix cell has matching asm coverage (FN/#18).
+    matrix_opts = {opt_of(" ".join(fl)) for fl in matrix_cfg.ct_cflags.values()}
+    candidates, cc_errors = (
+        _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=matrix_opts)
+        if auto else ([], []))
+    # 6. dudect
+    dud_results = []
+    if cfg.dudect is not None and cfg.dudect.enabled and cfg.dudect.harnesses:
+        dud_results = _do_dudect(cfg.dudect, cfg_dir, cfg.project.name, out_dir, crop=crop)
+        _emit_dudect_report(cfg.project.name, out_dir, dud_results)
+
+    # 7. build per-cell records (the shape verdict_class.summarize expects).
+    asm_err_by_cc = {e["compiler"]: e["error"] for e in cc_errors}
+    vindex: dict = {}
+    for c in candidates:
+        for o in c.opt_levels:
+            vindex.setdefault((c.compiler, o), []).append((c.function, c.count))
+    cells: list = []
+    template_names = {h.name for h in auto}
+    for r in matrix_rows:
+        o = opt_of(" ".join(r.cflags))
+        hits = vindex.get((r.cc, o), [])
+        cells.append({
+            "target": cfg.project.name, "harness": r.harness, "combo": r.combo,
+            "cc": r.cc, "opt": o, "cflags": " ".join(r.cflags),
+            "ct_status": r.valgrind_status, "ct_findings": str(r.findings),
+            "ct_finding_funcs": r.finding_funcs, "ct_error": r.error,
+            "asm_div_count": str(sum(n for _f, n in hits)),
+            "asm_div_funcs": ";".join(sorted({f for f, _n in hits})),
+            "asm_error": asm_err_by_cc.get(r.cc, ""),
+        })
+    # Harnesses ct-matrix didn't cover (manual binaries, or no matrix) get a cell
+    # from the plain ct run. A manual binary has NO sources, so asm-scan never ran
+    # for it — we genuinely can't claim it division-free. Mark asm_error (a real
+    # blind spot, not "scanned 0") so it classifies ct-clean-asm-incomplete and
+    # gates, instead of falsely reading as `robust` (a div-free claim with no
+    # scan). A reviewer who accepts the manual binary can override via triage.yaml
+    # (`verdict: robust`). (N2 at the screen layer.)
+    ct_opt = opt_of(" ".join(cfg.ct.cflags))
+    for name, status, findings in ct_results:
+        if name in template_names and matrix_rows:
+            continue
+        funcs = ";".join(sorted({f.primary_frame.function
+                                 for f in findings if f.primary_frame}))
+        is_manual = name not in template_names
+        cells.append({
+            "target": cfg.project.name, "harness": name, "combo": "ct",
+            "cc": "gcc", "opt": ct_opt, "cflags": " ".join(cfg.ct.cflags),
+            "ct_status": status, "ct_findings": str(len(findings)),
+            "ct_finding_funcs": funcs, "ct_error": "",
+            "asm_div_count": "0", "asm_div_funcs": "",
+            "asm_error": ("asm-scan not run (manual binary has no sources)"
+                          if is_manual else ""),
+        })
+
+    # 8. dudect lookups + classify (shared classifier).
+    dud_by = {
+        name: {"status": w.status, "abs_t_score": _fmt(w.abs_t_score),
+               "n0": w.n0, "n1": w.n1}
+        for name, _samples, w, _batches in dud_results
+    }
+    dcfg: dict = {}
+    if cfg.dudect is not None:
+        tw, tf = cfg.dudect.threshold_warning, cfg.dudect.threshold_fail
+        for h in cfg.dudect.harnesses:
+            dcfg[h.name] = {
+                "leak_target": h.leak_target, "seed": str(cfg.dudect.seed),
+                "threshold": f"{tw}/{tf}", "measurements": str(cfg.dudect.measurements),
+            }
+    summary = summarize(
+        cells, family=fam, triage=triage_cfg.varlat_map(), dud_by=dud_by, dcfg=dcfg,
+        registry=registry, verdict_override=triage_cfg.verdict_overrides(),
+        note_override=triage_cfg.note_overrides(),
+    )
+
+    # dudect FAIL/ERROR is a separate axis the structural classifier can't see;
+    # surface it in the per-harness notes so the emitted artifact + table explain
+    # why the harness is gated below (WARNING is already noted by the classifier).
+    def _add_note(s, text):
+        s["notes"] = (s["notes"] + "; " + text) if s.get("notes") else text
+
+    for s in summary:
+        ds = dud_by.get(s["harness"], {}).get("status", "")
+        if ds in ("FAIL", "ERROR"):
+            at = dud_by[s["harness"]].get("abs_t_score", "")
+            _add_note(s, f"dudect {ds}" + (f" (|t|={at})" if at else "") + " — gated")
+        # Some build cells couldn't be measured (ERROR) while others PASSed. The
+        # classifier folds those out (only-minus-ERROR), so the harness can still
+        # read robust — surface the partial-measurement as a note so it isn't
+        # silent. (Gating it would need a classifier change + corpus regen; out of
+        # Phase 1 scope.)
+        err_combos = sorted({c["combo"] for c in cells
+                             if c["harness"] == s["harness"] and c["ct_status"] == "ERROR"})
+        if err_combos:
+            _add_note(s, f"{len(err_combos)} build cell(s) couldn't be measured "
+                         f"(ct ERROR): {', '.join(err_combos)}")
+
+    # 9. emit + render + exit.
+    sp, _jp, _mp = _emit_screen_report(out_dir, cfg.project.name, summary, cells)
+    table = Table(title="CT-KAT screen — per-harness verdict_class")
+    for col in ("harness", "ct", "varlat", "dudect", "verdict_class"):
+        table.add_column(col)
+    _vc_style = {c: ("green" if c in CLEAN_CLASSES else "bold red") for c in VERDICT_CLASSES}
+    for s in summary:
+        vc = s["verdict_class"]
+        table.add_row(
+            s["harness"], s["ct_status_set"],
+            f"{s['varlat_candidates']} ({s['varlat_triage']})",
+            s.get("dudect_status") or "-",
+            f"[{_vc_style.get(vc, '')}]{vc}[/]",
+        )
+    console.print(table)
+    for s in summary:
+        if s.get("notes"):
+            console.print(f"[dim]{s['harness']}: {s['notes']}[/]")
+    console.print(f"[dim]screen summary: {sp}[/]")
+
+    # Exit gate (default-deny). verdict_class is the headline STRUCTURAL+asm
+    # taxonomy, but the EXIT CODE must ALSO honor the per-stage signals the
+    # classifier structurally can't see — a confirmed timing leak (dudect FAIL),
+    # an unstable/incomplete timing run (WARNING/ERROR), a crashed PRIMARY ct run,
+    # and KAT FAIL — exactly like `run`/`dudect`. Otherwise a timing-leaking or
+    # un-analyzable build would read as exit 0 because verdict_class doesn't fold
+    # those. (The classifier stays unchanged so the corpus output can't drift.)
+    gating = set(VERDICT_CLASSES) - set(CLEAN_CLASSES)
+    vc_gated = [s["harness"] for s in summary if s["verdict_class"] in gating]
+    dud_gated = sorted(h for h, dd in dud_by.items()
+                       if dd.get("status") in ("WARNING", "FAIL", "ERROR"))
+    ct_errored = sorted({name for name, status, _ in ct_results if status == "ERROR"})
+    reasons = []
+    if vc_gated:
+        reasons.append(f"verdict_class not robust/accepted: {', '.join(vc_gated)}")
+    if dud_gated:
+        reasons.append(f"dudect WARNING/FAIL/ERROR: {', '.join(dud_gated)}")
+    if ct_errored:
+        reasons.append(f"ct ERROR (analysis incomplete): {', '.join(ct_errored)}")
+    if kat_status == "FAIL":
+        reasons.append("KAT FAIL")
+    if reasons:
+        console.print(
+            "[bold yellow][CTKAT] screen: NOT cleared (exit 2) — "
+            + "; ".join(reasons) + ".[/]"
+        )
+        raise typer.Exit(2)
+    console.print(
+        "[bold green][CTKAT] screen: all harnesses cleared "
+        "(robust/accepted, dudect clean, ct complete).[/]"
+    )
 
 
 @app.command()

@@ -110,6 +110,23 @@ combined verdict (CLEAN / STRUCTURAL_LEAK / SUSPECT / RISKY / CRITICAL /
 INCONCLUSIVE)가 나옴. CT 자동 모드의 보일러플레이트는 `examples/toy_dudect/
 ctkat_combined.yaml` 참고.
 
+## 6. 한 방에 — `ctkat screen`
+
+ct + ct-matrix + asm-scan + dudect를 **한 명령**으로 돌리고 harness별
+`verdict_class`(robust / ct-clean-untriaged / varlat-secret-risk /
+build-sensitive-ct / needs-analysis / ... )를 `reports/screen_summary.{csv,json,md}`
+로 뽑는다:
+
+```bash
+python -m ctkat screen --config examples/pqc_mlkem768/ctkat.yaml --triage triage.yaml
+```
+
+asm-scan 후보가 public인지 secret-risk인지 등 **사람 판단**은 파이프라인
+config(ctkat.yaml)와 분리된 `triage.yaml`에 적는다(README §screen 참고).
+default-deny: `robust`/`accepted-variable-time` 만 exit 0, 나머지(미triage
+포함)는 exit 2 — triage 전 새 타깃이 CI를 통과하지 않음. Valgrind 필요 →
+Linux/Docker.
+
 ## 자주 빠지는 함정
 
 - **secret_regions 설정이 작으면 silent 부분 검사**: ML-KEM의 sk는 2400

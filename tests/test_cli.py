@@ -27,6 +27,8 @@ from ctkat.config import (
     HarnessConfig,
     ProjectConfig,
 )
+from ctkat.asm_scan import Occurrence, VarLatCandidate
+from ctkat.ct_matrix import CtMatrixRow
 from ctkat.dudect_runner import TimingSamples
 from ctkat.statistics import WelchResult
 from ctkat.valgrind_parser import (
@@ -1502,3 +1504,159 @@ def test_ct_valgrind_flags_without_error_exitcode_rejected():
         )
     # the default (which includes it) still loads
     CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}]})
+
+
+# --- Bundle R (Phase 1): `ctkat screen` smoke tests -------------------------
+
+def _screen_yaml(tmp_path) -> Path:
+    # one template harness so screen's auto (matrix + asm-scan) path runs.
+    return _ctkat_yaml_path(
+        tmp_path,
+        harness_block="    - {name: h, template: generic, function: f, sources: [x.c]}",
+    )
+
+
+def _ctkat_yaml_path(tmp_path, *, harness_block: str) -> Path:
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(_ctkat_yaml(harness_block=harness_block))
+    return p
+
+
+def _patch_screen(monkeypatch, *, matrix_rows, candidates=(), cc_errors=(),
+                  ct_results=(("h", "PASS", []),), which=True):
+    """Patch screen's heavy stages + toolchain preflight so the smoke tests
+    exercise the orchestration + classifier + emit + exit, not real valgrind/gcc."""
+    from ctkat import cli as cli_module
+    if which:
+        monkeypatch.setattr(cli_module.shutil, "which", lambda t: "/usr/bin/" + t)
+    else:
+        monkeypatch.setattr(cli_module.shutil, "which", lambda t: None)
+    monkeypatch.setattr(cli_module, "_do_build", lambda *a, **k: True)
+    monkeypatch.setattr(cli_module, "_do_generate", lambda *a, **k: {})
+    monkeypatch.setattr(cli_module, "_do_ct", lambda *a, **k: list(ct_results))
+    monkeypatch.setattr(cli_module, "_emit_report", lambda *a, **k: None)
+    monkeypatch.setattr(cli_module, "_run_screen_matrix", lambda *a, **k: list(matrix_rows))
+    monkeypatch.setattr(cli_module, "_run_screen_asmscan",
+                        lambda *a, **k: (list(candidates), list(cc_errors)))
+
+
+def _mrow(status, cc="gcc", cflags=("-O0",), funcs=""):
+    return CtMatrixRow(harness="h", combo=f"{cc}_{cflags[0].lstrip('-')}", cc=cc,
+                       cflags=cflags, valgrind_status=status, findings=0,
+                       finding_funcs=funcs)
+
+
+def test_screen_clean_is_robust_exit0(monkeypatch, tmp_path):
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[])
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 0
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "robust" in out
+    assert "all harnesses cleared" in result.stdout.lower()
+
+
+def test_screen_untriaged_candidate_gates_exit2(monkeypatch, tmp_path):
+    cand = VarLatCandidate(harness="h", source_file="x.c", function="div_fn",
+                           compiler="gcc", ct_opt="-O0",
+                           occurrences=[Occurrence("-O0", "0x10", "idiv")])
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[cand])
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 2
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "ct-clean-untriaged" in out
+    assert "not cleared" in result.stdout.lower()
+
+
+def test_screen_triage_public_clears_to_robust(monkeypatch, tmp_path):
+    cand = VarLatCandidate(harness="h", source_file="x.c", function="div_fn",
+                           compiler="gcc", ct_opt="-O0",
+                           occurrences=[Occurrence("-O0", "0x10", "idiv")])
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[cand])
+    tri = tmp_path / "triage.yaml"
+    tri.write_text("harnesses:\n  h:\n    varlat: public\n")
+    result = CliRunner().invoke(
+        app, ["screen", "--config", str(_screen_yaml(tmp_path)), "--triage", str(tri)])
+    assert result.exit_code == 0
+    assert "robust" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+
+
+def test_screen_ct_matrix_flip_is_build_sensitive_exit2(monkeypatch, tmp_path):
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS", cflags=("-O0",)),
+                                            _mrow("FAIL", cflags=("-O2",))])
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 2
+    assert "build-sensitive-ct" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+
+
+def test_screen_missing_valgrind_exits2_cleanly(monkeypatch, tmp_path):
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], which=False)
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 2
+    assert "not found on path" in result.stdout.lower()
+    assert "Traceback" not in result.stdout
+
+
+def test_screen_requires_ct_section_exit2(tmp_path):
+    p = tmp_path / "ctkat.yaml"
+    p.write_text('project: {name: d}\nbuild: {command: "true"}\n'
+                 'dudect:\n  harnesses:\n    - {name: h, template: generic, function: f}\n')
+    result = CliRunner().invoke(app, ["screen", "--config", str(p)])
+    assert result.exit_code == 2
+    assert "needs a `ct` section" in result.stdout
+
+
+# --- Bundle R review fixes: screen exit gate honors dudect/ct-error/kat -------
+
+def test_screen_dudect_fail_gates_exit2(monkeypatch, tmp_path):
+    # HIGH (review): a confirmed timing leak (dudect FAIL) must gate screen even
+    # when the structural verdict_class is robust — else a leak reads as exit 0.
+    from ctkat import cli as cli_module
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")])
+    fail = WelchResult(n0=100, n1=100, mean0=1.0, mean1=2.0, var0=0.5, var1=0.5,
+                       t_score=-42.0, abs_t_score=42.0, status="FAIL")
+    monkeypatch.setattr(cli_module, "_do_dudect",
+                        lambda *a, **k: [("h", TimingSamples(), fail, [])])
+    monkeypatch.setattr(cli_module, "_emit_dudect_report", lambda *a, **k: (None, None))
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(
+        _ctkat_yaml(harness_block="    - {name: h, template: generic, function: f, sources: [x.c]}")
+        + "\ndudect:\n  harnesses:\n    - {name: h, template: generic, function: f}\n"
+    )
+    result = CliRunner().invoke(app, ["screen", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "dudect" in result.stdout.lower()
+    # the gating reason is surfaced in the emitted artifact too
+    assert "dudect FAIL" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+
+
+def test_screen_manual_harness_is_asm_incomplete_exit2(monkeypatch, tmp_path):
+    # review #6/#7: a manual binary has no sources -> asm-scan can't run -> we
+    # cannot claim division-free -> ct-clean-asm-incomplete (gated), not robust.
+    _patch_screen(monkeypatch, matrix_rows=[], ct_results=(("h", "PASS", []),))
+    cfg = _ctkat_yaml_path(tmp_path, harness_block="    - {name: h, binary: ./x}")
+    result = CliRunner().invoke(app, ["screen", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "ct-clean-asm-incomplete" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+
+
+def test_screen_primary_ct_error_gates_exit2(monkeypatch, tmp_path):
+    # review #4: a crashed PRIMARY ct run must gate even if matrix cells PASS.
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], ct_results=(("h", "ERROR", []),))
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 2
+    assert "ct error" in result.stdout.lower()
+
+
+def test_screen_kat_fail_with_continue_gates_exit2(monkeypatch, tmp_path):
+    # review #10: KAT FAIL must propagate to the exit even under --continue-on-kat-fail.
+    from ctkat import cli as cli_module
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")])
+    monkeypatch.setattr(cli_module, "_do_kat", lambda *a, **k: (False, None))
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(
+        _ctkat_yaml(harness_block="    - {name: h, template: generic, function: f, sources: [x.c]}")
+        + '\nkat:\n  command: "false"\n'
+    )
+    result = CliRunner().invoke(app, ["screen", "--config", str(cfg), "--continue-on-kat-fail"])
+    assert result.exit_code == 2
+    assert "kat fail" in result.stdout.lower()

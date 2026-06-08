@@ -94,6 +94,13 @@ verdict_class,notes
 
 ### `verdict_class` taxonomy (triage-aware)
 
+> Since Phase 1 (Bundle R) this taxonomy lives in the package
+> (`ctkat/verdict_class.py`) and is computed by BOTH this corpus builder and the
+> `ctkat screen` command (which emits `reports/screen_summary.{csv,json,md}`), so
+> the tool's per-project output and the curated corpus can't drift. This script
+> still owns the corpus-only curation metadata (family/target/cc_version/arch/commit)
+> and the idempotent `merge_write`.
+
 Decoupled: ct-clean ≠ no-candidates. A row's class comes from BOTH ct status and
 the **triaged** varlat result:
 
