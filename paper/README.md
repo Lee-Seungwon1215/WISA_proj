@@ -22,7 +22,8 @@ pdflatex main && bibtex main && pdflatex main && pdflatex main
 ## Layout
 
 ```
-main.tex              preamble + title + the 3 tables + Fig.1 float + \input glue
+main.tex              preamble + title + the 3 table floats + Fig.1 + \input glue
+generated/            AUTO-GENERATED table bodies + macros (do NOT hand-edit)
 references.bib        12 citations — VERIFY each before camera-ready
 figures/pipeline.tex  TikZ pipeline diagram (Fig.1)
 sections/             one .tex per section (abstract, 00_intro … 06_conclusion)
@@ -32,15 +33,28 @@ splncs04.bst          LNCS BibTeX style (bundled)
 
 ## Source of truth for the numbers
 
-Every figure in the paper is generated from real Docker runs and lives in the
-repo as CSV:
+Every figure in the paper comes from real Docker runs recorded as CSV:
 
 - `../docs/corpus/corpus_summary.csv` → Table 2 (verdict-class corpus)
-- `../docs/report_tables.md` → Tables 1 & 2 (curated)
 - `../docs/corpus/dudect_appendix.csv` → Table 3 (dudect appendix)
+- `../docs/corpus/corpus_cells.csv` → Table 1 evidence + build cells
 
-If a number in the paper and the CSV ever disagree, the CSV wins — re-run
-`scripts/build_corpus_table.py` and update the table.
+The numbers are **single-sourced** (Phase 2): Table 2, Table 3, and every
+duplicated dudect figure / percentage / cardinality are generated from the CSVs
+into `generated/{tab_corpus,tab_dudect,corpus_macros}.tex`, which `main.tex` and
+`sections/04_results.tex` `\input` / use as `\newcommand` macros. Do NOT edit the
+numbers in the `.tex` by hand — edit the CSV and regenerate:
+
+```bash
+python3 scripts/render_paper_tables.py            # CSV -> paper/generated/*.tex
+python3 -m pytest tests/test_paper_corpus_sync.py # FAILS if paper != CSV
+```
+
+`tests/test_paper_corpus_sync.py` is the enforced contract (CI fails on any
+paper↔CSV drift) — the old "CSV wins, update by hand" honor system is now a test.
+`scripts/reproduce_paper_tables.sh` runs both steps. Rebuilding the CSVs from
+scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docker.sh`
+(Docker-only; it never touches the frozen `dudect_appendix.csv`).
 
 ## Before camera-ready (author checklist)
 

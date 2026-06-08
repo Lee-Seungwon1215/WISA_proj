@@ -86,17 +86,19 @@ formal completeness or proof of leak-absence.
 
 dudect is keyed per target, not per build cell, so it lives beside
 Table~\ref{tab:corpus} as Table~\ref{tab:dudect}. The two \texttt{toy\_dudect}
-rows are unambiguous: \texttt{leaky} ($n_0=13{,}250$, $n_1=19{,}912$, mean
-cycles $42.7$ versus $5191.7$) gives $|t|=181.5$ and a FAIL; \texttt{safe}
-gives $|t|=1.65$ and a PASS.
+rows are unambiguous: \texttt{leaky} ($n_0=\dudectLeakyNzero$,
+$n_1=\dudectLeakyNone$, mean cycles $\dudectLeakyMeanZero$ versus
+$\dudectLeakyMeanOne$) gives $|t|=\dudectLeakyT$ and a FAIL; \texttt{safe}
+gives $|t|=\dudectSafeT$ and a PASS.
 
 We report one caveat openly, because the tool does. On the \texttt{leaky} run,
-$33.7\%$ of samples recorded zero cycles and were dropped, and the drop was
-\emph{asymmetric} ($46.6\%$ of class-0 versus $20.9\%$ of class-1) --- an
+$\dropTotalPct\%$ of samples recorded zero cycles and were dropped, and the drop
+was \emph{asymmetric} ($\dropClassZeroPct\%$ of class-0 versus
+$\dropClassOnePct\%$ of class-1) --- an
 artifact of TSC skew under QEMU/Docker that CT-KAT warns about loudly. The
-separation is so large ($|t|=181$) that the FAIL is not in doubt, but we do not
+separation is so large ($|t|=\dudectLeakyTrunc$) that the FAIL is not in doubt, but we do not
 claim the precise $t$-statistic as publication-grade; that needs native
 measurement pinning the process to one core (\texttt{taskset -c 0}) with
 frequency scaling disabled. The same warning appears on the ML-KEM dudect
-observation (a WARNING at $t=5.47$ on stock \texttt{mlkem768}, QEMU noise, not
+observation (a WARNING at $t=\mlkemDudectT$ on stock \texttt{mlkem768}, QEMU noise, not
 a real leak) --- honesty discipline under emulation, not a one-off excuse.

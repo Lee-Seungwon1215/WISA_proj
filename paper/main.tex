@@ -38,6 +38,12 @@
 \renewcommand{\textfraction}{0.06}
 \renewcommand{\floatpagefraction}{0.7}
 
+% Corpus-derived numbers (dudect t/means/n, drop %, cardinalities) are
+% single-sourced from docs/corpus/*.csv via scripts/render_paper_tables.py.
+% Edit the CSV + re-run the generator; never edit the numbers here by hand.
+% tests/test_paper_corpus_sync.py fails if any paper number drifts from the CSV.
+\input{generated/corpus_macros}
+
 \begin{document}
 
 \title{Build-Configuration-Aware, Triage-Aware Constant-Time Screening for
@@ -80,8 +86,9 @@ registry to a \texttt{verdict\_class}.}
 % ---- Table 2 (T2): verdict-class corpus ------------------------------
 \begin{table}[htbp]
 \centering
-\caption{Verdict-class corpus: 7 harness rows, 3 families, 5 verdict classes;
-all from real Docker amd64 runs (gcc~13.3.0 / clang~18.1.3, Valgrind).}
+\caption{Verdict-class corpus: \corpusRows{} harness rows, \corpusFamilies{}
+families, \corpusVerdictClasses{} verdict classes; all from real Docker amd64
+runs (gcc~13.3.0 / clang~18.1.3, Valgrind).}
 \label{tab:corpus}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -89,13 +96,8 @@ all from real Docker amd64 runs (gcc~13.3.0 / clang~18.1.3, Valgrind).}
 \toprule
 Family & Target & Harness & ct (matrix) & varlat & \texttt{verdict\_class}\\
 \midrule
-ML-KEM & \texttt{mlkem768} & \texttt{kem\_dec} & PASS & public & \texttt{robust}\\
-ML-KEM & \texttt{mlkem768\_kyberslash} & \texttt{kem\_dec} & PASS & secret-risk & \texttt{varlat-secret-risk}\\
-ML-DSA & \texttt{mldsa65} & \texttt{sign} & FAIL & public & \texttt{needs-analysis}\\
-synthetic & \texttt{toy\_lookup} & \texttt{leaky} & FAIL & none & \texttt{ct-leak}\\
-synthetic & \texttt{toy\_lookup} & \texttt{safe} & PASS & none & \texttt{robust}\\
-synthetic & \texttt{ct\_matrix\_flip} & \texttt{leaky} & FAIL/PASS & none & \texttt{build-sensitive-ct}\\
-synthetic & \texttt{ct\_matrix\_flip} & \texttt{safe} & PASS & none & \texttt{robust}\\
+% rows generated from docs/corpus/corpus_summary.csv — see preamble note.
+\input{generated/tab_corpus}
 \bottomrule
 \end{tabular}
 \end{table}
@@ -115,7 +117,7 @@ Tool layer & What only it catches & Single-coverage case & Evidence\\
 \midrule
 Valgrind taint & secret branch / memory address &
 \texttt{toy\_lookup} \texttt{leaky} (S-box read) &
-\texttt{ct-leak}: FAIL, all 6 builds\\
+\texttt{ct-leak}: FAIL, all \maxBuildCells{} builds\\
 asm-scan & secret division latency (Memcheck-blind) &
 KyberSlash ML-KEM &
 \texttt{varlat-secret-risk}: ct PASS, asm FAIL\\
@@ -124,7 +126,7 @@ ct-matrix & verdict flips per build &
 \texttt{build-sensitive-ct}: \texttt{-O0} FAIL, \texttt{-O2}/\texttt{-Os} PASS\\
 dudect & timing leak, no branch &
 \texttt{toy\_dudect} \texttt{leaky} &
-FAIL $|t|{=}181.5$ vs PASS $1.65$\\
+FAIL $|t|{=}\dudectLeakyT$ vs PASS $\dudectSafeT$\\
 default-deny & ct FAIL not yet confirmed &
 ML-DSA-65 (\texttt{sign}) &
 \texttt{needs-analysis}: refused to over-claim\\
@@ -144,8 +146,8 @@ ct-matrix-keyed.}
 \toprule
 Target & Harness & $n_0$ & $n_1$ & mean$_0$ & mean$_1$ & $|t|$ & status\\
 \midrule
-\texttt{toy\_dudect} & \texttt{leaky} & 13250 & 19912 & 42.7 & 5191.7 & 181.5 & FAIL\\
-\texttt{toy\_dudect} & \texttt{safe}  & 19578 & 19773 & 10269.3 & 10267.9 & 1.65 & PASS\\
+% rows generated from docs/corpus/dudect_appendix.csv — see preamble note.
+\input{generated/tab_dudect}
 \bottomrule
 \end{tabular}
 \end{table}
