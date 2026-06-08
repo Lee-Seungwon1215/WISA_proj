@@ -57,8 +57,27 @@ def test_classify_error_on_missing_log(tmp_path):
     assert "no log file" in out.error
 
 
-def test_classify_keys_on_log_not_exit_code():
-    # rc 99 is the --error-exitcode convention, but we classify on the parsed
-    # LOG, not the code: a 99 over a clean log is PASS. Mirrors _do_ct exactly.
+def test_classify_rc99_with_zero_findings_is_error_not_passing():
+    """FN-3 (fail-open fix): rc=99 is `--error-exitcode=99` — Valgrind's
+    ground-truth "I detected >=1 error". A clean PARSE over an rc=99 run means
+    our text whitelist missed the error (new / locale-translated message, or an
+    unmodelled category), so reporting PASS would be a false-green — the exact
+    bug this tool exists to prevent.
+
+    NOTE: this intentionally replaces the previous
+    `test_classify_keys_on_log_not_exit_code`, which asserted rc=99 + clean log
+    => PASS. That earlier behavior was a documented fail-open (a real Valgrind
+    run never exits 99 unless it found an error, so the rc=99/0-findings combo
+    can ONLY mean a parser whitelist gap). CLAUDE.md §0: the old test passing
+    did not make the old behavior correct."""
     out = classify_valgrind_run(_result(99), FIXTURES / "valgrind_safe.log")
+    assert out.status == "ERROR"
+    assert out.findings == []
+    assert "99" in out.error
+
+
+def test_classify_rc0_clean_log_is_pass():
+    # Control: rc=0 means Valgrind found nothing, so zero findings is a genuine
+    # PASS — the FN-3 guard must only fire on the rc=99 whitelist-gap case.
+    out = classify_valgrind_run(_result(0), FIXTURES / "valgrind_safe.log")
     assert out.status == "PASS"

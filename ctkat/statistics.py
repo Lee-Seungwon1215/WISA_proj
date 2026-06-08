@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass
-from math import sqrt
+from math import isfinite, sqrt
 from statistics import mean, variance
 from typing import List, Optional, Sequence
 
@@ -90,7 +90,15 @@ def welch_t_test(
         t = (m0 - m1) / denom
 
     abs_t = abs(t)
-    if abs_t >= fail_threshold:
+    if not isfinite(abs_t):
+        # Fail-open guard (defense in depth; the dudect parser now drops
+        # non-finite samples upstream). A NaN |t| means corrupt/degenerate
+        # input; an Inf |t| means zero variance with differing means (perfect
+        # separation). Neither is a PASS — an undefined statistic must never
+        # read as "no leak". (Inf already exceeds fail_threshold; NaN would
+        # otherwise have fallen through to PASS.)
+        status = "FAIL"
+    elif abs_t >= fail_threshold:
         status = "FAIL"
     elif abs_t >= warning_threshold:
         status = "WARNING"

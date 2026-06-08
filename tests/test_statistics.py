@@ -1,3 +1,4 @@
+import math
 import random
 
 from ctkat.statistics import (
@@ -43,6 +44,24 @@ def test_zero_variance_handled():
     r = welch_t_test([5.0, 5.0, 5.0], [5.0, 5.0, 5.0])
     assert r.t_score == 0.0
     assert r.status == "PASS"
+
+
+def test_nonfinite_t_never_reads_as_pass():
+    # FN (fail-open defense in depth): a NaN t-score from corrupt/degenerate
+    # input must NOT fall through to PASS. (The dudect parser drops non-finite
+    # samples upstream; this guards direct callers of welch_t_test.)
+    r = welch_t_test([100.0, 101.0, 99.0], [100.0, float("nan"), 100.0])
+    assert math.isnan(r.abs_t_score)
+    assert r.status == "FAIL"
+
+
+def test_inf_t_from_zero_variance_is_fail():
+    # Zero variance with differing means => |t| = inf (perfect separation) is a
+    # leak, not a PASS. (Already exceeded the threshold before; pinned here so
+    # the non-finite guard can't accidentally flip it.)
+    r = welch_t_test([100.0, 100.0, 100.0], [200.0, 200.0, 200.0])
+    assert math.isinf(r.abs_t_score)
+    assert r.status == "FAIL"
 
 
 def test_batch_t_scores_returns_expected_count():

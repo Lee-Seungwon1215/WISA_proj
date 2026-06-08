@@ -242,6 +242,13 @@ def _disasm_divisions(
         proc = run_text(cmd, timeout=timeout)
     except _sp.TimeoutExpired as e:
         raise AsmScanError(f"objdump exceeded timeout={timeout}s ({' '.join(cmd)})") from e
+    except (FileNotFoundError, PermissionError) as e:
+        # Bundle Q (FN-1): the CLI shutil.which()-preflights objdump, but which()
+        # is a PATH lookup, not an exec test — a TOCTOU removal or a non-exec
+        # file on PATH still reaches here. Raise AsmScanError (the cli records
+        # it as a per-compiler skip) instead of a raw traceback. Matches the
+        # `nm` site's existing FileNotFoundError tolerance.
+        raise AsmScanError(f"objdump could not run ({' '.join(cmd)}): {e}") from e
     if proc.returncode != 0:
         raise AsmScanError(
             f"objdump failed ({' '.join(cmd)}):\n{proc.stderr or proc.stdout}"
@@ -302,6 +309,14 @@ def scan_harness(
                 except _sp.TimeoutExpired:
                     if on_warn:
                         on_warn(f"compile timeout: {disp} {opt}")
+                    continue
+                except (FileNotFoundError, PermissionError) as e:
+                    # Bundle Q (FN-1): the compiler vanished between which()
+                    # preflight and use, or is a non-exec stub. Warn-and-skip
+                    # this (source, opt) like a failed compile rather than
+                    # crashing the whole warn-only scan with a raw traceback.
+                    if on_warn:
+                        on_warn(f"compiler could not run: {disp} {opt} — {e}")
                     continue
                 if proc.returncode != 0:
                     if on_warn:

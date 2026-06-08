@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from ctkat._proc import run_text
+from ctkat._proc import ToolNotFoundError, run_text
 
 
 def test_run_text_requires_timeout_keyword():
@@ -50,3 +50,23 @@ def test_run_text_shell_mode_works():
     proc = run_text("echo hello", shell=True, timeout=5)
     assert proc.returncode == 0
     assert "hello" in proc.stdout
+
+
+def test_run_text_missing_executable_raises_toolnotfound():
+    # FN-1: the policy this helper centralizes must cover the most common
+    # failure — argv[0] isn't installed / not on PATH. It surfaces as a typed
+    # ToolNotFoundError (not a raw FileNotFoundError traceback from inside
+    # _execute_child), carrying the offending program name.
+    with pytest.raises(ToolNotFoundError) as ei:
+        run_text(["ctkat-no-such-binary-xyz"], timeout=5)
+    assert "ctkat-no-such-binary-xyz" in str(ei.value)
+    assert ei.value.tool == "ctkat-no-such-binary-xyz"
+
+
+def test_toolnotfound_is_filenotfounderror_subclass():
+    # FN-1: subclassing FileNotFoundError keeps the two pre-existing
+    # `except FileNotFoundError` sites (asm_scan nm, coverage_check probe)
+    # catching it unchanged.
+    assert issubclass(ToolNotFoundError, FileNotFoundError)
+    with pytest.raises(FileNotFoundError):
+        run_text(["ctkat-no-such-binary-xyz"], timeout=5)

@@ -33,13 +33,17 @@ def classify_valgrind_run(
     *,
     lookup_patterns: Optional[List[str]] = None,
 ) -> CtRunOutcome:
-    """Map one Valgrind run to PASS / FAIL / ERROR (Bundle E-2 F2 semantics):
+    """Map one Valgrind run to PASS / FAIL / ERROR (Bundle E-2 F2 + Q FN-3):
 
-    - ERROR — `returncode` not in {0, 99} (harness crash, Valgrind itself
-      failed, or a timeout surfaced as rc=124), or the log file is missing. An
-      incomplete analysis must NOT be read as "zero findings → PASS".
+    - ERROR — (a) `returncode` not in {0, 99} (harness crash, Valgrind itself
+      failed, or a timeout surfaced as rc=124); (b) the log file is missing; or
+      (c) rc=99 (`--error-exitcode`: Valgrind detected >=1 error) but the parser
+      matched ZERO known finding categories — a whitelist gap (new or
+      locale-translated Memcheck message). An incomplete OR unverifiable
+      analysis must NOT be read as "zero findings → PASS".
     - FAIL  — log parsed and at least one Finding.
-    - PASS  — log parsed clean.
+    - PASS  — log parsed clean AND rc != 99 (rc=0 means Valgrind itself found
+      nothing, so zero findings there is genuinely clean).
 
     The manual-binary sentinel check (F5) is deliberately NOT here: it is
     specific to manual harnesses and orthogonal to Valgrind's own outcome, so it
@@ -55,5 +59,26 @@ def classify_valgrind_run(
         return CtRunOutcome("ERROR", error="valgrind produced no log file")
     text = log_path.read_text(encoding="utf-8", errors="replace")
     findings, dropped = parse_valgrind_log_with_stats(text, lookup_patterns=lookup_patterns)
+    # Bundle Q (FN-3): rc=99 is `--error-exitcode=99` — Valgrind's ground-truth
+    # signal "I detected >= 1 error". If we parsed ZERO findings from a log that
+    # Valgrind says contains an error, our text whitelist (_FINDING_CLASSIFIERS)
+    # missed it: a new/locale-translated Memcheck message, or an error category
+    # we don't model. Reporting PASS here would be a fail-open — exactly the
+    # false-green this tool exists to prevent. Classify it as ERROR so the
+    # verdict matrix routes it to INCONCLUSIVE ("couldn't verify"), never CLEAN.
+    # (rc=0 means Valgrind found nothing, so 0 findings there is genuinely PASS;
+    # only the rc=99-with-0-findings combination is the whitelist-gap tell.)
+    if result.returncode == 99 and not findings:
+        return CtRunOutcome(
+            "ERROR",
+            findings=[],
+            dropped=dropped,
+            error=(
+                "valgrind exited 99 (--error-exitcode: it detected >=1 error) "
+                f"but the parser matched 0 known finding categories ({dropped} "
+                "unrecognized lines) — likely a whitelist gap (new or "
+                "locale-translated valgrind message). Refusing to report PASS."
+            ),
+        )
     status = "FAIL" if findings else "PASS"
     return CtRunOutcome(status, findings=findings, dropped=dropped)

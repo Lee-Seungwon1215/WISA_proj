@@ -48,6 +48,23 @@ def run_valgrind(
             stderr=f"[ctkat] valgrind exceeded timeout={timeout}s",
             timed_out=True,
         )
+    except FileNotFoundError as e:
+        # Bundle Q (FN-1): valgrind is missing / not executable (run_text raised
+        # ToolNotFoundError). This is the single most common failure on a fresh
+        # (esp. non-Linux) machine and used to escape as a raw traceback. Return
+        # a recognizable rc (127) so `classify_valgrind_run` maps it to ERROR ->
+        # INCONCLUSIVE, fail-closed, no traceback. (ct-matrix / asm-scan already
+        # shutil.which()-preflight this; the ct/run path now fails just as
+        # cleanly.) The message carries the original error to stay accurate.
+        return ValgrindResult(
+            returncode=127,
+            log_path=log_path,
+            stdout="",
+            stderr=(
+                "[ctkat] valgrind could not be run — it needs a Linux/Docker "
+                f"environment; install it and retry. ({e})"
+            ),
+        )
     return ValgrindResult(
         returncode=proc.returncode,
         log_path=log_path,

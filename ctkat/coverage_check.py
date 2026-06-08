@@ -201,10 +201,17 @@ def check_secret_region_coverage(
             return None
         try:
             run = run_text([str(bin_path)], timeout=10)
-        except subprocess.TimeoutExpired:
+        except (OSError, subprocess.TimeoutExpired) as e:
+            # Bundle Q (FN-1): the probe-COMPILE above already caught
+            # FileNotFoundError, but the probe-RUN only caught TimeoutExpired —
+            # so a freshly-built probe that can't be executed (noexec TMPDIR,
+            # ETXTBSY, PermissionError) raised and aborted the whole `ct` run
+            # over a non-gating diagnostic, breaking this function's "Never
+            # raises" contract. OSError subsumes FileNotFoundError/Permission/
+            # ETXTBSY; skip the check (return None) like every other failure.
             _console.print(
                 f"[yellow][CTKAT] F6 coverage check skipped for "
-                f"[bold]{harness_name}[/]: probe timed out.[/]"
+                f"[bold]{harness_name}[/]: probe could not run ({e}).[/]"
             )
             return None
         if run.returncode != 0:

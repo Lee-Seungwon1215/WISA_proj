@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
@@ -79,6 +80,18 @@ def parse_timing_csv(text: str) -> TimingSamples:
         except ValueError:
             skipped_malformed += 1
             continue
+        if not math.isfinite(cyc):
+            # S6 (fail-open guard): `float("nan")` / `float("inf")` do NOT raise
+            # in the parse above, and the `cyc == 0.0` zero-filter below is
+            # False for both, so a non-finite cycle used to slip into `samples`
+            # and poison Welch's t-test — abs(nan) is < every threshold, so the
+            # harness silently reported status=PASS, i.e. a CLEAN verdict on
+            # corrupt / overflowed timing data (interleaved stderr token like
+            # "inf", a div-by-zero in a buggy custom harness, ...). Count it as
+            # malformed so it's both dropped and surfaced by the malformed-rate
+            # warning instead of read as "no leak".
+            skipped_malformed += 1
+            continue
         if cls not in (0, 1):
             # S5: the harness only ever emits class 0 or 1. A row with any
             # other class is corrupt output (interleaved stdout, truncated
@@ -152,7 +165,20 @@ def run_timing_harness(
     # errors='replace'. The dudect harness emits CSV (ASCII), but a crashed
     # one can write garbage stderr before dying; `errors='replace'` keeps
     # that diagnostic visible instead of erroring out the parent.
-    proc = run_text([str(binary)], cwd=workdir, timeout=timeout)
+    #
+    # Bundle Q (FN-1): the binary was just compiled so it normally exists, but
+    # a noexec /tmp mount, an ETXTBSY race, or a silent toolchain stub can make
+    # it unrunnable. Convert OSError (FileNotFoundError/PermissionError/...) to
+    # RuntimeError so `_do_dudect`'s existing `except RuntimeError -> ERROR`
+    # handler catches it (status=ERROR -> INCONCLUSIVE) instead of a raw
+    # traceback. The T6 comment in cli._do_dudect promised "every uncaught
+    # failure mode -> ERROR"; this closes the executable-missing gap it left.
+    try:
+        proc = run_text([str(binary)], cwd=workdir, timeout=timeout)
+    except OSError as e:
+        raise RuntimeError(
+            f"timing harness {binary} could not be executed: {e}"
+        ) from e
     if proc.returncode != 0:
         raise RuntimeError(
             f"timing harness {binary} failed (rc={proc.returncode}):\n"

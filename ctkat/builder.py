@@ -48,6 +48,16 @@ def run_shell(command: str, workdir: Path, *, timeout: float) -> RunResult:
         proc = run_text(command, shell=True, cwd=workdir, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _timeout_result(command, timeout)
+    except FileNotFoundError as e:
+        # Bundle Q (FN-1): a missing command under shell=True surfaces as rc=127
+        # from the shell (handled below), so the only way run_text raises here is
+        # a missing / non-directory `workdir`. Report it as a clean build failure
+        # instead of a raw traceback. (rc=127, command-not-found convention.)
+        return RunResult(
+            returncode=127,
+            stdout="",
+            stderr=f"[ctkat] could not run shell command in {workdir}: {e}",
+        )
     return RunResult(
         returncode=proc.returncode,
         stdout=proc.stdout,
@@ -67,6 +77,19 @@ def run_argv(argv: List[str], workdir: Path, *, timeout: float) -> RunResult:
         proc = run_text(argv, cwd=workdir, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _timeout_result(" ".join(argv), timeout)
+    except FileNotFoundError as e:
+        # Bundle Q (FN-1): `argv: [prog, ...]` whose `prog` is missing / not
+        # executable (run_text raised ToolNotFoundError), or a missing workdir.
+        # The config validator only rejects an *empty* argv (T39); a non-empty
+        # argv with a bogus/non-exec program reaches here and used to raise a raw
+        # traceback. Treat it as a build failure (rc=127) so `_do_build`'s red
+        # banner reports it cleanly. The message carries the original error so a
+        # non-exec file or bad workdir isn't mislabeled as "not found".
+        return RunResult(
+            returncode=127,
+            stdout="",
+            stderr=f"[ctkat] could not run argv {argv[0]!r}: {e}",
+        )
     return RunResult(
         returncode=proc.returncode,
         stdout=proc.stdout,

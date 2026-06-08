@@ -17,6 +17,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from ._proc import run_text
 from .harness_generator import (
+    CompilerNotFoundError,
     HarnessGenerationError,
     TEMPLATE_DIR,
     _atomic_write_text,
@@ -83,6 +84,14 @@ def _compile(
         raise HarnessGenerationError(
             f"timing harness compile exceeded timeout={timeout}s ({cmd_str}). "
             "Bump cfg.dudect.compile_timeout or diagnose the hang."
+        )
+    except FileNotFoundError as e:
+        # Bundle Q (FN-1): dudect compiler (`cfg.dudect.compiler.cc`) missing /
+        # not executable. CompilerNotFoundError so `_do_dudect` exits 2
+        # (toolchain error), consistent with the ct path and the preflights.
+        raise CompilerNotFoundError(
+            f"compiler {cc!r} not found / not executable — install it (e.g. add "
+            f"to the Docker image) or set cfg.dudect.compiler.cc. ({e})"
         )
     if proc.returncode != 0:
         raise HarnessGenerationError(

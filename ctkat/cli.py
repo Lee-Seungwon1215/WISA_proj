@@ -22,6 +22,8 @@ def _fmt(x: Optional[float], digits: int = 3) -> str:
     return f"{x:.{digits}f}"
 
 import typer
+import yaml
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -55,6 +57,7 @@ from .ct_matrix import (
 from .ct_runner import classify_valgrind_run
 from .dudect_runner import TimingSamples, run_timing_harness
 from .harness_generator import (
+    CompilerNotFoundError,
     HarnessGenerationError,
     generate_and_compile,
     render_harness,
@@ -87,6 +90,47 @@ console = Console()
 
 def _resolve(base: Path, p: Path) -> Path:
     return p if p.is_absolute() else (base / p).resolve()
+
+
+def _load_config_or_exit(config: Path) -> CtkatConfig:
+    """Load + validate the yaml, mapping every load-time failure to a clean
+    exit-2 'config/toolchain error' instead of a raw Python traceback.
+
+    Bundle Q (FN-2): every subcommand called `load_config(config)` bare, so the
+    single most common user mistake — a typo'd `--config` path, or a yaml field
+    out of bounds — escaped as a rich traceback + exit 1. That is inconsistent
+    with this project's own convention (objdump-missing, no-`dudect`-section,
+    empty-matrix all exit 2 with a red message) AND breaks CI gating that keys
+    'exit 2 == config error'. We funnel the five things `load_config` can raise
+    (missing/unreadable/dir path, malformed YAML, non-mapping root, pydantic
+    ValidationError) into one clean exit 2.
+    """
+    try:
+        return load_config(config)
+    except FileNotFoundError:
+        console.print(
+            f"[bold red][CTKAT] config file not found:[/] {config}. "
+            "Check the --config path. (exit 2)"
+        )
+        raise typer.Exit(2)
+    except (IsADirectoryError, PermissionError, NotADirectoryError) as e:
+        console.print(
+            f"[bold red][CTKAT] config file not readable:[/] {config} — {e}. "
+            "(exit 2)"
+        )
+        raise typer.Exit(2)
+    except yaml.YAMLError as e:
+        console.print(
+            f"[bold red][CTKAT] config is not valid YAML:[/] {config}\n{e}\n"
+            "Fix the YAML syntax. (exit 2)"
+        )
+        raise typer.Exit(2)
+    except (ValidationError, ValueError) as e:
+        console.print(
+            f"[bold red][CTKAT] invalid config:[/] {config}\n{e}\n"
+            "Fix the offending field(s). (exit 2)"
+        )
+        raise typer.Exit(2)
 
 
 def _print_cflags_banner(cfg: CtkatConfig) -> None:
@@ -322,6 +366,13 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
                 workdir=ct_cwd,
                 timeout=cfg.ct.compile_timeout,
             )
+        except CompilerNotFoundError as e:
+            # FN-5(exit-code): a missing/non-exec compiler is a toolchain error
+            # → exit 2, matching asm-scan / ct-matrix, not exit 1 (real compile
+            # failure) below.
+            console.print(f"[bold red][CTKAT] Harness generation FAIL ({h.name})[/] — toolchain error")
+            console.print(str(e))
+            raise typer.Exit(2)
         except HarnessGenerationError as e:
             console.print(f"[bold red][CTKAT] Harness generation FAIL ({h.name})[/]")
             console.print(str(e))
@@ -760,6 +811,12 @@ def _do_dudect(
                 workdir=workdir,
                 timeout=dud.compile_timeout,
             )
+        except CompilerNotFoundError as e:
+            # FN-5(exit-code): toolchain error → exit 2, consistent with the ct
+            # path and the asm-scan / ct-matrix preflights.
+            console.print(f"[bold red][CTKAT] Timing harness gen FAIL ({h.name})[/] — toolchain error")
+            console.print(str(e))
+            raise typer.Exit(2)
         except HarnessGenerationError as e:
             console.print(f"[bold red][CTKAT] Timing harness gen FAIL ({h.name})[/]")
             console.print(str(e))
@@ -919,7 +976,7 @@ def dudect(
     ),
 ):
     """Run only the dudect-style statistical timing check."""
-    cfg = load_config(config)
+    cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
     if cfg.dudect is None:
         console.print("[red]No `dudect` section in config.[/]")
@@ -951,7 +1008,20 @@ def dudect(
         # Round-tripping through `model_validate` forces full validation
         # of the merged dict so CLI overrides are constrained identically
         # to yaml input.
-        dud = DudectConfig.model_validate({**dud.model_dump(), **updates})
+        #
+        # FN-6: but `model_validate` raises pydantic's ValidationError on a
+        # bound violation (`--seed 0`, `--measurements 99`), and only the
+        # int()-parse branch above was guarded — so a value that parses as an
+        # int yet violates a Field bound fell through to a raw traceback,
+        # re-opening the very crash T33 had closed. Catch it and exit cleanly.
+        try:
+            dud = DudectConfig.model_validate({**dud.model_dump(), **updates})
+        except ValidationError as e:
+            console.print(
+                f"[red]Invalid dudect override:[/] {e}\n"
+                "Check --measurements / --seed are within the allowed bounds."
+            )
+            raise typer.Exit(2)
 
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
     results = _do_dudect(dud, cfg_dir, cfg.project.name, out_dir, crop=crop)
@@ -1115,7 +1185,7 @@ def run(
     ),
 ):
     """Run the full pipeline: build -> kat -> ct -> dudect -> report."""
-    cfg = load_config(config)
+    cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
 
     _print_cflags_banner(cfg)
@@ -1221,7 +1291,7 @@ def ct(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
 ):
     """Run only the constant-time check stage (skip build/KAT)."""
-    cfg = load_config(config)
+    cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
     # F8: previously fell through `_do_generate({}) → _do_ct([]) → any_finding=False`
     # and printed bold-green "PASS" with exit 0 when `ct:` section was absent.
@@ -1298,7 +1368,7 @@ def asm_scan(
     must not silently exit 0 with an empty result just because its toolchain
     wasn't installed (fail-closed, like F2/F8).
     """
-    cfg = load_config(config)
+    cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
     if cfg.ct is None or not cfg.ct.harnesses:
         console.print("[red]No `ct` harnesses to scan.[/]")
@@ -1481,7 +1551,7 @@ def ct_matrix(
     build cell ERRORing (no usable result). Valgrind is required, so this is a
     Docker/Linux command.
     """
-    cfg = load_config(config)
+    cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
 
     if cfg.ct is None or not cfg.ct.harnesses:
@@ -1643,7 +1713,7 @@ def kat(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
 ):
     """Run only the KAT stage."""
-    cfg = load_config(config)
+    cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
     # F7: previously printed a yellow note and exited 0 when `kat:` was
     # absent — asymmetric with the dudect subcommand (which exits 2 in

@@ -1,6 +1,9 @@
+import math
+from pathlib import Path
+
 import pytest
 
-from ctkat.dudect_runner import parse_timing_csv
+from ctkat.dudect_runner import parse_timing_csv, run_timing_harness
 
 
 def test_parse_basic_csv():
@@ -8,6 +11,42 @@ def test_parse_basic_csv():
     s = parse_timing_csv(text)
     assert s.classes == [0, 1, 0]
     assert s.cycles == [100, 200, 110]
+
+
+def test_parse_drops_nonfinite_cycles_as_malformed():
+    # FN / S6 (fail-open fix): float('nan')/float('inf') do NOT raise on parse
+    # and are not == 0.0, so they used to slip into samples and poison the
+    # t-test (abs(nan) < every threshold => silent PASS). They must be dropped
+    # as malformed, leaving only finite samples.
+    text = (
+        "sample_id,class,cycles\n"
+        "0,0,100\n"
+        "1,1,nan\n"
+        "2,1,inf\n"
+        "3,1,-inf\n"
+        "4,0,110\n"
+    )
+    s = parse_timing_csv(text)
+    assert s.classes == [0, 0]
+    assert s.cycles == [100, 110]
+    assert all(math.isfinite(c) for c in s.cycles)
+
+
+def test_parse_nonfinite_flood_trips_malformed_warning(capsys):
+    # The dropped non-finite rows feed the existing malformed-rate warning so a
+    # corrupt run is surfaced, not silently shrunk.
+    rows = "".join(f"{i},{i%2},nan\n" for i in range(20))
+    parse_timing_csv("sample_id,class,cycles\n0,0,100\n" + rows)
+    assert "malformed" in capsys.readouterr().err.lower()
+
+
+def test_run_timing_harness_missing_binary_raises_runtimeerror(tmp_path):
+    # FN-1: a binary that can't be executed (here: doesn't exist) must become a
+    # RuntimeError so _do_dudect's existing handler maps it to status=ERROR,
+    # not a raw FileNotFoundError traceback escaping the T6 promise.
+    missing = tmp_path / "nope_binary"
+    with pytest.raises(RuntimeError):
+        run_timing_harness(missing, tmp_path, timeout=5)
 
 
 def test_parse_skips_malformed_rows():

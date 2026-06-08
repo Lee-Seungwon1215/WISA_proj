@@ -323,6 +323,21 @@ class KatConfig(BaseModel):
                 "kat: argv must be a non-empty list — its first element is "
                 "the program to execute (T39)."
             )
+        # FN-5 (§7 validate-at-load): `expected_pattern` is one of two
+        # user-overridable yaml values compiled as a regex (the other is
+        # `ct.sentinel_pattern`, validated identically in
+        # CtConfig._check_sentinel_pattern). cli._do_kat applies this one to the
+        # KAT runner's stdout. Every other C-bound value is validated at load
+        # (Bundle O), but a typo'd / hostile regex used to raise a raw
+        # `re.error` deep inside the KAT phase. Compile it here so the failure
+        # surfaces as a clean ValidationError before anything runs.
+        try:
+            re.compile(self.expected_pattern)
+        except re.error as e:
+            raise ValueError(
+                f"kat.expected_pattern is not a valid regex: {e} "
+                f"(pattern={self.expected_pattern!r})"
+            )
         return self
 
 
@@ -466,11 +481,13 @@ class HarnessConfig(BaseModel):
 
 def _default_valgrind_flags() -> List[str]:
     # `--error-exitcode=99` makes Valgrind exit with 99 instead of the
-    # harness's own status when it detects an error. We don't actually
-    # branch on this exit code (we parse the log directly), but it's a
-    # de-facto standard convention from the doc/PQClean world and keeps the
-    # exit code distinguishable from a normal harness failure (0/1) or a
-    # shell signal (128+sig).
+    # harness's own status when it detects an error. We classify primarily on
+    # the parsed log, but rc=99 is ALSO used as a cross-check: rc=99 with zero
+    # parsed findings means our whitelist missed a real error, so ct_runner
+    # (FN-3) fails that case closed (ERROR -> INCONCLUSIVE) rather than reading
+    # it as PASS. It's also a de-facto convention from the doc/PQClean world and
+    # keeps the exit code distinguishable from a normal harness failure (0/1) or
+    # a shell signal (128+sig).
     return [
         "--tool=memcheck",
         "--track-origins=yes",
@@ -499,7 +516,12 @@ class CtConfig(BaseModel):
     # it to 0xC0FFEE (xorshift64 gets stuck on state=0) — accepting it here
     # would mean Python logs `0x0` while C runs with `0xC0FFEE`. The swap is
     # semantically necessary; we just refuse to let the two layers disagree.
-    seed: int = Field(default=0xC0FFEE, gt=0)
+    # FN-4 (§4 layer contract): the C harness holds the seed in a uint64_t, so
+    # also cap it at 2**64-1. Python's int is unbounded — without `le`, a yaml
+    # `seed:` above 2**64-1 loads fine (and gets logged as a seed the binary
+    # never used) then dies with a cryptic "integer literal too large" deep in
+    # the harness compile. Reject it up front instead.
+    seed: int = Field(default=0xC0FFEE, gt=0, le=0xFFFFFFFFFFFFFFFF)
     # Bundle E-2 (F5): manual-binary harnesses produce zero findings if the
     # binary never actually invokes the target function with tainted input
     # — `binary: /bin/true` would happily report a PASS. When True, _do_ct
@@ -531,6 +553,39 @@ class CtConfig(BaseModel):
     @model_validator(mode="after")
     def _check_unique_harness_names(self) -> "CtConfig":
         _check_unique_names("ct.harnesses", [h.name for h in self.harnesses])
+        return self
+
+    @model_validator(mode="after")
+    def _check_sentinel_pattern(self) -> "CtConfig":
+        # FN-5 (§7 validate-at-load): `sentinel_pattern` is compiled as a regex
+        # in cli._do_ct (matched against a manual binary's stdout for the F5
+        # sentinel check). A malformed override used to raise a raw `re.error`
+        # mid-ct-phase; compile it at load so it fails as a clean ValidationError.
+        try:
+            re.compile(self.sentinel_pattern)
+        except re.error as e:
+            raise ValueError(
+                f"ct.sentinel_pattern is not a valid regex: {e} "
+                f"(pattern={self.sentinel_pattern!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _require_error_exitcode(self) -> "CtConfig":
+        # FN-3 layer contract (§4): ct_runner's whitelist-gap fail-closed keys
+        # on `result.returncode == 99` — that cross-check (rc=99 + 0 parsed
+        # findings → ERROR, never PASS) only works if `--error-exitcode=99`
+        # actually survives in valgrind_flags. Since valgrind_flags is
+        # user-overridable, an override that drops it would silently disable the
+        # safety net AND keep the rc on the harness's own code. Enforce the flag
+        # at load so the Python classifier's guarantee and the yaml layer agree.
+        if not any(f.strip() == "--error-exitcode=99" for f in self.valgrind_flags):
+            raise ValueError(
+                "ct.valgrind_flags must include '--error-exitcode=99' — "
+                "ct_runner's whitelist-gap safeguard (rc=99 + 0 findings → "
+                "ERROR/INCONCLUSIVE) depends on it; without it a Valgrind error "
+                "our parser doesn't recognize would silently read as PASS."
+            )
         return self
 
 
@@ -680,7 +735,10 @@ class DudectConfig(BaseModel):
     # 0xC0FFEE (xorshift64 stuck-at-zero), which would make Python log `0x0`
     # while the running binary uses 0xC0FFEE — a silent reproducibility lie.
     # Optional[int] keeps `None` (random-pick) working.
-    seed: Optional[int] = Field(default=0xC0FFEE, gt=0)
+    # FN-4 (§4 layer contract): cap at 2**64-1 — the C harness seed is a
+    # uint64_t, so a larger value would only surface as an "integer literal too
+    # large" compile error deep in the timing harness. Reject it at load.
+    seed: Optional[int] = Field(default=0xC0FFEE, gt=0, le=0xFFFFFFFFFFFFFFFF)
     threshold_warning: float = 4.5
     threshold_fail: float = 10.0
     compiler: DudectCompilerConfig = Field(default_factory=DudectCompilerConfig)

@@ -1062,3 +1062,65 @@ def test_report_filename_traversal_rejected():
             ReportConfig.model_validate({"csv": bad})
     # plain filenames still accepted
     ReportConfig.model_validate({"csv": "ctkat_report.csv", "json": "out.json"})
+
+
+# --- FN-5: user-overridable regex fields validated at config load ----------
+
+
+def test_kat_expected_pattern_invalid_regex_rejected():
+    """FN-5: a malformed `kat.expected_pattern` used to raise a raw `re.error`
+    deep inside the KAT phase; it must now fail at config load."""
+    from ctkat.config import KatConfig
+    with pytest.raises(ValidationError, match=r"not a valid regex"):
+        KatConfig.model_validate({"command": "true", "expected_pattern": "([0-9"})
+    # a valid (even non-default) regex still loads
+    KatConfig.model_validate({"command": "true", "expected_pattern": r"^OK (\d+)$"})
+
+
+def test_ct_sentinel_pattern_invalid_regex_rejected():
+    """FN-5: same for `ct.sentinel_pattern` (matched against manual-binary
+    stdout in the F5 sentinel check)."""
+    from ctkat.config import CtConfig
+    with pytest.raises(ValidationError, match=r"not a valid regex"):
+        CtConfig.model_validate(
+            {"harnesses": [{"name": "h", "binary": "b"}], "sentinel_pattern": "(*bad"}
+        )
+    CtConfig.model_validate(
+        {"harnesses": [{"name": "h", "binary": "b"}], "sentinel_pattern": r"RAN:\s*(\S+)"}
+    )
+
+
+# --- FN-4: seed is a C uint64_t — reject values outside [1, 2**64-1] --------
+
+
+def test_ct_seed_above_uint64_rejected():
+    """FN-4 (§4 layer contract): a seed > 2**64-1 loads fine in Python but
+    fails to compile as a C ULL literal — reject it at load instead."""
+    from ctkat.config import CtConfig
+    with pytest.raises(ValidationError):
+        CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}], "seed": 2**64})
+    # the max valid seed and the default still load
+    CtConfig.model_validate(
+        {"harnesses": [{"name": "h", "binary": "b"}], "seed": 0xFFFFFFFFFFFFFFFF}
+    )
+
+
+def test_dudect_seed_above_uint64_rejected():
+    from ctkat.config import DudectConfig
+    with pytest.raises(ValidationError):
+        DudectConfig.model_validate(
+            {"harnesses": [{"name": "h", "template": "generic", "function": "f"}],
+             "seed": 2**64}
+        )
+
+
+def test_seed_zero_still_rejected_both_layers():
+    """F16 regression guard: the existing `seed=0` rejection (xorshift64 stuck
+    -at-zero swap) must survive the addition of the upper bound."""
+    from ctkat.config import CtConfig, DudectConfig
+    with pytest.raises(ValidationError):
+        CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}], "seed": 0})
+    with pytest.raises(ValidationError):
+        DudectConfig.model_validate(
+            {"harnesses": [{"name": "h", "template": "generic", "function": "f"}], "seed": 0}
+        )

@@ -54,6 +54,17 @@ class HarnessGenerationError(RuntimeError):
     pass
 
 
+class CompilerNotFoundError(HarnessGenerationError):
+    """The compiler itself is missing / not executable (FN-1 via run_text's
+    ToolNotFoundError), as opposed to a genuine non-zero compile of valid
+    inputs. Subclasses HarnessGenerationError so existing
+    `except HarnessGenerationError` handlers still catch it, but the cli can
+    catch it FIRST and exit 2 (toolchain error) — consistent with the
+    objdump/valgrind/ct-matrix preflights — instead of exit 1 (a real
+    compile failure). FN-5(exit-code)."""
+    pass
+
+
 @dataclass
 class GeneratedHarness:
     source_path: Path
@@ -119,6 +130,15 @@ def compile_harness(
         raise HarnessGenerationError(
             f"harness compile exceeded timeout={timeout}s ({cmd_str}). "
             "Bump cfg.ct.compile_timeout or diagnose the hang."
+        )
+    except FileNotFoundError as e:
+        # Bundle Q (FN-1): the compiler (`cc`, default gcc) is missing / not
+        # executable (run_text raised ToolNotFoundError, a FileNotFoundError
+        # subclass). Raise CompilerNotFoundError so the cli reports it cleanly
+        # AND exits 2 (toolchain error), not a raw traceback or exit 1.
+        raise CompilerNotFoundError(
+            f"compiler {cc!r} not found / not executable — install it (e.g. add "
+            f"to the Docker image) or set the harness `cc`. ({e})"
         )
     if proc.returncode != 0:
         raise HarnessGenerationError(

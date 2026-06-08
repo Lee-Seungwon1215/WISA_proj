@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest import mock
 
+import pytest
 from typer.testing import CliRunner
 
 from ctkat.cli import _compute_verdicts, _print_cflags_banner, app
@@ -1268,3 +1269,198 @@ def test_ct_subcommand_empty_harnesses_exit_nonzero(tmp_path):
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
     assert result.exit_code == 2
     assert "Constant-Time Check: PASS" not in result.stdout
+
+
+# --- FN-2: config load failures exit 2 cleanly (no raw traceback) -----------
+
+
+def test_missing_config_path_exits_two_cleanly():
+    """FN-2: a typo'd --config path used to raise a raw FileNotFoundError
+    traceback + exit 1. It must now match the project's exit-2 config-error
+    convention with a friendly message."""
+    result = CliRunner().invoke(app, ["ct", "--config", "/no/such/ctkat.yaml"])
+    assert result.exit_code == 2
+    assert "config file not found" in result.stdout.lower()
+
+
+def test_malformed_yaml_config_exits_two(tmp_path):
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text("project: {name: d\nbuild: [unclosed\n")  # broken YAML
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "yaml" in result.stdout.lower() or "config" in result.stdout.lower()
+
+
+def test_invalid_config_field_exits_two_not_traceback(tmp_path):
+    """A field out of bounds (seed=0) must surface as a clean config error,
+    not a pydantic ValidationError traceback escaping the command."""
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(
+        'project: {name: d}\nbuild: {command: "true"}\n'
+        "ct:\n  seed: 0\n  harnesses:\n    - {name: h, binary: b}\n"
+    )
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "invalid config" in result.stdout.lower()
+
+
+# --- FN-6: dudect CLI override bound violations exit 2 cleanly ---------------
+
+
+def _minimal_dudect_yaml(tmp_path) -> Path:
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent("""
+        project: {name: demo}
+        build: {command: "true"}
+        dudect:
+          enabled: true
+          harnesses:
+            - {name: h1, template: generic, function: f}
+    """))
+    return cfg
+
+
+def test_dudect_seed_zero_override_exits_two_cleanly(tmp_path):
+    """FN-6: `--seed 0` parses as an int but violates Field(gt=0). Only the
+    int()-parse branch was guarded before, so this fell through to a raw
+    ValidationError traceback. Must exit 2 with a clean message."""
+    cfg = _minimal_dudect_yaml(tmp_path)
+    result = CliRunner().invoke(app, ["dudect", "--config", str(cfg), "--seed", "0"])
+    assert result.exit_code == 2
+    assert "invalid dudect override" in result.stdout.lower()
+
+
+def test_dudect_measurements_out_of_bounds_override_exits_two(tmp_path):
+    cfg = _minimal_dudect_yaml(tmp_path)
+    result = CliRunner().invoke(
+        app, ["dudect", "--config", str(cfg), "--measurements", "1"]
+    )
+    assert result.exit_code == 2
+    assert "invalid dudect override" in result.stdout.lower()
+
+
+# --- FN-1: runners fail closed (rc=127) on a missing executable -------------
+
+
+def test_run_argv_missing_program_returns_127(tmp_path):
+    """FN-1: `argv: [bogus]` (non-empty, so the T39 empty-argv check passes)
+    used to raise a raw FileNotFoundError. Now it's a clean rc=127 RunResult so
+    _do_build reports a normal Build FAIL."""
+    from ctkat.builder import run_argv
+    r = run_argv(["ctkat-no-such-program-xyz"], tmp_path, timeout=5)
+    assert r.returncode == 127
+    assert not r.ok
+    assert "could not run" in r.stderr.lower()
+
+
+def test_run_argv_non_executable_program_returns_127(tmp_path):
+    """FN-1 (review): a program that EXISTS but isn't executable raises
+    PermissionError (NOT FileNotFoundError) — it must also fail closed (rc=127),
+    not escape as a raw traceback."""
+    import os
+    from ctkat.builder import run_argv
+    stub = tmp_path / "stub.sh"
+    stub.write_text("#!/bin/sh\necho hi\n")
+    os.chmod(stub, 0o644)  # readable, NOT executable
+    r = run_argv([str(stub)], tmp_path, timeout=5)
+    assert r.returncode == 127
+    assert not r.ok
+
+
+def test_run_valgrind_missing_valgrind_returns_127(monkeypatch, tmp_path):
+    """FN-1: valgrind absent must become a recognizable rc (127) that
+    classify_valgrind_run maps to ERROR -> INCONCLUSIVE, not a raw traceback."""
+    from ctkat import valgrind_runner as vr
+
+    def _boom(*a, **k):
+        raise FileNotFoundError(2, "No such file or directory", "valgrind")
+
+    monkeypatch.setattr(vr, "run_text", _boom)
+    res = vr.run_valgrind(
+        tmp_path / "bin", tmp_path / "vg.log", [], tmp_path, timeout=5
+    )
+    assert res.returncode == 127
+    assert "valgrind" in res.stderr.lower()
+
+    # ...and classify routes that to ERROR (the fail-closed end state).
+    from ctkat.ct_runner import classify_valgrind_run
+    (tmp_path / "vg.log").write_text("")
+    out = classify_valgrind_run(res, tmp_path / "vg.log")
+    assert out.status == "ERROR"
+
+
+# --- FN-1 (review): non-executable program / missing-or-non-exec compiler ----
+
+
+def test_proc_non_executable_raises_toolnotfound(tmp_path):
+    """Review root cause: run_text must translate PermissionError (a file that
+    exists but isn't executable) into ToolNotFoundError too, not only
+    FileNotFoundError — PermissionError is not a FileNotFoundError subclass."""
+    import os
+    from ctkat._proc import run_text, ToolNotFoundError
+    stub = tmp_path / "x"
+    stub.write_text("nope")
+    os.chmod(stub, 0o644)
+    with pytest.raises(ToolNotFoundError):
+        run_text([str(stub)], timeout=5)
+
+
+def test_compile_harness_non_executable_cc_raises_compiler_not_found(tmp_path):
+    """Review + FN-5(exit-code): a `cc` that exists but isn't executable raised a
+    raw PermissionError at the compile site. Now it's a clean
+    CompilerNotFoundError (-> the cli exits 2, toolchain error)."""
+    import os
+    from ctkat.harness_generator import compile_harness, CompilerNotFoundError
+    stub = tmp_path / "fakecc"
+    stub.write_text("#!/bin/sh\n")
+    os.chmod(stub, 0o644)  # not executable
+    src = tmp_path / "h.c"
+    src.write_text("int main(void){return 0;}\n")
+    with pytest.raises(CompilerNotFoundError):
+        compile_harness(
+            source_path=src, binary_path=tmp_path / "h", sources=[],
+            include_dirs=[], cflags=[], workdir=tmp_path, timeout=10,
+            cc=str(stub),
+        )
+
+
+def test_ct_missing_compiler_exits_two(monkeypatch, tmp_path):
+    """FN-5(exit-code): a missing/non-exec compiler in the ct path is a
+    toolchain error -> exit 2 (consistent with asm-scan / ct-matrix), NOT exit 1
+    (which means a real compile failure of valid inputs)."""
+    from ctkat import cli as cli_module
+    from ctkat.harness_generator import CompilerNotFoundError
+
+    def _boom(*a, **k):
+        raise CompilerNotFoundError("compiler 'gcc' not found / not executable")
+
+    monkeypatch.setattr(cli_module, "generate_and_compile", _boom)
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent("""
+        project: {name: d}
+        build: {command: "true"}
+        ct:
+          harnesses:
+            - {name: h, template: generic, function: f}
+    """))
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "toolchain error" in result.stdout.lower()
+    assert "Traceback" not in result.stdout
+
+
+# --- FN-3 layer contract: valgrind_flags must keep --error-exitcode=99 -------
+
+
+def test_ct_valgrind_flags_without_error_exitcode_rejected():
+    """FN-3 (§4): dropping --error-exitcode=99 from valgrind_flags silently
+    disables the rc=99 whitelist-gap safeguard, so it's rejected at load."""
+    from pydantic import ValidationError
+    from ctkat.config import CtConfig
+    with pytest.raises(ValidationError, match=r"error-exitcode=99"):
+        CtConfig.model_validate(
+            {"harnesses": [{"name": "h", "binary": "b"}],
+             "valgrind_flags": ["--tool=memcheck"]}
+        )
+    # the default (which includes it) still loads
+    CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}]})
