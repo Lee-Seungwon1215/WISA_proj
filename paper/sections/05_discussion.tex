@@ -23,7 +23,11 @@ the rest --- which is why the framework binds three.
 
 \paragraph{Limitations.}
 The structural and timing checks are dynamic and see only exercised paths;
-untaken-branch leaks are out of scope. The dudect test~\cite{dudect} runs
+untaken-branch leaks are out of scope. For KEMs specifically, the structural
+harness decapsulates a \emph{valid} ciphertext, so Valgrind covers the normal
+path only; the implicit-rejection (Fujisaki--Okamoto) path---a prime ML-KEM leak
+surface---can be exercised by dudect's \texttt{leak\_target:~fo} timing mode
+rather than by the structural check. The dudect test~\cite{dudect} runs
 under QEMU/Docker with a noisy cycle counter (Table~\ref{tab:dudect}); large
 separations are unambiguous but precise statistics should be confirmed
 natively (\texttt{taskset}, frequency scaling off). Asm-scan is candidate-level

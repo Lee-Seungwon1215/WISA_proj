@@ -463,6 +463,30 @@ def _do_ct(
             "'CTKAT-HARNESS-RAN: <name>' on stdout (see known_issues F5)."
         )
 
+    # B5: KEM structural coverage caveat — the kem harness calls dec on a VALID
+    # ciphertext, so Valgrind analyzes only the NORMAL decapsulation path. The
+    # implicit-rejection / FO fallback path (invalid ct) — a high-value ML-KEM
+    # leak surface — is NOT structurally analyzed here. Surface this so a PASS
+    # isn't over-read, and tailor the remedy to whether the config actually has a
+    # dudect fo harness (don't advertise coverage the run won't produce).
+    if any(h.template == "kem" for h in cfg.ct.harnesses):
+        fo_harnesses = [
+            h.name for h in (cfg.dudect.harnesses if cfg.dudect is not None else [])
+            if getattr(h, "leak_target", None) == "fo"
+        ]
+        if fo_harnesses:
+            tail = (f"that path is timing-covered by your dudect leak_target=fo "
+                    f"harness(es): {', '.join(fo_harnesses)}.")
+        else:
+            tail = ("that path is NOT covered by this run — add a dudect harness "
+                    "with [bold]leak_target: fo[/] (see examples/pqc_mlkem768).")
+        console.print(
+            "[dim][CTKAT] note:[/dim] KEM structural CT covers the valid-ct "
+            f"(normal) decapsulation path only; the implicit-rejection / FO "
+            f"fallback path is NOT analyzed by Valgrind here — {tail} "
+            "A PASS says nothing about that path. (B5)"
+        )
+
     results: List[Tuple[str, str, List[Finding]]] = []
     for h in cfg.ct.harnesses:
         is_manual = h.template is None

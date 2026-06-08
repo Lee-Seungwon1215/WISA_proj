@@ -214,13 +214,11 @@ def welch_with_cropping(
     Caller must ensure cutoffs starts with 1.0 — otherwise the uncropped
     fields will be left as None and the all-cropping-fails fallback is lost.
 
-    Bundle P (T15): sort each class ONCE instead of once-per-cutoff. The
-    previous loop called `upper_crop(samples, p)` for every cutoff, and
-    each call ran `sorted(samples)` — 10 sorts (5 cutoffs × 2 classes)
-    at O(N log N) each. With 100k measurements that's ~15M comparisons
-    repeated for no reason. We now sort each class once and slice the
-    prefix per cutoff. Result is bit-identical (same sort, same cutoff
-    indexing); only the runtime changes.
+    B4 (Bundle S): the cutoff threshold is taken from the POOLED distribution and
+    applied to both classes (dudect's actual protocol), not per-class. This is a
+    PROTOCOL-FIDELITY change, NOT a sensitivity gain — see the inline note below
+    for the real (and somewhat counter-intuitive) tradeoff. Sorting is still done
+    once per class (the Bundle P/T15 optimization).
     """
     # T30: the uncropped diagnostic fields (`t_score_uncropped`, the
     # all-cropping-fails fallback) depend on cutoffs[0] being the no-crop
@@ -235,8 +233,19 @@ def welch_with_cropping(
 
     sorted_c0 = sorted(class0)
     sorted_c1 = sorted(class1)
-    n0_total = len(sorted_c0)
-    n1_total = len(sorted_c1)
+    # B4 (Bundle S): crop at a SINGLE threshold drawn from the POOLED distribution
+    # (dudect / Reparaz et al. 2017 §3), applied to BOTH classes — NOT a per-class
+    # percentile. Rationale is PROTOCOL FIDELITY: dudect uses one common cutoff so
+    # the two cropped sets are directly comparable, and this module advertises that
+    # protocol. Honest caveat (empirically verified, contra an earlier assumption):
+    # this is NOT more sensitive than per-class cropping. When the noise outliers
+    # are roughly symmetric across classes, pooling can crop the slower (leaking)
+    # class's bulk MORE and report a LOWER |t| than per-class would — i.e. it can
+    # under-report at the margin (WARNING-band). It never loses a strong leak,
+    # though: cutoff 1.0 (no-crop) is always a candidate and the max |t| is taken,
+    # so a no-crop FAIL is always preserved. (Previously this was per-class.)
+    pooled = sorted(list(class0) + list(class1))
+    n_pooled = len(pooled)
 
     best: Optional[WelchResult] = None
     best_at: Optional[float] = None
@@ -250,20 +259,15 @@ def welch_with_cropping(
         elif p <= 0.0:
             continue
         else:
-            # Same indexing as `upper_crop` to keep results bit-identical:
-            # threshold_idx = min(int(n*p), n-1), then keep all samples
-            # with value <= sorted[threshold_idx]. On the sorted list
-            # that's a prefix of length `bisect_right(sorted, threshold)`.
-            # T26: `bisect_right` is imported at module top, not here in the
-            # per-cutoff loop body.
-            idx0 = min(int(n0_total * p), n0_total - 1) if n0_total else 0
-            idx1 = min(int(n1_total * p), n1_total - 1) if n1_total else 0
-            if not n0_total or not n1_total:
+            if not n_pooled:
                 continue
-            thr0 = sorted_c0[idx0]
-            thr1 = sorted_c1[idx1]
-            c0 = sorted_c0[:bisect_right(sorted_c0, thr0)]
-            c1 = sorted_c1[:bisect_right(sorted_c1, thr1)]
+            # Threshold = value at percentile p of the POOLED samples; keep every
+            # sample (in EACH class) <= that single shared threshold. On the
+            # pre-sorted class lists that prefix length is bisect_right(class, thr).
+            idx = min(int(n_pooled * p), n_pooled - 1)
+            thr = pooled[idx]
+            c0 = sorted_c0[:bisect_right(sorted_c0, thr)]
+            c1 = sorted_c1[:bisect_right(sorted_c1, thr)]
         if len(c0) < 2 or len(c1) < 2:
             continue
         r = welch_t_test(c0, c1, warning_threshold, fail_threshold)

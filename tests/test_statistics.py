@@ -158,40 +158,56 @@ def test_welch_with_cropping_too_few_samples_raises():
 # --- Bundle P (T15): sort-once optimization preserves results -----------
 
 
-def test_welch_with_cropping_bit_identical_after_T15_optimization():
-    """T15 regression: the sort-once + prefix-slice rewrite must yield
-    bit-identical results to the old "sort per cutoff" version. Compare
-    against a reimplementation of the prior logic over a stress input.
+def test_welch_with_cropping_follows_pooled_protocol_not_per_class():
+    """B4 (Bundle S) lock-in: each cutoff crops at a SINGLE threshold from the
+    POOLED distribution applied to BOTH classes (dudect/Reparaz §3), NOT a
+    per-class percentile. Verified against BOTH a pooled and a per-class
+    reimplementation on data where the two genuinely diverge — so a silent
+    regression back to per-class cropping flips `got` off the pooled reference
+    and fails here. (Note: pooled is a fidelity choice, not a sensitivity gain —
+    on this data per-class actually reports the LARGER |t|.)
     """
     from bisect import bisect_right
     from ctkat.statistics import (
-        upper_crop, welch_t_test as wtt, welch_with_cropping, CROP_PERCENTILES,
+        welch_t_test as wtt, welch_with_cropping, CROP_PERCENTILES,
     )
     rng = random.Random(42)
     c0 = [rng.gauss(100, 5) for _ in range(2000)] + [1e6, 5e5, 8e5]
     c1 = [rng.gauss(110, 5) for _ in range(2000)] + [9e5]
+    s0, s1 = sorted(c0), sorted(c1)
+    pooled = sorted(c0 + c1)
+    n = len(pooled)
 
-    # Reference: original "sort per cutoff" semantics.
-    expected = None
-    expected_at = None
-    for p in CROP_PERCENTILES:
-        a = upper_crop(c0, p)
-        b = upper_crop(c1, p)
-        if len(a) < 2 or len(b) < 2:
-            continue
-        r = wtt(a, b)
-        if expected is None or r.abs_t_score > expected.abs_t_score:
-            expected = r
-            expected_at = p
+    def _best(per_class: bool):
+        best, best_at = None, None
+        for p in CROP_PERCENTILES:
+            if p >= 1.0:
+                a, b = s0, s1
+            elif per_class:
+                a = s0[:bisect_right(s0, s0[min(int(len(s0) * p), len(s0) - 1)])]
+                b = s1[:bisect_right(s1, s1[min(int(len(s1) * p), len(s1) - 1)])]
+            else:
+                thr = pooled[min(int(n * p), n - 1)]
+                a = s0[:bisect_right(s0, thr)]
+                b = s1[:bisect_right(s1, thr)]
+            if len(a) < 2 or len(b) < 2:
+                continue
+            r = wtt(a, b)
+            if best is None or r.abs_t_score > best.abs_t_score:
+                best, best_at = r, p
+        return best, best_at
 
+    pooled_best, pooled_at = _best(False)
+    per_class_best, _ = _best(True)
     got = welch_with_cropping(c0, c1)
-    # Same winning cutoff.
-    assert got.cropped_at == expected_at
-    # Same n0/n1 → same sample counts survived cropping.
-    assert got.n0 == expected.n0
-    assert got.n1 == expected.n1
-    # |t| bit-identical (within float fuzz).
-    assert abs(got.abs_t_score - expected.abs_t_score) < 1e-12
+    # the two protocols genuinely diverge on this input (so the test discriminates)
+    assert abs(pooled_best.abs_t_score - per_class_best.abs_t_score) > 1e-9
+    # the production function follows the POOLED protocol, bit-identically ...
+    assert got.cropped_at == pooled_at
+    assert got.n0 == pooled_best.n0 and got.n1 == pooled_best.n1
+    assert abs(got.abs_t_score - pooled_best.abs_t_score) < 1e-12
+    # ... and is NOT the per-class result (catches a regression to per-class)
+    assert abs(got.abs_t_score - per_class_best.abs_t_score) > 1e-9
 
 
 # --- Bundle G: Cohen's d (S3) ----------------------------------------------

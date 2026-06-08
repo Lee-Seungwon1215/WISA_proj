@@ -1660,3 +1660,59 @@ def test_screen_kat_fail_with_continue_gates_exit2(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, ["screen", "--config", str(cfg), "--continue-on-kat-fail"])
     assert result.exit_code == 2
     assert "kat fail" in result.stdout.lower()
+
+
+def _stub_kem_ct(monkeypatch, tmp_path):
+    from ctkat import cli as cli_module
+    from ctkat.valgrind_runner import ValgrindResult
+
+    def fake_rv(binary, log_path, flags, workdir, **kw):
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("==1== ERROR SUMMARY: 0 errors from 0 contexts\n")
+        return ValgrindResult(returncode=0, log_path=log_path, stdout="", stderr="")
+
+    monkeypatch.setattr(cli_module, "run_valgrind", fake_rv)
+    monkeypatch.setattr(cli_module, "_do_generate", lambda *a, **k: {"kd": tmp_path / "kd"})
+
+
+def test_ct_kem_caveat_when_no_fo_harness_recommends_adding_one(monkeypatch, tmp_path):
+    # B5 (review #8): kem ct harness, but NO dudect leak_target=fo harness → the
+    # note must say the FO path is NOT covered and recommend adding one (don't
+    # advertise coverage the run won't produce).
+    _stub_kem_ct(monkeypatch, tmp_path)
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent('''
+        project: {name: d}
+        build: {command: "true"}
+        ct:
+          harnesses:
+            - {name: kd, template: kem, header: api.h, prefix: "P_"}
+    '''))
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    # collapse Rich's line-wrapping so multi-word phrases match regardless of width
+    out = " ".join(result.stdout.split())
+    assert "valid-ct" in out.lower()
+    assert "leak_target: fo" in out
+    assert "not covered" in out.lower()
+
+
+def test_ct_kem_caveat_when_fo_harness_present_says_covered(monkeypatch, tmp_path):
+    # B5 (review #8): a dudect leak_target=fo harness IS configured → the note
+    # must say that path is covered by it, naming the harness.
+    _stub_kem_ct(monkeypatch, tmp_path)
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent('''
+        project: {name: d}
+        build: {command: "true"}
+        ct:
+          harnesses:
+            - {name: kd, template: kem, header: api.h, prefix: "P_"}
+        dudect:
+          enabled: false
+          harnesses:
+            - {name: kd_fo, template: kem, header: api.h, prefix: "P_", leak_target: fo}
+    '''))
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    out = " ".join(result.stdout.split())
+    assert "timing-covered by your dudect" in out.lower()
+    assert "kd_fo" in out

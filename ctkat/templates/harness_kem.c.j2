@@ -17,6 +17,14 @@
  * declared under `kat:` in ctkat.yaml — keeping the concerns split avoids
  * the doc §7.1 ambiguity where one binary did both jobs.
  *
+ * COVERAGE CAVEAT (B5): dec is called on a VALID ciphertext (from enc), so this
+ * STRUCTURAL check analyzes only the NORMAL decapsulation path. The
+ * implicit-rejection / Fujisaki-Okamoto fallback path (taken on an INVALID
+ * ciphertext) — often the highest-value ML-KEM leak surface — is NOT exercised
+ * here. That path can be timing-covered by a dudect harness with
+ * `leak_target: fo` (see examples/pqc_mlkem768); a Valgrind PASS on this harness
+ * says nothing about the rejection path.
+ *
  * `prefix` lets us match PQClean-style namespaced APIs such as
  * PQCLEAN_MLKEM768_CLEAN_crypto_kem_dec without changing the template.
  */

@@ -125,6 +125,30 @@ dudect:
         # T38/R1: common/randombytes.c omitted (weak override → reproducible);
         # see the kem_dec dudect harness above for the full rationale.
 
+    # fo-leak axis (Bundle K / B5): class 0 valid ct (via enc) vs class 1
+    # invalid ct → dec is forced down the implicit-rejection / Fujisaki-Okamoto
+    # fallback path. This is the path the Valgrind structural harness CANNOT
+    # cover (it only decapsulates a valid ct), so this dudect harness is the
+    # timing coverage the ct verdict's B5 caveat points to.
+    - name: kem_dec_fo
+      template: kem
+      leak_target: fo
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      include_dirs: [clean, common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+
 report:
   output_dir: ./reports
 
