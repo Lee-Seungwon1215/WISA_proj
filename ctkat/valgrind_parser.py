@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import FrozenSet, List, Optional, Sequence, Tuple
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 
 class FindingType(str, Enum):
@@ -43,9 +43,11 @@ class Finding:
         return self.origin_frames[0] if self.origin_frames else None
 
 
-_HEADER_RE = re.compile(r"^==\d+==\s?(.*)$")
+_HEADER_RE = re.compile(r"^==(?P<pid>\d+)==\s?(?P<content>.*)$")
 _FRAME_RE = re.compile(
-    r"^==\d+==\s+(?:at|by)\s+(0x[0-9A-Fa-f]+):\s+(.+?)\s+\((.+)\)\s*$"
+    r"^==(?P<pid>\d+)==\s+(?:at|by)\s+"
+    r"(?P<addr>0x[0-9A-Fa-f]+):\s+"
+    r"(?P<fn>.+?)(?:\s+\((?P<loc>.+)\))?\s*$"
 )
 _FILE_LINE_RE = re.compile(r"^(.+):(\d+)$")
 # Bundle P (T16): binary-only frame locations look like `in /lib/libc.so.6`
@@ -157,8 +159,8 @@ def _parse_frame_location(location: str) -> tuple[Optional[str], Optional[int]]:
     return location, None
 
 
-def _make_frame(address: str, function: str, location: str) -> StackFrame:
-    file_, line = _parse_frame_location(location)
+def _make_frame(address: str, function: str, location: Optional[str]) -> StackFrame:
+    file_, line = _parse_frame_location(location) if location is not None else (None, None)
     return StackFrame(address=address, function=function, file=file_, line=line)
 
 
@@ -199,31 +201,37 @@ def parse_valgrind_log_with_stats(
     """
     lp = tuple(lookup_patterns) if lookup_patterns is not None else _LOOKUP_PATTERNS
     findings: List[Finding] = []
-    current: Optional[Finding] = None
-    in_origin = False
+    current_by_pid: Dict[str, Finding] = {}
+    in_origin_by_pid: Dict[str, bool] = {}
     dropped = 0
 
     for raw in text.splitlines():
         header = _HEADER_RE.match(raw)
         if not header:
             continue
-        content = header.group(1).rstrip()
+        pid = header.group("pid")
+        content = header.group("content").rstrip()
 
         # finding boundary
         if content == "":
+            current = current_by_pid.pop(pid, None)
             if current is not None:
                 findings.append(_finalize(current, lp))
-                current = None
-                in_origin = False
+                in_origin_by_pid.pop(pid, None)
             continue
 
         # frame line?
         fm = _FRAME_RE.match(raw)
         if fm:
+            current = current_by_pid.get(pid)
             if current is None:
                 continue
-            frame = _make_frame(fm.group(1), fm.group(2).strip(), fm.group(3).strip())
-            if in_origin:
+            frame = _make_frame(
+                fm.group("addr"),
+                fm.group("fn").strip(),
+                fm.group("loc").strip() if fm.group("loc") is not None else None,
+            )
+            if in_origin_by_pid.get(pid, False):
                 current.origin_frames.append(frame)
             else:
                 current.frames.append(frame)
@@ -231,7 +239,8 @@ def parse_valgrind_log_with_stats(
 
         # origin marker switches to origin-frame collection within current finding
         if "Uninitialised value was created" in content:
-            in_origin = True
+            if pid in current_by_pid:
+                in_origin_by_pid[pid] = True
             continue
 
         # otherwise this is a new finding header — close previous if any
@@ -241,16 +250,17 @@ def parse_valgrind_log_with_stats(
             # so a Valgrind format drift becomes a visible signal.
             dropped += 1
             continue
+        current = current_by_pid.get(pid)
         if current is not None:
             # Apply post-classification heuristics (e.g. VALUE_USE→MEMORY_ACCESS
             # promotion) even when the previous finding closes without an
             # explicit blank separator. Without _finalize here, two findings
             # printed back-to-back would silently skip promotion on the first.
             findings.append(_finalize(current, lp))
-        current = new_finding
-        in_origin = False
+        current_by_pid[pid] = new_finding
+        in_origin_by_pid[pid] = False
 
-    if current is not None:
+    for current in current_by_pid.values():
         findings.append(_finalize(current, lp))
 
     return findings, dropped

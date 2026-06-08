@@ -21,6 +21,7 @@ from .harness_generator import (
     HarnessGenerationError,
     TEMPLATE_DIR,
     _atomic_write_text,
+    _temp_output_path,
 )
 
 
@@ -70,22 +71,31 @@ def _compile(
 ) -> str:
     import subprocess as _sp
     binary_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_binary = _temp_output_path(binary_path)
     cmd: List[str] = [cc]
     cmd.extend(cflags)
     cmd.extend(f"-I{d}" for d in include_dirs)
     cmd.append(str(source_path))
     cmd.extend(str(s) for s in sources)
-    cmd.extend(["-o", str(binary_path)])
+    cmd.extend(["-o", str(tmp_binary)])
 
     cmd_str = " ".join(cmd)
     try:
         proc = run_text(cmd, cwd=workdir, timeout=timeout)
     except _sp.TimeoutExpired:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
         raise HarnessGenerationError(
             f"timing harness compile exceeded timeout={timeout}s ({cmd_str}). "
             "Bump cfg.dudect.compile_timeout or diagnose the hang."
         )
     except FileNotFoundError as e:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
         # Bundle Q (FN-1): dudect compiler (`cfg.dudect.compiler.cc`) missing /
         # not executable. CompilerNotFoundError so `_do_dudect` exits 2
         # (toolchain error), consistent with the ct path and the preflights.
@@ -94,10 +104,25 @@ def _compile(
             f"to the Docker image) or set cfg.dudect.compiler.cc. ({e})"
         )
     if proc.returncode != 0:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
         raise HarnessGenerationError(
             f"failed to compile timing harness ({cmd_str}):\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
+    try:
+        import os
+        os.replace(tmp_binary, binary_path)
+    except OSError as e:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
+        raise HarnessGenerationError(
+            f"failed to publish compiled timing harness {binary_path}: {e}"
+        ) from e
     return cmd_str
 
 
@@ -120,17 +145,25 @@ def generate_and_compile_timing(
 
     code = render_timing_harness(template, context)
     _atomic_write_text(source_path, code)
+    compile_source_path = _temp_output_path(source_path, suffix=".c")
+    compile_source_path.write_text(code, encoding="utf-8")
 
-    cmd_str = _compile(
-        cc=cc,
-        source_path=source_path,
-        binary_path=binary_path,
-        sources=sources,
-        include_dirs=include_dirs,
-        cflags=cflags,
-        workdir=workdir,
-        timeout=timeout,
-    )
+    try:
+        cmd_str = _compile(
+            cc=cc,
+            source_path=compile_source_path,
+            binary_path=binary_path,
+            sources=sources,
+            include_dirs=include_dirs,
+            cflags=cflags,
+            workdir=workdir,
+            timeout=timeout,
+        )
+    finally:
+        try:
+            compile_source_path.unlink()
+        except FileNotFoundError:
+            pass
     return GeneratedTimingHarness(
         source_path=source_path,
         binary_path=binary_path,

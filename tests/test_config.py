@@ -237,6 +237,20 @@ def test_dudect_default_cflags_disable_lto():
     assert "-fno-lto" in flags
 
 
+def test_dudect_compiler_with_path_separator_rejected():
+    from ctkat.config import DudectCompilerConfig
+    with pytest.raises(ValidationError, match="PATH command name"):
+        DudectCompilerConfig(cc="/usr/bin/gcc")
+    with pytest.raises(ValidationError, match="PATH command name"):
+        DudectCompilerConfig(cc="../../bin/gcc")
+
+
+def test_dudect_compiler_common_names_allowed():
+    from ctkat.config import DudectCompilerConfig
+    for cc in ("gcc", "clang++", "gcc-13", "arm-none-eabi-gcc"):
+        assert DudectCompilerConfig(cc=cc).cc == cc
+
+
 # --- Bundle C: clock=auto + ARM guard ----------------------------------------
 
 
@@ -923,6 +937,66 @@ def test_header_legitimate_relative_paths_pass():
         HarnessConfig.model_validate(
             {"name": "h", "template": "kem", "header": good}
         )
+
+
+def test_ct_sources_and_include_dirs_must_stay_project_relative():
+    for field in ("sources", "include_dirs"):
+        with pytest.raises(ValidationError, match=field):
+            HarnessConfig.model_validate(
+                {
+                    "name": "h",
+                    "template": "generic",
+                    "function": "f",
+                    field: ["/etc/hosts"],
+                }
+            )
+
+
+def test_dudect_sources_and_include_dirs_must_stay_project_relative():
+    from ctkat.config import DudectHarnessConfig
+    for field in ("sources", "include_dirs"):
+        with pytest.raises(ValidationError, match=field):
+            DudectHarnessConfig.model_validate(
+                {
+                    "name": "h",
+                    "template": "generic",
+                    "function": "f",
+                    field: ["/etc/hosts"],
+                }
+            )
+
+
+def test_load_config_rejects_sources_outside_project_root(tmp_path):
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(
+        """
+project: {name: p, root: .}
+build: {command: "true"}
+ct:
+  harnesses:
+    - {name: h, template: generic, function: f, sources: [../outside.c]}
+"""
+    )
+    with pytest.raises(ValueError, match="outside project.root"):
+        load_config(cfg)
+
+
+def test_load_config_allows_parent_paths_inside_declared_project_root(tmp_path):
+    workspace = tmp_path / "workspace"
+    cfg_dir = workspace / "pkg"
+    cfg_dir.mkdir(parents=True)
+    (workspace / "shared").mkdir()
+    cfg = cfg_dir / "ctkat.yaml"
+    cfg.write_text(
+        """
+project: {name: p, root: ..}
+build: {command: "true"}
+ct:
+  harnesses:
+    - {name: h, template: generic, function: f, sources: [../shared/a.c]}
+"""
+    )
+    assert load_config(cfg).ct.harnesses[0].sources == [Path("../shared/a.c")]
 
 
 def test_validator_fullmatch_rejects_trailing_newline():

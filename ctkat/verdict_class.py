@@ -137,6 +137,12 @@ def classify_harness(
             vclass = "needs-analysis"
     elif tri == "secret-risk":
         vclass = "varlat-secret-risk"
+    elif agg.only == {"PASS"} and "ERROR" in agg.statuses:
+        # A matrix ERROR means at least one build cell was not analyzed. The
+        # old `only = statuses - {"ERROR"}` rule made PASS+ERROR look robust;
+        # that is a false-green because the clean claim does not cover every
+        # configured build.
+        vclass = "tool-problem"
     elif agg.only == {"PASS"} and agg.asm_err_ccs:
         # N2: ct PASS but asm-scan ERRORED for some build(s) — blind spot, NOT robust.
         vclass = "ct-clean-asm-incomplete"
@@ -169,6 +175,10 @@ def classify_harness(
             "asm-scan incomplete/errored for " + ",".join(agg.asm_err_ccs)
             + " — division-free claim does NOT cover those build(s): "
             + "; ".join(agg.asm_errors)
+        )
+    if "ERROR" in agg.statuses and agg.only == {"PASS"}:
+        notes.append(
+            "ct-matrix ERROR cell(s) present — clean claim does NOT cover every build"
         )
     if not agg.vcells:
         pass

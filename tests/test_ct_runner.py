@@ -57,6 +57,17 @@ def test_classify_error_on_missing_log(tmp_path):
     assert "no log file" in out.error
 
 
+def test_classify_error_on_oversized_log(monkeypatch, tmp_path):
+    from ctkat import ct_runner
+
+    monkeypatch.setattr(ct_runner, "MAX_VALGRIND_LOG_BYTES", 8)
+    log = tmp_path / "huge.log"
+    log.write_text("0123456789")
+    out = classify_valgrind_run(_result(0), log)
+    assert out.status == "ERROR"
+    assert "parser limit" in out.error
+
+
 def test_classify_rc99_with_zero_findings_is_error_not_passing():
     """FN-3 (fail-open fix): rc=99 is `--error-exitcode=99` — Valgrind's
     ground-truth "I detected >=1 error". A clean PARSE over an rc=99 run means

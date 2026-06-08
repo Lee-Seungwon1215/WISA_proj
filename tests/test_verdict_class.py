@@ -88,6 +88,12 @@ def test_tool_problem_when_only_error():
     assert vc == "tool-problem"
 
 
+def test_pass_plus_matrix_error_is_not_robust():
+    vc, notes = classify_harness([_cell("PASS"), _cell("ERROR")], family="X")
+    assert vc == "tool-problem"
+    assert "ERROR cell" in notes
+
+
 def test_verdict_override_wins():
     vc, _ = classify_harness([_cell("PASS")], family="X", verdict_override="ct-leak")
     assert vc == "ct-leak"

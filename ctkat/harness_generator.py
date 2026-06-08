@@ -40,6 +40,18 @@ def _atomic_write_text(path: Path, content: str) -> None:
         raise
 
 
+def _temp_output_path(path: Path, *, suffix: str = ".tmp") -> Path:
+    """Allocate a same-directory temp path for a compiler `-o` target."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=suffix,
+        dir=str(path.parent),
+    )
+    os.close(fd)
+    return Path(tmp_name)
+
+
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 # Map of yaml `template` value -> template file under TEMPLATE_DIR.
@@ -116,22 +128,31 @@ def compile_harness(
     """
     import subprocess as _sp  # local import to keep TimeoutExpired narrow
     binary_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_binary = _temp_output_path(binary_path)
     cmd: List[str] = [cc]
     cmd.extend(cflags)
     cmd.extend(f"-I{d}" for d in include_dirs)
     cmd.append(str(source_path))
     cmd.extend(str(s) for s in sources)
-    cmd.extend(["-o", str(binary_path)])
+    cmd.extend(["-o", str(tmp_binary)])
 
     cmd_str = " ".join(cmd)
     try:
         proc = run_text(cmd, cwd=workdir, timeout=timeout)
     except _sp.TimeoutExpired:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
         raise HarnessGenerationError(
             f"harness compile exceeded timeout={timeout}s ({cmd_str}). "
             "Bump cfg.ct.compile_timeout or diagnose the hang."
         )
     except FileNotFoundError as e:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
         # Bundle Q (FN-1): the compiler (`cc`, default gcc) is missing / not
         # executable (run_text raised ToolNotFoundError, a FileNotFoundError
         # subclass). Raise CompilerNotFoundError so the cli reports it cleanly
@@ -141,10 +162,24 @@ def compile_harness(
             f"to the Docker image) or set the harness `cc`. ({e})"
         )
     if proc.returncode != 0:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
         raise HarnessGenerationError(
             f"failed to compile harness ({cmd_str}):\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
+    try:
+        os.replace(tmp_binary, binary_path)
+    except OSError as e:
+        try:
+            tmp_binary.unlink()
+        except FileNotFoundError:
+            pass
+        raise HarnessGenerationError(
+            f"failed to publish compiled harness {binary_path}: {e}"
+        ) from e
     return cmd_str
 
 
@@ -167,17 +202,25 @@ def generate_and_compile(
 
     code = render_harness(template, context)
     _atomic_write_text(source_path, code)
+    compile_source_path = _temp_output_path(source_path, suffix=".c")
+    compile_source_path.write_text(code, encoding="utf-8")
 
-    cmd_str = compile_harness(
-        source_path=source_path,
-        binary_path=binary_path,
-        sources=sources,
-        include_dirs=include_dirs,
-        cflags=cflags,
-        workdir=workdir,
-        timeout=timeout,
-        cc=cc,
-    )
+    try:
+        cmd_str = compile_harness(
+            source_path=compile_source_path,
+            binary_path=binary_path,
+            sources=sources,
+            include_dirs=include_dirs,
+            cflags=cflags,
+            workdir=workdir,
+            timeout=timeout,
+            cc=cc,
+        )
+    finally:
+        try:
+            compile_source_path.unlink()
+        except FileNotFoundError:
+            pass
     return GeneratedHarness(
         source_path=source_path,
         binary_path=binary_path,

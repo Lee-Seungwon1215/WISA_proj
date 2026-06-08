@@ -1,7 +1,7 @@
 project:
   name: pqclean_mldsa65
   language: c
-  root: .
+  root: ..
 
 build:
   command: "true"

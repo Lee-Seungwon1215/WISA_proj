@@ -86,11 +86,6 @@ _DECL_LOOSE_RE = re.compile(
     re.VERBOSE,
 )
 
-# A "line directive" left over from preprocessing — we don't run cpp so this
-# is unlikely to appear, but strip just in case.
-_DIRECTIVE_LINE = re.compile(r"^\s*#.*$", re.MULTILINE)
-
-
 def _blank_keep_newlines(m: "re.Match[str]") -> str:
     """Replace a stripped region with a single space plus exactly as many
     newlines as it contained (T36). `_line_of` derives a declaration's
@@ -103,19 +98,119 @@ def _blank_keep_newlines(m: "re.Match[str]") -> str:
     return " " + "\n" * m.group(0).count("\n")
 
 
+def _blank_physical_line(line: str) -> str:
+    return "\n" if line.endswith("\n") else " "
+
+
+def _continued_directive(line: str) -> bool:
+    return line.rstrip("\r\n").rstrip().endswith("\\")
+
+
+def _eval_pp_condition(kind: str, expr: str) -> Optional[bool]:
+    """Evaluate only the tiny subset we can know without running cpp.
+
+    Unknown conditions are left visible. Known-dead branches (`#if 0`,
+    `#ifdef UNDEF`) are blanked so `infer` does not invent declarations from
+    code the preprocessor would never expose.
+    """
+    expr = expr.strip()
+    if kind == "if":
+        if expr == "0":
+            return False
+        if expr == "1":
+            return True
+        return None
+    if kind == "ifdef":
+        return False if expr == "UNDEF" else None
+    if kind == "ifndef":
+        return True if expr == "UNDEF" else None
+    return None
+
+
+def _strip_directives_and_inactive_blocks(text: str) -> str:
+    """Blank directive lines, continued directive bodies, and known-dead blocks.
+
+    The parser intentionally does not run a full preprocessor. This keeps the
+    old permissive behavior for unknown feature macros while fixing the common
+    review failure mode: declarations inside `#if 0` / `#ifdef UNDEF` and lines
+    continued from a multi-line `#define` should not be parsed as live APIs.
+    """
+    out: List[str] = []
+    stack: List[dict] = []
+    in_directive_continuation = False
+
+    def current_active() -> bool:
+        return stack[-1]["active"] if stack else True
+
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip()
+
+        if in_directive_continuation:
+            out.append(_blank_physical_line(line))
+            in_directive_continuation = _continued_directive(line)
+            continue
+
+        if stripped.startswith("#"):
+            body = stripped[1:].strip()
+            parts = body.split(None, 1)
+            directive = parts[0] if parts else ""
+            arg = parts[1] if len(parts) > 1 else ""
+
+            if directive in {"if", "ifdef", "ifndef"}:
+                parent = current_active()
+                known = _eval_pp_condition(directive, arg)
+                active = parent and (known if known is not None else True)
+                stack.append({
+                    "parent": parent,
+                    "active": active,
+                    "known": known is not None,
+                    "taken": bool(known) if known is not None else active,
+                })
+            elif directive == "elif" and stack:
+                frame = stack[-1]
+                known = _eval_pp_condition("if", arg)
+                if not frame["known"] or known is None:
+                    frame["active"] = frame["parent"]
+                    frame["taken"] = True
+                elif frame["taken"]:
+                    frame["active"] = False
+                else:
+                    frame["active"] = frame["parent"] and bool(known)
+                    frame["taken"] = bool(known)
+            elif directive == "else" and stack:
+                frame = stack[-1]
+                if frame["known"]:
+                    frame["active"] = frame["parent"] and not frame["taken"]
+                    frame["taken"] = True
+                else:
+                    frame["active"] = frame["parent"]
+            elif directive == "endif" and stack:
+                stack.pop()
+
+            out.append(_blank_physical_line(line))
+            in_directive_continuation = _continued_directive(line)
+            continue
+
+        if current_active():
+            out.append(line)
+        else:
+            out.append(_blank_physical_line(line))
+
+    return "".join(out)
+
+
 def _strip_preprocessing(text: str) -> str:
     """Remove comments and preprocessor directives from header text.
 
     Removals that can span multiple lines (block comments, attributes, the
     `extern "C"` wrapper) are blanked with newline-preserving replacements so
     reported source-line numbers stay accurate (T36). Single-line removals
-    (line comments, `#` directives) can't drop a newline, so a plain blank is
-    fine — directive lines keep their trailing newline because `.` doesn't
-    match it under the default flags.
+    (line comments, `#` directives) preserve line count so reported source
+    locations stay aligned with the original header.
     """
     text = _BLOCK_COMMENT.sub(_blank_keep_newlines, text)
     text = _LINE_COMMENT.sub(" ", text)
-    text = _DIRECTIVE_LINE.sub("", text)
+    text = _strip_directives_and_inactive_blocks(text)
     text = _ATTRIBUTE.sub(_blank_keep_newlines, text)
     text = _EXTERN_C.sub(_blank_keep_newlines, text)
     return text

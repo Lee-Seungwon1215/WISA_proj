@@ -210,3 +210,30 @@ def test_source_line_accurate_after_multiline_comment():
     sigs = parse_functions(text)
     assert sigs[0].name == "foo"
     assert sigs[0].source_line == 4
+
+
+def test_infer_ignores_known_inactive_preprocessor_blocks():
+    text = (
+        "#if 0\n"
+        "int dead_if(void);\n"
+        "#else\n"
+        "int live_else(void);\n"
+        "#endif\n"
+        "#ifdef UNDEF\n"
+        "int dead_ifdef(void);\n"
+        "#endif\n"
+        "int live_after(void);\n"
+    )
+    names = [s.name for s in parse_functions(text)]
+    assert names == ["live_else", "live_after"]
+
+
+def test_infer_ignores_backslash_continued_define_body():
+    text = (
+        "#define DECL_FAKE \\\n"
+        "    int fake_from_macro(void); \\\n"
+        "    int also_fake(void);\n"
+        "int real_api(void);\n"
+    )
+    names = [s.name for s in parse_functions(text)]
+    assert names == ["real_api"]

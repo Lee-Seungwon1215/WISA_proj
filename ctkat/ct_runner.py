@@ -16,6 +16,8 @@ from typing import List, Optional
 from .valgrind_parser import Finding, parse_valgrind_log_with_stats
 from .valgrind_runner import ValgrindResult
 
+MAX_VALGRIND_LOG_BYTES = 128 * 1024 * 1024
+
 
 @dataclass
 class CtRunOutcome:
@@ -57,6 +59,16 @@ def classify_valgrind_run(
         return CtRunOutcome("ERROR", error=reason)
     if not log_path.exists():
         return CtRunOutcome("ERROR", error="valgrind produced no log file")
+    log_size = log_path.stat().st_size
+    if log_size > MAX_VALGRIND_LOG_BYTES:
+        return CtRunOutcome(
+            "ERROR",
+            error=(
+                f"valgrind log {log_path} is {log_size} bytes, exceeding "
+                f"the {MAX_VALGRIND_LOG_BYTES}-byte parser limit — analysis "
+                "incomplete; reduce the harness output or raise the limit in code."
+            ),
+        )
     text = log_path.read_text(encoding="utf-8", errors="replace")
     findings, dropped = parse_valgrind_log_with_stats(text, lookup_patterns=lookup_patterns)
     # Bundle Q (FN-3): rc=99 is `--error-exitcode=99` — Valgrind's ground-truth

@@ -151,6 +151,19 @@ def test_dudect_subcommand_empty_results_exits_nonzero(tmp_path):
     assert "Timing Check: PASS" not in result.stdout
 
 
+def test_dudect_subcommand_honors_enabled_false(tmp_path):
+    """Standalone dudect is an explicit measurement request; if config disables
+    the stage, fail closed instead of silently running or reporting a green skip."""
+    cfg = _write_dudect_config(tmp_path)
+    cfg.write_text(cfg.read_text().replace("enabled: true", "enabled: false"))
+    runner = CliRunner()
+    with mock.patch("ctkat.cli._do_dudect", side_effect=AssertionError("must not run")):
+        result = runner.invoke(app, ["dudect", "--config", str(cfg)])
+    assert result.exit_code == 2
+    assert "enabled: false" in result.stdout
+    assert "Timing Check: PASS" not in result.stdout
+
+
 def test_dudect_subcommand_fail_still_exits_two(tmp_path):
     """Control: a real FAIL keeps exiting 2 — the new ERROR/empty guards
     didn't disturb the normal gating path."""
@@ -1540,8 +1553,8 @@ def _patch_screen(monkeypatch, *, matrix_rows, candidates=(), cc_errors=(),
                         lambda *a, **k: (list(candidates), list(cc_errors)))
 
 
-def _mrow(status, cc="gcc", cflags=("-O0",), funcs=""):
-    return CtMatrixRow(harness="h", combo=f"{cc}_{cflags[0].lstrip('-')}", cc=cc,
+def _mrow(status, cc="gcc", cflags=("-O0",), funcs="", harness="h"):
+    return CtMatrixRow(harness=harness, combo=f"{cc}_{cflags[0].lstrip('-')}", cc=cc,
                        cflags=cflags, valgrind_status=status, findings=0,
                        finding_funcs=funcs)
 
@@ -1565,6 +1578,25 @@ def test_screen_untriaged_candidate_gates_exit2(monkeypatch, tmp_path):
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
     assert "ct-clean-untriaged" in out
     assert "not cleared" in result.stdout.lower()
+
+
+def test_screen_asm_candidates_are_scoped_by_harness(monkeypatch, tmp_path):
+    cand = VarLatCandidate(harness="h2", source_file="x.c", function="div_fn",
+                           compiler="gcc", ct_opt="-O0",
+                           occurrences=[Occurrence("-O0", "0x10", "idiv")])
+    _patch_screen(
+        monkeypatch,
+        matrix_rows=[
+            _mrow("PASS", harness="h1"),
+            _mrow("PASS", harness="h2"),
+        ],
+        candidates=[cand],
+    )
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 2
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "h1,no,{PASS},,none,untriaged" in out
+    assert "h2,no,{PASS},,gcc:-O0,untriaged" in out
 
 
 def test_screen_triage_public_clears_to_robust(monkeypatch, tmp_path):

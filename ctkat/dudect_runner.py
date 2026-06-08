@@ -1,12 +1,11 @@
 import math
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
 from rich.console import Console
-
-from ._proc import run_text
-
 
 # If more than this fraction of timing rows fail to parse we warn — large
 # drop rates usually mean stdout/stderr got interleaved or the harness died
@@ -27,6 +26,12 @@ _ZERO_CYCLE_WARN_THRESHOLD = 0.01
 # biases the Welch t-test in non-obvious ways. Separate threshold so the
 # warning fires even when the total drop rate stays below 1%.
 _PER_CLASS_ZERO_WARN_THRESHOLD = 0.05
+
+# The timing harness emits one CSV row per measurement on stdout. Keep the
+# parent process bounded even when a user raises measurements to the configured
+# maximum or a buggy harness writes forever before timeout.
+MAX_TIMING_STDOUT_BYTES = 512 * 1024 * 1024
+MAX_TIMING_STDERR_BYTES = 1024 * 1024
 
 # Module-local rich Console so warnings match the formatting used by cli.py
 # without creating a circular import (cli depends on us, not vice versa).
@@ -161,10 +166,9 @@ def run_timing_harness(
     workdir: Path,
     timeout: int = 600,
 ) -> TimingSamples:
-    # Bundle N (T18): routes through `_proc.run_text` for utf-8 +
-    # errors='replace'. The dudect harness emits CSV (ASCII), but a crashed
-    # one can write garbage stderr before dying; `errors='replace'` keeps
-    # that diagnostic visible instead of erroring out the parent.
+    # The dudect harness emits one CSV row per measurement. Capturing that with
+    # subprocess.PIPE makes the parent allocate the entire raw timing corpus in
+    # memory; use temp files and read only after enforcing a hard byte cap.
     #
     # Bundle Q (FN-1): the binary was just compiled so it normally exists, but
     # a noexec /tmp mount, an ETXTBSY race, or a silent toolchain stub can make
@@ -174,14 +178,38 @@ def run_timing_harness(
     # traceback. The T6 comment in cli._do_dudect promised "every uncaught
     # failure mode -> ERROR"; this closes the executable-missing gap it left.
     try:
-        proc = run_text([str(binary)], cwd=workdir, timeout=timeout)
+        with tempfile.TemporaryFile() as stdout_f, tempfile.TemporaryFile() as stderr_f:
+            proc = subprocess.run(
+                [str(binary)],
+                cwd=str(workdir),
+                stdout=stdout_f,
+                stderr=stderr_f,
+                timeout=timeout,
+                check=False,
+            )
+            stdout_size = stdout_f.tell()
+            if stdout_size > MAX_TIMING_STDOUT_BYTES:
+                raise RuntimeError(
+                    f"timing harness stdout exceeded "
+                    f"{MAX_TIMING_STDOUT_BYTES} bytes ({stdout_size}); "
+                    "reduce dudect.measurements or write a smaller harness output."
+                )
+            stderr_f.seek(0)
+            stderr = stderr_f.read(MAX_TIMING_STDERR_BYTES + 1)
+            stderr_text = stderr[:MAX_TIMING_STDERR_BYTES].decode(
+                "utf-8", errors="replace"
+            )
+            if len(stderr) > MAX_TIMING_STDERR_BYTES:
+                stderr_text += "\n[ctkat] stderr truncated"
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"timing harness {binary} failed (rc={proc.returncode}):\n"
+                    f"stderr:\n{stderr_text}"
+                )
+            stdout_f.seek(0)
+            text = stdout_f.read().decode("utf-8", errors="replace")
     except OSError as e:
         raise RuntimeError(
             f"timing harness {binary} could not be executed: {e}"
         ) from e
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"timing harness {binary} failed (rc={proc.returncode}):\n"
-            f"stderr:\n{proc.stderr}"
-        )
-    return parse_timing_csv(proc.stdout)
+    return parse_timing_csv(text)

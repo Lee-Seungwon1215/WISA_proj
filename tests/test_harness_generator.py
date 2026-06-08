@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from ctkat.harness_generator import (
@@ -236,6 +238,8 @@ def test_compile_harness_uses_given_cc(tmp_path, monkeypatch):
 
     def fake_run_text(cmd, *a, **k):
         captured["cmd"] = cmd
+        out = Path(cmd[cmd.index("-o") + 1])
+        out.write_bytes(b"binary")
         return _FakeProc()
 
     monkeypatch.setattr(hg, "run_text", fake_run_text)
@@ -246,6 +250,8 @@ def test_compile_harness_uses_given_cc(tmp_path, monkeypatch):
         include_dirs=[], cflags=["-O2"], workdir=tmp_path, timeout=30, cc="clang",
     )
     assert captured["cmd"][0] == "clang"
+    assert captured["cmd"][captured["cmd"].index("-o") + 1] != str(tmp_path / "h")
+    assert (tmp_path / "h").read_bytes() == b"binary"
     assert cmd_str.startswith("clang ")
 
 
@@ -256,6 +262,8 @@ def test_compile_harness_defaults_to_gcc(tmp_path, monkeypatch):
 
     def fake_run_text(cmd, *a, **k):
         captured["cmd"] = cmd
+        out = Path(cmd[cmd.index("-o") + 1])
+        out.write_bytes(b"binary")
         return _FakeProc()
 
     monkeypatch.setattr(hg, "run_text", fake_run_text)
@@ -266,3 +274,4 @@ def test_compile_harness_defaults_to_gcc(tmp_path, monkeypatch):
         include_dirs=[], cflags=["-O0"], workdir=tmp_path, timeout=30,
     )
     assert captured["cmd"][0] == "gcc"
+    assert (tmp_path / "h").read_bytes() == b"binary"

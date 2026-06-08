@@ -49,6 +49,23 @@ def test_run_timing_harness_missing_binary_raises_runtimeerror(tmp_path):
         run_timing_harness(missing, tmp_path, timeout=5)
 
 
+def test_run_timing_harness_stdout_cap(monkeypatch, tmp_path):
+    import subprocess
+    from ctkat import dudect_runner as dr
+
+    monkeypatch.setattr(dr, "MAX_TIMING_STDOUT_BYTES", 16)
+
+    def fake_run(cmd, *, cwd, stdout, stderr, timeout, check):
+        stdout.write(b"sample_id,class,cycles\n0,0,100\n")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(dr.subprocess, "run", fake_run)
+    binary = tmp_path / "h"
+    binary.write_text("#!/bin/sh\n")
+    with pytest.raises(RuntimeError, match="stdout exceeded"):
+        run_timing_harness(binary, tmp_path, timeout=5)
+
+
 def test_parse_skips_malformed_rows():
     text = (
         "sample_id,class,cycles\n"

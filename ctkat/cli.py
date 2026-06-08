@@ -54,7 +54,7 @@ from .ct_matrix import (
     write_ct_matrix_json,
     HarnessInputs,
 )
-from .ct_runner import classify_valgrind_run
+from .ct_runner import MAX_VALGRIND_LOG_BYTES, classify_valgrind_run
 from .dudect_runner import TimingSamples, run_timing_harness
 from .harness_generator import (
     CompilerNotFoundError,
@@ -1043,6 +1043,14 @@ def dudect(
         raise typer.Exit(2)
 
     dud = cfg.dudect
+    if not dud.enabled:
+        console.print(
+            "[bold red][CTKAT] dudect Timing Check: ERROR[/] — "
+            "`dudect.enabled: false` in config, so no timing harness was run. "
+            "Set it to true or use `ctkat run` to intentionally skip the stage."
+        )
+        raise typer.Exit(2)
+
     updates = {}
     if measurements is not None:
         updates["measurements"] = measurements
@@ -1623,12 +1631,12 @@ def screen(
     vindex: dict = {}
     for c in candidates:
         for o in c.opt_levels:
-            vindex.setdefault((c.compiler, o), []).append((c.function, c.count))
+            vindex.setdefault((c.harness, c.compiler, o), []).append((c.function, c.count))
     cells: list = []
     template_names = {h.name for h in auto}
     for r in matrix_rows:
         o = opt_of(" ".join(r.cflags))
-        hits = vindex.get((r.cc, o), [])
+        hits = vindex.get((r.harness, r.cc, o), [])
         cells.append({
             "target": cfg.project.name, "harness": r.harness, "combo": r.combo,
             "cc": r.cc, "opt": o, "cflags": " ".join(r.cflags),
@@ -2317,6 +2325,13 @@ def parse(
     ),
 ):
     """Parse a single Valgrind log and print findings (debugging helper)."""
+    log_size = log.stat().st_size
+    if log_size > MAX_VALGRIND_LOG_BYTES:
+        console.print(
+            f"[bold red][CTKAT] parse: ERROR[/] — log is {log_size} bytes, "
+            f"exceeding the {MAX_VALGRIND_LOG_BYTES}-byte parser limit."
+        )
+        raise typer.Exit(2)
     text = log.read_text(encoding="utf-8", errors="replace")
     findings, dropped = parse_valgrind_log_with_stats(text)
     if dropped > 50:

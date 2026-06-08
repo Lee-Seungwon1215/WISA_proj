@@ -27,6 +27,7 @@ _C_IDENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # generated C will compile-fail noisily if the type is nonsense, but a
 # value with quotes / semicolons / braces is rejected up front.
 _C_TYPE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_:* ]*$")
+_PATH_COMMAND_PATTERN = re.compile(r"[A-Za-z0-9_.+-]+")
 # C expression — array sizes (BufferSpec.size), secret-region offset/length,
 # and function-call args. Legitimately contains identifiers/macros
 # (`KYBER_SECRETKEYBYTES`), integer literals, whitespace, arithmetic, parens
@@ -137,6 +138,53 @@ def _check_header(where: str, label: str, value: str) -> None:
             f"{where}: {label}={value!r} must be a project-relative path "
             "without `..` segments — absolute paths and parent-directory "
             "traversal are rejected (header is emitted into an #include)."
+        )
+
+
+def _check_project_relative_path(where: str, label: str, value: Path) -> None:
+    """Reject absolute source/include paths early.
+
+    Parent-directory segments need the config file location and `project.root`
+    to judge correctly, so `load_config()` performs that containment check after
+    the full config has been loaded.
+    """
+    s = str(value)
+    if value.is_absolute():
+        raise ValueError(
+            f"{where}: {label}={s!r} must be project-relative — absolute paths "
+            "are rejected."
+        )
+
+
+def _check_path_command_name(where: str, value: str) -> None:
+    """Validate a compiler field that later becomes an artifact label/path part."""
+    if not value.strip():
+        raise ValueError(f"{where} must be non-empty")
+    if not _PATH_COMMAND_PATTERN.fullmatch(value):
+        raise ValueError(
+            f"{where} {value!r} must match [A-Za-z0-9_.+-]+ "
+            "(a PATH command name, no '/'); put it on PATH if it's a path"
+        )
+
+
+def _check_path_under_root(
+    *,
+    cfg_dir: Path,
+    project_root: Path,
+    where: str,
+    label: str,
+    value: Path,
+) -> None:
+    """Validate source/include containment once config path context is known."""
+    root = (cfg_dir / project_root).resolve()
+    target = (cfg_dir / value).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise ValueError(
+            f"{where}: {label}={str(value)!r} resolves outside project.root "
+            f"{project_root!s}; set project.root to the intended workspace root "
+            "or keep the path inside it."
         )
 
 
@@ -473,6 +521,14 @@ class HarnessConfig(BaseModel):
             function=self.function,
             return_type=self.return_type,
         )
+        for i, p in enumerate(self.sources):
+            _check_project_relative_path(
+                f"ct harness {self.name!r}", f"sources[{i}]", p
+            )
+        for i, p in enumerate(self.include_dirs):
+            _check_project_relative_path(
+                f"ct harness {self.name!r}", f"include_dirs[{i}]", p
+            )
         # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
         for i, a in enumerate(self.args):
             _check_c_expr(f"ct harness {self.name!r}", f"args[{i}]", a)
@@ -637,6 +693,11 @@ class DudectCompilerConfig(BaseModel):
     cc: str = "gcc"
     cflags: List[str] = Field(default_factory=_default_dudect_cflags)
 
+    @model_validator(mode="after")
+    def _check_cc(self) -> "DudectCompilerConfig":
+        _check_path_command_name("dudect.compiler.cc", self.cc)
+        return self
+
 
 class DudectHarnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -699,6 +760,14 @@ class DudectHarnessConfig(BaseModel):
             function=self.function,
             return_type=self.return_type,
         )
+        for i, p in enumerate(self.sources):
+            _check_project_relative_path(
+                f"dudect harness {self.name!r}", f"sources[{i}]", p
+            )
+        for i, p in enumerate(self.include_dirs):
+            _check_project_relative_path(
+                f"dudect harness {self.name!r}", f"include_dirs[{i}]", p
+            )
         # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
         for i, a in enumerate(self.args):
             _check_c_expr(f"dudect harness {self.name!r}", f"args[{i}]", a)
@@ -816,8 +885,6 @@ class MatrixConfig(BaseModel):
         if not self.compilers:
             raise ValueError("matrix.compilers must list at least one compiler")
         for cc in self.compilers:
-            if not cc.strip():
-                raise ValueError("matrix.compilers entries must be non-empty")
             # cc lands in the combo label `{cc}_{cflags_name}`, which becomes a
             # binary/log FILENAME fragment (ct_matrix.py). A `/` (or other path
             # char) would let the per-cell artifact escape the generated dir —
@@ -825,11 +892,7 @@ class MatrixConfig(BaseModel):
             # Restrict to a PATH-command name (covers gcc, clang, g++, gcc-13,
             # arm-none-eabi-gcc); put non-PATH compilers on PATH instead of using
             # an absolute path.
-            if not re.fullmatch(r"[A-Za-z0-9_.+-]+", cc):
-                raise ValueError(
-                    f"matrix.compilers entry {cc!r} must match [A-Za-z0-9_.+-]+ "
-                    "(a PATH command name, no '/'); put it on PATH if it's a path"
-                )
+            _check_path_command_name("matrix.compilers entry", cc)
         if not self.ct_cflags:
             raise ValueError("matrix.ct_cflags must define at least one combo")
         for name in self.ct_cflags:
@@ -884,6 +947,46 @@ class CtkatConfig(BaseModel):
         return self
 
 
+def _check_config_paths_under_project_root(cfg: CtkatConfig, cfg_dir: Path) -> None:
+    project_root = cfg.project.root
+    if cfg.ct is not None:
+        for h in cfg.ct.harnesses:
+            for i, p in enumerate(h.sources):
+                _check_path_under_root(
+                    cfg_dir=cfg_dir,
+                    project_root=project_root,
+                    where=f"ct harness {h.name!r}",
+                    label=f"sources[{i}]",
+                    value=p,
+                )
+            for i, p in enumerate(h.include_dirs):
+                _check_path_under_root(
+                    cfg_dir=cfg_dir,
+                    project_root=project_root,
+                    where=f"ct harness {h.name!r}",
+                    label=f"include_dirs[{i}]",
+                    value=p,
+                )
+    if cfg.dudect is not None:
+        for h in cfg.dudect.harnesses:
+            for i, p in enumerate(h.sources):
+                _check_path_under_root(
+                    cfg_dir=cfg_dir,
+                    project_root=project_root,
+                    where=f"dudect harness {h.name!r}",
+                    label=f"sources[{i}]",
+                    value=p,
+                )
+            for i, p in enumerate(h.include_dirs):
+                _check_path_under_root(
+                    cfg_dir=cfg_dir,
+                    project_root=project_root,
+                    where=f"dudect harness {h.name!r}",
+                    label=f"include_dirs[{i}]",
+                    value=p,
+                )
+
+
 def load_config(path: Path) -> CtkatConfig:
     # T24: explicit utf-8 so a yaml authored on one OS (or carrying non-ASCII
     # comments) loads identically regardless of the host locale's default
@@ -892,4 +995,6 @@ def load_config(path: Path) -> CtkatConfig:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict):
         raise ValueError(f"Config root must be a mapping, got {type(raw).__name__}")
-    return CtkatConfig.model_validate(raw)
+    cfg = CtkatConfig.model_validate(raw)
+    _check_config_paths_under_project_root(cfg, path.parent.resolve())
+    return cfg

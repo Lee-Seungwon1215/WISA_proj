@@ -262,3 +262,33 @@ def test_frame_with_binary_only_location_keeps_path_as_file():
     assert frame.function == "__strcmp_avx2"
     assert frame.file == "/lib/x86_64-linux-gnu/libc.so.6"
     assert frame.line is None
+
+
+def test_interleaved_valgrind_pids_keep_independent_findings():
+    text = (
+        "==1== Conditional jump or move depends on uninitialised value(s)\n"
+        "==2== Conditional jump or move depends on uninitialised value(s)\n"
+        "==2==    at 0x2: two (two.c:2)\n"
+        "==2== \n"
+        "==1==    at 0x1: one (one.c:1)\n"
+        "==1== \n"
+    )
+    findings = parse_valgrind_log(text)
+    top = {f.primary_frame.function: f.primary_frame for f in findings}
+    assert set(top) == {"one", "two"}
+    assert top["one"].file == "one.c"
+    assert top["two"].file == "two.c"
+
+
+def test_locationless_top_frame_is_not_dropped():
+    text = (
+        "==1== Conditional jump or move depends on uninitialised value(s)\n"
+        "==1==    at 0x1: mystery_top\n"
+        "==1==    by 0x2: caller (caller.c:20)\n"
+        "==1== \n"
+    )
+    findings = parse_valgrind_log(text)
+    assert len(findings) == 1
+    assert findings[0].primary_frame.function == "mystery_top"
+    assert findings[0].primary_frame.file is None
+    assert findings[0].frames[1].function == "caller"

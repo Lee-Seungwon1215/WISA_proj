@@ -50,31 +50,31 @@ These are the anti-patterns that bit repeatedly — check them on every change:
   (`function`, `source`, `triage hint`, `default: untriaged`) so a human triages
   faster. Framed as *triage-quality*, not a new detector — fits the paper's
   "honest integration" message. (`ctkat/asm_scan.py`, the varlat artifact.)
-- **Stale report / artifact cleanup** — sweep `examples/*/reports/` gitignore
-  consistency and any leftover non-regenerated docs.
+- **Local stale report cleanup** — `examples/*/reports/` is gitignored and no
+  report files are tracked; local generated reports may still be swept before
+  packaging/release if desired.
 - **Corpus → paper promotion adapter** (optional) — a thin script turning
   `screen_summary.csv` into corpus rows (add family/target/arch/commit), so
   `ctkat screen` output can feed the curated corpus directly.
 
 ### C-tier robustness (deferred from the audits; do when touched)
-- **header_parser** — parses functions inside `#if 0` / `#ifdef UNDEF` blocks and
-  multi-line `\`-continued `#define` bodies as live decls (phantom signatures).
-- **valgrind_parser** — ignores `==PID==` (interleaved/threaded output
-  misattributes frames); a location-less top frame is dropped → CSV mislocates
-  the finding to the 2nd frame.
-- **harness_generator** — compiled binary written non-atomically at a fixed path
-  (concurrent/CI runs can race); seed not in the binary filename.
-- **dudect_runner / valgrind log** — full log/stdout read into memory unbounded
-  (10M-measurement run can OOM the parent).
-- **config validation gaps** — `sources`/`include_dirs` not `..`/abs-path guarded
-  (header is); `DudectCompilerConfig.cc` unvalidated (MatrixConfig.compilers is);
-  `BufferSpec.size` accepts `' '`/`'0'`/`'-1'`.
-- **`ctkat dudect` standalone** ignores `dudect.enabled: false` (product call).
+- **Resolved in cleanup hardening**:
+  - `header_parser` now blanks known-dead `#if 0` / `#ifdef UNDEF` blocks and
+    backslash-continued directive bodies before signature inference.
+  - `valgrind_parser` keeps per-PID parser state and preserves location-less top
+    frames instead of shifting primary locations to the caller frame.
+  - generated CT/timing harness binaries compile to same-directory temp paths
+    and publish via `os.replace()`; actual compiler input uses a unique temp
+    source to avoid stable-source races.
+  - dudect timing stdout and Valgrind log reads are byte-capped before parsing.
+  - `sources` / `include_dirs` are project-relative and traversal-guarded;
+    `DudectCompilerConfig.cc` matches the matrix compiler PATH-name policy;
+    `BufferSpec.size` is already covered by the C-expression validator.
+  - standalone `ctkat dudect` now fails closed on `dudect.enabled: false`.
 
 ### Deferred review findings (acknowledged, low/medium, errs-safe)
-- **Phase 1**: screen asm vindex keyed by `(cc,opt)` (cross-harness attribution —
-  over-flags, safe); a matrix-cell-only ERROR still classifies `robust` (it's the
-  shared classifier's `only-minus-ERROR` rule — changing it changes the corpus).
+- **Phase 1 resolved in cleanup hardening**: screen asm vindex is keyed by
+  `(harness, cc, opt)`; matrix `PASS+ERROR` no longer classifies `robust`.
 - **B4**: optionally keep the per-class max-|t| as a diagnostic field so the
   fidelity-vs-sensitivity tradeoff is visible, not just documented.
 - **B5**: real **structural** FO-path coverage (a tainted dec on an invalid ct
