@@ -44,7 +44,7 @@ scrutiny precisely because it does not over-claim novelty.
 | 1 | Introduction | 1.5 | PQC deployment + CT side-channels; KyberSlash as the hook; the over-claim risk; contributions list (3 bullets). |
 | 2 | Background & related | 1.5 | CT verification landscape (dudect, ctgrind/Valgrind-Memcheck, ct-verif/binsec); KyberSlash; what's missing = **integration + triage discipline**. Keep tight, cite generously. |
 | 3 | Framework design | 2.5 | The 3 layers (Valgrind / asm-scan / dudect) under one yaml config; compiler×cflags **matrix**; the **triage-aware taxonomy** + **default-deny**; the cited `accepted_variable_time.md` registry. **Fig 1 = pipeline diagram.** |
-| 4 | Corpus & method | 1.0 | Docker amd64, gcc-13.3/clang-18.1.3, PQClean targets + synthetic controls; reproducibility (pinned toolchain). |
+| 4 | Corpus & method | 1.0 | Committed corpus CSVs, per-cell compiler/version provenance, PQClean targets + synthetic controls; reproducibility workflow. |
 | 5 | Results | 3.0 | **T1 (single-coverage) and T2 (verdict-class) — the two headline tables.** Walk each T1 row; foreground KyberSlash (ct PASS/asm FAIL) and ML-DSA (default-deny). **A1 dudect** as inset. |
 | 6 | Discussion: self-validation | 1.0 | The ML-DSA over-claim story; build-dependent attribution (inlining); honest limitations (QEMU TSC noise → confirm native; synthetic controls; corpus breadth). |
 | 7 | Conclusion | 0.5 | Restate: complete (T1) + validated (T2) + honest (default-deny). |
@@ -64,7 +64,8 @@ space is tight, §2 and §4 compress first; never compress §5/§6 (the contribu
 ## What's done vs what's left
 
 **Done (evidence is airtight):** all 5 feature single-coverage cases captured;
-corpus 7 rows / 5 classes; dudect appendix; all from real runs; 381 tests pass.
+corpus 7 rows / 5 classes; dudect appendix; pytest count comes from the current
+artifact run, not a copied paper number.
 
 **Left (write-up only, no new experiments needed):**
 1. Draw **Fig 1** (pipeline).

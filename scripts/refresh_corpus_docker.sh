@@ -30,8 +30,10 @@ run_target() {  # <project-dir> <family> <target> [extra build_corpus_table args
   # corpus (corpus_summary dudect_* columns AND dudect_appendix.csv) are FROZEN
   # snapshots; re-running here would silently change the paper's t-statistics.
   echo "[refresh] $target : ctkat ct-matrix + asm-scan (Docker) ..."
-  python3 -m ctkat ct-matrix  --config "$dir/ctkat.yaml" || true   # reports/ctkat_ct_matrix.csv
-  python3 -m ctkat asm-scan   --config "$dir/ctkat.yaml" --cc gcc --cc clang || true
+  # Fail closed: if either structural layer errors, stop before build_corpus_table
+  # can merge stale/partial reports into the committed corpus CSVs.
+  python3 -m ctkat ct-matrix  --config "$dir/ctkat.yaml"   # reports/ctkat_ct_matrix.csv
+  python3 -m ctkat asm-scan   --config "$dir/ctkat.yaml" --cc gcc --cc clang
   echo "[refresh] $target : build_corpus_table ..."
   python3 scripts/build_corpus_table.py \
     --project-dir "$dir" --family "$family" --target "$target" \

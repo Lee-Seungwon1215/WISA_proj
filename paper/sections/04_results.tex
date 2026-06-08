@@ -4,9 +4,9 @@
 We evaluate CT-KAT on seven harness rows spanning two PQC families
 (ML-KEM, ML-DSA) and synthetic controls, under up to six build cells
 (\texttt{gcc} 13.3.0 and \texttt{clang} 18.1.3 across the named
-\texttt{debug}/\texttt{release}/\texttt{size} cflag sets) in a pinned Docker
-image (Ubuntu~24.04, amd64). All numbers are from real runs; the suite
-reports 381~passed, 3~skipped. Table~\ref{tab:coverage} shows every layer
+\texttt{debug}/\texttt{release}/\texttt{size} cflag sets). Build-cell
+provenance is recorded in the committed corpus CSVs, not inferred from prose.
+Table~\ref{tab:coverage} shows every layer
 catches a leak no other sees; Table~\ref{tab:corpus} grounds every verdict
 class in a real target; Table~\ref{tab:dudect} is the timing appendix.
 

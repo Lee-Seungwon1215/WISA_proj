@@ -8,7 +8,7 @@
 ## Where we are
 
 Phase D corpus is done — `docs/corpus/corpus_summary.csv`, 7 rows / 3 families /
-5 verdict classes, all from real Docker amd64 gcc-13.3 / clang-18.1.3 runs:
+5 verdict classes, backed by committed corpus CSVs with per-cell provenance:
 
 | family | target | verdict_class |
 |---|---|---|
@@ -23,7 +23,8 @@ Phase D corpus is done — `docs/corpus/corpus_summary.csv`, 7 rows / 3 families
 Tooling: `ct-matrix` (compiler×cflags Valgrind), `asm-scan` (variable-latency
 div), `dudect` (timing), the triage-aware taxonomy with **default-deny** + the
 cited `docs/accepted_variable_time.md` registry, and `scripts/build_corpus_table.py`
-(merge → cells/summary). 381 tests pass.
+(merge -> cells/summary). The pytest count is intentionally not copied here;
+run `python3 -m pytest -q` for the current artifact result.
 
 ## The strongest report lens: per-feature single-coverage
 

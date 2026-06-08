@@ -22,6 +22,7 @@ PAPER = ROOT / "paper"
 RESULTS_TEX = PAPER / "sections" / "04_results.tex"
 DISCUSSION_TEX = PAPER / "sections" / "05_discussion.tex"
 REPORT_MD = ROOT / "docs" / "report_tables.md"
+REFRESH_SCRIPT = ROOT / "scripts" / "refresh_corpus_docker.sh"
 
 _spec = importlib.util.spec_from_file_location("render_paper_tables", GEN_SCRIPT)
 gen = importlib.util.module_from_spec(_spec)
@@ -100,7 +101,7 @@ def test_main_tex_has_no_stale_generated_rows(corpus):
     rows = (gen.render_tab_corpus(summary) + gen.render_tab_dudect(appendix)).splitlines()
     for row in rows:
         row = row.strip()
-        if row and not row.startswith("%"):
+        if row and not row.startswith("%") and row != r"\bottomrule":
             assert row not in t, f"stale generated row hardcoded in main.tex: {row[:50]}"
 
 
@@ -209,7 +210,7 @@ def test_report_tables_md_matches_corpus(corpus):
                   gen.round_mean(r["mean1"]), gen.round_t(r["abs_t_score"]), r["status"]):
             assert v in md, f"report_tables.md A1 missing {h} value {v}"
     # the bare truncated |t| in the caveat sentence
-    trunc = str(int(round(abs(float(appendix["leaky"]["abs_t_score"])))))
+    trunc = str(int(abs(float(appendix["leaky"]["abs_t_score"]))))
     assert f"|t|={trunc})" in md or f"({trunc}" in md
     # asymmetric-drop percentages
     dr = gen.drop_rates(appendix)
@@ -222,9 +223,37 @@ def test_report_tables_md_matches_corpus(corpus):
         assert gen.varlat_cell(row) in md
 
 
-def test_pytest_count_is_out_of_band_not_corpus_derived():
-    # The paper cites "381 passed, 3 skipped" (03_method.tex / 04_results.tex):
-    # a pytest count, NOT a corpus CSV number, so this sync test deliberately does
-    # NOT assert it (it would self-referentially drift every time the suite grows).
-    # Documented so a future auditor doesn't think it was forgotten.
-    assert True
+def test_paper_does_not_hardcode_pytest_result_counts():
+    # Pytest pass/skip counts change whenever the suite grows. They are an artifact
+    # output, not a corpus fact, so the paper must not freeze "381 passed" again.
+    all_tex = _all_paper_tex()
+    assert not re.search(r"\b\d+\s*~?\s*passed\b", all_tex)
+    assert not re.search(r"\b\d+\s*~?\s*skipped\b", all_tex)
+
+
+def test_paper_surfaces_do_not_overclaim_universal_docker_provenance():
+    # Some committed corpus cells still lack cc_version/arch/commit provenance.
+    # Until Stage-A refresh fills those, prose must not say EVERY number/row is
+    # from real Docker amd64 gcc/clang runs.
+    surfaces = [
+        _all_paper_tex(),
+        REPORT_MD.read_text(encoding="utf-8"),
+        (PAPER / "README.md").read_text(encoding="utf-8"),
+    ]
+    combined = "\n".join(surfaces).lower()
+    forbidden = (
+        "all from real docker",
+        "all numbers are from real docker",
+        "every figure in the paper comes from real docker",
+        "each from a real docker run",
+    )
+    for phrase in forbidden:
+        assert phrase not in combined
+
+
+def test_refresh_script_does_not_swallow_structural_analysis_failures():
+    # If ct-matrix/asm-scan fails, rebuilding corpus CSVs from stale reports is worse
+    # than stopping. The Docker refresh path must fail closed for structural layers.
+    sh = REFRESH_SCRIPT.read_text(encoding="utf-8")
+    assert "ct-matrix  --config \"$dir/ctkat.yaml\" || true" not in sh
+    assert "asm-scan   --config \"$dir/ctkat.yaml\" --cc gcc --cc clang || true" not in sh

@@ -13,11 +13,15 @@ compiles without picking a template.
 2. Set the main document to `main.tex`, compiler **pdfLaTeX**.
 3. Overleaf runs `pdflatex → bibtex → pdflatex → pdflatex` automatically.
 
-Local build (if you have a TeX distro):
+Local build from the repository root (if you have a TeX distro):
 
 ```bash
-pdflatex main && bibtex main && pdflatex main && pdflatex main
+scripts/reproduce_paper_tables.sh
+scripts/build_paper_pdf.sh
 ```
+
+`build_paper_pdf.sh` uses `pdflatex -> bibtex -> pdflatex -> pdflatex` when both
+commands are installed. If not, it falls back to `tectonic` when available.
 
 ## Layout
 
@@ -33,7 +37,7 @@ splncs04.bst          LNCS BibTeX style (bundled)
 
 ## Source of truth for the numbers
 
-Every figure in the paper comes from real Docker runs recorded as CSV:
+Every numeric table in the paper is rendered from committed corpus CSVs:
 
 - `../docs/corpus/corpus_summary.csv` → Table 2 (verdict-class corpus)
 - `../docs/corpus/dudect_appendix.csv` → Table 3 (dudect appendix)

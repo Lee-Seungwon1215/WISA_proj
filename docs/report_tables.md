@@ -4,9 +4,10 @@
 > **(T1) per-feature single-coverage** — every tool layer pulls its own weight;
 > **(T2) verdict-class corpus** — every class is grounded in real PQC.
 > **(A1) dudect appendix** — the one feature that lives beside the corpus.
-> All numbers are from real Docker amd64 gcc-13.3 / clang-18.1.3 Valgrind/dudect
-> runs. Source-of-truth CSVs: `docs/corpus/corpus_summary.csv`,
-> `docs/corpus/dudect_appendix.csv`.
+> Numbers are rendered from committed corpus CSVs produced by the CT-KAT analysis
+> workflow; per-cell compiler/version/architecture provenance lives in
+> `docs/corpus/corpus_cells.csv`. Source-of-truth CSVs:
+> `docs/corpus/corpus_summary.csv`, `docs/corpus/dudect_appendix.csv`.
 
 ---
 
@@ -41,7 +42,7 @@ that *only that layer* flags.
 
 ## T2 — Verdict-class corpus (every class grounded in real PQC)
 
-7 rows / 3 families / 5 verdict classes, each from a real Docker run.
+7 rows / 3 families / 5 verdict classes, backed by committed corpus runs.
 
 | family | target | harness | ct (matrix) | varlat triage | verdict_class |
 |---|---|---|---|---|---|

@@ -3,11 +3,13 @@
 
 \subsection{Reproducible environment}
 
-All results are real runs in one pinned container: Ubuntu~24.04 on
-\texttt{amd64}, GCC~13.3.0, Clang~18.1.3, Valgrind (Memcheck). A verdict can
-depend on compiler and optimization level, so one without the exact compiler
-version is under-specified. The suite has 381 passing and 3 skipped tests; skips
-need a native (non-emulated) timing environment.
+The committed corpus records build-cell provenance---compiler, compiler version,
+architecture, and CT-KAT commit---in \texttt{docs/corpus/corpus\_cells.csv}
+rather than relying on prose. A verdict can depend on compiler and optimization
+level, so one without the exact compiler version is under-specified. The
+regression suite is checked by the artifact workflow rather than copied into the
+paper as a static pass/skip count; timing-environment tests may skip outside
+native, non-emulated timing setups.
 
 \subsection{Corpus design}
 

@@ -87,8 +87,8 @@ registry to a \texttt{verdict\_class}.}
 \begin{table}[htbp]
 \centering
 \caption{Verdict-class corpus: \corpusRows{} harness rows, \corpusFamilies{}
-families, \corpusVerdictClasses{} verdict classes; all from real Docker amd64
-runs (gcc~13.3.0 / clang~18.1.3, Valgrind).}
+families, \corpusVerdictClasses{} verdict classes, rendered from the committed
+corpus CSVs with compiler/version provenance recorded per build cell.}
 \label{tab:corpus}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -97,8 +97,7 @@ runs (gcc~13.3.0 / clang~18.1.3, Valgrind).}
 Family & Target & Harness & ct (matrix) & varlat & \texttt{verdict\_class}\\
 \midrule
 % rows generated from docs/corpus/corpus_summary.csv — see preamble note.
-\input{generated/tab_corpus}
-\bottomrule
+\input{generated/tab_corpus}%
 \end{tabular}
 \end{table}
 
@@ -147,8 +146,7 @@ ct-matrix-keyed.}
 Target & Harness & $n_0$ & $n_1$ & mean$_0$ & mean$_1$ & $|t|$ & status\\
 \midrule
 % rows generated from docs/corpus/dudect_appendix.csv — see preamble note.
-\input{generated/tab_dudect}
-\bottomrule
+\input{generated/tab_dudect}%
 \end{tabular}
 \end{table}
 

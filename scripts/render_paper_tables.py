@@ -141,9 +141,9 @@ def render_tab_corpus(summary: list[dict]) -> str:
         lines.append(
             f"{r['family']} & {latex_tt(target_display(r['target']))} & "
             f"{latex_tt(r['harness'])} & {ct_display(r['ct_status_set'])} & "
-            f"{varlat_cell(r)} & {latex_tt(r['verdict_class'])}\\\\"
+            f"{varlat_cell(r)} & {latex_tt(r['verdict_class'])}\\tabularnewline"
         )
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n\\bottomrule\n"
 
 
 def render_tab_dudect(appendix: dict) -> str:
@@ -153,9 +153,9 @@ def render_tab_dudect(appendix: dict) -> str:
         lines.append(
             f"{latex_tt(r['project'])} & {latex_tt(h)} & {int(r['n0'])} & "
             f"{int(r['n1'])} & {round_mean(r['mean0'])} & {round_mean(r['mean1'])} & "
-            f"{round_t(r['abs_t_score'])} & {r['status']}\\\\"
+            f"{round_t(r['abs_t_score'])} & {r['status']}\\tabularnewline"
         )
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n\\bottomrule\n"
 
 
 def render_macros(summary, cells, appendix) -> str:
@@ -174,7 +174,7 @@ def render_macros(summary, cells, appendix) -> str:
         (r"\dudectLeakyT", round_t(leaky["abs_t_score"])),
         # integer-truncated leaky |t| for the "so large (|t|=181)" caveat prose,
         # single-sourced so it can't drift from \dudectLeakyT.
-        (r"\dudectLeakyTrunc", str(int(round(abs(float(leaky["abs_t_score"])))))),
+        (r"\dudectLeakyTrunc", str(int(abs(float(leaky["abs_t_score"]))))),
         (r"\dudectSafeT", round_t(safe["abs_t_score"])),
         (r"\dropTotalPct", round_pct(dr["total"])),
         (r"\dropClassZeroPct", round_pct(dr["class0"])),
