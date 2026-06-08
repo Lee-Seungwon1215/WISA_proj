@@ -4,6 +4,11 @@
 > push. Phase D (the empirical corpus) is **complete**; this doc adds the
 > per-feature coverage lens (the strongest report angle) and the small, concrete
 > steps that make the evidence airtight before write-up.
+>
+> **Engineering-hardening arc** (error-handling/fail-open fixes, `ctkat screen`
+> integration, paper-table auto-regeneration + drift test, B4/B5
+> measurement-semantics) and the open engineering TODO live in
+> **`engineering_status.md`** — this doc stays focused on the paper/report angle.
 
 ## Where we are
 
