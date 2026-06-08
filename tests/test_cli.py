@@ -891,6 +891,44 @@ def test_ct_sentinel_required_and_present_passes(monkeypatch, tmp_path):
     assert result.exit_code == 0
 
 
+def test_ct_sentinel_wrong_name_yields_error(monkeypatch, tmp_path):
+    # N1: a sentinel that names a DIFFERENT harness must NOT pass for `h`.
+    # Before the fix, `re.search(...) is not None` accepted any sentinel, so a
+    # binary that ran 'other' silently passed for 'h' — defeating F5.
+    _stub_ct_setup(
+        monkeypatch, returncode=0,
+        stdout="CTKAT-HARNESS-RAN: other\n", write_log=True,
+    )
+    yaml_text = _ctkat_yaml(
+        extra_ct_keys="  require_sentinel: true",
+        harness_block="    - {name: h, binary: ./x}",
+    )
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    result = CliRunner().invoke(app, ["ct", "--config", str(p)])
+    assert "ct: ERROR" in result.stdout
+    assert "Constant-Time Check: PASS" not in result.stdout
+    assert result.exit_code == 2
+
+
+def test_ct_sentinel_multi_harness_binary_matches_by_name(monkeypatch, tmp_path):
+    # N1: one binary may legitimately wrap several harnesses, emitting a sentinel
+    # line per harness. A match for THIS harness's name anywhere in stdout passes.
+    _stub_ct_setup(
+        monkeypatch, returncode=0,
+        stdout="CTKAT-HARNESS-RAN: other\nCTKAT-HARNESS-RAN: h\n", write_log=True,
+    )
+    yaml_text = _ctkat_yaml(
+        extra_ct_keys="  require_sentinel: true",
+        harness_block="    - {name: h, binary: ./x}",
+    )
+    p = tmp_path / "ctkat.yaml"
+    p.write_text(yaml_text)
+    result = CliRunner().invoke(app, ["ct", "--config", str(p)])
+    assert "Constant-Time Check: PASS" in result.stdout
+    assert result.exit_code == 0
+
+
 def test_ct_sentinel_skipped_when_require_false_emits_note(monkeypatch, tmp_path):
     # F5 backward-compat: require_sentinel=false → don't enforce, but
     # emit a per-run note pointing users at the new field.

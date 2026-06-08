@@ -129,11 +129,31 @@ int main(void) {
         uint64_t t0 = ctkat_now();
         {% if return_type and return_type != "void" -%}
         {{ return_type }} __ctkat_ret = {{ function }}({{ args | join(", ") }});
-        CTKAT_USE(__ctkat_ret);
         {% else -%}
         {{ function }}({{ args | join(", ") }});
         {% endif %}
         uint64_t t1 = ctkat_now();
+
+        /* N3 optimizer defense: consume the call's outputs AFTER the timed
+         * window so the compiler can't treat the call as dead and elide its
+         * work — which it can do for void / output-only / inline-or-header
+         * functions whose result is otherwise never read, yielding a false
+         * PASS. The Valgrind harness already sinks its outputs
+         * (harness_generic.c.j2); the timing harness used to consume only a
+         * non-void return value (and even that inside the timed region). Now
+         * BOTH the return value and every output buffer are sunk, after t1 so
+         * the consume cost is never charged to the measurement. */
+        {% if return_type and return_type != "void" -%}
+        CTKAT_USE(__ctkat_ret);
+        {% endif -%}
+        {
+            volatile uint64_t __ctkat_sink = 0;
+            {% for b in buffers if b.role == "output" -%}
+            for (size_t __ctkat_si = 0; __ctkat_si < sizeof({{ b.name }}); __ctkat_si++)
+                __ctkat_sink ^= (uint64_t){{ b.name }}[__ctkat_si];
+            {% endfor -%}
+            CTKAT_USE(__ctkat_sink);
+        }
 
         /* Clamp underflow: t1 < t0 should be impossible on a single core
          * with serialized rdtsc, but TSC skew across cores (no affinity) or

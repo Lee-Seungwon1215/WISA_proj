@@ -120,6 +120,54 @@ def test_underflow_clamp_present():
     assert "(t1 >= t0) ? (t1 - t0) : 0" in out
 
 
+def test_void_output_buffer_is_sunk(tmp_path):
+    # N3 (fail-open fix): a void function that only WRITES an output buffer must
+    # have that buffer consumed by a volatile sink, else the optimizer can elide
+    # the call (esp. inline/header impls) → false PASS. The Valgrind harness
+    # already does this; the timing harness must too.
+    ctx = _ctx(
+        function="fill", return_type="void", args=["out", "in_"],
+        buffers=[
+            {"name": "out", "size": "32", "role": "output"},
+            {"name": "in_", "size": "32", "role": "public"},
+        ],
+    )
+    out = render_timing_harness("generic", ctx)
+    assert "volatile uint64_t __ctkat_sink" in out
+    assert "out[__ctkat_si]" in out          # output buffer actually consumed
+    # the sink lives AFTER the timed window so it doesn't charge the measurement
+    assert out.index("t1 = ctkat_now()") < out.index("__ctkat_sink")
+
+
+def test_void_output_sink_compiles(tmp_path):
+    # The rendered void+output harness must be valid C (catches sizeof-on-array,
+    # missing decls, Jinja slips). Skips if no C compiler is available.
+    import os
+    import shutil
+    import subprocess
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if cc is None:
+        pytest.skip("no C compiler available")
+    ctx = _ctx(
+        clock="monotonic", extra_headers=[], function="fill", return_type="void",
+        args=["out", "in_"],
+        buffers=[
+            {"name": "out", "size": "32", "role": "output"},
+            {"name": "in_", "size": "32", "role": "public"},
+        ],
+    )
+    src = (
+        "static void fill(unsigned char *o, unsigned char *i){"
+        "for(int k=0;k<32;k++) o[k]=i[k];}\n"
+        + render_timing_harness("generic", ctx)
+    )
+    c = tmp_path / "t.c"
+    c.write_text(src)
+    r = subprocess.run([cc, "-O2", "-c", str(c), "-o", str(tmp_path / "t.o")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-1000:]
+
+
 # --- Bundle A: KEM template parity --------------------------------------------
 
 
@@ -154,6 +202,19 @@ def test_kem_captures_dec_return_with_ctkat_use():
     # block elision under LTO / aggressive opt.
     assert "__ctkat_dec_rc" in out
     assert "CTKAT_USE(__ctkat_dec_rc)" in out
+
+
+def test_kem_sinks_output_shared_secret_after_timed_window():
+    # N3: capturing only the dec RETURN code is not enough — a header/inline KEM
+    # impl could elide the work that fills the output `ss` while keeping `rc`.
+    # The output must be sunk too, AND after t1 so it doesn't charge the
+    # measurement (mirrors timing_generic.c.j2).
+    for lt in ("sk", "ct", "fo"):
+        out = render_timing_harness("kem", _kem_ctx(leak_target=lt))
+        assert "volatile uint64_t __ctkat_sink" in out, lt
+        assert "ss[__ctkat_si]" in out, lt
+        # sink lives after the timed window for this leak_target's measurement
+        assert out.index("t1 = ctkat_now()") < out.index("__ctkat_sink"), lt
 
 
 def test_kem_underflow_clamp_present():

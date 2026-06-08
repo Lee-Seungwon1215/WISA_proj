@@ -147,3 +147,79 @@ def test_merge_write_is_idempotent_per_target(tmp_path):
     by_t = {r["target"]: r["x"] for r in rows}
     assert by_t == {"A": "9", "B": "2"}
     assert len(rows) == 2
+
+
+def test_asm_error_from_varlat_json_is_surfaced(tmp_path):
+    # N2: a compiler whose asm-scan errored (e.g. a source never compiled) must
+    # NOT show a clean "0 divisions" — its asm_error must be surfaced in the
+    # corpus cell. Before the fix asm_error was hardcoded "", so a partial scan
+    # looked identical to a complete clean one.
+    import json
+    _write_reports(
+        tmp_path,
+        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS"),
+         _ctm("kem_dec", "clang_o2", "clang", "-O2 -g", "PASS")],
+        [_vl("kem_dec", "gcc", "shake128", "-O2")],   # only gcc produced candidates
+        [],
+    )
+    # asm-scan JSON: gcc scanned OK, clang errored (a source never compiled).
+    (tmp_path / "reports" / "ctkat_varlat_candidates.json").write_text(json.dumps({
+        "project": "p", "kind": "varlat_candidates", "warn_only": True,
+        "scanned_opt_levels": ["-O2"], "scanned_compilers": ["gcc"],
+        "errors": [{"compiler": "clang",
+                    "error": "source(s) never compiled under cc='clang': poly.c"}],
+        "candidates": [], "matrix": [],
+    }))
+    cells, summary = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
+    by_cc = {c["cc"]: c for c in cells}
+    assert by_cc["gcc"]["asm_error"] == ""                       # scanned OK
+    assert "never compiled" in by_cc["clang"]["asm_error"]       # surfaced, not blank
+    # and the clang cell is not a misleading clean "0 divisions" with no caveat
+    assert by_cc["clang"]["asm_div_count"] == "0"
+    assert by_cc["clang"]["asm_error"] != ""
+    # N2 (verdict layer, the row a human reads): must NOT be the strongest clean
+    # class 'robust' when an asm-scan errored, and must carry a loud caveat note.
+    s = summary[0]
+    assert s["verdict_class"] != "robust"
+    assert s["verdict_class"] == "ct-clean-asm-incomplete"
+    assert "asm-scan incomplete" in s["notes"]
+
+
+def test_asm_error_not_flagged_for_uncovered_compiler(tmp_path):
+    # Review issue #4: a matrix compiler that simply wasn't in asm-scan's --cc
+    # set (the common matrix={gcc,clang} / asm-scan=gcc-only flow) is a COVERAGE
+    # choice, not an error — it must NOT be labeled asm_error nor downgrade the
+    # verdict. asm_error is reserved for genuine asm-scan errors (schema-locked).
+    import json
+    _write_reports(
+        tmp_path,
+        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS"),
+         _ctm("kem_dec", "clang_o2", "clang", "-O2 -g", "PASS")],
+        [],   # no div candidates at all -> clean
+        [],
+    )
+    # clang is NOT in scanned_compilers and NOT in errors — just not requested.
+    (tmp_path / "reports" / "ctkat_varlat_candidates.json").write_text(json.dumps({
+        "project": "p", "kind": "varlat_candidates", "warn_only": True,
+        "scanned_opt_levels": ["-O2"], "scanned_compilers": ["gcc"],
+        "errors": [], "candidates": [], "matrix": [],
+    }))
+    cells, summary = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
+    by_cc = {c["cc"]: c for c in cells}
+    assert by_cc["clang"]["asm_error"] == ""   # not an error — just not requested
+    # a not-requested compiler must NOT downgrade the verdict: no genuine asm
+    # error -> the ct-PASS / no-candidate harness stays 'robust'.
+    assert summary[0]["verdict_class"] == "robust"
+
+
+def test_asm_error_blank_when_no_asm_json(tmp_path):
+    # Backward-compat: no varlat JSON (asm-scan not run / older artifact) -> no
+    # spurious asm_error.
+    _write_reports(
+        tmp_path,
+        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS")],
+        [_vl("kem_dec", "gcc", "shake128", "-O2")],
+        [],
+    )
+    cells, _ = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
+    assert cells[0]["asm_error"] == ""

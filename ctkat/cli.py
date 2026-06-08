@@ -509,14 +509,42 @@ def _do_ct(
         # drives template harnesses). Only enforced on manual mode;
         # `require_sentinel=False` keeps legacy behavior (note printed above).
         if is_manual and cfg.ct.require_sentinel:
-            m = re.search(cfg.ct.sentinel_pattern, result.stdout or "")
-            if m is None:
+            # F5 + Q(N1): the sentinel must not only be PRESENT — its captured
+            # group must NAME this harness. Before, `re.search(...) is not None`
+            # accepted ANY sentinel, so a binary that ran a DIFFERENT harness
+            # (emitting `CTKAT-HARNESS-RAN: other`) passed for `h` — defeating
+            # F5's "did THIS harness actually run" guarantee (the config doc
+            # already says the capture group holds the harness name). One binary
+            # may legitimately wrap several harnesses, so accept if ANY match
+            # names this harness.
+            pat = re.compile(cfg.ct.sentinel_pattern)
+            stdout = result.stdout or ""
+            if pat.groups >= 1:
+                # .strip() tolerates a custom pattern whose group incidentally
+                # captures surrounding whitespace (no-op for the default `\S+`);
+                # skip matches where the optional group didn't participate.
+                names = [
+                    m.group(1).strip()
+                    for m in pat.finditer(stdout)
+                    if m.group(1) is not None
+                ]
+                ok = h.name in names
+                why = (
+                    f"emitted sentinel(s) naming {names!r}, not {h.name!r}"
+                    if names else "did not emit the sentinel"
+                )
+            else:
+                # Group-less custom pattern: the user opted out of name
+                # matching, so fall back to presence-only (legacy F5).
+                ok = pat.search(stdout) is not None
+                why = "did not emit the sentinel"
+            if not ok:
                 console.print(
                     f"[bold red][CTKAT] ct: ERROR[/] — manual harness "
-                    f"[bold]{h.name}[/] did not emit sentinel "
-                    f"{cfg.ct.sentinel_pattern!r} on stdout. The binary may "
-                    f"not have invoked the target function. Verdict will be "
-                    f"INCONCLUSIVE. (F5)"
+                    f"[bold]{h.name}[/] {why} (pattern "
+                    f"{cfg.ct.sentinel_pattern!r}) on stdout. The binary may not "
+                    f"have invoked THIS harness's target. Verdict will be "
+                    f"INCONCLUSIVE. (F5/N1)"
                 )
                 results.append((h.name, "ERROR", []))
                 continue

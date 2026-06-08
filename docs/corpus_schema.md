@@ -102,6 +102,13 @@ the **triaged** varlat result:
 - `ct-clean-untriaged` — ct PASS across builds but `varlat_triage = untriaged`
   (candidates exist, secret-derivation not yet checked). The HONEST default for a
   freshly-added target before manual triage.
+- `ct-clean-asm-incomplete` — ct PASS across builds but the asm-scan **errored**
+  for at least one build (a source never compiled, a missing/non-exec compiler,
+  or a disasm failure — see the cell's `asm_error`). We never disassembled that
+  build, so a `0`-division count is a blind spot, not evidence of safety — the
+  row is deliberately NOT `robust`. The `notes` column names the affected
+  compiler(s) and the underlying error. (N2: prevents an incomplete asm-scan
+  from reading as the strongest clean verdict.)
 - `varlat-secret-risk` — `varlat_triage = secret-risk` (KyberSlash class). **Note:
   ct/Valgrind may still be PASS — that's the structural-check blind spot.**
 - `build-sensitive-ct` — `ct_status` flips across builds (the structural verdict

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import re
 from pathlib import Path
 
@@ -81,6 +82,16 @@ def _read_csv(path: Path) -> list:
         return list(csv.DictReader(f))
 
 
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def _dudect_cfg(project_dir: Path) -> dict:
     """Best-effort dudect config (leak_target per harness + seed/threshold/
     measurements) from the project's yaml. Degrades to {} on any error so a
@@ -117,8 +128,26 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
     reports = project_dir / "reports"
     ctm = _read_csv(reports / "ctkat_ct_matrix.csv")
     varlat = _read_csv(reports / "ctkat_varlat_candidates.csv")
+    varlat_json = _read_json(reports / "ctkat_varlat_candidates.json")
     dud = _read_csv(reports / "dudect_summary.csv")
     dcfg = _dudect_cfg(project_dir)
+
+    # N2: surface asm-scan compiler ERRORS so a cell whose asm scan was
+    # incomplete is NOT printed as a clean "0 divisions". The varlat JSON records
+    # per-compiler errors (missing/non-exec cc, disasm failure, or a source that
+    # never compiled); the CSV (candidates only) has no error column, which is
+    # why asm_error was previously hardcoded "". Per corpus_schema.md, asm_error
+    # means an asm-scan ERROR — NOT a compiler that simply wasn't in asm-scan's
+    # --cc set (the common matrix={gcc,clang} / asm-scan=gcc-only flow), which is
+    # a coverage choice, not an error; conflating them would false-flag and (via
+    # the verdict fold below) false-downgrade those builds.
+    asm_err_by_cc = {
+        e.get("compiler", ""): e.get("error", "")
+        for e in (varlat_json.get("errors") or [])
+    }
+
+    def _asm_error_for(cc: str) -> str:
+        return asm_err_by_cc.get(cc, "")
 
     # asm-scan candidates indexed by (compiler, opt) -> [(function, count), ...]
     vindex: dict = {}
@@ -142,7 +171,7 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
             "ct_finding_funcs": r.get("finding_funcs", ""), "ct_error": r.get("error", ""),
             "asm_div_count": str(sum(c for _f, c in hits)),
             "asm_div_funcs": ";".join(sorted({f for f, _c in hits})),
-            "asm_error": "",
+            "asm_error": _asm_error_for(r["cc"]),
         })
 
     dud_by = {d["harness"]: d for d in dud}
@@ -158,6 +187,10 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
         verdicts = {s for s in statuses if s in ("PASS", "FAIL")}
         ct_flips = "yes" if len(verdicts) > 1 else "no"
         vcells = sorted({f"{c['cc']}:{c['opt']}" for c in hc if int(c["asm_div_count"]) > 0})
+        # N2 (verdict layer): compilers whose asm-scan ERRORED for this harness.
+        # A 0-division count from an errored scan is a blind spot, not evidence
+        # of safety, so it must NOT read as the clean "robust" verdict.
+        asm_err_ccs = sorted({c["cc"] for c in hc if c.get("asm_error")})
         tri = triage.get(h, "untriaged")
         d = dud_by.get(h, {})
         cf = dcfg.get(h, {})
@@ -177,6 +210,10 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
                 vclass = "needs-analysis"
         elif tri == "secret-risk":
             vclass = "varlat-secret-risk"
+        elif only == {"PASS"} and asm_err_ccs:
+            # N2: ct PASS but asm-scan ERRORED for some build(s) — we never
+            # disassembled them, so we cannot claim division-free. NOT 'robust'.
+            vclass = "ct-clean-asm-incomplete"
         elif only == {"PASS"} and (not vcells or tri in ("none", "public")):
             # ct PASS with no varlat candidates (nothing to triage) OR candidates
             # triaged public/none -> robust.
@@ -206,6 +243,14 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
                          + ";".join(unreg))
         if d.get("status") == "WARNING":
             notes.append("dudect WARNING — likely QEMU env-noise; confirm natively")
+        if asm_err_ccs:
+            # N2: make the blind spot loud in the human-facing summary, not just
+            # the per-cell column.
+            notes.append(
+                "asm-scan incomplete/errored for " + ",".join(asm_err_ccs)
+                + " — division-free claim does NOT cover those build(s): "
+                + "; ".join(sorted({c["asm_error"] for c in hc if c.get("asm_error")}))
+            )
         if not vcells:
             pass
         elif tri == "untriaged":

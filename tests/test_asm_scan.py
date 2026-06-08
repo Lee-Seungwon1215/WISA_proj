@@ -625,3 +625,48 @@ def test_asm_scan_flags_kyberslash_in_real_mlkem_poly(tmp_path):
 
     fixed = [c.function for c in scan(clean / "poly.c", "fixed") if c.function.endswith(targets)]
     assert not fixed, f"shipped (fixed) poly.c must not flag poly_compress/poly_tomsg; got {fixed}"
+
+
+def _have_toolchain():
+    return bool((shutil.which("gcc") or shutil.which("cc")) and shutil.which("objdump"))
+
+
+def test_scan_harness_unscanned_source_raises(tmp_path):
+    # N2: a source that compiles at ZERO opt levels is a blind spot — scan_harness
+    # must fail closed (AsmScanError naming it) instead of returning a clean
+    # "no divisions" result built only from the sources that DID compile.
+    if not _have_toolchain():
+        pytest.skip("need a C compiler + objdump")
+    cc = "gcc" if shutil.which("gcc") else "cc"
+    good = tmp_path / "good.c"
+    good.write_text("int add(int a,int b){return a+b;}\n")
+    bad = tmp_path / "bad.c"
+    bad.write_text("#error intentionally-broken\n")
+    with pytest.raises(AsmScanError) as ei:
+        scan_harness(
+            harness="h",
+            sources=[good, bad],
+            source_display=["good.c", "bad.c"],
+            include_dirs=[],
+            base_cflags=["-O0"],
+            workdir=tmp_path,
+            opt_levels=("-O0", "-O2"),
+            timeout=30,
+            cc=cc,
+        )
+    assert "bad.c" in str(ei.value)
+    assert "good.c" not in str(ei.value)   # good.c compiled, so it's not flagged
+
+
+def test_scan_harness_all_good_sources_no_raise(tmp_path):
+    # Control: every source compiles -> normal completion (list, possibly empty).
+    if not _have_toolchain():
+        pytest.skip("need a C compiler + objdump")
+    cc = "gcc" if shutil.which("gcc") else "cc"
+    src = tmp_path / "ok.c"
+    src.write_text("int add(int a,int b){return a+b;}\n")
+    out = scan_harness(
+        harness="h", sources=[src], source_display=["ok.c"], include_dirs=[],
+        base_cflags=["-O0"], workdir=tmp_path, opt_levels=("-O0",), timeout=30, cc=cc,
+    )
+    assert isinstance(out, list)   # add() has no division -> []

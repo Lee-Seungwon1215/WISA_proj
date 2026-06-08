@@ -24,6 +24,19 @@
         CTKAT_USE(__ctkat_dec_rc);
         uint64_t t1 = ctkat_now();
 
+        /* N3: sink the OUTPUT shared secret too, not just the return code — a
+         * header/inline KEM impl could otherwise elide the work that fills `ss`
+         * while keeping `rc`, giving a false PASS. After t1 so the consume cost
+         * isn't charged to the measurement. (Real PQClean dec is external under
+         * -fno-lto so this is belt-and-suspenders, but it removes the asymmetry
+         * with the Valgrind harness and matches timing_generic.c.j2.) */
+        {
+            volatile uint64_t __ctkat_sink = 0;
+            for (size_t __ctkat_si = 0; __ctkat_si < sizeof(ss); __ctkat_si++)
+                __ctkat_sink ^= (uint64_t)ss[__ctkat_si];
+            CTKAT_USE(__ctkat_sink);
+        }
+
         /* Clamp underflow — see timing_generic.c.j2 for rationale. */
         cycles_buf[i]  = (t1 >= t0) ? (t1 - t0) : 0;
         classes_buf[i] = (uint8_t)cls;

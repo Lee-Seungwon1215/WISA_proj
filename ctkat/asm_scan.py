@@ -296,6 +296,7 @@ def scan_harness(
     agg: Dict[Tuple[str, str], List[Occurrence]] = {}
     attempted = 0   # (source, opt) compile attempts
     compiled = 0    # ...that produced an object we could disassemble
+    scanned_sources: set = set()  # source displays that compiled at >=1 opt
 
     with tempfile.TemporaryDirectory(prefix="ctkat_asm_") as td:
         tmp = Path(td)
@@ -324,17 +325,27 @@ def scan_harness(
                         on_warn(f"compile failed: {disp} {opt} — {tail or '(no stderr)'}")
                     continue
                 compiled += 1
+                scanned_sources.add(disp)
                 for func, addr, mnem in _disasm_divisions(obj, objdump, nm, timeout=timeout):
                     agg.setdefault((disp, func), []).append(Occurrence(opt, addr, mnem))
 
-    # If EVERY compile failed (toolchain/header/-D/-isystem mismatch for this
-    # cc), returning [] would be reported as a clean "no divisions found" green
-    # scan — the F6/T17 silent-skip → effect-0 trap. Raise so the caller records
-    # this compiler as an ERROR, not a completed (clean) scan.
-    if attempted and not compiled:
+    # Q(N2): a source we were told to scan that compiled at ZERO opt levels is a
+    # BLIND SPOT — we never disassembled it, so we cannot honestly claim it is
+    # division-free. The dangerous case (the neighbor's finding): a leaky source
+    # fails to compile while an unrelated helper compiles → returning [] reads as
+    # a clean "no divisions found" scan (false-clean). Fail closed: name the
+    # unscanned source(s) so the caller records THIS compiler as ERROR / PARTIAL
+    # rather than green. (A source that compiled at *some* opt levels is fine —
+    # we have visibility there, and the per-(source,opt) warn covers the gaps.)
+    # This subsumes the old "every compile failed" guard: if all sources failed,
+    # all of them are unscanned.
+    unscanned = [d for d in source_display if d not in scanned_sources]
+    if attempted and unscanned:
         raise AsmScanError(
-            f"all {attempted} compile(s) failed for cc={cc!r} on harness "
-            f"{harness!r} — toolchain/header/-D/-isystem mismatch? (see warnings)"
+            f"source(s) never compiled under cc={cc!r} on harness {harness!r}: "
+            f"{', '.join(unscanned)} — cannot claim division-free for them "
+            f"(toolchain/header/-D/-isystem mismatch?). See warnings; this "
+            f"compiler is recorded as a PARTIAL/ERROR scan, not clean."
         )
 
     out = [
