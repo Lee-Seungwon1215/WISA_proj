@@ -854,8 +854,7 @@ class DudectConfig(BaseModel):
 def _default_matrix_cflags() -> Dict[str, List[str]]:
     # debug / release / size presets — the three build shapes whose CT
     # properties most often diverge (branch visible at -O0 but cmov-fused at
-    # -O2; constant division kept at -Os; etc.). Matches docs/ctkat_direction_
-    # roadmap.md Phase C. Users override per project.
+    # -O2; constant division kept at -Os; etc.). Users override per project.
     return {
         "debug": ["-O0", "-g", "-fno-inline", "-fno-omit-frame-pointer"],
         "release": ["-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"],

@@ -318,8 +318,6 @@ dudect:
     cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
 ```
 
-향후 작업: top-level `shared_cflags` 옵션 + 멀티 cflags 매트릭스 실행.
-
 ### 통계 layer (Python 측)
 
 | 항목 | 내용 |

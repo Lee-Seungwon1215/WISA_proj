@@ -1538,7 +1538,7 @@ def screen(
     artifact (CSV/JSON/Markdown).
 
     verdict_class is computed by the SAME classifier the corpus builder uses
-    (ctkat/verdict_class.py), so the tool's output and the paper corpus can't
+    (ctkat/verdict_class.py), so the tool's output and the curated corpus can't
     drift. Heavier than any single subcommand and needs a Linux/Docker
     environment (valgrind).
 

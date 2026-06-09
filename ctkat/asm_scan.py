@@ -427,10 +427,9 @@ def write_varlat_csv(candidates: List[VarLatCandidate], path: Path) -> None:
 def build_matrix(candidates: List[VarLatCandidate]) -> List[Dict[str, object]]:
     """Normalized one-row-per-(compiler, opt, source, function, mnemonic) view
     of the candidates, so a script can mechanically compare *which compiler ×
-    opt level kept a division alive* without parsing the `;`-joined CSV columns
-    (roadmap Phase B completion criterion). The human-readable cross-opt `note`
-    lives only on the aggregated CSV rows / `candidates`; this matrix is the
-    machine-diff surface."""
+    opt level kept a division alive* without parsing the `;`-joined CSV columns.
+    The human-readable cross-opt `note` lives only on the aggregated CSV rows /
+    `candidates`; this matrix is the machine-diff surface."""
     agg: Dict[Tuple[str, str, str, str, str], int] = {}
     for c in candidates:
         for o in c.occurrences:

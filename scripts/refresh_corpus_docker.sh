@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Phase 2 (Docker path — STAGE A→B): re-run the constant-time analyses on each
-# corpus target and rebuild docs/corpus/{corpus_cells,corpus_summary}.csv.
+# Re-run the structural analyses on each corpus target and rebuild
+# docs/corpus/{corpus_cells,corpus_summary}.csv.
 #
 # ⚠ NEEDS a Linux/Docker amd64 environment with valgrind + gcc-13/clang-18 +
 #   objdump. It is NOT run in CI and was NOT executed when this script was
@@ -9,11 +9,8 @@
 #
 # ⚠ It deliberately does NOT regenerate docs/corpus/dudect_appendix.csv — that is
 #   a FROZEN snapshot of one large (50k-measurement) dudect run. dudect is
-#   non-reproducible run-to-run (TSC skew under QEMU), so re-running it would
-#   change the paper's appendix numbers. Refresh it by hand only, deliberately.
-#
-# After this, run scripts/reproduce_paper_tables.sh to re-render the paper tables
-# from the refreshed CSVs and verify sync.
+#   non-reproducible run-to-run (TSC skew under QEMU). Refresh it by hand only,
+#   deliberately.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -28,7 +25,7 @@ run_target() {  # <project-dir> <family> <target> [extra build_corpus_table args
   # asm-scan (objdump). We deliberately do NOT re-run `ctkat dudect` — dudect is
   # timing-keyed and non-reproducible (TSC skew under QEMU), so its numbers in the
   # corpus (corpus_summary dudect_* columns AND dudect_appendix.csv) are FROZEN
-  # snapshots; re-running here would silently change the paper's t-statistics.
+  # snapshots; re-running here would silently change curated timing values.
   echo "[refresh] $target : ctkat ct-matrix + asm-scan (Docker) ..."
   # Fail closed: if either structural layer errors, stop before build_corpus_table
   # can merge stale/partial reports into the committed corpus CSVs.
@@ -49,4 +46,3 @@ run_target examples/toy_lookup              synthetic toy_lookup                
 run_target examples/ct_matrix_flip          synthetic ct_matrix_flip             # build-sensitive auto
 
 echo "[refresh] corpus CSVs rebuilt under $OUT/ (dudect_appendix.csv left untouched)."
-echo "[refresh] next: scripts/reproduce_paper_tables.sh  (re-render + verify sync)."

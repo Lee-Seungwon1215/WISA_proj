@@ -25,7 +25,8 @@ baselines/
 .local_archive/
 .claude/
 
-# Local paper packaging artifact
+# Local paper source / packaging artifacts
+paper/
 paper.zip
 
 # Editor / OS

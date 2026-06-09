@@ -90,12 +90,12 @@ verdict_class,notes
 | `varlat_triage` | **manual**: `none` / `public` (operand is public, e.g. Keccak rate) / `secret-risk` (secret-derived, KyberSlash class) / `untriaged` |
 | `dudect_*` | one timing run — status, max abs-t, **+ measurements, leak_target(sk/ct/fo), seed, threshold** (all needed to reproduce/compare a timing claim) |
 | `verdict_class` | see taxonomy |
-| `notes` | free text + the *real-code-issue / tool-problem / env-noise* tag (roadmap-required) |
+| `notes` | free text + optional *real-code-issue / tool-problem / env-noise* tag |
 
 ### `verdict_class` taxonomy (triage-aware)
 
-> Since Phase 1 (Bundle R) this taxonomy lives in the package
-> (`ctkat/verdict_class.py`) and is computed by BOTH this corpus builder and the
+> This taxonomy lives in the package (`ctkat/verdict_class.py`) and is computed by
+> BOTH this corpus builder and the
 > `ctkat screen` command (which emits `reports/screen_summary.{csv,json,md}`), so
 > the tool's per-project output and the curated corpus can't drift. This script
 > still owns the corpus-only curation metadata (family/target/cc_version/arch/commit)
@@ -142,25 +142,7 @@ cell since **v1.1**) against `docs/accepted_variable_time.md`:
 `accepted-variable-time` (cited) vs `needs-analysis` (default) vs `ct-leak`
 (confirmed) for a ct FAIL.
 
-## Completion target (roadmap Phase D)
-
-≥3 algorithm families, ≥10 (target × config) combos, this `corpus_summary.csv`
-as the single evidence table, every row's `varlat_triage` + `notes` classified.
-
-## Recommended target order (review-endorsed)
-
-1. **Lock this schema.**
-2. **Re-run ML-KEM ct-matrix with gcc+clang** — `examples/pqc_mlkem768/ctkat.yaml`
-   has no `matrix:` section, so it currently sweeps gcc only.
-3. **ML-DSA / Dilithium** — PQClean, ML-KEM-like structure → low integration
-   cost, good robust control.
-4. **Positive controls** — KyberSlash-vuln (done), table-AES (S-box), naive
-   memcmp — show what the tools actually catch.
-5. Fill the table → **Go/No-Go**.
-6. Only if div-candidate triage is genuinely unmanageable → Phase E patched
-   Valgrind.
-
-## Locked decisions
+## Schema decisions
 
 1. Keep BOTH `combo` and raw `opt`/`cflags` in cells (don't collapse).
 2. `cc_version` + `arch` + `ctkat_commit` mandatory in cells.
