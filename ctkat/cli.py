@@ -2000,11 +2000,12 @@ def asm_scan(
 
     if candidates:
         table = Table(title="Variable-latency candidates in harness sources (warn-only)")
-        for col in ("compiler", "harness", "source", "function", "mnem", "opt levels", "n"):
+        for col in ("compiler", "harness", "source", "function", "hint", "mnem", "opt levels", "n"):
             table.add_column(col)
         for c in candidates:
             table.add_row(
                 c.compiler, c.harness, c.source_file, c.function,
+                c.triage_hint,
                 ";".join(c.mnemonics), ";".join(c.opt_levels), str(c.count),
             )
         console.print(table)

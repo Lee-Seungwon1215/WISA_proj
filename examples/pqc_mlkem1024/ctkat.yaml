@@ -1,0 +1,73 @@
+project:
+  name: pqclean_mlkem1024
+  language: c
+  root: ..
+
+build:
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: kem_dec
+      template: kem
+      kem_decapsulation: valid
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM1024_CLEAN_"
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+    - name: kem_dec_fo
+      template: kem
+      kem_decapsulation: invalid
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM1024_CLEAN_"
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]

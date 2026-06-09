@@ -98,9 +98,14 @@ WISA/
 │   ├── toy_password/           # bad_compare vs safe_compare (Phase 0~2)
 │   ├── toy_dudect/             # leaky_function vs safe_function (Phase 4)
 │   ├── toy_lookup/             # secret-indexed S-box vs constant-index
+│   ├── pqc_mlkem512/           # PQClean ML-KEM-512 + valid/invalid KEM paths
 │   ├── pqc_mlkem768/           # PQClean ML-KEM-768 + valid/invalid KEM paths
+│   ├── pqc_mlkem1024/          # PQClean ML-KEM-1024 + valid/invalid KEM paths
 │   ├── pqc_mlkem768_kyberslash/# ML-KEM with KyberSlash /KYBER_Q positive control
-│   └── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
+│   ├── pqc_mldsa44/            # PQClean ML-DSA-44 attribution/registry case
+│   ├── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
+│   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
+│   └── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ scaffold; triage pending
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # dev.sh, run_check.sh, run_phaseN.sh, fetch_pqclean.sh
 ├── Dockerfile, docker-compose.yml
@@ -617,12 +622,15 @@ python -m ctkat asm-scan --config <ctkat.yaml> [--opt -O0 --opt -Os ...] [--cc g
 `-O`)과 **여러 컴파일러**(`--cc` 반복, 기본 `gcc`)로 컴파일해 `objdump`로
 `div/idiv/sdiv/udiv/…` 위치를 모으고, **어느 컴파일러 × 어느 빌드에서 나눗셈이
 살아남나**를 `reports/ctkat_varlat_candidates.csv/json`에 적는다(CSV엔 `compiler`
-컬럼, JSON엔 `scanned_compilers`·기계비교용 `matrix`·`errors`). 이 corpus의
-KyberSlash positive control은 `gcc -Os`와 `clang -O0`에서 `poly_compress` /
-`poly_tomsg`의 `div/idiv`가 살아난다. 단일 컴파일러·단일 빌드만 보면 놓칠 수
-있다. **taint 분석이 아니라** 소스 안 모든 나눗셈을
-후보로 내므로(공개 나눗셈도 포함) verdict엔 절대 섞지 않는다. note의 "ct 스테이지가
-놓침" 판정은 ct 빌드가 **같은 컴파일러**를 쓸 때만 성립하도록 조건부로 적는다
+와 `triage_hint` 컬럼, JSON엔 `scanned_compilers`·기계비교용 `matrix`·`errors`).
+`triage_hint`는 판정이 아니라 리뷰 힌트다. 예를 들어 이 corpus의 KyberSlash
+positive control은 `gcc -Os`와 `clang -O0`에서 `poly_compress` /
+`poly_tomsg`의 `div/idiv`가 살아나며 `kyberslash-poly-review-secret-risk`
+힌트로 남는다. 반대로 FIPS202/Keccak `shake128`/`shake256` 후보는
+`keccak-rate-review-likely-public` 힌트로 남아 public triage 후보임을 빠르게
+보여준다. 단일 컴파일러·단일 빌드만 보면 놓칠 수 있다. **taint 분석이 아니라**
+소스 안 모든 나눗셈을 후보로 내므로(공개 나눗셈도 포함) verdict엔 절대 섞지 않는다.
+note의 "ct 스테이지가 놓침" 판정은 ct 빌드가 **같은 컴파일러**를 쓸 때만 성립하도록 조건부로 적는다
 (asm-scan은 ct 빌드의 컴파일러를 모름). **exit 코드**: candidate 유무와 무관하게
 `0`(warn-only). 요청한 컴파일러 중 **일부**가 PATH에 없으면 그 컴파일러만 건너뛰고
 ERROR로 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단 `objdump`가 없거나 요청한
@@ -762,7 +770,7 @@ int leaky_function(const uint8_t *secret, size_t len) {
 남긴다. 큰 toy 신호를 보여주는 positive control로는 충분하지만, 실제 PQC
 timing 결론은 native x86_64에서 재확인해야 한다.
 
-### 4. `pqc_mlkem768` — 실전 PQClean ML-KEM-768
+### 4. `pqc_mlkem{512,768,1024}` — 실전 PQClean ML-KEM parameter sets
 
 ```bash
 # 한 번만:
@@ -780,6 +788,10 @@ PYTHONPATH=. python -m ctkat run --config examples/pqc_mlkem768/ctkat.yaml
 | asm-scan | FIPS202/Keccak division 후보는 public으로 triage |
 | dudect | QEMU/Docker에서 WARNING (`|t|=5.47`) |
 | screen/corpus | `robust`, 단 timing warning은 native 확인 권장 |
+
+ML-KEM-512/1024는 ML-KEM-768과 같은 valid/invalid decapsulation 구조
+하니스를 사용한다. SPHINCS+-SHA2-128f-simple scaffold도 들어있지만 구조
+finding attribution이 아직 끝나지 않아 committed corpus promotion 대상은 아니다.
 
 ---
 
@@ -944,7 +956,7 @@ CSV col 7 값이 변경됨.
 
 ## Acknowledgments
 
-- **PQClean** (<https://github.com/PQClean/PQClean>) — ML-KEM-768 reference implementation. `examples/pqc_mlkem768/` 안 `clean/` / `common/` 디렉토리.
+- **PQClean** (<https://github.com/PQClean/PQClean>) — ML-KEM, ML-DSA, and SPHINCS+ clean reference implementations under `examples/pqc_*`.
 - **ctgrind** (Adam Langley) — Valgrind/Memcheck를 constant-time 검사에 응용한 원래 아이디어.
 - **dudect** (Reparaz, Balasch, Verbauwhede) — fixed-vs-random Welch t-test 기반 timing leak 검출.
 

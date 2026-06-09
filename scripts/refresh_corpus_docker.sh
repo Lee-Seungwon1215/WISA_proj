@@ -39,9 +39,13 @@ run_target() {  # <project-dir> <family> <target> [extra build_corpus_table args
 
 # Per-target triage / manual verdict overrides (the human-judgment layer that the
 # auto-classifier cannot derive — kept here so the corpus is reproducible).
+run_target examples/pqc_mlkem512            ML-KEM    pqclean_mlkem512            --triage kem_dec=public --triage kem_dec_fo=public
 run_target examples/pqc_mlkem768            ML-KEM    pqclean_mlkem768            --triage kem_dec=public --triage kem_dec_fo=public
+run_target examples/pqc_mlkem1024           ML-KEM    pqclean_mlkem1024           --triage kem_dec=public --triage kem_dec_fo=public
 run_target examples/pqc_mlkem768_kyberslash ML-KEM    pqclean_mlkem768_kyberslash --triage kem_dec=secret-risk
+run_target examples/pqc_mldsa44             ML-DSA    pqclean_mldsa44             --triage sign=public --verdict sign=accepted-variable-time --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
 run_target examples/pqc_mldsa65             ML-DSA    pqclean_mldsa65             --triage sign=public --verdict sign=accepted-variable-time --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
+run_target examples/pqc_mldsa87             ML-DSA    pqclean_mldsa87             --triage sign=public --verdict sign=accepted-variable-time --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
 run_target examples/toy_lookup              synthetic toy_lookup                 --verdict leaky=ct-leak   # manual confirmed leak
 run_target examples/ct_matrix_flip          synthetic ct_matrix_flip             # build-sensitive auto
 

@@ -19,6 +19,9 @@ secret-dependent — proving that is the patched-Valgrind path (Phase 2). Hence:
   - WARN-ONLY: output goes to a SEPARATE artifact
     (`ctkat_varlat_candidates.csv/json`) and never feeds the FAIL verdict; a
     crude false positive cannot break CI (§8.1).
+  - `triage_hint` is also warn-only: it labels common review buckets such as
+    KyberSlash poly helpers and public Keccak rate arithmetic, but it is NOT
+    the harness-level `varlat_triage` verdict input.
   - `mul`/`imul` is EXCLUDED: the ML-KEM fix is itself `*80635 >> 28` (a
     reciprocal multiply), so flagging multiply would trip the negative
     control (§8.3).
@@ -109,6 +112,33 @@ class VarLatCandidate:
         # one entry per unique (opt, addr), sorted, e.g. "-O2@0x47;-Os@0x222"
         uniq = sorted({(o.opt, o.addr) for o in self.occurrences})
         return ";".join(f"{opt}@0x{addr}" for opt, addr in uniq)
+
+    @property
+    def triage_hint(self) -> str:
+        """Non-authoritative review hint for the candidate queue.
+
+        This is deliberately weaker than `varlat_triage`: it is derived only
+        from source/function names, not operand taint. It exists so the artifact
+        carries the same provenance reviewers use by hand (e.g. KyberSlash
+        poly helpers versus public Keccak rate arithmetic) without turning that
+        heuristic into an automatic verdict.
+        """
+        return triage_hint_for(self.source_file, self.function)
+
+
+def triage_hint_for(source_file: str, function: str) -> str:
+    """Heuristic-only label for common variable-latency candidate families."""
+    src = source_file.lower()
+    fn = function.lower()
+    if "kyberslash" in src and (
+        fn.endswith("poly_compress") or fn.endswith("poly_tomsg")
+    ):
+        return "kyberslash-poly-review-secret-risk"
+    if any(part in src for part in ("fips202", "keccak", "sp800-185")) or fn.startswith(
+        ("shake", "sha3", "keccak")
+    ):
+        return "keccak-rate-review-likely-public"
+    return "unclassified-review-required"
 
 
 def extract_opt_level(cflags: List[str]) -> str:
@@ -370,6 +400,7 @@ VARLAT_CSV_FIELDS = [
     "harness",
     "source_file",
     "function",
+    "triage_hint",
     "mnemonics",
     "opt_levels",
     "count",
@@ -405,6 +436,7 @@ def candidate_to_row(c: VarLatCandidate) -> Dict[str, str]:
         "harness": c.harness,
         "source_file": c.source_file,
         "function": c.function,
+        "triage_hint": c.triage_hint,
         "mnemonics": ";".join(c.mnemonics),
         "opt_levels": ";".join(c.opt_levels),
         "count": str(c.count),
@@ -441,6 +473,7 @@ def build_matrix(candidates: List[VarLatCandidate]) -> List[Dict[str, object]]:
             "opt": opt,
             "source_file": sf,
             "function": fn,
+            "triage_hint": triage_hint_for(sf, fn),
             "mnemonic": mn,
             "count": n,
         }

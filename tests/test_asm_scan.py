@@ -36,6 +36,7 @@ from ctkat.asm_scan import (
     parse_objdump,
     resolve_functions,
     scan_harness,
+    triage_hint_for,
     write_varlat_csv,
     write_varlat_json,
 )
@@ -189,6 +190,19 @@ def test_candidate_row_has_count_and_addresses():
     assert row["opt_levels"] == "-O0;-O2;-Os"
     assert row["count"] == "3"
     assert row["addresses"] == "-O0@0x10;-O2@0x20;-Os@0x30"
+    assert row["triage_hint"] == "unclassified-review-required"
+
+
+def test_triage_hint_labels_known_public_and_kyberslash_candidates():
+    assert triage_hint_for(
+        "../pqc_mlkem768/clean_kyberslash/poly.c",
+        "PQCLEAN_MLKEM768_CLEAN_poly_compress",
+    ) == "kyberslash-poly-review-secret-risk"
+    assert triage_hint_for(
+        "common/fips202.c",
+        "shake128",
+    ) == "keccak-rate-review-likely-public"
+    assert triage_hint_for("src/math.c", "local_div") == "unclassified-review-required"
 
 
 def test_candidate_row_carries_compiler():
@@ -221,7 +235,7 @@ def test_write_varlat_csv_columns_and_rows(tmp_path: Path):
     lines = out.read_text().splitlines()
     assert lines[0] == ",".join(VARLAT_CSV_FIELDS)
     assert "poly_tomsg" in lines[1] and "-Os" in lines[1]
-    assert "count" in lines[0] and "addresses" in lines[0]
+    assert "triage_hint" in lines[0] and "count" in lines[0] and "addresses" in lines[0]
 
 
 def test_write_varlat_json_marks_warn_only(tmp_path: Path):
@@ -235,6 +249,7 @@ def test_write_varlat_json_marks_warn_only(tmp_path: Path):
     assert data["kind"] == "varlat_candidates"
     assert data["scanned_opt_levels"] == ["-O0", "-Os", "-O2"]
     assert data["candidates"][0]["function"] == "poly_tomsg"
+    assert data["candidates"][0]["triage_hint"] == "unclassified-review-required"
 
 
 def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
@@ -259,9 +274,11 @@ def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
     # so a script can compare which compiler x opt kept a division alive.
     m = data["matrix"]
     assert {"compiler": "gcc", "opt": "-Os", "source_file": "clean/poly.c",
-            "function": "poly_tomsg", "mnemonic": "div", "count": 1} in m
+            "function": "poly_tomsg", "triage_hint": "unclassified-review-required",
+            "mnemonic": "div", "count": 1} in m
     assert {"compiler": "clang", "opt": "-O0", "source_file": "clean/poly.c",
-            "function": "poly_tomsg", "mnemonic": "idiv", "count": 1} in m
+            "function": "poly_tomsg", "triage_hint": "unclassified-review-required",
+            "mnemonic": "idiv", "count": 1} in m
     gcc_opts = sorted(r["opt"] for r in m if r["compiler"] == "gcc")
     clang_opts = sorted(r["opt"] for r in m if r["compiler"] == "clang")
     assert gcc_opts == ["-Os"] and clang_opts == ["-O0", "-Os"]

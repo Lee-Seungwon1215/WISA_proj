@@ -1,0 +1,48 @@
+project:
+  name: pqclean_sphincs_sha2_128f_simple
+  language: c
+  root: ..
+
+build:
+  command: "true"
+  workdir: .
+
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_SPHINCSSHA2128FSIMPLE_CLEAN_"
+      secret_regions:
+        - {offset: "0", length: "SPX_N", comment: "SK_SEED"}
+        - {offset: "SPX_N", length: "SPX_N", comment: "SK_PRF"}
+      include_dirs:
+        - clean
+        - ../pqc_mlkem768/common
+      sources:
+        - clean/address.c
+        - clean/context_sha2.c
+        - clean/fors.c
+        - clean/hash_sha2.c
+        - clean/merkle.c
+        - clean/sign.c
+        - clean/thash_sha2_simple.c
+        - clean/utils.c
+        - clean/utilsx1.c
+        - clean/wots.c
+        - clean/wotsx1.c
+        - ../pqc_mlkem768/common/sha2.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
