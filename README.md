@@ -105,7 +105,7 @@ WISA/
 │   ├── pqc_mldsa44/            # PQClean ML-DSA-44 attribution/registry case
 │   ├── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
 │   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
-│   └── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ scaffold; triage pending
+│   └── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # dev.sh, run_check.sh, run_phaseN.sh, fetch_pqclean.sh
 ├── Dockerfile, docker-compose.yml
@@ -703,8 +703,11 @@ harnesses:
 ```
 
 수동 `accepted-variable-time` override는 “화이트리스트에 대충 추가”가 아니라,
-optimized build의 parent-frame 귀속처럼 registry에 넣으면 과허용되는 케이스를
-노트와 함께 명시적으로 리뷰했다는 뜻이다.
+optimized build의 parent-frame 귀속이나 SPHINCS+ public-output data flow처럼
+registry에 넣으면 과허용되는 케이스를 노트와 함께 명시적으로 리뷰했다는 뜻이다.
+특히 SPHINCS+의 `treehashx1` / `wots_gen_leafx1`는 함수명 registry에 넣지
+않고, `examples/pqc_sphincs_sha2_128f_simple/triage.yaml`의 `sign` harness
+data-flow note로만 받아들인다.
 
 `--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
 사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.
@@ -790,8 +793,11 @@ PYTHONPATH=. python -m ctkat run --config examples/pqc_mlkem768/ctkat.yaml
 | screen/corpus | `robust`, 단 timing warning은 native 확인 권장 |
 
 ML-KEM-512/1024는 ML-KEM-768과 같은 valid/invalid decapsulation 구조
-하니스를 사용한다. SPHINCS+-SHA2-128f-simple scaffold도 들어있지만 구조
-finding attribution이 아직 끝나지 않아 committed corpus promotion 대상은 아니다.
+하니스를 사용한다. SPHINCS+-SHA2-128f-simple은 hash-based signature breadth
+case로 포함하되, `treehashx1` / `wots_gen_leafx1` 함수 전체를 registry에
+등록하지 않는다. `triage.yaml`은 `R`, `mhash`, `tree`, `idx_leaf`, intermediate
+root가 signature/public-verification state로 declassified되는 이 `sign`
+harness data flow에 한정해 `accepted-variable-time` override를 둔다.
 
 ---
 
