@@ -54,5 +54,6 @@ matrix:
   compilers: [gcc, clang]
   ct_cflags:
     debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    attrib:  [-O2, -g, -fno-inline, -fno-inline-functions, -fno-optimize-sibling-calls, -fno-omit-frame-pointer, -fno-lto]
     release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
     size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]

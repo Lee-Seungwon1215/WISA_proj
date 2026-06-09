@@ -123,11 +123,13 @@ the **triaged** varlat result:
 A ct FAIL is triaged on its leak-site functions (`ct_finding_funcs`, surfaced per
 cell since **v1.1**) against `docs/accepted_variable_time.md`:
 
-- `accepted-variable-time` — ct FAIL whose leak-site functions are ALL in the
-  accepted registry for the family (analyzed-safe scheme design, not a
-  key-recovery leak; e.g. Dilithium signing's `poly_chknorm`/`make_hint`/
-  `poly_challenge` per FIPS 204). The merge auto-classifies this; the registry
-  carries the per-function citation.
+- `accepted-variable-time` — ct FAIL judged as an analyzed-safe scheme behavior,
+  not a key-recovery leak. The normal auto path requires ALL leak-site functions
+  to be in the accepted registry for the family (e.g. Dilithium signing's
+  `poly_chknorm`/`make_hint`/`poly_challenge`/`pack_sig` per FIPS 204). A manual
+  override is allowed only for reviewed attribution artifacts such as optimized
+  parent frames; the note must explain the source/line basis, and the coarse
+  parent function should NOT be added to the registry.
 - `needs-analysis` — ct FAIL with at least one leak-site function NOT in the
   registry. **Default-deny**: an unrecognized secret branch is never auto-accepted
   — it stays here until a reviewer either adds a cited registry entry or confirms

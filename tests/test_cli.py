@@ -1704,7 +1704,11 @@ def _stub_kem_ct(monkeypatch, tmp_path):
         return ValgrindResult(returncode=0, log_path=log_path, stdout="", stderr="")
 
     monkeypatch.setattr(cli_module, "run_valgrind", fake_rv)
-    monkeypatch.setattr(cli_module, "_do_generate", lambda *a, **k: {"kd": tmp_path / "kd"})
+    monkeypatch.setattr(
+        cli_module,
+        "_do_generate",
+        lambda *a, **k: {"kd": tmp_path / "kd", "kd_fo": tmp_path / "kd_fo"},
+    )
 
 
 def test_ct_kem_caveat_when_no_fo_harness_recommends_adding_one(monkeypatch, tmp_path):
@@ -1748,3 +1752,24 @@ def test_ct_kem_caveat_when_fo_harness_present_says_covered(monkeypatch, tmp_pat
     out = " ".join(result.stdout.split())
     assert "timing-covered by your dudect" in out.lower()
     assert "kd_fo" in out
+
+
+def test_ct_kem_invalid_structural_harness_says_fo_is_valgrind_covered(monkeypatch, tmp_path):
+    # Structural invalid-ct harnesses close the old B5 gap for Valgrind itself,
+    # so the note must not keep saying the FO path is not covered structurally.
+    _stub_kem_ct(monkeypatch, tmp_path)
+    cfg = tmp_path / "ctkat.yaml"
+    cfg.write_text(textwrap.dedent('''
+        project: {name: d}
+        build: {command: "true"}
+        ct:
+          harnesses:
+            - {name: kd, template: kem, header: api.h, prefix: "P_"}
+            - {name: kd_fo, template: kem, header: api.h, prefix: "P_", kem_decapsulation: invalid}
+    '''))
+    result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
+    out = " ".join(result.stdout.split())
+    assert "invalid-ct" in out.lower()
+    assert "under Valgrind" in out
+    assert "kd_fo" in out
+    assert "not analyzed by Valgrind" not in out

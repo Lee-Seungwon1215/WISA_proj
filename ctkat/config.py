@@ -491,6 +491,11 @@ class HarnessConfig(BaseModel):
     # whole buffer). Lets us avoid false positives from public material
     # embedded inside `sk` (e.g. ML-KEM stores `pk` inside `sk`).
     secret_regions: List[SecretRegion] = Field(default_factory=list)
+    # KEM-only structural decapsulation path. The default keeps the historical
+    # valid-ciphertext harness. `invalid` mutates a freshly encapsulated
+    # ciphertext before decapsulation so the FO/implicit-rejection path is
+    # structurally exercised under Valgrind.
+    kem_decapsulation: Literal["valid", "invalid"] = "valid"
 
     @model_validator(mode="after")
     def _check_mode(self) -> "HarnessConfig":
@@ -510,6 +515,11 @@ class HarnessConfig(BaseModel):
         if self.template in ("kem", "sign") and not self.header:
             raise ValueError(
                 f"harness {self.name!r}: template={self.template} requires 'header'"
+            )
+        if self.template != "kem" and self.kem_decapsulation != "valid":
+            raise ValueError(
+                f"harness {self.name!r}: kem_decapsulation is only valid for "
+                "template=kem"
             )
         # Bundle O (T20, T7 follow-up): enforce the regex policy that was
         # left as Bundle H2 follow-up after the `name` field landed.

@@ -321,6 +321,7 @@ def _build_kem_context(h: HarnessConfig) -> dict:
         "extra_headers": list(h.extra_headers),
         "prefix": h.prefix,
         "secret_regions": [r.model_dump() for r in h.secret_regions],
+        "kem_decapsulation": h.kem_decapsulation,
     }
 
 
@@ -463,29 +464,46 @@ def _do_ct(
             "'CTKAT-HARNESS-RAN: <name>' on stdout (see known_issues F5)."
         )
 
-    # B5: KEM structural coverage caveat — the kem harness calls dec on a VALID
-    # ciphertext, so Valgrind analyzes only the NORMAL decapsulation path. The
-    # implicit-rejection / FO fallback path (invalid ct) — a high-value ML-KEM
-    # leak surface — is NOT structurally analyzed here. Surface this so a PASS
-    # isn't over-read, and tailor the remedy to whether the config actually has a
-    # dudect fo harness (don't advertise coverage the run won't produce).
-    if any(h.template == "kem" for h in cfg.ct.harnesses):
-        fo_harnesses = [
-            h.name for h in (cfg.dudect.harnesses if cfg.dudect is not None else [])
-            if getattr(h, "leak_target", None) == "fo"
+    # B5: KEM structural coverage caveat. A valid-ciphertext KEM harness only
+    # exercises the normal decapsulation path. An invalid-ciphertext KEM harness
+    # is needed to structurally exercise FO/implicit rejection under Valgrind.
+    kem_ct = [h for h in cfg.ct.harnesses if h.template == "kem"]
+    if kem_ct:
+        valid_structural = [
+            h.name for h in kem_ct if h.kem_decapsulation == "valid"
         ]
-        if fo_harnesses:
-            tail = (f"that path is timing-covered by your dudect leak_target=fo "
-                    f"harness(es): {', '.join(fo_harnesses)}.")
+        invalid_structural = [
+            h.name for h in kem_ct if h.kem_decapsulation == "invalid"
+        ]
+        if invalid_structural:
+            valid_tail = (
+                f" Valid-ct normal-path harness(es): {', '.join(valid_structural)}."
+                if valid_structural else
+                " Add a valid-ct harness too if normal-path structural coverage is needed."
+            )
+            console.print(
+                "[dim][CTKAT] note:[/dim] KEM structural CT includes invalid-ct "
+                f"FO/implicit-rejection harness(es): {', '.join(invalid_structural)}. "
+                "Invalid-ct harnesses cover the rejection path under Valgrind."
+                f"{valid_tail} (B5)"
+            )
         else:
-            tail = ("that path is NOT covered by this run — add a dudect harness "
-                    "with [bold]leak_target: fo[/] (see examples/pqc_mlkem768).")
-        console.print(
-            "[dim][CTKAT] note:[/dim] KEM structural CT covers the valid-ct "
-            f"(normal) decapsulation path only; the implicit-rejection / FO "
-            f"fallback path is NOT analyzed by Valgrind here — {tail} "
-            "A PASS says nothing about that path. (B5)"
-        )
+            fo_harnesses = [
+                h.name for h in (cfg.dudect.harnesses if cfg.dudect is not None else [])
+                if getattr(h, "leak_target", None) == "fo"
+            ]
+            if fo_harnesses:
+                tail = (f"that path is timing-covered by your dudect leak_target=fo "
+                        f"harness(es): {', '.join(fo_harnesses)}.")
+            else:
+                tail = ("that path is NOT covered by this run — add a dudect harness "
+                        "with [bold]leak_target: fo[/] (see examples/pqc_mlkem768).")
+            console.print(
+                "[dim][CTKAT] note:[/dim] KEM structural CT covers the valid-ct "
+                f"(normal) decapsulation path only; the implicit-rejection / FO "
+                f"fallback path is NOT analyzed by Valgrind here — {tail} "
+                "A PASS says nothing about that path. (B5)"
+            )
 
     results: List[Tuple[str, str, List[Finding]]] = []
     for h in cfg.ct.harnesses:

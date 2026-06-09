@@ -7,11 +7,12 @@ from ctkat.verdict_class import (
     CLEAN_CLASSES,
     VERDICT_CLASSES,
     classify_harness,
+    load_registry,
     opt_of,
     summarize,
 )
 
-REG = {"ML-DSA": {"poly_chknorm", "make_hint"}}
+REG = {"ML-DSA": {"poly_chknorm", "poly_challenge", "make_hint", "pack_sig"}}
 
 
 def _cell(status, *, cc="gcc", opt="-O0", div="0", asm_error="", funcs=""):
@@ -60,11 +61,35 @@ def test_build_sensitive_ct_on_status_flip():
 
 def test_accepted_variable_time_when_all_funcs_registered():
     vc, notes = classify_harness(
-        [_cell("FAIL", funcs="PQCLEAN_MLDSA65_CLEAN_poly_chknorm;PQCLEAN_MLDSA65_CLEAN_make_hint")],
+        [_cell("FAIL", funcs=(
+            "PQCLEAN_MLDSA65_CLEAN_poly_chknorm;"
+            "PQCLEAN_MLDSA65_CLEAN_make_hint;"
+            "PQCLEAN_MLDSA65_CLEAN_pack_sig"
+        ))],
         family="ML-DSA", registry=REG,
     )
     assert vc == "accepted-variable-time"
     assert "registry" in notes
+
+
+def test_default_registry_loads_mldsa_pack_sig_review():
+    reg = load_registry()
+    assert "pack_sig" in reg["ML-DSA"]
+    assert "crypto_sign_signature_ctx" not in reg["ML-DSA"]
+
+
+def test_accepted_override_does_not_claim_all_funcs_were_registered():
+    vc, notes = classify_harness(
+        [_cell("FAIL", funcs=(
+            "PQCLEAN_MLDSA65_CLEAN_pack_sig;"
+            "PQCLEAN_MLDSA65_CLEAN_crypto_sign_signature_ctx"
+        ))],
+        family="ML-DSA", registry=REG, verdict_override="accepted-variable-time",
+    )
+    assert vc == "accepted-variable-time"
+    assert "manual verdict override" in notes
+    assert "crypto_sign_signature_ctx" in notes
+    assert "functions all in accepted-variable-time registry" not in notes
 
 
 def test_needs_analysis_on_unregistered_func():

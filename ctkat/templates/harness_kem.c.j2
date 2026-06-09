@@ -17,13 +17,11 @@
  * declared under `kat:` in ctkat.yaml — keeping the concerns split avoids
  * the doc §7.1 ambiguity where one binary did both jobs.
  *
- * COVERAGE CAVEAT (B5): dec is called on a VALID ciphertext (from enc), so this
- * STRUCTURAL check analyzes only the NORMAL decapsulation path. The
- * implicit-rejection / Fujisaki-Okamoto fallback path (taken on an INVALID
- * ciphertext) — often the highest-value ML-KEM leak surface — is NOT exercised
- * here. That path can be timing-covered by a dudect harness with
- * `leak_target: fo` (see examples/pqc_mlkem768); a Valgrind PASS on this harness
- * says nothing about the rejection path.
+ * `kem_decapsulation` selects which decapsulation path is structurally
+ * exercised:
+ *   - valid:   dec is called on a ciphertext from enc (normal path).
+ *   - invalid: that ciphertext is mutated before dec, forcing the
+ *              implicit-rejection / Fujisaki-Okamoto path for ML-KEM-like KEMs.
  *
  * `prefix` lets us match PQClean-style namespaced APIs such as
  * PQCLEAN_MLKEM768_CLEAN_crypto_kem_dec without changing the template.
@@ -38,6 +36,15 @@ int main(void) {
 
     {{ prefix }}crypto_kem_keypair(pk, sk);
     {{ prefix }}crypto_kem_enc(ct, ss_seed, pk);
+{% if kem_decapsulation | default("valid") == "invalid" %}
+    /*
+     * Force an invalid-ciphertext decapsulation. Starting from enc()+bit-flip
+     * keeps the buffer shape realistic while making the re-encryption check
+     * fail for FO-style KEMs. The witness check after dec fails closed if this
+     * unexpectedly behaves like the valid encapsulation.
+     */
+    ct[0] ^= 0x01u;
+{% endif %}
 
     {% if secret_regions -%}
     /* Schemes like ML-KEM store public material inside `sk`. Taint only
@@ -60,6 +67,26 @@ int main(void) {
     VALGRIND_MAKE_MEM_DEFINED(sk, sizeof(sk));
     {% endif %}
     VALGRIND_MAKE_MEM_DEFINED(ss_actual, sizeof(ss_actual));
+
+{% if kem_decapsulation | default("valid") == "invalid" %}
+    /*
+     * Path witness: on an invalid ciphertext, ML-KEM decapsulation should not
+     * return the shared secret produced by the original encapsulation. This is
+     * not a KAT round-trip check; it prevents an invalid-path harness from
+     * silently analyzing the valid path after a bad mutation or scheme mismatch.
+     */
+    uint8_t ctkat_same = 0xffu;
+    for (size_t i = 0; i < sizeof(ss_actual); i++) {
+        ctkat_same &= (uint8_t)(ss_actual[i] == ss_seed[i]);
+    }
+    if (ctkat_same) {
+        fprintf(stderr, "CTKAT-KEM-INVALID-PATH-NOT-EXERCISED\n");
+        return 7;
+    }
+    puts("CTKAT-KEM-DECAPSULATION: invalid");
+{% else %}
+    puts("CTKAT-KEM-DECAPSULATION: valid");
+{% endif %}
 
     /*
      * Force the compiler to actually emit the dec call by consuming its

@@ -114,7 +114,7 @@ def test_build_pass_no_candidates_is_robust(tmp_path):
 def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
     # registry auto-classify (default-deny): ct FAIL whose leak-site functions are
     # ALL registered -> accepted-variable-time; ANY unregistered -> needs-analysis.
-    reg = {"ML-DSA": {"poly_chknorm", "make_hint"}}
+    reg = {"ML-DSA": {"poly_chknorm", "make_hint", "pack_sig"}}
 
     def _row(funcs):
         return {"project": "p", "harness": "sign", "combo": "gcc_debug", "cc": "gcc",
@@ -122,7 +122,7 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
                 "finding_funcs": funcs, "error": ""}
 
     # suffix-match against PFX_-prefixed names; all registered -> accepted
-    _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint")], [], [])
+    _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint;PFX_pack_sig")], [], [])
     _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
     assert s[0]["verdict_class"] == "accepted-variable-time"
     assert "registry" in s[0]["notes"]

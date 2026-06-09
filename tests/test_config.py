@@ -193,6 +193,34 @@ def test_harness_kem_requires_header(tmp_path: Path):
         load_config(_write(tmp_path, _HARNESS_KEM_WITHOUT_HEADER))
 
 
+def test_ct_kem_decapsulation_invalid_is_kem_only(tmp_path: Path):
+    good = """
+project: {name: demo}
+build: {command: "true"}
+ct:
+  harnesses:
+    - name: h1
+      template: kem
+      header: api.h
+      kem_decapsulation: invalid
+"""
+    cfg = load_config(_write(tmp_path, good))
+    assert cfg.ct.harnesses[0].kem_decapsulation == "invalid"
+
+    bad = """
+project: {name: demo}
+build: {command: "true"}
+ct:
+  harnesses:
+    - name: h1
+      template: generic
+      function: f
+      kem_decapsulation: invalid
+"""
+    with pytest.raises(ValidationError, match="kem_decapsulation.*template=kem"):
+        load_config(_write(tmp_path, bad))
+
+
 # --- DudectHarnessConfig validator ------------------------------------------
 
 

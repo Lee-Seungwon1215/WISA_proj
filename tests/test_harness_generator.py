@@ -94,6 +94,7 @@ def test_kem_render_contains_dec_taint():
     assert '#include "api.h"' in out
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk" in out
     assert "crypto_kem_dec(ss_actual, ct, sk);" in out
+    assert "CTKAT-KEM-DECAPSULATION: valid" in out
 
 
 def test_kem_render_has_no_memcmp_kat_check():
@@ -138,6 +139,20 @@ def test_kem_render_partial_taint_with_secret_regions():
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk + (2368), (32));" in out
     # Full-buffer taint must NOT be emitted when regions are given
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk, sizeof(sk))" not in out
+
+
+def test_kem_render_invalid_decapsulation_flips_ciphertext_and_witnesses_path():
+    out = render_harness("kem", {
+        "header": "api.h",
+        "prefix": "",
+        "extra_headers": [],
+        "secret_regions": [],
+        "kem_decapsulation": "invalid",
+    })
+    assert "ct[0] ^= 0x01u;" in out
+    assert "CTKAT-KEM-INVALID-PATH-NOT-EXERCISED" in out
+    assert "CTKAT-KEM-DECAPSULATION: invalid" in out
+    assert "crypto_kem_dec(ss_actual, ct, sk);" in out
 
 
 def _sign_ctx(**overrides):

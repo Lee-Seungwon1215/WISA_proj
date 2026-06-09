@@ -157,17 +157,25 @@ def classify_harness(
     # override is ignored (keeps the computed class); the original build_corpus_table
     # only applied the override when the harness key was present, so a blank value
     # never meant "blank the verdict" — this preserves that intent.
+    auto_vclass = vclass
     if verdict_override:
         vclass = verdict_override
 
     notes: List[str] = []
-    if vclass == "accepted-variable-time":
+    unreg = [ff for ff in agg.ct_funcs if not any(ff.endswith(rf) for rf in accepted)]
+    if auto_vclass == "accepted-variable-time":
         notes.append("ct FAIL functions all in accepted-variable-time registry "
                      "(see docs/accepted_variable_time.md)")
-    elif vclass == "needs-analysis":
-        unreg = [ff for ff in agg.ct_funcs if not any(ff.endswith(rf) for rf in accepted)]
+    elif auto_vclass == "needs-analysis" and verdict_override and verdict_override != auto_vclass:
+        msg = f"manual verdict override: {auto_vclass} -> {vclass}"
+        if unreg:
+            msg += "; reviewed unregistered leak-site function(s): " + ";".join(unreg)
+        notes.append(msg)
+    elif auto_vclass == "needs-analysis":
         notes.append("ct FAIL with unregistered leak-site function(s) — triage required: "
                      + ";".join(unreg))
+    elif verdict_override and verdict_override != auto_vclass:
+        notes.append(f"manual verdict override: {auto_vclass} -> {vclass}")
     if dudect_status == "WARNING":
         notes.append("dudect WARNING — likely QEMU env-noise; confirm natively")
     if agg.asm_err_ccs:

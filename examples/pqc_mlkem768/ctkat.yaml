@@ -20,6 +20,7 @@ ct:
   harnesses:
     - name: kem_dec
       template: kem
+      kem_decapsulation: valid
       # api.h gives us the *_CRYPTO_*BYTES macros; params.h provides the
       # internal KYBER_INDCPA_SECRETKEYBYTES / KYBER_SYMBYTES values used
       # in `secret_regions` below.
@@ -30,6 +31,36 @@ ct:
       # ranges below are actually secret; the public bytes in between are
       # legitimately consumed by re-encryption (rej_uniform on the seed),
       # which would otherwise produce false-positive findings.
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs:
+        - clean
+        - common
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+        - common/randombytes.c
+
+    # FO / implicit-rejection structural path: start from a valid encapsulation,
+    # flip one ciphertext bit, then run dec under the same sk taint. This closes
+    # the old "Valgrind only saw valid ciphertexts" coverage gap for ML-KEM.
+    - name: kem_dec_fo
+      template: kem
+      kem_decapsulation: invalid
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
       secret_regions:
         - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
            comment: "indcpa secret polynomial s"}
