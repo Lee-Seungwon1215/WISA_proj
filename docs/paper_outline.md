@@ -73,18 +73,16 @@ number.
 
 **Left before camera-ready:**
 1. Replace placeholder author / ORCID / affiliation.
-2. Verify every `.bib` entry against its source.
-3. Inspect the final PDF visually; only polish Fig.1/table line breaks if needed.
-4. Optional bib cleanup (LNCS `splncs04.bst`): cite KyberSlash, dudect, ctgrind/Memcheck-CT,
-   ct-verif/Binsec, FIPS 203/204, PQClean.
+2. Do the final human eyeball pass over the source-checked bibliography.
+3. Keep the PDF under 12 pages after author metadata edits.
 
 **Optional, do NOT block submission:** ML-DSA `-fno-inline` precise attribution;
 native dudect confirmation; dudect (b) one-table merge; corpus breadth
 (Falcon/SPHINCS+); structural FO-path Valgrind only if it can be validated. All
-are secondary to clearing the author / reference blockers and keeping the PDF
-under 12 pages.
+are secondary to clearing the author metadata blocker and keeping the PDF under
+12 pages.
 
 ## Recommended next action
 
-Do a visual PDF pass, then handle author metadata and reference verification.
-The paper is now a **polish around finished evidence**, not new research.
+Handle author metadata, rebuild, then do one final PDF glance. The paper is now a
+**polish around finished evidence**, not new research.

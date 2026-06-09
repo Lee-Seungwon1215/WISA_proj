@@ -73,8 +73,9 @@ unmistakable:
   the 12-page LNCS target after Background/Results compression and compact
   support tables. Keep re-checking after edits.
 - **Author / ORCID / affiliation**. `paper/main.tex` still carries a placeholder.
-- **Reference verification**. `paper/references.bib` is explicitly marked
-  LLM-drafted; every entry needs a human source check before camera-ready.
+- **References source-checked**. `paper/references.bib` now has checked venue,
+  page, DOI, and URL metadata where available. Keep a final human eyeball pass
+  before camera-ready.
 - **No "complete" claim**. Use "layer-justified in our corpus" in paper prose and
   planning docs.
 

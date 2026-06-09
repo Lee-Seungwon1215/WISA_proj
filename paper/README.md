@@ -28,7 +28,7 @@ commands are installed. If not, it falls back to `tectonic` when available.
 ```
 main.tex              preamble + title + table floats + Fig.1 + \input glue
 generated/            AUTO-GENERATED table bodies + macros (do NOT hand-edit)
-references.bib        12 citations — VERIFY each before camera-ready
+references.bib        12 citations — source-checked 2026-06-09
 figures/pipeline.tex  TikZ pipeline diagram (Fig.1)
 sections/             one .tex per section (abstract, 00_intro … 06_conclusion)
 llncs.cls             Springer LNCS class (bundled, v2.26)
@@ -63,7 +63,8 @@ scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docke
 ## Before camera-ready (author checklist)
 
 - [ ] Real author name(s) + ORCID in `main.tex` (currently placeholder).
-- [ ] Verify all 12 references in `references.bib` (LLM-drafted — check each).
+- [x] Source-check all 12 references in `references.bib`; final human eyeball
+      pass still recommended before camera-ready.
 - [x] Keep `paper/main.pdf` within the 12-page LNCS target; it currently builds
       to 11 pages after compression.
 - [x] Keep Table 1 as the single-coverage headline; the ablation/miss evidence
@@ -74,5 +75,7 @@ scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docke
       debug cells show registered rejection functions, optimized cells surface
       `crypto_sign_signature_ctx` / `pack_sig`.
 - [ ] Confirm the dudect numbers natively (`taskset -c 0`, freq scaling off) —
-      the corpus run was under QEMU/Docker; see Table 3 caveat.
-- [ ] Draw/replace Fig.1 if the TikZ needs polishing for print.
+      blocked on this macOS/arm64 workspace; use a native Linux/x86_64 or target
+      machine. The corpus run was under QEMU/Docker; see Table 5 caveat.
+- [x] Visual PDF pass: Fig.1 and Tables 1--5 render without overflow; Fig.1 is
+      small but readable, and further polishing is optional rather than blocking.
