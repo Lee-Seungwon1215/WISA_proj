@@ -83,25 +83,7 @@ registry to a \texttt{verdict\_class}.}
 
 \input{sections/03_method}
 
-% ---- Table 2 (T2): verdict-class corpus ------------------------------
-\begin{table}[htbp]
-\centering
-\caption{Verdict-class corpus: \corpusRows{} harness rows, \corpusFamilies{}
-families, \corpusVerdictClasses{} verdict classes, rendered from the committed
-corpus CSVs with compiler/version provenance recorded per build cell.}
-\label{tab:corpus}
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lllccl@{}}
-\toprule
-Family & Target & Harness & ct (matrix) & varlat & \texttt{verdict\_class}\\
-\midrule
-% rows generated from docs/corpus/corpus_summary.csv — see preamble note.
-\input{generated/tab_corpus}%
-\end{tabular}
-\end{table}
-
-% ---- Table 1 (T1): per-feature single-coverage -----------------------
+% ---- Coverage table: per-feature single-coverage ---------------------
 \begin{table}[htbp]
 \centering
 \caption{Per-feature single-coverage: each layer flags a corpus case the others
@@ -133,7 +115,68 @@ ML-DSA-65 (\texttt{sign}) &
 \end{tabular}
 \end{table}
 
-% ---- Table 3 (A1): dudect appendix -----------------------------------
+% ---- Ablation/miss support table -------------------------------------
+\begin{table}[htbp]
+\centering
+\caption{Ablation/miss evidence: each omitted layer has a concrete corpus miss.
+This supports Table~\ref{tab:coverage} without replacing its single-coverage
+claim.}
+\label{tab:ablation}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.4cm}
+                  >{\raggedright\arraybackslash}p{3.8cm}
+                  >{\raggedright\arraybackslash}p{4.8cm}@{}}
+\toprule
+Layer omitted & Demonstrated miss & Evidence\\
+\midrule
+\input{generated/tab_ablation}%
+\end{tabular}
+\end{table}
+
+% ---- Verdict-class corpus table --------------------------------------
+\begin{table}[htbp]
+\centering
+\caption{Verdict-class corpus: \corpusRows{} harness rows, \corpusFamilies{}
+families, \corpusVerdictClasses{} verdict classes, rendered from the committed
+corpus CSVs with compiler/version provenance recorded per build cell.}
+\label{tab:corpus}
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.25cm}
+                  >{\raggedright\arraybackslash}p{2.55cm}
+                  >{\raggedright\arraybackslash}p{1.1cm}
+                  >{\centering\arraybackslash}p{1.45cm}
+                  >{\raggedright\arraybackslash}p{1.35cm}
+                  >{\raggedright\arraybackslash}p{2.75cm}@{}}
+\toprule
+Family & Target & Harness & ct (matrix) & varlat & \texttt{verdict\_class}\\
+\midrule
+% rows generated from docs/corpus/corpus_summary.csv — see preamble note.
+\input{generated/tab_corpus}%
+\end{tabular}
+\end{table}
+
+% ---- ML-DSA attribution support table --------------------------------
+\begin{table}[htbp]
+\centering
+\caption{ML-DSA-65 attribution split: debug cells show only registered
+accepted-variable-time functions; optimized cells surface the unregistered names
+that keep the row at \texttt{needs-analysis}.}
+\label{tab:mldsa}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.2cm}
+                  >{\raggedright\arraybackslash}p{5.4cm}
+                  >{\raggedright\arraybackslash}p{3.5cm}@{}}
+\toprule
+Build cells & Functions surfaced & Triage meaning\\
+\midrule
+\input{generated/tab_mldsa}%
+\end{tabular}
+\end{table}
+
+% ---- dudect appendix table -------------------------------------------
 \begin{table}[htbp]
 \centering
 \caption{dudect timing appendix on \texttt{toy\_dudect} (cycle counts, Welch

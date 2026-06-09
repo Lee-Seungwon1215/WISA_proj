@@ -77,6 +77,20 @@ def test_tab_dudect_matches_fresh_render(corpus):
         "tab_dudect.tex stale — re-run scripts/render_paper_tables.py"
 
 
+def test_tab_ablation_matches_fresh_render(corpus):
+    summary, cells, appendix = corpus
+    assert (GENERATED / "tab_ablation.tex").read_text(encoding="utf-8") == \
+        gen._GEN_HEAD + gen.render_tab_ablation(summary, appendix), \
+        "tab_ablation.tex stale — re-run scripts/render_paper_tables.py"
+
+
+def test_tab_mldsa_matches_fresh_render(corpus):
+    _s, cells, _appendix = corpus
+    assert (GENERATED / "tab_mldsa.tex").read_text(encoding="utf-8") == \
+        gen._GEN_HEAD + gen.render_tab_mldsa(cells), \
+        "tab_mldsa.tex stale — re-run scripts/render_paper_tables.py"
+
+
 def test_corpus_macros_match_fresh_render(corpus):
     summary, cells, appendix = corpus
     assert (GENERATED / "corpus_macros.tex").read_text(encoding="utf-8") == \
@@ -88,7 +102,11 @@ def test_corpus_macros_match_fresh_render(corpus):
 
 def test_main_tex_inputs_generated_tables():
     t = (PAPER / "main.tex").read_text(encoding="utf-8")
-    for snip in ("generated/tab_corpus", "generated/tab_dudect", "generated/corpus_macros"):
+    for snip in (
+        "generated/tab_corpus", "generated/tab_dudect",
+        "generated/tab_ablation", "generated/tab_mldsa",
+        "generated/corpus_macros",
+    ):
         assert f"\\input{{{snip}}}" in t
     for macro in (r"\corpusRows", r"\corpusFamilies", r"\corpusVerdictClasses"):
         assert macro in t
@@ -96,9 +114,14 @@ def test_main_tex_inputs_generated_tables():
 
 def test_main_tex_has_no_stale_generated_rows(corpus):
     # every generated data row must live ONLY in the snippet, not back in main.tex
-    summary, _c, appendix = corpus
+    summary, cells, appendix = corpus
     t = (PAPER / "main.tex").read_text(encoding="utf-8")
-    rows = (gen.render_tab_corpus(summary) + gen.render_tab_dudect(appendix)).splitlines()
+    rows = (
+        gen.render_tab_corpus(summary)
+        + gen.render_tab_dudect(appendix)
+        + gen.render_tab_ablation(summary, appendix)
+        + gen.render_tab_mldsa(cells)
+    ).splitlines()
     for row in rows:
         row = row.strip()
         if row and not row.startswith("%") and row != r"\bottomrule":

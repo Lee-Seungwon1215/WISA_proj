@@ -69,9 +69,9 @@ unmistakable:
 
 ### 0. Submission blockers — must clear before sending
 
-- **13 pages → 12 pages**. Current `paper/main.pdf` builds to 13 pages under the
-  LNCS template while `paper/README.md` and `paper/main.tex` document a 12-page
-  target. Compress first in Background/Results where explanations repeat.
+- **Page limit currently cleared**. `paper/main.pdf` now builds to 11 pages under
+  the 12-page LNCS target after Background/Results compression and compact
+  support tables. Keep re-checking after edits.
 - **Author / ORCID / affiliation**. `paper/main.tex` still carries a placeholder.
 - **Reference verification**. `paper/references.bib` is explicitly marked
   LLM-drafted; every entry needs a human source check before camera-ready.
@@ -92,15 +92,15 @@ auto-generated ablation/miss table as a supporting table or appendix:
 | dudect | black-box timing leak | `toy_dudect/leaky` |
 | default-deny taxonomy | ML-DSA over-claim | `mldsa65/sign` |
 
-Best implementation path: generate this from `docs/corpus/*.csv` beside the
-existing paper table generator, so it is drift-tested rather than prose-only.
+Implemented path: this is generated from `docs/corpus/*.csv` beside the existing
+paper table generator and drift-tested, so it is not prose-only.
 
 ### 2. Promote ML-DSA per-cell triage evidence
 
 The corpus already contains the evidence: debug cells show only registered
 rejection-sampling functions, while optimized cells inline into
-`crypto_sign_signature_ctx` and surface `pack_sig`. Promote that into a compact
-paper table or paragraph with per-cell function sets. This strengthens the
+`crypto_sign_signature_ctx` and surface `pack_sig`. This is now promoted into a
+compact generated paper table with per-cell function sets. It strengthens the
 default-deny self-validation without needing to resolve the row to `accepted`.
 
 ### 3. Improve dudect evidence if hardware is available

@@ -2,99 +2,69 @@
 \label{sec:design}
 
 CT-KAT (invoked as \texttt{ctkat}) is a fail-closed CT screening framework for
-PQC. It binds three complementary checkers under one declarative configuration,
-sweeps every harness across a compiler${}\times{}$optimization build matrix, and
-routes every finding through a default-deny triage taxonomy backed by a cited
-registry of accepted variable-time behavior. The goal is not to prove the
-absence of leaks --- no dynamic tool can --- but to make screening honest: each
-checker covers a leak class the others miss, the verdict is reported per build,
-and a detected CT failure is never silently promoted to a key-recovery leak. The
-pipeline (Fig.~\ref{fig:pipeline}) spans configuration (\S\ref{ssec:config}),
-checkers (\S\ref{ssec:checkers}), the build sweep (\S\ref{ssec:matrix}), and
-triage (\S\ref{ssec:triage}).
+PQC. It binds three checkers under one declarative configuration, sweeps each
+harness across a compiler${}\times{}$optimization matrix, and routes findings
+through a default-deny taxonomy backed by a cited accepted-variable-time registry.
+The goal is not to prove leak absence, but to make screening honest: report the
+build context, expose each checker, and never silently promote a CT failure to a
+key-recovery leak.
 
 \subsection{Unified Configuration and Pipeline}
 \label{ssec:config}
 
-One YAML file describes a run: the target harnesses (each a small driver calling
-one cryptographic operation, e.g.\ a decapsulation), the secret input regions to
-track, the named build configurations, and per-layer options. As the single
-source of truth it fixes the build flags, tainted regions, and timing parameters
-together, so the measured configuration cannot drift from the assumed one. Each
-harness is compiled once per build cell (\S\ref{ssec:matrix}), screened by the
-three layers (\S\ref{ssec:checkers}), and reduced by triage
-(\S\ref{ssec:triage}) to one \texttt{verdict\_class}.
+One YAML file describes the harnesses, secret regions, build configurations, and
+per-layer options. It keeps build flags, tainted regions, and timing parameters
+in one source of truth. Each harness is compiled per build cell, screened by the
+three layers, and reduced by triage to one \texttt{verdict\_class}.
 
 \subsection{Three Checker Layers}
 \label{ssec:checkers}
 
-CT side channels in PQC share no single observable signature, so CT-KAT composes
-three checkers, each for a leak class the others cannot see.
+CT side channels share no single observable signature, so CT-KAT composes three
+checkers with different blind spots.
 
 \paragraph{Layer 1: structural CT check (Valgrind/Memcheck).}
-The classic dynamic-taint approach, after ctgrind~\cite{ctgrind} on
-Memcheck~\cite{valgrind}: secret inputs are marked undefined, and Memcheck
-reports when a secret-derived value reaches a control-flow branch or a memory
-address --- the constructs behind the canonical cache- and branch-timing
-leaks~\cite{kocher}. It checks program \emph{structure}, not instruction
-\emph{latency}, so a secret-dependent variable-latency division passes it clean.
+Following ctgrind~\cite{ctgrind} on Memcheck~\cite{valgrind}, secret inputs are
+marked undefined and tainted branches or addresses are reported. This checks
+program structure, not instruction latency.
 
 \paragraph{Layer 2: variable-latency instruction scan (asm-scan).}
-\texttt{asm-scan} closes that gap: a warn-only static scan over the emitted
-assembly, run across optimization levels, flagging \emph{candidate}
-variable-latency instructions --- chiefly integer division and remainder, whose
-amd64 latency depends on operands. The KyberSlash class~\cite{kyberslash} is
-exactly such a secret-derived division that Memcheck passes clean. It stays
-warn-only because the divisor may be public; the public-versus-secret split is
-resolved in triage (\S\ref{ssec:triage}).
+\texttt{asm-scan} is a warn-only scan over emitted assembly, across optimization
+levels, for candidate variable-latency instructions such as integer division and
+remainder. It catches the KyberSlash class~\cite{kyberslash}, but remains
+warn-only because the operand may be public; triage resolves public versus secret.
 
 \paragraph{Layer 3: black-box statistical timing (dudect).}
-A black-box test after dudect~\cite{dudect}: it runs the harness on two input
-classes and applies a Welch $t$-test to the cycle counts; a large $|t|$ means
-the running time depends on the input class, hence the secret. Needing no model
-of why a leak occurs, it catches timing dependence with no structural branch and
-no recognizable variable-latency instruction. Being measurement-based it is
-environment-sensitive: under our virtualized image it can report
-environment-induced noise, which it surfaces loudly. The three layers detect
-disjoint leak classes --- structural, instruction latency, end-to-end timing ---
-so their union is the coverage.
+A black-box test after dudect~\cite{dudect} runs two input classes and applies a
+Welch $t$-test to cycle counts. It needs no causal model, so it catches timing
+dependence with no structural branch and no recognizable variable-latency
+instruction, but it is environment-sensitive and reports noise explicitly.
 
 \subsection{Build-Configuration Sweep (ct-matrix)}
 \label{ssec:matrix}
 
-A constant-time property belongs to the \emph{compiled} program: the compiler
-may remove a secret-dependent branch at one optimization level, or inline a
-function so a finding lands in a different frame, making a single-build verdict
-unsound. \texttt{ct-matrix} recompiles each harness under every named build
-configuration and re-runs the \emph{same} structural check per cell, reporting
-the verdict as a function of the build. The matrix is indexed by compiler and
-named cflags; our image provides gcc~13.3.0 and clang~18.1.3, giving up to six
-cells. The three gcc configurations are \texttt{debug}
-(\texttt{-O0 -g -fno-inline -fno-omit-frame-pointer}, disabling inlining so
-findings name their precise leak-site function), \texttt{release}
-(\texttt{-O2 -g -fno-omit-frame-pointer -fno-lto}), and \texttt{size}
-(\texttt{-Os}, otherwise as release). Two phenomena make the sweep load-bearing:
-a branch present at \texttt{-O0} can be removed at \texttt{-O2}/\texttt{-Os},
-flipping the verdict; and inlining blurs attribution, so \texttt{-O0 -fno-inline}
-names the true leak-site function while optimized builds merge it into a parent
-frame. CT-KAT unions the leak-site functions and treats the debug build as
-authoritative for triage while reporting build-dependence.
+A constant-time property belongs to the compiled program. \texttt{ct-matrix}
+recompiles each harness under named compiler/cflags cells and re-runs the same
+structural check. Our image uses gcc~13.3.0 and clang~18.1.3 over debug
+(\texttt{-O0} with debug/no-inline flags), release (\texttt{-O2} with debug
+metadata and no LTO), and size (\texttt{-Os}) builds. The sweep matters because
+optimization can remove a debug branch or inline leak-site functions into a
+parent frame; CT-KAT reports the build-dependence and unions leak-site functions
+for triage.
 
 \subsection{Default-Deny Triage Taxonomy}
 \label{ssec:triage}
 
-Over-claiming every structural failure as a key-recovery leak is dangerous for
-PQC, since several schemes are variable-time \emph{by design} --- e.g.\ the
-rejection-sampling loops of ML-DSA~\cite{fips204,dilithium}, whose iteration
-count depends on a fresh per-signature nonce. CT-KAT assigns each harness exactly
-one \texttt{verdict\_class}:
+Over-claiming every structural failure as key recovery is dangerous because PQC
+contains accepted variable-time behavior, such as ML-DSA rejection
+sampling~\cite{fips204,dilithium}. CT-KAT assigns each harness one
+\texttt{verdict\_class}:
 \begin{description}
   \item[\texttt{robust}:] all checkers pass across the matrix.
   \item[\texttt{ct-clean-untriaged}:] structural pass; another layer's candidate
         (e.g.\ a division) is untriaged.
-  \item[\texttt{varlat-secret-risk}:] structural pass, but \texttt{asm-scan}
-        flags a \emph{secret-derived} variable-latency instruction (the
-        KyberSlash case).
+  \item[\texttt{varlat-secret-risk}:] structural pass plus a
+        \emph{secret-derived} variable-latency instruction (KyberSlash).
   \item[\texttt{build-sensitive-ct}:] the structural verdict is unstable across
         the matrix.
   \item[\texttt{accepted-variable-time}:] structural fail, but \emph{every}
@@ -106,10 +76,7 @@ one \texttt{verdict\_class}:
 \end{description}
 
 The \texttt{accepted-variable-time}/\texttt{needs-analysis} boundary is a cited
-registry (\texttt{docs/accepted\_variable\_time.md}): each entry records a
-function whose secret-dependent timing is an analyzed-safe design behavior, with
-a checkable citation. If \emph{all} leak-site functions are registered the
-harness is \texttt{accepted-variable-time}; if \emph{any} is unrecognized it
-stays \texttt{needs-analysis} --- never silently accepted, never silently
-promoted to a leak. Section~\ref{sec:results-coverage} shows this default-deny
-invariant at work on real ML-DSA-65.
+registry (\texttt{docs/accepted\_variable\_time.md}). If all leak-site functions
+are registered the harness is accepted; if any is unrecognized it stays
+\texttt{needs-analysis}---never silently accepted, never silently promoted to a
+leak. Section~\ref{sec:results-coverage} shows this on ML-DSA-65.

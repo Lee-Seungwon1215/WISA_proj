@@ -3,13 +3,11 @@
 
 \subsection{Reproducible environment}
 
-The committed corpus records build-cell provenance---compiler, compiler version,
-architecture, and CT-KAT commit---in \texttt{docs/corpus/corpus\_cells.csv}
-rather than relying on prose. A verdict can depend on compiler and optimization
-level, so one without the exact compiler version is under-specified. The
-regression suite is checked by the artifact workflow rather than copied into the
-paper as a static pass/skip count; timing-environment tests may skip outside
-native, non-emulated timing setups.
+The committed corpus records compiler, version, architecture, and CT-KAT commit
+per build cell in \texttt{docs/corpus/corpus\_cells.csv}. Since a verdict can
+depend on compiler and optimization level, prose without this provenance is
+under-specified. The artifact workflow checks the regression suite; timing tests
+may skip outside native, non-emulated setups.
 
 \subsection{Corpus design}
 
@@ -19,42 +17,27 @@ controls (Table~\ref{tab:coverage}, per-feature map;
 Table~\ref{tab:corpus}, verdict-class corpus).
 
 \paragraph{Real PQC targets.}
-For ML-KEM-768 (FIPS~203~\cite{fips203}, \texttt{mlkem768}, harness
-\texttt{kem\_dec}) we screen the plain build and a
-KyberSlash~\cite{kyberslash} variable-time-division variant
-(\texttt{mlkem768\_kyberslash}). The plain build passes structurally
-everywhere; \texttt{asm-scan}'s FIPS~202/Keccak division candidates triage
-\emph{public} (constant absorb rate). KyberSlash is the key case: Memcheck
-passes it clean---no secret-tainted branch or address---yet it leaks through a
-secret-derived integer division only \texttt{asm-scan} surfaces.
+For ML-KEM-768~\cite{fips203} we screen the plain PQClean build and a
+KyberSlash~\cite{kyberslash} division variant. The plain build passes
+structurally; its FIPS~202/Keccak division candidates triage public. The variant
+passes Memcheck but exposes a secret-derived division to \texttt{asm-scan}.
 
 \paragraph{Synthetic controls.}
-Three harnesses isolate one phenomenon each. \texttt{toy\_lookup}'s
-\texttt{leaky} variant (\texttt{out[i]=sbox[secret[i]]}) is a cache-timing leak
-Memcheck flags across all six builds; \texttt{safe} is robust.
-\texttt{ct\_matrix\_flip}'s secret-dependent branch is optimizer-removed: it
-fails under GCC debug (\texttt{-O0}) but passes under release (\texttt{-O2}) and
-size (\texttt{-Os}). \texttt{toy\_dudect} is a timing control, no structural
-branch (Table~\ref{tab:dudect}).
+Three harnesses isolate one phenomenon each: \texttt{toy\_lookup} for a
+secret-indexed lookup, \texttt{ct\_matrix\_flip} for an optimization-dependent
+branch, and \texttt{toy\_dudect} for a timing-only control (Table~\ref{tab:dudect}).
 
 \subsection{How a row is produced}
 
-Each row follows one pipeline (Fig.~\ref{fig:pipeline}) from one YAML config.
-\texttt{ct-matrix} recompiles per cell of the compiler~$\times$ named-cflags
-matrix (up to six cells, GCC and Clang) using the debug/release/size
-configurations of Section~\ref{ssec:matrix}, re-running the \emph{same} check in
-each. \texttt{asm-scan} runs warn-only over object code; public
-variable-latency candidates are recorded, any unrecognized leak site holds the
-row at \texttt{needs-analysis}, and the default-deny taxonomy never auto-promotes
-a structural failure to a leak. Optionally \texttt{dudect}~\cite{dudect} (a Welch
-$t$-test on cycle counts) runs on timing distributions. The ML-DSA-65 row
-(\texttt{mldsa65}, \texttt{sign}) is the central honest result: its structural
-check fails, but default-deny holds it at \texttt{needs-analysis} rather than
-declaring a leak (Section~\ref{sec:results-coverage}).
+Each row follows one pipeline (Fig.~\ref{fig:pipeline}) from one YAML config:
+\texttt{ct-matrix} reruns structural checking per build cell, \texttt{asm-scan}
+records warn-only variable-latency candidates, triage applies default-deny, and
+optional \texttt{dudect}~\cite{dudect} runs on timing distributions. The central
+honest result is ML-DSA-65: structural checking fails, but default-deny holds it
+at \texttt{needs-analysis} rather than declaring a leak.
 
 \subsection{Merging the evidence}
 
-Structural and \texttt{asm-scan} signals are per build cell, the timing test per
-target. A script merges them, collapsing structural results into one verdict per
-target (build-sensitive when verdicts vary) and attaching triaged findings:
-Table~\ref{tab:corpus}, seven rows, three families, five verdict classes. The timing layer is in the dudect appendix (Table~\ref{tab:dudect}).
+Structural and \texttt{asm-scan} signals are per build cell, while timing is per
+target. The merge script collapses them into Table~\ref{tab:corpus}; the timing
+appendix remains Table~\ref{tab:dudect}.

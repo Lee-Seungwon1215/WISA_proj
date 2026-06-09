@@ -1,9 +1,11 @@
 # Report tables (WISA poster — camera-ready figures)
 
-> Headline figures for the write-up. Two tables carry the paper:
-> **(T1) per-feature single-coverage** — every tool layer pulls its own weight;
-> **(T2) verdict-class corpus** — every class is grounded in real PQC.
-> **(A1) dudect appendix** — the one feature that lives beside the corpus.
+> Headline/support figures for the write-up:
+> **coverage** — every tool layer pulls its own weight;
+> **ablation** — every omitted layer has a concrete miss;
+> **corpus** — every verdict class is grounded in a concrete run;
+> **ML-DSA attribution** — default-deny is justified per build cell;
+> **dudect appendix** — the one feature that lives beside the corpus.
 > Numbers are rendered from committed corpus CSVs produced by the CT-KAT analysis
 > workflow; per-cell compiler/version/architecture provenance lives in
 > `docs/corpus/corpus_cells.csv`. Source-of-truth CSVs:
@@ -11,7 +13,7 @@
 
 ---
 
-## T1 — Per-feature single-coverage (the headline figure)
+## Coverage — Per-feature single-coverage (the headline figure)
 
 The argument: a screening tool that bundles N checks is only justified if **each
 check catches something the others miss**. For every layer we name a corpus case
@@ -22,7 +24,7 @@ that *only that layer* flags.
 | 1 | Valgrind secret mem/branch | secret → branch / memory address | `toy_lookup` `leaky` — S-box read `out[i]=sbox[secret[i]]` | `ct-leak`, FAIL all 6 builds |
 | 2 | asm-scan variable-latency div | secret → division latency (**Valgrind-blind**) | KyberSlash ML-KEM (`pqclean_mlkem768_kyberslash`) | `varlat-secret-risk` — **ct PASS, asm FAIL** |
 | 3 | ct-matrix build-sensitivity | same source, verdict flips per build config | `ct_matrix_flip` `leaky` | `build-sensitive-ct` — gcc_debug **FAIL** / release+size **PASS** |
-| 4 | dudect timing | timing leak with **no structural branch** | `toy_dudect` `leaky` | FAIL \|t\|=181.5 vs safe PASS \|t\|=1.65 — see **A1** |
+| 4 | dudect timing | timing leak with **no structural branch** | `toy_dudect` `leaky` | FAIL \|t\|=181.5 vs safe PASS \|t\|=1.65 — see **dudect appendix** |
 | 5 | taxonomy / default-deny triage | ct FAIL that is **not yet a confirmed leak** | ML-DSA-65 (`pqclean_mldsa65`) `sign` | `needs-analysis` — default-deny caught an over-claim |
 
 **Why each row is "only this layer":**
@@ -40,7 +42,22 @@ that *only that layer* flags.
 
 ---
 
-## T2 — Verdict-class corpus (every class grounded in real PQC)
+## Ablation — each omitted layer misses something concrete
+
+This is support, not a replacement for the coverage table's clearer argument.
+It is auto-generated from the same corpus CSVs and drift-tested.
+
+| If removed / ignored | Demonstrated miss | Evidence source |
+|---|---|---|
+| Valgrind structural taint | secret-indexed memory leak | `toy_lookup/leaky` |
+| asm-scan | KyberSlash secret-derived division | `mlkem768_kyberslash/kem_dec` |
+| ct-matrix | build-dependent verdict flip | `ct_matrix_flip/leaky` |
+| dudect | black-box timing leak | `toy_dudect/leaky` |
+| default-deny taxonomy | ML-DSA over-claim | `mldsa65/sign` |
+
+---
+
+## Corpus — Verdict-class corpus (every class grounded in a concrete run)
 
 7 rows / 3 families / 5 verdict classes, backed by committed corpus runs.
 
@@ -69,7 +86,26 @@ The decoupling is the methodological point: **ct-clean ≠ no-candidates**, and 
 
 ---
 
-## A1 — dudect appendix (timing single-coverage)
+Real-PQC spine: stock ML-KEM grounds `robust`, KyberSlash ML-KEM grounds
+`varlat-secret-risk`, and ML-DSA grounds `needs-analysis`. Synthetic controls
+ground `ct-leak` and `build-sensitive-ct` deliberately, as controlled positives.
+
+---
+
+## ML-DSA attribution — why default-deny holds
+
+The ML-DSA row is not merely "FAIL". Debug cells show only registered
+rejection-sampling behavior; optimized cells surface unregistered parent/packer
+names, so the framework keeps the row at `needs-analysis`.
+
+| build cells | surfaced functions | triage meaning |
+|---|---|---|
+| `-O0 -fno-inline` | `make_hint`; `poly_challenge`; `poly_chknorm` | registered rejection-sampling behavior |
+| `-O2/-Os` | adds `crypto_sign_signature_ctx`; `pack_sig` | held at `needs-analysis` |
+
+---
+
+## dudect appendix (timing single-coverage)
 
 dudect is *timing-keyed* (per-target), not *ct-matrix-keyed*, so it does not
 produce a `corpus_summary.csv` row — it sits beside the corpus as its own table.
@@ -90,12 +126,14 @@ honesty, not a one-off.
 
 ---
 
-## How the two tables work together
+## How the tables work together
 
-> **T1 says** every layer is justified (each catches something unique).
-> **T2 says** every verdict class is grounded in real PQC, not a toy.
-> Together: *"the framework is layer-justified in this corpus (T1) and validated
-> on concrete targets (T2)."*
+> **Coverage says** every layer is justified (each catches something unique).
+> **Ablation says** removing any layer creates a concrete miss.
+> **Corpus says** every verdict class is grounded in a concrete target.
+> **ML-DSA says** default-deny prevented a real over-claim.
+> Together: *"the framework is layer-justified in this corpus and validated on
+> concrete targets."*
 
-Pair them as the poster's two central panels; **A1** is a small supporting inset
-under T1 row 4.
+Use coverage and corpus as the two central panels; ablation, ML-DSA attribution,
+and dudect are compact support.

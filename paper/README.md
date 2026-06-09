@@ -26,7 +26,7 @@ commands are installed. If not, it falls back to `tectonic` when available.
 ## Layout
 
 ```
-main.tex              preamble + title + the 3 table floats + Fig.1 + \input glue
+main.tex              preamble + title + table floats + Fig.1 + \input glue
 generated/            AUTO-GENERATED table bodies + macros (do NOT hand-edit)
 references.bib        12 citations — VERIFY each before camera-ready
 figures/pipeline.tex  TikZ pipeline diagram (Fig.1)
@@ -39,13 +39,13 @@ splncs04.bst          LNCS BibTeX style (bundled)
 
 Every numeric table in the paper is rendered from committed corpus CSVs:
 
-- `../docs/corpus/corpus_summary.csv` → Table 2 (verdict-class corpus)
-- `../docs/corpus/dudect_appendix.csv` → Table 3 (dudect appendix)
-- `../docs/corpus/corpus_cells.csv` → Table 1 evidence + build cells
+- `../docs/corpus/corpus_summary.csv` → verdict-class corpus + ablation rows
+- `../docs/corpus/dudect_appendix.csv` → dudect appendix + timing macros
+- `../docs/corpus/corpus_cells.csv` → coverage evidence + ML-DSA attribution
 
-The numbers are **single-sourced** (Phase 2): Table 2, Table 3, and every
-duplicated dudect figure / percentage / cardinality are generated from the CSVs
-into `generated/{tab_corpus,tab_dudect,corpus_macros}.tex`, which `main.tex` and
+The numbers are **single-sourced** (Phase 2): corpus, ablation, ML-DSA, dudect,
+and every duplicated dudect figure / percentage / cardinality are generated from
+the CSVs into `paper/generated/*.tex`, which `main.tex` and
 `sections/04_results.tex` `\input` / use as `\newcommand` macros. Do NOT edit the
 numbers in the `.tex` by hand — edit the CSV and regenerate:
 
@@ -64,13 +64,13 @@ scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docke
 
 - [ ] Real author name(s) + ORCID in `main.tex` (currently placeholder).
 - [ ] Verify all 12 references in `references.bib` (LLM-drafted — check each).
-- [ ] Compress `paper/main.pdf` from the current 13 pages to the 12-page LNCS
-      target. Start with repeated Background/Results prose.
-- [ ] Keep Table 1 as the single-coverage headline; add any ablation/miss matrix
-      only as a supporting table/appendix, not as a replacement.
-- [ ] Avoid "complete" as a framework claim; use "layer-justified in this
+- [x] Keep `paper/main.pdf` within the 12-page LNCS target; it currently builds
+      to 11 pages after compression.
+- [x] Keep Table 1 as the single-coverage headline; the ablation/miss evidence
+      is added as a supporting generated table, not a replacement.
+- [x] Avoid "complete" as a framework claim; use "layer-justified in this
       corpus" / "validated on the corpus".
-- [ ] Consider promoting ML-DSA per-cell attribution into a compact table:
+- [x] Promote ML-DSA per-cell attribution into a compact generated table:
       debug cells show registered rejection functions, optimized cells surface
       `crypto_sign_signature_ctx` / `pack_sig`.
 - [ ] Confirm the dudect numbers natively (`taskset -c 0`, freq scaling off) —

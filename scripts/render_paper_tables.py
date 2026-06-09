@@ -6,9 +6,11 @@ camera-ready numbers are single-sourced (no more hand-copying) and a drift test
 DETERMINISTIC, pure stdlib + csv — no valgrind/Docker. Reads the committed
 docs/corpus/*.csv (Stage-B output) and emits, into a fenced generated region:
 
-  paper/generated/tab_corpus.tex    — Table 2 data rows (verdict-class corpus)
-  paper/generated/tab_dudect.tex    — Table 3 data rows (dudect appendix)
-  paper/generated/corpus_macros.tex — \\newcommand for every duplicated/derived
+  paper/generated/tab_corpus.tex    - verdict-class corpus rows
+  paper/generated/tab_dudect.tex    - dudect appendix rows
+  paper/generated/tab_ablation.tex  - supporting ablation/miss evidence rows
+  paper/generated/tab_mldsa.tex     - ML-DSA per-build triage evidence
+  paper/generated/corpus_macros.tex - \\newcommand for every duplicated/derived
                                        number used in main.tex + 04_results.tex
 
 It NEVER writes docs/corpus/*.csv (Stage-B owns those) and NEVER regenerates
@@ -29,7 +31,7 @@ GENERATED = ROOT / "paper" / "generated"
 
 # Reuse the package taxonomy rather than hardcoding the class list.
 sys.path.insert(0, str(ROOT))
-from ctkat.verdict_class import VERDICT_CLASSES  # noqa: E402
+from ctkat.verdict_class import VERDICT_CLASSES, load_registry  # noqa: E402
 
 
 # --- shared transforms (imported by the sync test) --------------------------
@@ -75,6 +77,10 @@ def round_pct(x: float) -> str:
 def latex_tt(s: str) -> str:
     r"""Wrap in \texttt{} with underscores escaped (\_)."""
     return r"\texttt{" + s.replace("_", r"\_") + "}"
+
+
+def join_tt(items: list[str]) -> str:
+    return "; ".join(latex_tt(i) for i in items)
 
 
 def thousands(n: int) -> str:
@@ -158,6 +164,92 @@ def render_tab_dudect(appendix: dict) -> str:
     return "\n".join(lines) + "\n\\bottomrule\n"
 
 
+def render_tab_ablation(summary: list[dict], appendix: dict) -> str:
+    """A compact "what breaks if a layer is removed" table.
+
+    The row choices are intentional and mirror Table 1's single-coverage logic,
+    but the concrete target/verdict strings are checked against the committed
+    corpus so the paper cannot cite a stale or missing example.
+    """
+    by_key = {(r["target"], r["harness"]): r for r in summary}
+
+    def require(target: str, harness: str, verdict: str) -> dict:
+        row = by_key[(target, harness)]
+        if row["verdict_class"] != verdict:
+            raise SystemExit(
+                f"ablation row {target}/{harness} expected {verdict}, "
+                f"got {row['verdict_class']}"
+            )
+        return row
+
+    require("toy_lookup", "leaky", "ct-leak")
+    require("pqclean_mlkem768_kyberslash", "kem_dec", "varlat-secret-risk")
+    require("ct_matrix_flip", "leaky", "build-sensitive-ct")
+    require("pqclean_mldsa65", "sign", "needs-analysis")
+    if appendix["leaky"]["status"] != "FAIL":
+        raise SystemExit("ablation row toy_dudect/leaky expected dudect FAIL")
+
+    rows = [
+        ("Valgrind taint", "secret-indexed memory leak",
+         f"{latex_tt('toy_lookup/leaky')} ({latex_tt('ct-leak')})"),
+        ("asm-scan", "KyberSlash secret-derived division",
+         f"{latex_tt('mlkem768_kyberslash/kem_dec')} ({latex_tt('varlat-secret-risk')})"),
+        ("ct-matrix", "build-dependent verdict flip",
+         f"{latex_tt('ct_matrix_flip/leaky')} ({latex_tt('build-sensitive-ct')})"),
+        ("dudect", "black-box timing leak",
+         f"{latex_tt('toy_dudect/leaky')} (FAIL $|t|={round_t(appendix['leaky']['abs_t_score'])}$)"),
+        ("default-deny", "ML-DSA over-claim",
+         f"{latex_tt('mldsa65/sign')} ({latex_tt('needs-analysis')})"),
+    ]
+    return "\n".join(
+        f"{latex_tt(layer)} & {miss} & {evidence}\\tabularnewline"
+        for layer, miss, evidence in rows
+    ) + "\n\\bottomrule\n"
+
+
+def render_tab_mldsa(cells: list[dict]) -> str:
+    mldsa = [
+        r for r in cells
+        if r["target"] == "pqclean_mldsa65" and r["harness"] == "sign"
+    ]
+    if not mldsa:
+        raise SystemExit("no ML-DSA sign cells found")
+    reg = load_registry().get("ML-DSA", set())
+
+    def short_funcs(rows: list[dict]) -> list[str]:
+        funcs = {
+            f.split("_CLEAN_")[-1]
+            for r in rows
+            for f in r["ct_finding_funcs"].split(";")
+            if f
+        }
+        return sorted(funcs)
+
+    debug = [r for r in mldsa if r["opt"] == "-O0"]
+    opt = [r for r in mldsa if r["opt"] != "-O0"]
+    debug_funcs = short_funcs(debug)
+    opt_funcs = short_funcs(opt)
+    unregistered = [
+        f for f in opt_funcs
+        if not any(f.endswith(rf) for rf in reg)
+    ]
+    if len(debug_funcs) != 3 or len(unregistered) != 2:
+        raise SystemExit(
+            f"unexpected ML-DSA split debug={debug_funcs}, unregistered={unregistered}"
+        )
+
+    rows = [
+        (r"\texttt{-O0 -fno-inline}", join_tt(debug_funcs),
+         "registered rejection-sampling behavior"),
+        (r"\texttt{-O2/-Os}", "adds " + join_tt(unregistered),
+         r"held at \texttt{needs-analysis}"),
+    ]
+    return "\n".join(
+        f"{builds} & {funcs} & {meaning}\\tabularnewline"
+        for builds, funcs, meaning in rows
+    ) + "\n\\bottomrule\n"
+
+
 def render_macros(summary, cells, appendix) -> str:
     card = cardinality(summary)
     dr = drop_rates(appendix)
@@ -182,13 +274,13 @@ def render_macros(summary, cells, appendix) -> str:
         (r"\mlkemDudectT", mlkem_dudect_t(summary)),
     ]
     head = ("% AUTO-GENERATED by scripts/render_paper_tables.py from "
-            "docs/corpus/*.csv. DO NOT EDIT — edit the CSV + re-run.\n")
+            "docs/corpus/*.csv. DO NOT EDIT; edit the CSV + re-run.\n")
     body = "\n".join(f"\\newcommand{{{name}}}{{{val}}}" for name, val in defs)
     return head + body + "\n"
 
 
 _GEN_HEAD = ("% AUTO-GENERATED by scripts/render_paper_tables.py from "
-             "docs/corpus/*.csv. DO NOT EDIT — edit the CSV + re-run.\n")
+             "docs/corpus/*.csv. DO NOT EDIT; edit the CSV + re-run.\n")
 
 
 def main() -> None:
@@ -201,8 +293,10 @@ def main() -> None:
     GENERATED.mkdir(parents=True, exist_ok=True)
     (GENERATED / "tab_corpus.tex").write_text(_GEN_HEAD + render_tab_corpus(summary), encoding="utf-8")
     (GENERATED / "tab_dudect.tex").write_text(_GEN_HEAD + render_tab_dudect(appendix), encoding="utf-8")
+    (GENERATED / "tab_ablation.tex").write_text(_GEN_HEAD + render_tab_ablation(summary, appendix), encoding="utf-8")
+    (GENERATED / "tab_mldsa.tex").write_text(_GEN_HEAD + render_tab_mldsa(cells), encoding="utf-8")
     (GENERATED / "corpus_macros.tex").write_text(render_macros(summary, cells, appendix), encoding="utf-8")
-    print(f"[render] wrote {GENERATED}/tab_corpus.tex, tab_dudect.tex, corpus_macros.tex")
+    print(f"[render] wrote generated paper tables in {GENERATED}")
 
 
 if __name__ == "__main__":
