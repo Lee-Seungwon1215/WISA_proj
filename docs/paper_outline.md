@@ -47,7 +47,7 @@ scrutiny precisely because it does not over-claim novelty.
 | 4 | Corpus & method | 1.0 | Committed corpus CSVs, per-cell compiler/version provenance, PQClean targets + synthetic controls; reproducibility workflow. |
 | 5 | Results | 3.0 | **T1 (single-coverage) and T2 (verdict-class) — the two headline tables.** Walk each T1 row; foreground KyberSlash (ct PASS/asm FAIL) and ML-DSA (default-deny). **A1 dudect** as inset. |
 | 6 | Discussion: self-validation | 1.0 | The ML-DSA over-claim story; build-dependent attribution (inlining); honest limitations (QEMU TSC noise → confirm native; synthetic controls; corpus breadth). |
-| 7 | Conclusion | 0.5 | Restate: complete (T1) + validated (T2) + honest (default-deny). |
+| 7 | Conclusion | 0.5 | Restate: layer-justified in this corpus (T1) + validated on concrete targets (T2) + honest (default-deny). |
 | — | References | 0.5 | LNCS bib. |
 
 Poster track ⇒ **the two tables + Fig 1 pipeline are the visual payload.** If
@@ -74,8 +74,9 @@ artifact run, not a copied paper number.
    ct-verif/Binsec, FIPS 203/204, PQClean.
 
 **Optional, do NOT block submission:** ML-DSA `-fno-inline` precise attribution;
-dudect (b) one-table merge; corpus breadth (Falcon/SPHINCS+). All
-diminishing-return for a 12-page poster.
+native dudect confirmation; dudect (b) one-table merge; corpus breadth
+(Falcon/SPHINCS+); structural FO-path Valgrind only if it can be validated. All
+are secondary to clearing the 12-page / author / reference blockers.
 
 ## Recommended next action
 

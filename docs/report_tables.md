@@ -94,7 +94,8 @@ honesty, not a one-off.
 
 > **T1 says** every layer is justified (each catches something unique).
 > **T2 says** every verdict class is grounded in real PQC, not a toy.
-> Together: *"the framework is complete (T1) and validated (T2)."*
+> Together: *"the framework is layer-justified in this corpus (T1) and validated
+> on concrete targets (T2)."*
 
 Pair them as the poster's two central panels; **A1** is a small supporting inset
 under T1 row 4.

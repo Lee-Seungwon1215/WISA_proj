@@ -50,50 +50,75 @@ All 5 features now have airtight single-coverage *in the evidence set*: 4 as
 dudect is timing-keyed, not ct-matrix-keyed, so it sits beside the corpus rather
 than inside it).
 
-## Recommended next steps (in order)
+## Submission triage (2026-06-09)
 
-### 1. Add `ct_matrix_flip` to the corpus — ✅ DONE
+The paper's edge is real but specific: this is a methodology / engineering paper,
+not a new-attack or new-formal-method paper. The strongest claim is
+**ablation-backed, build-configuration-aware, default-deny CT screening for PQC**.
+The weaknesses (synthetic controls, two real PQC families, candidate-level
+asm-scan, QEMU dudect noise) are already disclosed in the Limitations section.
+That supports the "honest by construction" story, but it also means a reviewer
+will read those limits directly. Do not hide them; make the real-PQC spine
+unmistakable:
 
-Ran `ct-matrix` on `examples/ct_matrix_flip` (gcc debug/release/size, real Docker
-amd64 Valgrind): `leaky` FAILs at `gcc_debug`, PASSes at `gcc_release`+`gcc_size`
-→ `ct_flips=yes` → **`build-sensitive-ct`** (auto); `safe` PASSes everywhere →
-`robust`. Merged via `build_corpus_table.py --family synthetic --target
-ct_matrix_flip`. Corpus is now 7 rows / 5 verdict classes; build-sensitivity is a
-row in the evidence table, not just a guarded test. `test_build_corpus_table.py`
-still passes.
+- **Real spine**: KyberSlash ML-KEM for asm-scan and ML-DSA-65 for default-deny.
+- **Synthetic support**: Valgrind lookup leak, build-matrix flip, and dudect
+  timing control. These justify layers, but should not be oversold as PQC breadth.
+- **Wording rule**: avoid saying the framework is "complete". Say
+  **layer-justified in this corpus** / **validated on the corpus** instead.
 
-### 2. Bind a dudect positive control — ✅ DONE via (a) appendix
+### 0. Submission blockers — must clear before sending
 
-`dudect` is per-target (timing), and the merge keys corpus rows on *ct-matrix*
-harnesses, so a dudect-only target (`toy_dudect`) produces no `corpus_summary.csv`
-row — same shape as the asm-scan-only case. **Chosen path: (a) appendix evidence.**
+- **13 pages → 12 pages**. Current `paper/main.pdf` builds to 13 pages under the
+  LNCS template while `paper/README.md` and `paper/main.tex` document a 12-page
+  target. Compress first in Background/Results where explanations repeat.
+- **Author / ORCID / affiliation**. `paper/main.tex` still carries a placeholder.
+- **Reference verification**. `paper/references.bib` is explicitly marked
+  LLM-drafted; every entry needs a human source check before camera-ready.
+- **No "complete" claim**. Use "layer-justified in our corpus" in paper prose and
+  planning docs.
 
-Ran `toy_dudect` (Docker amd64): `leaky` → **FAIL** (|t|=181.5, mean 42.7 vs
-5191.7 cyc), `safe` → **PASS** (|t|=1.65). Captured the run as a committed,
-citable artifact at **`docs/corpus/dudect_appendix.csv`** (the example's own
-`reports/` is gitignored). The report cites this appendix table for dudect's
-single-coverage and notes explicitly that dudect's evidence lives here, not in
-`corpus_summary.csv` (which is keyed on ct-matrix harnesses).
+### 1. Keep Table 1; add ablation/miss evidence as support
 
-> Note (honesty): the `leaky` run dropped 33.7% zero-cycle samples
-> *asymmetrically* (46.6% class-0 vs 20.9% class-1) under QEMU/Docker TSC skew —
-> the tool loudly warns about this. The separation is so large (|t|=181) the
-> verdict is unambiguous, but for a publication-grade number, confirm natively
-> with `taskset -c 0` + frequency scaling off. Same caveat already flagged on the
-> ML-KEM `dudect WARNING` corpus row.
+Table 1's shape is good: "each layer has a single-coverage case" is the headline
+argument. Do **not** replace it with a tool-pair miss matrix. Add a small
+auto-generated ablation/miss table as a supporting table or appendix:
 
-Option (b) (let `build_corpus_table.py` emit a dudect-only row, ct fields = `NA`)
-remains the "one table, all features" finish if time allows post-report — not
-blocking.
+| If removed / ignored | Demonstrated miss | Evidence source |
+|---|---|---|
+| Valgrind structural taint | secret-indexed memory leak | `toy_lookup/leaky` |
+| asm-scan | KyberSlash secret-derived division | `mlkem768_kyberslash/kem_dec` |
+| ct-matrix | build-dependent verdict flip | `ct_matrix_flip/leaky` |
+| dudect | black-box timing leak | `toy_dudect/leaky` |
+| default-deny taxonomy | ML-DSA over-claim | `mldsa65/sign` |
 
-### 3. Build the feature-coverage table into the report
+Best implementation path: generate this from `docs/corpus/*.csv` beside the
+existing paper table generator, so it is drift-tested rather than prose-only.
 
-The table in this doc IS a headline figure: each feature with its
-"only-this-catches-it" example. Pair it with the verdict-class table — together
-they say "every layer is justified, and every verdict class is grounded in real
-PQC".
+### 2. Promote ML-DSA per-cell triage evidence
 
-### 4. Write-up — framing (Go, per §4.4)
+The corpus already contains the evidence: debug cells show only registered
+rejection-sampling functions, while optimized cells inline into
+`crypto_sign_signature_ctx` and surface `pack_sig`. Promote that into a compact
+paper table or paragraph with per-cell function sets. This strengthens the
+default-deny self-validation without needing to resolve the row to `accepted`.
+
+### 3. Improve dudect evidence if hardware is available
+
+Re-run `toy_dudect` and the ML-KEM dudect observation on native x86 with CPU
+pinning (`taskset -c 0`) and frequency scaling disabled. This can shorten the
+QEMU caveat and make the timing appendix look less defensive. If native hardware
+is not available, keep the caveat; the current large `|t|` positive control is
+still usable because the paper explicitly reports the warning.
+
+### 4. Defer structural FO-path Valgrind unless time is abundant
+
+Structural FO-path coverage for invalid ML-KEM ciphertexts would improve PQC
+depth, but it is a validation-heavy experiment. Do it only in a Docker/Valgrind
+session where the path can be proven exercised. A half-validated FO harness would
+weaken the "honest integration" story.
+
+## Framing to preserve
 
 Honest positioning (research novelty is modest; the phenomena are known):
 
@@ -107,15 +132,3 @@ default-deny caught an over-claim on real ML-DSA, and surfaced that finding
 *attribution* is build-dependent (inlining). That "the tool kept the human
 honest" story is the report's spine — stronger and more honest than a clean
 "everything passed".
-
-## Optional / later (do NOT block the report)
-
-- **Resolve ML-DSA `needs-analysis`** rigorously: classify accepted-vs-leak on the
-  `-fno-inline` debug build (precise attribution) and triage `pack_sig` (public
-  signature packer) on its own merits — see `docs/accepted_variable_time.md`
-  Limitations. Completes the methodology but is not required for the report.
-- **Corpus breadth**: another ML-DSA variant (44/87), Falcon, SPHINCS+, a
-  table-based AES, constant-time memcmp. More data, diminishing return for the
-  report's argument.
-- **Phase E (patched Valgrind)** — only if div-candidate triage volume ever
-  becomes unmanageable (it has not).

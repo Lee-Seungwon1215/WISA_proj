@@ -64,7 +64,15 @@ scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docke
 
 - [ ] Real author name(s) + ORCID in `main.tex` (currently placeholder).
 - [ ] Verify all 12 references in `references.bib` (LLM-drafted — check each).
+- [ ] Compress `paper/main.pdf` from the current 13 pages to the 12-page LNCS
+      target. Start with repeated Background/Results prose.
+- [ ] Keep Table 1 as the single-coverage headline; add any ablation/miss matrix
+      only as a supporting table/appendix, not as a replacement.
+- [ ] Avoid "complete" as a framework claim; use "layer-justified in this
+      corpus" / "validated on the corpus".
+- [ ] Consider promoting ML-DSA per-cell attribution into a compact table:
+      debug cells show registered rejection functions, optimized cells surface
+      `crypto_sign_signature_ctx` / `pack_sig`.
 - [ ] Confirm the dudect numbers natively (`taskset -c 0`, freq scaling off) —
       the corpus run was under QEMU/Docker; see Table 3 caveat.
-- [ ] Check it fits 12 pages; §2/§4 compress first if over.
 - [ ] Draw/replace Fig.1 if the TikZ needs polishing for print.

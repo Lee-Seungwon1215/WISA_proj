@@ -77,9 +77,9 @@ leaky/safe controls, so the corpus instantiates all five classes
 \texttt{needs-analysis}, \texttt{ct-leak}) on concrete targets. The tool never
 auto-declares \texttt{ct-leak}: it needs an explicit human verdict, so the
 pipeline climbs to \texttt{needs-analysis} but no further. Together the two
-tables say the framework is \emph{complete} (every layer justified) and
-\emph{validated} (every class grounded in a real run) --- with no claim of
-formal completeness or proof of leak-absence.
+tables say the framework is \emph{layer-justified in this corpus} (every layer
+has a single-coverage case) and \emph{validated} (every class is grounded in a
+real run) --- with no claim of formal completeness or proof of leak-absence.
 
 \subsection{Statistical timing appendix and its honesty caveat}
 \label{sec:results-dudect}
