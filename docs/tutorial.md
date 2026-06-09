@@ -143,6 +143,6 @@ Linux/Docker.
 ## See also
 
 - `README.md` — 모든 yaml 필드 + verdict matrix
-- `docs/known_issues.md` — 해결된/잔여 이슈와 trade-off
+- `docs/engineering_status.md` — 현재 hardening 상태와 남은 작업
 - `examples/toy_dudect/ctkat_combined.yaml` — ct + dudect 같이 돌리는 예제
 - `examples/pqc_mlkem768/` — PQClean ML-KEM-768 실전 yaml

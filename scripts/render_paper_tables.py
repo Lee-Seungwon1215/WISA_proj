@@ -17,7 +17,7 @@ It NEVER writes docs/corpus/*.csv (Stage-B owns those) and NEVER regenerates
 dudect_appendix.csv (a frozen non-reproducible Docker snapshot — it only READS it).
 
 The transform + rounding helpers are module-level so the sync test imports them —
-the generator and the test share one definition of every transform (CLAUDE.md §3/§5).
+the generator and the test share one definition of every transform.
 """
 from __future__ import annotations
 

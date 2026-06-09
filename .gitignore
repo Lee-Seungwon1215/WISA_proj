@@ -21,6 +21,13 @@ examples/*/reports_*/
 # via `docker compose run --rm ctkat-dev bash scripts/run_phase4.sh`).
 baselines/
 
+# Local-only historical notes / agent prompting files
+.local_archive/
+.claude/
+
+# Local paper packaging artifact
+paper.zip
+
 # Editor / OS
 .DS_Store
 .idea/

@@ -2,16 +2,16 @@
 
 Layered so the bulk is deterministic and compiler-free:
   * parse_objdump() — pure text → divisions; covers the mnemonic whitelist
-    across x86 / ARM / RISC-V and the FP/mul exclusions (CLAUDE.md §8: the
+    across x86 / ARM / RISC-V and the FP/mul exclusions (the
     corpus must not be just the one reference build).
   * parse_nm() / resolve_functions() — pure symbol-table remapping, so the
     Mach-O `ltmp0`→real-name fix is tested without a Mach-O toolchain.
   * note/row/artifact writers + extract_opt_level — pure, deterministic.
   * `ctkat asm-scan` CLI — driven via CliRunner with scan_harness mocked, so
     the user-visible surface (subcommand, CSV columns, console msg, exit code)
-    is exercised without a toolchain (CLAUDE.md §1).
+    is exercised without a toolchain.
   * Two guarded end-to-end tests actually compile a fixture — skipped when no
-    gcc/objdump — asserting the semantic invariant (CLAUDE.md §2): a variable
+    gcc/objdump — asserting the semantic invariant: a variable
     divisor is caught, a reciprocal-multiply fix is not. The function-name
     assertion uses `endswith("leak")` so it holds on both ELF (`leak`) and
     Mach-O (resolved from `_leak`).
@@ -199,7 +199,7 @@ def test_candidate_row_carries_compiler():
 
 
 def test_note_is_compiler_aware_and_conditionalizes_miss():
-    # SEMANTIC INVARIANT (CLAUDE.md §2/§4): a division found only under `clang`
+    # SEMANTIC INVARIANT: a division found only under `clang`
     # must NOT assert the (possibly gcc) ct/Valgrind stage misses it — the claim
     # is conditioned on the ct build using the same compiler.
     note = candidate_to_row(
@@ -490,7 +490,7 @@ def _gcc_is_real_gnu() -> bool:
     """True only for genuine GNU gcc — NOT a clang alias (macOS `gcc` is clang,
     which strength-reduces constant division differently). The KyberSlash
     constant-division asymmetry below is gcc-specific, so gate on it; elsewhere
-    it surfaces as an explicit skip (CLAUDE.md §8)."""
+    it surfaces as an explicit skip."""
     if not _HAVE_TOOLCHAIN:
         return False
     import subprocess

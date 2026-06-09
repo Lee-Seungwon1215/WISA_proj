@@ -2,7 +2,7 @@
 
 These lock the PASS/FAIL/ERROR mapping that BOTH `cli._do_ct` and the upcoming
 `ct-matrix` sweep depend on — extracting it was pointless if the two could drift
-(CLAUDE.md §3/§5)."""
+regression."""
 
 from pathlib import Path
 
@@ -79,7 +79,7 @@ def test_classify_rc99_with_zero_findings_is_error_not_passing():
     `test_classify_keys_on_log_not_exit_code`, which asserted rc=99 + clean log
     => PASS. That earlier behavior was a documented fail-open (a real Valgrind
     run never exits 99 unless it found an error, so the rc=99/0-findings combo
-    can ONLY mean a parser whitelist gap). CLAUDE.md §0: the old test passing
+    can ONLY mean a parser whitelist gap). The old test passing
     did not make the old behavior correct."""
     out = classify_valgrind_run(_result(99), FIXTURES / "valgrind_safe.log")
     assert out.status == "ERROR"

@@ -1829,9 +1829,9 @@ def asm_scan(
 
     WHY multi-opt: a constant divisor (KyberSlash's `/KYBER_Q`) is
     strength-reduced away at the ct stage's gcc -O0 and only re-appears as a
-    real `div` at -Os, so a single-build scan would find nothing (see
-    docs/kyberslash_direction.md §8.7/§8.8). This compiles each source at
-    several opt levels and reports which build a division survives in.
+    real `div` at -Os, so a single-build scan would find nothing. This compiles
+    each source at several opt levels and reports which build a division
+    survives in.
 
     NOT a taint analysis: it reports every division-family instruction in the
     sources, secret or not (so public divisions, e.g. Keccak rate math, also

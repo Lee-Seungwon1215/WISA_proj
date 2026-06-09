@@ -5,7 +5,7 @@ Phase 1 (Bundle R): this logic used to live ONLY inside build_corpus_table.py, s
 the headline artifact (`verdict_class`) was "an experiment post-processing script"
 rather than something the tool emits. Extracting it here lets `ctkat screen`
 compute the SAME classification in-process — the script and the command can no
-longer drift (CLAUDE.md §3/§5).
+longer drift.
 
 Everything here is PURE (no file/console I/O) except `load_registry`, which reads
 the accepted-variable-time markdown table. The classification is a faithful port

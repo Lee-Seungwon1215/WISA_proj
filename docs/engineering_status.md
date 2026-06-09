@@ -1,8 +1,7 @@
 # CT-KAT engineering status & forward plan
 
 > Engineering-hardening arc layered on top of the empirical corpus (see
-> `go_forward.md` for the paper/report angle and `known_issues.md` for the older
-> regression catalogue). This doc tracks **what was hardened**, the **review
+> `go_forward.md` for the paper/report angle). This doc tracks **what was hardened**, the **review
 > methodology** that drove it, and **what is still open** — so nothing deferred
 > gets lost.
 
@@ -22,7 +21,7 @@ that loop is the reason these landed clean, and it is worth keeping.
 | Phase 2 | `4ed349a`, `13af63e` | paper tables auto-generated from the corpus + drift-failing test | `scripts/render_paper_tables.py` → `paper/generated/*.tex` + macros; `tests/test_paper_corpus_sync.py` fails CI if any paper number ≠ corpus CSV; `build_paper_pdf.sh` (tectonic-verified compile); pytest-count + Docker-provenance overclaims removed |
 | B4 / B5 | `8706e38` | measurement-semantics: pooled dudect cropping + KEM FO caption | `welch_with_cropping` now crops at a single **pooled** threshold (dudect/Reparaz protocol fidelity — honest caveat: NOT a sensitivity gain, but never loses a strong leak); KEM ct verdict + paper now state Valgrind covers only the valid-ct path, FO/rejection is dudect `leak_target: fo` |
 
-State: **466 pytest pass / 3 skipped**, paper compiles (tectonic), 12 example
+State: **483 pytest pass / 3 skipped**, paper compiles, 12 example
 yamls load, corpus 7 rows / 5 verdict classes unchanged (frozen artifacts intact).
 
 ## Recurring failure modes (what the reviews kept catching)
@@ -93,7 +92,7 @@ These are the anti-patterns that bit repeatedly — check them on every change:
 ## How to verify the current state
 
 ```bash
-python3 -m pytest -q                          # full suite (466 pass / 3 skip)
+python3 -m pytest -q                          # full suite (483 pass / 3 skip)
 bash scripts/reproduce_paper_tables.sh        # CSV → paper tables + drift test
 bash scripts/build_paper_pdf.sh               # compile the 12p PDF (pdflatex/tectonic)
 python3 -m ctkat screen --config examples/pqc_mlkem768/ctkat.yaml   # needs Linux/Docker (valgrind)
@@ -102,5 +101,9 @@ python3 -m ctkat screen --config examples/pqc_mlkem768/ctkat.yaml   # needs Linu
 ## Related docs
 - `go_forward.md` — paper/report angle + per-feature single-coverage lens.
 - `corpus_schema.md` — corpus CSV schema + `verdict_class` taxonomy.
-- `known_issues.md` — the older 11-regression catalogue that produced `CLAUDE.md`.
 - `accepted_variable_time.md` — the cited registry behind `accepted-variable-time`.
+- `paper/camera_ready_status.md` — paper submission checklist and remaining
+  camera-ready blockers.
+
+Historical audit logs, original design prompts, and local agent prompting guides
+are intentionally kept out of git under `.local_archive/`.

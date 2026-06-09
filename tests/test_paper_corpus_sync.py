@@ -5,7 +5,7 @@ drifts from the CSVs — so `pytest` catches what a human would otherwise miss.
 
 CI-safe: pure committed-file reads (no valgrind/Docker). Shares the transform +
 rounding helpers with the generator (scripts/render_paper_tables.py), so the test
-and generator can't disagree about what "correct" is (CLAUDE.md §3/§5). Every
+and generator can't disagree about what "correct" is. Every
 corpus-derived SURFACE gets ≥1 assertion (§1): the generated snippets, the macro
 file, the paper prose (all sections), and docs/report_tables.md.
 """

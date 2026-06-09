@@ -3,7 +3,7 @@
 
 Extracted so the PASS / FAIL / ERROR mapping lives in ONE place. If the matrix
 copy-pasted `_do_ct`'s inline classification, a future fix to one and not the
-other is exactly the divergence CLAUDE.md §3/§5 warns about (the matrix would
+other is exactly the divergence the shared-rendering tests guard against (the matrix would
 quietly disagree with the run verdict on the same binary).
 """
 

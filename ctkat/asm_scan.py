@@ -11,7 +11,7 @@ KyberSlash detection while finding nothing. We compile each source at several
 optimization levels and report *which build* a division survives in. The "div
 survives at -Os but not at the ct stage's -O0" asymmetry is the finding.
 
-Scope honesty (no overclaiming — CLAUDE.md §3): there is NO taint here. We
+Scope honesty (no overclaiming): there is NO taint here. We
 report *every* division-family instruction in the configured sources, secret
 or not. That is why a real run also surfaces public divisions (e.g. Keccak
 rate math in fips202.c). These are *candidates in harness sources*, NOT proven
@@ -132,7 +132,7 @@ def parse_objdump(text: str) -> List[Tuple[str, str, str]]:
     symbol objdump attributed the code to (often correct on ELF, a linker-temp
     on Mach-O — callers remap it via the symbol table). Split out from the
     subprocess wrapper so the mnemonic whitelist can be unit-tested against
-    canned GNU/LLVM objdump text without a compiler in the loop (CLAUDE.md §8)."""
+    canned GNU/LLVM objdump text without a compiler in the loop."""
     hits: List[Tuple[str, str, str]] = []
     current = "?"
     for line in text.splitlines():
@@ -383,7 +383,7 @@ def _note_for(c: VarLatCandidate) -> str:
     scan compiler. The "ct/Valgrind stage would miss this build" claim only
     holds when the ct build uses the *same* compiler we scanned with — asm-scan
     does not know the ct build's compiler (it runs `make`), so the claim is
-    stated conditionally on `c.compiler` rather than asserted (CLAUDE.md §4:
+    stated conditionally on `c.compiler` rather than asserted (compiler
     cross-layer contract — a clang-only `div` says nothing about a gcc ct
     stage)."""
     opts = c.opt_levels
