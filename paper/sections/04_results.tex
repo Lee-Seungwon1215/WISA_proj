@@ -3,17 +3,17 @@
 
 We evaluate CT-KAT on seven harness rows across ML-KEM, ML-DSA, and synthetic
 controls, under up to six gcc/clang build cells. The committed corpus CSVs record
-build-cell provenance. Table~\ref{tab:coverage} shows each layer catches a case
-the others miss; Table~\ref{tab:corpus} grounds verdict classes; Table~\ref{tab:dudect}
-is the timing appendix. Tables~\ref{tab:ablation} and~\ref{tab:mldsa} add the
-two supporting checks: what each omitted layer misses, and why ML-DSA remains
-\texttt{needs-analysis}.
+build-cell provenance. Table~\ref{tab:coverage} shows where each layer adds
+evidence; Table~\ref{tab:corpus} grounds verdict classes; Table~\ref{tab:dudect}
+is the timing appendix. Table~\ref{tab:mldsa} shows why ML-DSA remains
+\texttt{needs-analysis} when optimized builds blur attribution.
 
 \subsection{Per-feature single-coverage}
 \label{sec:results-coverage}
 
-Table~\ref{tab:coverage} names, per layer, one case that \emph{only} it flags.
-Two are the paper's spine.
+Table~\ref{tab:coverage} names, per checker or triage rule, one case where it
+adds evidence the others do not provide. The real-PQC cases carry the main
+evidence; the synthetic rows are positive controls.
 
 \paragraph{(i) asm-scan: structural CT alone is insufficient.}
 The KyberSlash harness passes Memcheck clean: no secret-tainted branch or
@@ -30,18 +30,19 @@ Three --- \texttt{poly\_chknorm}, \texttt{make\_hint}, and
 \texttt{poly\_challenge} --- are registered rejection-sampling behavior required
 by ML-DSA~\cite{fips204,dilithium}. Two are not:
 \texttt{crypto\_sign\_signature\_ctx} (optimized-build inlining) and
-\texttt{pack\_sig} (a public-signature packer). Default-deny therefore holds the
-row at \texttt{needs-analysis}: neither auto-accepting nor over-claiming. The
-\texttt{-O0 -fno-inline} cells show only registered functions; optimized cells
-surface the two unregistered names (Table~\ref{tab:mldsa}).
+\texttt{pack\_sig} (a public-signature packer). This is not evidence of a
+confirmed leak; it is evidence that the registry and build attribution are not
+precise enough to accept the whole row automatically. Default-deny therefore
+holds the row at \texttt{needs-analysis}. The \texttt{-O0 -fno-inline} cells show
+only registered functions; optimized cells surface the two unregistered names
+(Table~\ref{tab:mldsa}).
 
 \paragraph{The remaining three layers.}
-The synthetic controls justify the remaining layers. \texttt{toy\_lookup/leaky}
-is a secret-indexed lookup Memcheck flags in all six cells. \texttt{ct\_matrix\_flip/leaky}
-fails at \texttt{-O0} but passes at \texttt{-O2}/\texttt{-Os}, exposing
-build-sensitive CT. \texttt{toy\_dudect} isolates a timing leak with no structural
-branch. No four layers subsume the fifth; Table~\ref{tab:ablation} states the
-corresponding miss if each layer is removed.
+The synthetic controls are positive controls for the remaining layers, not claims
+of PQC breadth. \texttt{toy\_lookup/leaky} is a secret-indexed lookup Memcheck
+flags in all six cells. \texttt{ct\_matrix\_flip/leaky} fails at \texttt{-O0} but
+passes at \texttt{-O2}/\texttt{-Os}, exposing build-sensitive CT.
+\texttt{toy\_dudect} isolates a timing leak with no structural branch.
 
 \subsection{Verdict-class corpus}
 \label{sec:results-corpus}
@@ -53,7 +54,8 @@ Keccak division candidates triage public. The KyberSlash variant is
 synthetic controls cover \texttt{ct-leak} and \texttt{build-sensitive-ct}. The
 tool never auto-declares \texttt{ct-leak}: an explicit human verdict is required.
 Together the tables make the framework layer-justified in this corpus and
-validated on concrete runs, without claiming formal completeness or leak absence.
+grounded in concrete runs while preserving the review obligations attached to
+ambiguous findings.
 
 \subsection{Statistical timing appendix and its honesty caveat}
 \label{sec:results-dudect}

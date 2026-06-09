@@ -1,10 +1,10 @@
 # Report tables (WISA poster — camera-ready figures)
 
 > Headline/support figures for the write-up:
-> **coverage** — every tool layer pulls its own weight;
-> **ablation** — every omitted layer has a concrete miss;
+> **coverage** — every checker/policy contributes distinct evidence;
+> **ablation** — generated support artifact, not a second main-paper table;
 > **corpus** — every verdict class is grounded in a concrete run;
-> **ML-DSA attribution** — default-deny is justified per build cell;
+> **ML-DSA attribution** — conservative triage stress test per build cell;
 > **dudect appendix** — the one feature that lives beside the corpus.
 > Numbers are rendered from committed corpus CSVs produced by the CT-KAT analysis
 > workflow; per-cell compiler/version/architecture provenance lives in
@@ -13,11 +13,11 @@
 
 ---
 
-## Coverage — Per-feature single-coverage (the headline figure)
+## Coverage — Per-feature evidence map (the headline figure)
 
-The argument: a screening tool that bundles N checks is only justified if **each
-check catches something the others miss**. For every layer we name a corpus case
-that *only that layer* flags.
+The argument: a screening tool that bundles several candidate sources should show
+what each source contributes. For every checker/policy we name a corpus case where
+it adds evidence the others do not provide.
 
 | # | tool layer | what ONLY it catches | single-coverage case | evidence |
 |---|---|---|---|---|
@@ -25,9 +25,9 @@ that *only that layer* flags.
 | 2 | asm-scan variable-latency div | secret → division latency (**Valgrind-blind**) | KyberSlash ML-KEM (`pqclean_mlkem768_kyberslash`) | `varlat-secret-risk` — **ct PASS, asm FAIL** |
 | 3 | ct-matrix build-sensitivity | same source, verdict flips per build config | `ct_matrix_flip` `leaky` | `build-sensitive-ct` — gcc_debug **FAIL** / release+size **PASS** |
 | 4 | dudect timing | timing leak with **no structural branch** | `toy_dudect` `leaky` | FAIL \|t\|=181.5 vs safe PASS \|t\|=1.65 — see **dudect appendix** |
-| 5 | taxonomy / default-deny triage | ct FAIL that is **not yet a confirmed leak** | ML-DSA-65 (`pqclean_mldsa65`) `sign` | `needs-analysis` — default-deny caught an over-claim |
+| 5 | registry-backed triage policy | ct FAIL with ambiguous attribution | ML-DSA-65 (`pqclean_mldsa65`) `sign` | `needs-analysis` — held for review |
 
-**Why each row is "only this layer":**
+**Why the rows matter:**
 - **(2)** is the sharpest result: KyberSlash passes Valgrind/Memcheck clean
   (no secret branch/address) yet leaks via variable-time division — asm-scan is
   the *only* layer that surfaces it. This is the existence proof that structural
@@ -35,17 +35,18 @@ that *only that layer* flags.
 - **(3)** the structural verdict itself is build-dependent — a single
   `ct` run at one opt-level would have reported PASS or FAIL depending on flags.
   Only the compiler×cflags matrix exposes the instability.
-- **(5)** not a detection layer but a *judgment* layer: on real ML-DSA the ct
-  check FAILs, and the default-deny taxonomy refused to auto-label it a leak —
-  it surfaced unregistered leak-site functions for human triage instead of
-  over-claiming. (This is the paper's spine, see §narrative below.)
+- **(5)** not a detection layer but a *judgment* layer: on real ML-DSA the debug
+  build shows registered rejection-sampling functions, while optimized builds
+  surface coarser unregistered names. The row stays `needs-analysis` instead of
+  being auto-accepted or upgraded to a leak claim.
 
 ---
 
-## Ablation — each omitted layer misses something concrete
+## Ablation — generated support artifact
 
-This is support, not a replacement for the coverage table's clearer argument.
-It is auto-generated from the same corpus CSVs and drift-tested.
+This is support, not a replacement for the coverage table's clearer argument and
+not a main-paper float after the anti-repetition pass. It is auto-generated from
+the same corpus CSVs and drift-tested.
 
 | If removed / ignored | Demonstrated miss | Evidence source |
 |---|---|---|
@@ -53,7 +54,7 @@ It is auto-generated from the same corpus CSVs and drift-tested.
 | asm-scan | KyberSlash secret-derived division | `mlkem768_kyberslash/kem_dec` |
 | ct-matrix | build-dependent verdict flip | `ct_matrix_flip/leaky` |
 | dudect | black-box timing leak | `toy_dudect/leaky` |
-| default-deny taxonomy | ML-DSA over-claim | `mldsa65/sign` |
+| registry-backed triage | ML-DSA ambiguous attribution | `mldsa65/sign` |
 
 ---
 
@@ -86,13 +87,13 @@ The decoupling is the methodological point: **ct-clean ≠ no-candidates**, and 
 
 ---
 
-Real-PQC spine: stock ML-KEM grounds `robust`, KyberSlash ML-KEM grounds
+Real-PQC cases: stock ML-KEM grounds `robust`, KyberSlash ML-KEM grounds
 `varlat-secret-risk`, and ML-DSA grounds `needs-analysis`. Synthetic controls
 ground `ct-leak` and `build-sensitive-ct` deliberately, as controlled positives.
 
 ---
 
-## ML-DSA attribution — why default-deny holds
+## ML-DSA attribution — conservative triage stress test
 
 The ML-DSA row is not merely "FAIL". Debug cells show only registered
 rejection-sampling behavior; optimized cells surface unregistered parent/packer
@@ -128,12 +129,12 @@ honesty, not a one-off.
 
 ## How the tables work together
 
-> **Coverage says** every layer is justified (each catches something unique).
-> **Ablation says** removing any layer creates a concrete miss.
+> **Coverage says** each source contributes distinct evidence.
+> **Ablation says** removing any source creates a concrete miss.
 > **Corpus says** every verdict class is grounded in a concrete target.
-> **ML-DSA says** default-deny prevented a real over-claim.
-> Together: *"the framework is layer-justified in this corpus and validated on
-> concrete targets."*
+> **ML-DSA says** conservative triage stops when attribution is ambiguous.
+> Together: *"the framework is layer-justified in this corpus and grounded in
+> concrete runs."*
 
 Use coverage and corpus as the two central panels; ablation, ML-DSA attribution,
 and dudect are compact support.

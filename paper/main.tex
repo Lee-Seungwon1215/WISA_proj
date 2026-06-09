@@ -74,9 +74,8 @@ Post-Quantum Cryptography}
 % the LNCS text block at natural size). Remove it if you re-tune the TikZ to fit.
 \resizebox{\textwidth}{!}{\input{figures/pipeline}}
 \caption{CT-KAT pipeline: one YAML config drives a compiler$\times$cflags build
-matrix feeding three checkers (Valgrind/Memcheck, asm-scan, dudect); results pass
-through a default-deny triage taxonomy with a cited accepted-variable-time
-registry to a \texttt{verdict\_class}.}
+matrix feeding three checkers (Valgrind/Memcheck, asm-scan, dudect); a
+registry-backed triage policy reduces the results to a \texttt{verdict\_class}.}
 \label{fig:pipeline}
 \end{figure}
 
@@ -87,8 +86,8 @@ registry to a \texttt{verdict\_class}.}
 % ---- Coverage table: per-feature single-coverage ---------------------
 \begin{table}[htbp]
 \centering
-\caption{Per-feature single-coverage: each layer flags a corpus case the others
-miss --- the figure that justifies every layer.}
+\caption{Per-feature coverage map: each checker or triage rule contributes a
+signal that the others do not provide in this corpus.}
 \label{tab:coverage}
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.15}
@@ -109,29 +108,10 @@ ct-matrix & verdict flips per build &
 dudect & timing leak, no branch &
 \texttt{toy\_dudect} \texttt{leaky} &
 FAIL $|t|{=}\dudectLeakyT$ vs PASS $\dudectSafeT$\\
-default-deny & ct FAIL not yet confirmed &
+triage policy & ambiguous structural FAIL &
 ML-DSA-65 (\texttt{sign}) &
-\texttt{needs-analysis}: refused to over-claim\\
+\texttt{needs-analysis}: held for review\\
 \bottomrule
-\end{tabular}
-\end{table}
-
-% ---- Ablation/miss support table -------------------------------------
-\begin{table}[htbp]
-\centering
-\caption{Ablation/miss evidence: each omitted layer has a concrete corpus miss.
-This supports Table~\ref{tab:coverage} without replacing its single-coverage
-claim.}
-\label{tab:ablation}
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.4cm}
-                  >{\raggedright\arraybackslash}p{3.8cm}
-                  >{\raggedright\arraybackslash}p{4.8cm}@{}}
-\toprule
-Layer omitted & Demonstrated miss & Evidence\\
-\midrule
-\input{generated/tab_ablation}%
 \end{tabular}
 \end{table}
 
@@ -161,9 +141,9 @@ Family & Target & Harness & ct (matrix) & varlat & \texttt{verdict\_class}\\
 % ---- ML-DSA attribution support table --------------------------------
 \begin{table}[htbp]
 \centering
-\caption{ML-DSA-65 attribution split: debug cells show only registered
-accepted-variable-time functions; optimized cells surface the unregistered names
-that keep the row at \texttt{needs-analysis}.}
+\caption{ML-DSA-65 attribution stress test: debug cells show registered
+accepted-variable-time functions; optimized cells surface coarser unregistered
+names that keep the row at \texttt{needs-analysis}.}
 \label{tab:mldsa}
 \footnotesize
 \setlength{\tabcolsep}{4pt}

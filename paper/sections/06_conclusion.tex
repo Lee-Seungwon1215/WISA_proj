@@ -1,21 +1,14 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-CT-KAT binds three checkers --- a Valgrind/Memcheck structural CT
-check~\cite{valgrind,ctgrind}, a warn-only variable-latency asm-scan, and the
-dudect statistical timing test~\cite{dudect} --- under one YAML config and
-compiler-by-cflags matrix, behind a default-deny triage taxonomy with a cited
-accepted-variable-time registry. On the corpus it is
-\emph{layer-justified} (each layer single-covers a leak the others miss,
-Table~\ref{tab:coverage}), \emph{validated} (verdict classes map to concrete
-targets, Tables~\ref{tab:corpus} and~\ref{tab:dudect}), and \emph{honest by
-construction}: on ML-DSA-65~\cite{fips204} the taxonomy refused to auto-label a
-structural failure as key-recovery, holding the unregistered leak sites at
-\emph{needs-analysis} rather than over-claiming. The KyberSlash
-case~\cite{kyberslash} shows structural checking alone is insufficient for PQC,
-justifying the multi-layer design.
-
-We claim no new attack, guarantee, or absence proof; the phenomena are known,
-and the contribution is their integration and triage. Future work broadens the
-corpus to Falcon and SPHINCS+ and resolves ML-DSA attribution via a dedicated
-\texttt{-fno-inline} build.
+CT-KAT turns separate CT checks into reproducible, build-indexed screening
+reports for PQC. A Valgrind/Memcheck structural check~\cite{valgrind,ctgrind}, a
+warn-only variable-latency asm-scan, and dudect-style timing~\cite{dudect} share
+one YAML config and feed a default-deny triage policy with a cited
+accepted-variable-time registry. The corpus shows why that integration matters:
+KyberSlash~\cite{kyberslash} passes structural checking but surfaces as a
+secret-derived division candidate, synthetic controls exercise build-sensitive
+and timing-only cases, and ML-DSA-65~\cite{fips204} demonstrates the conservative
+stop condition when optimized builds blur attribution. Future work broadens the
+PQC corpus, adds native timing confirmation, and resolves ML-DSA attribution via
+dedicated no-inline builds.

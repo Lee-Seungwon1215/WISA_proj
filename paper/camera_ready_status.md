@@ -4,7 +4,7 @@
 
 - Paper builds successfully with `scripts/build_paper_pdf.sh`.
 - `paper/main.pdf` is 11 pages under the 12-page LNCS target.
-- Tables 1--5 and Fig.1 were visually checked from rendered PDF pages.
+- Tables 1--4 and Fig.1 were visually checked from rendered PDF pages.
 - `references.bib` was source-checked against public publisher/project metadata.
 - Generated corpus tables remain drift-tested by `tests/test_paper_corpus_sync.py`.
 

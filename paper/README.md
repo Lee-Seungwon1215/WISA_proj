@@ -39,15 +39,15 @@ splncs04.bst          LNCS BibTeX style (bundled)
 
 Every numeric table in the paper is rendered from committed corpus CSVs:
 
-- `../docs/corpus/corpus_summary.csv` → verdict-class corpus + ablation rows
+- `../docs/corpus/corpus_summary.csv` → verdict-class corpus + ablation support
 - `../docs/corpus/dudect_appendix.csv` → dudect appendix + timing macros
 - `../docs/corpus/corpus_cells.csv` → coverage evidence + ML-DSA attribution
 
-The numbers are **single-sourced** (Phase 2): corpus, ablation, ML-DSA, dudect,
-and every duplicated dudect figure / percentage / cardinality are generated from
-the CSVs into `paper/generated/*.tex`, which `main.tex` and
-`sections/04_results.tex` `\input` / use as `\newcommand` macros. Do NOT edit the
-numbers in the `.tex` by hand — edit the CSV and regenerate:
+The numbers are **single-sourced** (Phase 2): corpus, ML-DSA, dudect, ablation
+support, and every duplicated dudect figure / percentage / cardinality are
+generated from the CSVs into `paper/generated/*.tex`. The paper inputs the main
+generated tables/macros; the ablation rows remain a drift-tested support artifact.
+Do NOT edit the numbers in the `.tex` by hand — edit the CSV and regenerate:
 
 ```bash
 python3 scripts/render_paper_tables.py            # CSV -> paper/generated/*.tex
@@ -67,8 +67,8 @@ scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docke
       pass still recommended before camera-ready.
 - [x] Keep `paper/main.pdf` within the 12-page LNCS target; it currently builds
       to 11 pages after compression.
-- [x] Keep Table 1 as the single-coverage headline; the ablation/miss evidence
-      is added as a supporting generated table, not a replacement.
+- [x] Keep Table 1 as the coverage headline; the ablation/miss evidence is a
+      generated support artifact rather than a second main-paper table.
 - [x] Avoid "complete" as a framework claim; use "layer-justified in this
       corpus" / "validated on the corpus".
 - [x] Promote ML-DSA per-cell attribution into a compact generated table:
@@ -76,6 +76,6 @@ scratch (re-running the constant-time analyses) is `scripts/refresh_corpus_docke
       `crypto_sign_signature_ctx` / `pack_sig`.
 - [ ] Confirm the dudect numbers natively (`taskset -c 0`, freq scaling off) —
       blocked on this macOS/arm64 workspace; use a native Linux/x86_64 or target
-      machine. The corpus run was under QEMU/Docker; see Table 5 caveat.
-- [x] Visual PDF pass: Fig.1 and Tables 1--5 render without overflow; Fig.1 is
+      machine. The corpus run was under QEMU/Docker; see the dudect caveat.
+- [x] Visual PDF pass: Fig.1 and paper tables render without overflow; Fig.1 is
       small but readable, and further polishing is optional rather than blocking.

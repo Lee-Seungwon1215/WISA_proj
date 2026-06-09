@@ -11,9 +11,9 @@ may skip outside native, non-emulated setups.
 
 \subsection{Corpus design}
 
-The corpus pairs each layer with a case \emph{only} that layer flags, grounding
-every verdict class: real PQClean targets~\cite{pqclean} plus synthetic
-controls (Table~\ref{tab:coverage}, per-feature map;
+The corpus pairs each checker or triage rule with a case where it adds evidence:
+real PQClean targets~\cite{pqclean} plus synthetic positive controls
+(Table~\ref{tab:coverage}, per-feature map;
 Table~\ref{tab:corpus}, verdict-class corpus).
 
 \paragraph{Real PQC targets.}
@@ -33,8 +33,9 @@ Each row follows one pipeline (Fig.~\ref{fig:pipeline}) from one YAML config:
 \texttt{ct-matrix} reruns structural checking per build cell, \texttt{asm-scan}
 records warn-only variable-latency candidates, triage applies default-deny, and
 optional \texttt{dudect}~\cite{dudect} runs on timing distributions. The central
-honest result is ML-DSA-65: structural checking fails, but default-deny holds it
-at \texttt{needs-analysis} rather than declaring a leak.
+triage stress test is ML-DSA-65: structural checking fails, and default-deny
+holds it at \texttt{needs-analysis} when optimized builds broaden attribution
+beyond the registry.
 
 \subsection{Merging the evidence}
 

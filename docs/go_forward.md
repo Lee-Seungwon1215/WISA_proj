@@ -26,7 +26,7 @@ Phase D corpus is done — `docs/corpus/corpus_summary.csv`, 7 rows / 3 families
 | synthetic | ct_matrix_flip (safe) | robust |
 
 Tooling: `ct-matrix` (compiler×cflags Valgrind), `asm-scan` (variable-latency
-div), `dudect` (timing), the triage-aware taxonomy with **default-deny** + the
+div), `dudect` (timing), the registry-backed triage policy with **default-deny** + the
 cited `docs/accepted_variable_time.md` registry, and `scripts/build_corpus_table.py`
 (merge -> cells/summary). The pytest count is intentionally not copied here;
 run `python3 -m pytest -q` for the current artifact result.
@@ -42,7 +42,7 @@ miss)?"** That is what proves each feature pulls its own weight.
 | asm-scan variable-latency div | secret → div latency (Valgrind blind) | KyberSlash ML-KEM → `varlat-secret-risk` (ct PASS, asm FAIL) | ✅ in corpus |
 | ct-matrix build-sensitivity | same source, verdict flips per build | `ct_matrix_flip` `leaky` (gcc_debug FAIL / release+size PASS) → `build-sensitive-ct` | ✅ in corpus |
 | dudect timing | timing leak with no structural branch | `toy_dudect` (leaky FAIL \|t\|=181.5 / safe PASS \|t\|=1.65) | ✅ appendix (`docs/corpus/dudect_appendix.csv`) |
-| taxonomy / default-deny | ct FAIL that is NOT a confirmed leak | ML-DSA → `needs-analysis` (default-deny caught an over-claim) | ✅ in corpus |
+| registry-backed triage | ct FAIL with ambiguous attribution | ML-DSA → `needs-analysis` (held for review) | ✅ in corpus |
 
 All 5 features now have airtight single-coverage *in the evidence set*: 4 as
 `corpus_summary.csv` rows, and dudect as the committed appendix table
@@ -52,16 +52,17 @@ than inside it).
 
 ## Submission triage (2026-06-09)
 
-The paper's edge is real but specific: this is a methodology / engineering paper,
-not a new-attack or new-formal-method paper. The strongest claim is
-**ablation-backed, build-configuration-aware, default-deny CT screening for PQC**.
+The paper's edge is real but specific: this is a methodology / engineering
+artifact paper, not a new-attack or new-formal-method paper. The strongest claim
+is **build-configuration-aware, registry-backed CT screening for PQC**.
 The weaknesses (synthetic controls, two real PQC families, candidate-level
 asm-scan, QEMU dudect noise) are already disclosed in the Limitations section.
 That supports the "honest by construction" story, but it also means a reviewer
-will read those limits directly. Do not hide them; make the real-PQC spine
+will read those limits directly. Do not hide them; make the real-PQC cases
 unmistakable:
 
-- **Real spine**: KyberSlash ML-KEM for asm-scan and ML-DSA-65 for default-deny.
+- **Real cases**: KyberSlash ML-KEM for asm-scan and ML-DSA-65 for conservative
+  triage under build-dependent attribution.
 - **Synthetic support**: Valgrind lookup leak, build-matrix flip, and dudect
   timing control. These justify layers, but should not be oversold as PQC breadth.
 - **Wording rule**: avoid saying the framework is "complete". Say
@@ -79,11 +80,12 @@ unmistakable:
 - **No "complete" claim**. Use "layer-justified in our corpus" in paper prose and
   planning docs.
 
-### 1. Keep Table 1; add ablation/miss evidence as support
+### 1. Keep Table 1; keep ablation/miss evidence as generated support
 
 Table 1's shape is good: "each layer has a single-coverage case" is the headline
-argument. Do **not** replace it with a tool-pair miss matrix. Add a small
-auto-generated ablation/miss table as a supporting table or appendix:
+argument. Do **not** replace it with a tool-pair miss matrix. The ablation/miss
+rows stay auto-generated and drift-tested, but they no longer need a main-paper
+float because they repeat Table 1 in reverse:
 
 | If removed / ignored | Demonstrated miss | Evidence source |
 |---|---|---|
@@ -91,18 +93,20 @@ auto-generated ablation/miss table as a supporting table or appendix:
 | asm-scan | KyberSlash secret-derived division | `mlkem768_kyberslash/kem_dec` |
 | ct-matrix | build-dependent verdict flip | `ct_matrix_flip/leaky` |
 | dudect | black-box timing leak | `toy_dudect/leaky` |
-| default-deny taxonomy | ML-DSA over-claim | `mldsa65/sign` |
+| registry-backed triage | ML-DSA ambiguous attribution | `mldsa65/sign` |
 
 Implemented path: this is generated from `docs/corpus/*.csv` beside the existing
-paper table generator and drift-tested, so it is not prose-only.
+paper table generator and drift-tested, but treated as support rather than a
+headline table.
 
 ### 2. Promote ML-DSA per-cell triage evidence
 
 The corpus already contains the evidence: debug cells show only registered
 rejection-sampling functions, while optimized cells inline into
 `crypto_sign_signature_ctx` and surface `pack_sig`. This is now promoted into a
-compact generated paper table with per-cell function sets. It strengthens the
-default-deny self-validation without needing to resolve the row to `accepted`.
+compact generated paper table with per-cell function sets. It is framed as a
+triage stress test: the debug build explains the accepted behavior, while
+optimized builds create coarse/public-frame review items.
 
 ### 3. Improve dudect evidence if hardware is available
 
@@ -125,11 +129,11 @@ Honest positioning (research novelty is modest; the phenomena are known):
 
 > **Build-Configuration-Aware, Triage-Aware Constant-Time Screening for PQC** — a
 > fail-closed framework binding Valgrind / asm-scan / dudect under one config,
-> indexed by compiler × optimization, with a default-deny triage taxonomy and a
-> cited accepted-variable-time registry; validated on a real PQC corpus.
+> indexed by compiler × optimization, with a registry-backed triage policy and a
+> cited accepted-variable-time registry; grounded in real PQC cases plus synthetic
+> positive controls.
 
-The differentiated contribution is the **methodology + its self-validation**:
-default-deny caught an over-claim on real ML-DSA, and surfaced that finding
-*attribution* is build-dependent (inlining). That "the tool kept the human
-honest" story is the report's spine — stronger and more honest than a clean
-"everything passed".
+The differentiated contribution is the **workflow + conservative triage**:
+KyberSlash shows structural CT alone is insufficient, and ML-DSA shows how
+build-dependent attribution turns a structural FAIL into a precise review item
+rather than an automatic leak or acceptance claim.

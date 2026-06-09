@@ -4,7 +4,8 @@
 CT-KAT (invoked as \texttt{ctkat}) is a fail-closed CT screening framework for
 PQC. It binds three checkers under one declarative configuration, sweeps each
 harness across a compiler${}\times{}$optimization matrix, and routes findings
-through a default-deny taxonomy backed by a cited accepted-variable-time registry.
+through a default-deny triage policy backed by a cited accepted-variable-time
+registry.
 The goal is not to prove leak absence, but to make screening honest: report the
 build context, expose each checker, and never silently promote a CT failure to a
 key-recovery leak.
@@ -52,7 +53,7 @@ optimization can remove a debug branch or inline leak-site functions into a
 parent frame; CT-KAT reports the build-dependence and unions leak-site functions
 for triage.
 
-\subsection{Default-Deny Triage Taxonomy}
+\subsection{Default-Deny Triage Policy}
 \label{ssec:triage}
 
 Over-claiming every structural failure as key recovery is dangerous because PQC
@@ -75,8 +76,9 @@ sampling~\cite{fips204,dilithium}. CT-KAT assigns each harness one
         human verdict; never assigned automatically.
 \end{description}
 
-The \texttt{accepted-variable-time}/\texttt{needs-analysis} boundary is a cited
-registry (\texttt{docs/accepted\_variable\_time.md}). If all leak-site functions
-are registered the harness is accepted; if any is unrecognized it stays
-\texttt{needs-analysis}---never silently accepted, never silently promoted to a
-leak. Section~\ref{sec:results-coverage} shows this on ML-DSA-65.
+The boundary between accepted behavior and \texttt{needs-analysis} is an
+explicit, cited registry (\texttt{docs/accepted\_variable\_time.md}). It is a
+reviewed allowlist, not an inference engine: if all leak-site functions are
+registered the harness is accepted; if any function is unrecognized or attributed
+too coarsely it stays \texttt{needs-analysis}. Section~\ref{sec:results-coverage}
+shows this conservative stop condition on ML-DSA-65.

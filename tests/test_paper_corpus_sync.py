@@ -104,8 +104,7 @@ def test_main_tex_inputs_generated_tables():
     t = (PAPER / "main.tex").read_text(encoding="utf-8")
     for snip in (
         "generated/tab_corpus", "generated/tab_dudect",
-        "generated/tab_ablation", "generated/tab_mldsa",
-        "generated/corpus_macros",
+        "generated/tab_mldsa", "generated/corpus_macros",
     ):
         assert f"\\input{{{snip}}}" in t
     for macro in (r"\corpusRows", r"\corpusFamilies", r"\corpusVerdictClasses"):

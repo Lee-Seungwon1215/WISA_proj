@@ -30,28 +30,29 @@ We present CT-KAT, a fail-closed constant-time screening framework for PQC. Unde
 one YAML configuration it binds three complementary checkers---a Valgrind/Memcheck
 structural taint check, a warn-only assembly scan for variable-latency instruction
 candidates, and a dudect-style statistical timing test~\cite{dudect}---and indexes
-every structural verdict by a compiler $\times$ cflags build matrix. A failure is
-never auto-labeled a key-recovery leak: leak sites are checked against a cited
-accepted-variable-time registry, and anything unrecognized remains
-\emph{needs-analysis} until a human rules (Figure~\ref{fig:pipeline}).
+every structural verdict by a compiler $\times$ cflags build matrix. Findings are
+reported as reviewable evidence, not directly as key-recovery claims: leak sites
+are checked against a cited accepted-variable-time registry, and anything
+unrecognized or imprecisely attributed remains \emph{needs-analysis} until a
+human rules (Figure~\ref{fig:pipeline}).
 
 The phenomena are known: KyberSlash established variable-time division as a leak
 class~\cite{kyberslash}, build-sensitivity is folklore, and dudect~\cite{dudect},
 ctverif~\cite{ctverif}, and Binsec/Rel~\cite{binsecrel} predate this work. Our
-contribution is their \emph{integration}, the \emph{triage discipline} that prevents
-over-claiming, and its self-validation on PQClean~\cite{pqclean} targets---most
-sharply, the default-deny taxonomy's refusal to over-claim a leak on ML-DSA-65
-(Section~\ref{sec:results-coverage}).
+contribution is the reproducible \emph{screening workflow}: one configuration,
+build-indexed provenance, and a conservative triage policy that turns checker
+output into an explicit review queue rather than a pass/fail slogan.
 
 \paragraph{Contributions.}
 \begin{enumerate}
   \item \textbf{An integrated, build-matrix-indexed framework} binding a structural
     taint check, a variable-latency assembly scan, and a statistical timing test
     across a compiler $\times$ cflags matrix under one YAML config.
-  \item \textbf{A default-deny triage taxonomy with a cited registry:} unrecognized
-    leak sites stay at needs-analysis, making over-claiming structurally impossible.
-  \item \textbf{A validated PQC corpus with the ML-DSA self-validation:} Docker runs
-    over three families and five verdict classes (Table~\ref{tab:corpus}), a
-    coverage analysis (Table~\ref{tab:coverage}), and a dudect appendix
-    (Table~\ref{tab:dudect}).
+  \item \textbf{A registry-backed triage policy:} accepted variable-time behavior
+    is explicit and cited, while unknown or coarse-attribution findings stay at
+    \emph{needs-analysis}.
+  \item \textbf{A reproducible audit corpus:} Docker runs over PQClean ML-KEM and
+    ML-DSA targets plus synthetic positive controls, with five verdict classes
+    (Table~\ref{tab:corpus}), per-feature coverage (Table~\ref{tab:coverage}), and
+    a timing appendix (Table~\ref{tab:dudect}).
 \end{enumerate}
