@@ -1,0 +1,64 @@
+project:
+  name: pqclean_falcon512_split
+  language: c
+  root: ..
+
+build:
+  command: "true"
+  workdir: .
+
+# Falcon-512 encoded private-key split probe.
+#
+# For logn=9, max_fg_bits=6 and max_FG_bits=8, so the private key packing is:
+#   sk[0]       public header
+#   sk[1..384] encoded f
+#   sk[385..768] encoded g
+#   sk[769..1280] encoded F
+#
+# This probe is for attribution only. The narrow secret_regions intentionally
+# trip the coverage warning because each run taints one component at a time.
+ct:
+  workdir: .
+  generated_dir: ./_generated_split
+  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: sign_f_only
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON512_CLEAN_"
+      secret_regions:
+        - {offset: "1", length: "384", comment: "encoded private f only"}
+      include_dirs: &include_dirs
+        - clean
+        - ../pqc_mlkem768/common
+      sources: &sources
+        - clean/codec.c
+        - clean/common.c
+        - clean/fft.c
+        - clean/fpr.c
+        - clean/keygen.c
+        - clean/pqclean.c
+        - clean/rng.c
+        - clean/sign.c
+        - clean/vrfy.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+    - name: sign_g_only
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON512_CLEAN_"
+      secret_regions:
+        - {offset: "385", length: "384", comment: "encoded private g only"}
+      include_dirs: *include_dirs
+      sources: *sources
+    - name: sign_F_only
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON512_CLEAN_"
+      secret_regions:
+        - {offset: "769", length: "512", comment: "encoded private F only"}
+      include_dirs: *include_dirs
+      sources: *sources
+
+report:
+  output_dir: ./reports_split

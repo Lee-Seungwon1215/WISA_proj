@@ -1,0 +1,25 @@
+project:
+  name: pqclean_falcon512_core
+  language: c
+  root: ..
+
+build:
+  command: "make clean && make"
+  workdir: .
+  expected_artifacts:
+    - build/harness_sign_core_dyn
+    - build/harness_sign_core_tree
+
+# Manual harnesses that isolate Falcon's internal signing core from the
+# PQClean API wrapper. These are attribution probes, not promoted corpus rows.
+ct:
+  workdir: .
+  require_sentinel: true
+  harnesses:
+    - name: sign_core_dyn
+      binary: build/harness_sign_core_dyn
+    - name: sign_core_tree
+      binary: build/harness_sign_core_tree
+
+report:
+  output_dir: ./reports_core

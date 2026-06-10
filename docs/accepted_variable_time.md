@@ -64,3 +64,17 @@ ML-DSA-65's debug/no-inline build shows only the registered rejection/public-out
 functions. Optimized builds still add `crypto_sign_signature_ctx` as a coarse
 parent frame, so accepting the harness requires an explicit review note or
 triage override, not a registry-wide parent-function entry.
+
+## Explicit non-entry: Falcon/FN-DSA sampler findings
+
+Do **not** add Falcon's `sampler`, `BerExp`, `fpr_floor`, signing acceptance
+loop, or wrapper parent frames to this registry as a shortcut.
+
+The current `examples/pqc_falcon512` probes intentionally leave Falcon at
+`needs-analysis`. Split-taint runs show that encoded long-term key material
+(`f`, `g`, and `F`) reaches the Gaussian sampler / Bernoulli-exp / floating-point
+rounding finding family. That differs from the registered ML-DSA cases, which
+are justified by fresh nonce rejection or public signature components, and from
+the SPHINCS+ harness-local public-output override. A Falcon acceptance would
+need a source-level isochrony argument for the exact implementation and build;
+it is not a per-function registry entry.

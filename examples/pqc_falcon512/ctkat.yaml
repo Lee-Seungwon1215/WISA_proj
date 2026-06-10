@@ -1,0 +1,54 @@
+project:
+  name: pqclean_falcon512
+  language: c
+  root: ..
+
+build:
+  command: "true"
+  workdir: .
+
+# PQClean Falcon-512 signing feasibility target.
+#
+# Private key encoding in clean/pqclean.c:
+#   sk[0]        = public format/header byte
+#   sk[1..1280] = encoded private f, g, F
+#
+# We taint only sk[1..] for the first pass. Full-sk taint would mark the public
+# header secret and immediately create a false branch finding at the format
+# check in do_sign().
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON512_CLEAN_"
+      secret_regions:
+        - {offset: "1", length: "PQCLEAN_FALCON512_CLEAN_CRYPTO_SECRETKEYBYTES - 1",
+           comment: "encoded private f, g, F; sk[0] is public format header"}
+      include_dirs:
+        - clean
+        - ../pqc_mlkem768/common
+      sources:
+        - clean/codec.c
+        - clean/common.c
+        - clean/fft.c
+        - clean/fpr.c
+        - clean/keygen.c
+        - clean/pqclean.c
+        - clean/rng.c
+        - clean/sign.c
+        - clean/vrfy.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto]

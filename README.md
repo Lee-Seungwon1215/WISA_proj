@@ -105,7 +105,8 @@ WISA/
 │   ├── pqc_mldsa44/            # PQClean ML-DSA-44 attribution/registry case
 │   ├── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
 │   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
-│   └── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
+│   ├── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
+│   └── pqc_falcon512/          # Falcon/FN-DSA feasibility target, not corpus-promoted
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # dev.sh, run_check.sh, run_phaseN.sh, fetch_pqclean.sh
 ├── Dockerfile, docker-compose.yml
@@ -798,6 +799,23 @@ case로 포함하되, `treehashx1` / `wots_gen_leafx1` 함수 전체를 registry
 등록하지 않는다. `triage.yaml`은 `R`, `mhash`, `tree`, `idx_leaf`, intermediate
 root가 signature/public-verification state로 declassified되는 이 `sign`
 harness data flow에 한정해 `accepted-variable-time` override를 둔다.
+
+### 5. `pqc_falcon512` — Falcon/FN-DSA feasibility target
+
+Falcon-512 is present as a first-pass PQClean clean signing target, not as a
+promoted corpus row. The harness taints `sk[1..]` because `sk[0]` is the public
+format header and full-sk taint would create an immediate false branch finding.
+Current Docker structural screening fails across gcc/clang debug/release cells,
+with findings in private-key decode, private-key completion, Gaussian sampling,
+and signature compression. Follow-up core/split probes show the important
+boundary: after wrapper/decode noise is removed, taint from long-term key
+material still reaches the Gaussian sampler, Bernoulli-exp path, floating-point
+rounding, and signing acceptance loop. That is a correct structural signal, but
+not by itself a timing-leak proof; accepting it would require a Falcon-specific
+isochrony argument across the exact build. Treat Falcon as a `needs-analysis`
+stress target and future-work boundary case, not as an `accepted-variable-time`
+row. Do not add Falcon to the paper's corpus table just because the example
+exists.
 
 ---
 
