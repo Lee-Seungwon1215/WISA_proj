@@ -72,6 +72,7 @@ def test_build_robust_with_public_varlat(tmp_path):
 
     s = summary[0]
     assert s["verdict_class"] == "robust"
+    assert s["basis"] == "review"
     assert s["ct_flips"] == "no"
     assert s["dudect_status"] == "WARNING"
     assert "WARNING" in s["notes"]            # surfaced, not hidden
@@ -87,6 +88,7 @@ def test_build_flip_is_build_sensitive(tmp_path):
     _cells, summary = bct.build(tmp_path, "syn", "t", {}, "", "", {})
     assert summary[0]["ct_flips"] == "yes"
     assert summary[0]["verdict_class"] == "build-sensitive-ct"
+    assert summary[0]["basis"] == "auto"
 
 
 def test_build_untriaged_is_the_honest_default(tmp_path):
@@ -101,6 +103,7 @@ def test_build_untriaged_is_the_honest_default(tmp_path):
     _cells, summary = bct.build(tmp_path, "f", "t", {}, "", "", {})  # no --triage
     assert summary[0]["varlat_triage"] == "untriaged"
     assert summary[0]["verdict_class"] == "ct-clean-untriaged"
+    assert summary[0]["basis"] == "stop"
 
 
 def test_build_pass_no_candidates_is_robust(tmp_path):
@@ -109,6 +112,7 @@ def test_build_pass_no_candidates_is_robust(tmp_path):
     _write_reports(tmp_path, [_ctm("safe", "gcc_debug", "gcc", "-O0", "PASS")], [], [])
     _c, s = bct.build(tmp_path, "syn", "t", {}, "", "", {})
     assert s[0]["verdict_class"] == "robust"
+    assert s[0]["basis"] == "auto"
 
 
 def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
@@ -125,6 +129,7 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint;PFX_pack_sig")], [], [])
     _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
     assert s[0]["verdict_class"] == "accepted-variable-time"
+    assert s[0]["basis"] == "auto"
     assert "registry" in s[0]["notes"]
     assert "poly_chknorm" in s[0]["ct_finding_funcs"]
 
@@ -132,6 +137,7 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_mystery_fn")], [], [])
     _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
     assert s[0]["verdict_class"] == "needs-analysis"
+    assert s[0]["basis"] == "stop"
     assert "mystery_fn" in s[0]["notes"]
 
 

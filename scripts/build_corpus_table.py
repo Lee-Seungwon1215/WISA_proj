@@ -48,7 +48,7 @@ SUMMARY_FIELDS = [
     "varlat_candidates", "varlat_triage",
     "dudect_status", "dudect_abs_t", "dudect_measurements", "dudect_leak_target",
     "dudect_seed", "dudect_threshold",
-    "verdict_class", "notes",
+    "verdict_class", "basis", "notes",
 ]
 
 

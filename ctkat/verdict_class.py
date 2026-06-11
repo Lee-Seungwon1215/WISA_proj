@@ -38,6 +38,13 @@ VERDICT_CLASSES: Tuple[str, ...] = (
 # not-yet-triaged / incomplete-scan classes) is a gating result.
 CLEAN_CLASSES: Tuple[str, ...] = ("robust", "accepted-variable-time")
 
+STOP_CLASSES: Tuple[str, ...] = (
+    "ct-clean-untriaged",
+    "ct-clean-asm-incomplete",
+    "needs-analysis",
+    "tool-problem",
+)
+
 
 def opt_of(cflags: str) -> str:
     """The effective -O level of a cflags string (gcc honours the last)."""
@@ -198,6 +205,31 @@ def classify_harness(
     return vclass, "; ".join(notes)
 
 
+def verdict_basis(
+    vclass: str,
+    *,
+    varlat_candidates: bool,
+    triage: str = "untriaged",
+    verdict_override: Optional[str] = None,
+    note_override: Optional[str] = None,
+) -> str:
+    """Compact provenance for a final verdict row.
+
+    `auto` means the shared classifier reached the final row without a manual
+    attribution. `review` means a reviewer supplied either a verdict/note
+    override or a public/secret varlat attribution for emitted candidates.
+    `stop` means the row is deliberately unresolved/incomplete and remains at a
+    default-deny stopping class.
+    """
+    if vclass in STOP_CLASSES:
+        return "stop"
+    if verdict_override or note_override:
+        return "review"
+    if varlat_candidates and triage in ("public", "secret-risk"):
+        return "review"
+    return "auto"
+
+
 def summarize(
     cells: List[dict],
     *,
@@ -238,6 +270,13 @@ def summarize(
             registry=registry, verdict_override=verdict_override.get(h),
             note_override=note_override.get(h),
         )
+        basis = verdict_basis(
+            vclass,
+            varlat_candidates=bool(agg.vcells),
+            triage=tri,
+            verdict_override=verdict_override.get(h),
+            note_override=note_override.get(h),
+        )
 
         meas = cf.get("measurements", "")
         if not meas and d:
@@ -262,6 +301,7 @@ def summarize(
             "dudect_seed": cf.get("seed", ""),
             "dudect_threshold": cf.get("threshold", ""),
             "verdict_class": vclass,
+            "basis": basis,
             "notes": notes,
         })
     return summary

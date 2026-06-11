@@ -10,6 +10,7 @@ from ctkat.verdict_class import (
     load_registry,
     opt_of,
     summarize,
+    verdict_basis,
 )
 
 REG = {"ML-DSA": {"poly_chknorm", "poly_challenge", "make_hint", "pack_sig"}}
@@ -134,6 +135,18 @@ def test_dudect_warning_surfaced_in_notes():
     assert "WARNING" in notes
 
 
+def test_verdict_basis_distinguishes_auto_review_and_stop():
+    assert verdict_basis("robust", varlat_candidates=False) == "auto"
+    assert verdict_basis("robust", varlat_candidates=True, triage="public") == "review"
+    assert verdict_basis("varlat-secret-risk", varlat_candidates=True, triage="secret-risk") == "review"
+    assert verdict_basis(
+        "accepted-variable-time",
+        varlat_candidates=False,
+        verdict_override="accepted-variable-time",
+    ) == "review"
+    assert verdict_basis("needs-analysis", varlat_candidates=True, triage="untriaged") == "stop"
+
+
 def test_clean_classes_subset_of_taxonomy():
     assert set(CLEAN_CLASSES) <= set(VERDICT_CLASSES)
     assert "robust" in CLEAN_CLASSES and "ct-clean-untriaged" not in CLEAN_CLASSES
@@ -154,5 +167,7 @@ def test_summarize_groups_and_orders_by_harness():
     by = {r["harness"]: r for r in rows}
     assert [r["harness"] for r in rows] == ["a", "b"]      # first-seen order
     assert by["a"]["verdict_class"] == "build-sensitive-ct"
+    assert by["a"]["basis"] == "auto"
     assert by["b"]["verdict_class"] == "needs-analysis"
+    assert by["b"]["basis"] == "stop"
     assert by["a"]["target"] == "t"

@@ -106,7 +106,7 @@ WISA/
 │   ├── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
 │   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
 │   ├── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
-│   └── pqc_falcon512/          # Falcon/FN-DSA feasibility target, not corpus-promoted
+│   └── pqc_falcon512/          # Falcon/FN-DSA needs-analysis boundary target
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # dev.sh, run_check.sh, run_phaseN.sh, fetch_pqclean.sh
 ├── Dockerfile, docker-compose.yml
@@ -570,6 +570,8 @@ PQClean ML-KEM의 reciprocal-multiply fix(`* 80635 >> 28`)를 되돌려
 분기/주소 의존이 없어 PASS하지만, asm-scan은 emitted assembly의 `div/idiv`
 후보를 잡는다. 단, asm-scan 자체는 operand taint를 증명하지 않으므로
 `varlat-secret-risk` 판정은 코드/알고리즘 review가 붙은 triage 결과다.
+즉 KyberSlash 판정은 Memcheck taint를 asm `div/idiv` operand에 연결한
+결과가 아니라, taint-free asm 후보에 source triage를 붙인 결과다.
 
 **❌ FO-fallback path 미커버 → `leak_target: fo` 사용 (Bundle K, U2 #1)**:
 `leak_target: ct`는 `enc()`로 valid ct만 생성하므로 FO fallback / implicit
@@ -802,8 +804,9 @@ harness data flow에 한정해 `accepted-variable-time` override를 둔다.
 
 ### 5. `pqc_falcon512` — Falcon/FN-DSA feasibility target
 
-Falcon-512 is present as a first-pass PQClean clean signing target, not as a
-promoted corpus row. The harness taints `sk[1..]` because `sk[0]` is the public
+Falcon-512 is present as a first-pass PQClean clean signing target and corpus
+`needs-analysis` boundary row, not as an accepted-variable-time row. The harness
+taints `sk[1..]` because `sk[0]` is the public
 format header and full-sk taint would create an immediate false branch finding.
 Current Docker structural screening fails across gcc/clang debug/release cells,
 with findings in private-key decode, private-key completion, Gaussian sampling,
@@ -814,8 +817,7 @@ rounding, and signing acceptance loop. That is a correct structural signal, but
 not by itself a timing-leak proof; accepting it would require a Falcon-specific
 isochrony argument across the exact build. Treat Falcon as a `needs-analysis`
 stress target and future-work boundary case, not as an `accepted-variable-time`
-row. Do not add Falcon to the paper's corpus table just because the example
-exists.
+row.
 
 ---
 

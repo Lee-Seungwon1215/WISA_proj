@@ -1381,7 +1381,7 @@ SCREEN_SUMMARY_FIELDS = [
     "harness", "ct_flips", "ct_status_set", "ct_finding_funcs",
     "varlat_candidates", "varlat_triage", "dudect_status", "dudect_abs_t",
     "dudect_measurements", "dudect_leak_target", "dudect_seed", "dudect_threshold",
-    "verdict_class", "notes",
+    "verdict_class", "basis", "notes",
 ]
 SCREEN_CELLS_FIELDS = [
     "harness", "combo", "cc", "opt", "cflags", "ct_status", "ct_findings",
@@ -1523,13 +1523,14 @@ def _emit_screen_report(out_dir: Path, project: str, summary: list, cells: list)
                     "summary": summary, "cells": cells}, f, indent=2)
     mp = out_dir / "screen_summary.md"
     md = [f"# CT-KAT screen — {project}", "",
-          "| harness | ct | varlat (triage) | dudect | verdict_class | notes |",
-          "|---|---|---|---|---|---|"]
+          "| harness | ct | varlat (triage) | dudect | verdict_class | basis | notes |",
+          "|---|---|---|---|---|---|---|"]
     for r in summary:
         md.append(
             f"| {r['harness']} | {r['ct_status_set']} | "
             f"{r['varlat_candidates']} ({r['varlat_triage']}) | "
             f"{r.get('dudect_status') or '-'} | **{r['verdict_class']}** | "
+            f"{r.get('basis', '')} | "
             f"{r.get('notes', '')} |"
         )
     mp.write_text("\n".join(md) + "\n", encoding="utf-8")
@@ -1733,7 +1734,7 @@ def screen(
     # 9. emit + render + exit.
     sp, _jp, _mp = _emit_screen_report(out_dir, cfg.project.name, summary, cells)
     table = Table(title="CT-KAT screen — per-harness verdict_class")
-    for col in ("harness", "ct", "varlat", "dudect", "verdict_class"):
+    for col in ("harness", "ct", "varlat", "dudect", "verdict_class", "basis"):
         table.add_column(col)
     _vc_style = {c: ("green" if c in CLEAN_CLASSES else "bold red") for c in VERDICT_CLASSES}
     for s in summary:
@@ -1743,6 +1744,7 @@ def screen(
             f"{s['varlat_candidates']} ({s['varlat_triage']})",
             s.get("dudect_status") or "-",
             f"[{_vc_style.get(vc, '')}]{vc}[/]",
+            s.get("basis", ""),
         )
     console.print(table)
     for s in summary:

@@ -1,10 +1,11 @@
-# Corpus result schema — LOCKED v1.1
+# Corpus result schema — LOCKED v1.2
 
 > Status: **LOCKED** (review-corrected). This is the frozen Phase D result
 > schema — adding a target must not reformat it. Columns are frozen; a breaking
 > change requires a v2 bump + migration note. **v1.1**: additively added the
-> `accepted-variable-time` verdict_class (prompted by real ML-DSA data) — no
-> column change, so existing rows are unaffected.
+> `accepted-variable-time` verdict_class (prompted by real ML-DSA data). **v1.2**:
+> additively added `basis` to distinguish classifier output, reviewed
+> attribution, and default-deny stop rows.
 
 ## Framing (corrected)
 
@@ -19,8 +20,15 @@ So Phase D is **not** a PASS/FAIL leaderboard. It is:
 
 > Collect, per build configuration, the signals from three DIFFERENT threat
 > models — `ct`/Valgrind (secret → branch/address), `dudect` (timing
-> distribution), `asm-scan` (secret → variable-latency instruction) — and
+> distribution), `asm-scan` (candidate variable-latency instruction) — and
 > organize them into a table a human can triage for *secret-derived* risk.
+
+`asm-scan` is intentionally taint-free: it reports candidate variable-latency
+instructions and provenance, while `varlat_triage` records the human/source
+review that separates public operands (for example Keccak rates) from
+secret-derived risk (for example KyberSlash poly helpers). A future operand-taint
+pass could reduce that manual review burden, but the locked v1.1 schema keeps
+the candidate collection and the attribution judgment separate.
 
 The honest contrast is then: ct-matrix shows *whether the structural verdict is
 build-stable*; asm-scan shows *which builds keep a variable-latency instruction
@@ -79,7 +87,7 @@ existing per-project artifacts — **no in-tool schema change needed**.
 family,target,harness,ct_flips,ct_status_set,
 varlat_candidates,varlat_triage,
 dudect_status,dudect_abs_t,dudect_measurements,dudect_leak_target,dudect_seed,dudect_threshold,
-verdict_class,notes
+verdict_class,basis,notes
 ```
 
 | column | meaning |
@@ -90,6 +98,7 @@ verdict_class,notes
 | `varlat_triage` | **manual**: `none` / `public` (operand is public, e.g. Keccak rate) / `secret-risk` (secret-derived, KyberSlash class) / `untriaged` |
 | `dudect_*` | one timing run — status, max abs-t, **+ measurements, leak_target(sk/ct/fo), seed, threshold** (all needed to reproduce/compare a timing claim) |
 | `verdict_class` | see taxonomy |
+| `basis` | `auto` = classifier output without manual attribution; `review` = reviewer/triage input affected the final row; `stop` = unresolved/incomplete default-deny state |
 | `notes` | free text + optional *real-code-issue / tool-problem / env-noise* tag |
 
 ### `verdict_class` taxonomy (triage-aware)

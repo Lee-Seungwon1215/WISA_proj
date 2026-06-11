@@ -1,8 +1,8 @@
 # PQClean Falcon-512 Feasibility Target
 
 This example imports PQClean `crypto_sign/falcon-512/clean` as a first-pass
-Falcon/FN-DSA signing target. It is intentionally not part of the promoted
-corpus yet.
+Falcon/FN-DSA signing target. It is included in the paper corpus only as a
+`needs-analysis` boundary row, not as an accepted-variable-time row.
 
 ## Harness Policy
 
@@ -27,7 +27,7 @@ Docker structural runs on 2026-06-10:
   because keypair generation runs before taint in this harness.
 
 Treat this target as `needs-analysis` until those finding families are split and
-attributed. Do not add it to the paper corpus table solely because this example
+attributed. Do not promote it to an accepted row solely because this example
 exists.
 
 ## Attribution Probes
