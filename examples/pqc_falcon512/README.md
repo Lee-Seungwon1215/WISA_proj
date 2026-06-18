@@ -19,7 +19,7 @@ secret and create an immediate false branch finding in the format check.
 Docker structural runs on 2026-06-10:
 
 - `ct`: FAIL with 28 findings.
-- `ct-matrix`: FAIL across gcc/clang debug/release cells.
+- `ct-matrix`: FAIL across gcc/clang debug/opt1/release/opt3 cells.
 - Main finding families: private-key decode checks, private-key completion,
   Gaussian sampler/rejection, and signature compression.
 - `asm-scan`: Keccak rate divisions plus `keygen.c:solve_NTRU_intermediate`
@@ -67,7 +67,7 @@ That argument is outside the automatic registry. Do not register
 ```bash
 docker compose run --rm ctkat-dev python3 -m ctkat ct --config examples/pqc_falcon512/ctkat.yaml
 docker compose run --rm ctkat-dev python3 -m ctkat ct-matrix --config examples/pqc_falcon512/ctkat.yaml
-docker compose run --rm ctkat-dev python3 -m ctkat asm-scan --config examples/pqc_falcon512/ctkat.yaml --cc gcc --cc clang
+docker compose run --rm ctkat-dev python3 -m ctkat asm-scan --config examples/pqc_falcon512/ctkat.yaml --opt -O0 --opt -O1 --opt -O2 --opt -O3 --opt -Os --cc gcc --cc clang
 docker compose run --rm ctkat-dev python3 -m ctkat run --config examples/pqc_falcon512/ctkat_core.yaml
 docker compose run --rm ctkat-dev python3 -m ctkat ct --config examples/pqc_falcon512/ctkat_split.yaml
 ```

@@ -47,5 +47,7 @@ matrix:
   compilers: [gcc]
   ct_cflags:
     debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    opt1:    [-O1, -g, -fno-omit-frame-pointer, -fno-lto]
     release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    opt3:    [-O3, -g, -fno-omit-frame-pointer, -fno-lto]
     size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]

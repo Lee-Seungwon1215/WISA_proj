@@ -4,10 +4,10 @@ subcommand.
 Observational ONLY — these rows NEVER feed `ctkat_verdict.csv` or the `run`
 gate. The product is a separate `ctkat_ct_matrix.csv` / `.json` showing how the
 SAME source's structural-CT conclusion (PASS / FAIL / ERROR) moves across build
-configurations (gcc/clang × debug/release/size). Where asm-scan is the "which
-instruction survives" table, this is the "what the Valgrind check concludes per
-build" table — the direct evidence for "same source, different build → different
-CT verdict".
+configurations (for example, gcc/clang × debug/opt1/release/opt3/size). Where
+asm-scan is the "which instruction survives" table, this is the "what the
+Valgrind check concludes per build" table — the direct evidence for "same
+source, different build → different CT verdict".
 
 Reuses the single-build pieces unchanged, so the matrix can never disagree with
 the `ct` stage on an identical (cc, cflags) cell:

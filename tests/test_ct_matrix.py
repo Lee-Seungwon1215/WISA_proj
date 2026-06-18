@@ -326,7 +326,7 @@ def test_ct_matrix_cli_all_cells_error_exits_2(tmp_path):
 
 
 def test_ct_matrix_cli_uses_default_matrix_when_absent(tmp_path):
-    # No `matrix:` => default gcc × debug/release/size (3 combos), still runs.
+    # No `matrix:` => default gcc × debug/opt1/release/opt3/size, still runs.
     yaml = textwrap.dedent(
         """
         project: {name: p, language: c, root: .}
@@ -350,7 +350,13 @@ def test_ct_matrix_cli_uses_default_matrix_when_absent(tmp_path):
          mock.patch("ctkat.cli.scan_ct_matrix", side_effect=fake_scan):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(_write(tmp_path, yaml))])
     assert result.exit_code == 0, result.stdout
-    assert captured["combos"] == ["gcc_debug", "gcc_release", "gcc_size"]
+    assert captured["combos"] == [
+        "gcc_debug",
+        "gcc_opt1",
+        "gcc_release",
+        "gcc_opt3",
+        "gcc_size",
+    ]
 
 
 def test_ct_matrix_cli_notes_skipped_manual_harnesses(tmp_path):
@@ -400,8 +406,8 @@ _needs_valgrind_gcc = pytest.mark.skipif(
 )
 
 # A secret-dependent select: a conditional jump on tainted data at -O0 (Valgrind
-# FAIL), which gcc optimizes into branch-free code at -O2/-Os so Valgrind no
-# longer flags it (PASS). Measured on Docker amd64 gcc 13.3 — the empirical
+# FAIL), which gcc optimizes into branch-free code at optimized levels, so
+# Valgrind no longer flags it (PASS). Measured on Docker amd64 gcc 13.3 — the empirical
 # basis for this test (NOT assumed; cf. the KyberSlash Phase 0 lesson).
 _FLIP_BRANCH_C = """\
 #include <valgrind/memcheck.h>
@@ -436,4 +442,3 @@ def test_ct_matrix_secret_branch_flips_fail_O0_to_pass_O2(tmp_path):
     assert by["gcc_O2"] == "PASS", f"gcc should optimize the leak away at -O2; got {by}"
     # the headline, stated as an invariant: NOT the same verdict across builds.
     assert by["gcc_O0"] != by["gcc_O2"]
-

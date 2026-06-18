@@ -17,7 +17,11 @@ cd "$(dirname "$0")/.."
 CCV=(--cc-version "gcc=13.3.0" --cc-version "clang=18.1.3")
 ARCH="x86_64"
 COMMIT="$(git rev-parse --short HEAD)"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  COMMIT="${COMMIT}-dirty"
+fi
 OUT="docs/corpus"
+ASM_OPTS=(--opt -O0 --opt -O1 --opt -O2 --opt -O3 --opt -Os)
 
 run_target() {  # <project-dir> <family> <target> [extra build_corpus_table args...]
   local dir="$1" family="$2" target="$3"; shift 3
@@ -30,7 +34,7 @@ run_target() {  # <project-dir> <family> <target> [extra build_corpus_table args
   # Fail closed: if either structural layer errors, stop before build_corpus_table
   # can merge stale/partial reports into the committed corpus CSVs.
   python3 -m ctkat ct-matrix  --config "$dir/ctkat.yaml"   # reports/ctkat_ct_matrix.csv
-  python3 -m ctkat asm-scan   --config "$dir/ctkat.yaml" --cc gcc --cc clang
+  python3 -m ctkat asm-scan   --config "$dir/ctkat.yaml" "${ASM_OPTS[@]}" --cc gcc --cc clang
   echo "[refresh] $target : build_corpus_table ..."
   python3 scripts/build_corpus_table.py \
     --project-dir "$dir" --family "$family" --target "$target" \
@@ -49,6 +53,7 @@ run_target examples/pqc_mldsa44             ML-DSA    pqclean_mldsa44           
 run_target examples/pqc_mldsa65             ML-DSA    pqclean_mldsa65             --triage sign=public --verdict sign=accepted-variable-time --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
 run_target examples/pqc_mldsa87             ML-DSA    pqclean_mldsa87             --triage sign=public --verdict sign=accepted-variable-time --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
 run_target examples/pqc_sphincs_sha2_128f_simple SPHINCS+ pqclean_sphincs_sha2_128f_simple --triage sign=public --verdict sign=accepted-variable-time --note "$SPHINCS_NOTE"
+run_target examples/pqc_falcon512           Falcon    pqclean_falcon512
 run_target examples/toy_lookup              synthetic toy_lookup                 --verdict leaky=ct-leak   # manual confirmed leak
 run_target examples/ct_matrix_flip          synthetic ct_matrix_flip             # build-sensitive auto
 

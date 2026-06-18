@@ -6,9 +6,10 @@ WHY multi-opt — the whole point, learned the hard way in Phase 0 (§8.7):
 on CT-KAT's actual ct runtime (Docker amd64, gcc -O0) a *constant* divisor
 like KyberSlash's `/KYBER_Q` is strength-reduced to a reciprocal multiply and
 emits NO division instruction at all. The hardware division only survives at
-`-Os` (and on clang -O0). So scanning a single build would advertise
-KyberSlash detection while finding nothing. We compile each source at several
-optimization levels and report *which build* a division survives in. The "div
+some other optimization cells, notably `-Os` (and on clang -O0). So scanning a
+single build would advertise KyberSlash detection while finding nothing. We
+compile each source at several optimization levels and report *which build* a
+division survives in. The "div
 survives at -Os but not at the ct stage's -O0" asymmetry is the finding.
 
 Scope honesty (no overclaiming): there is NO taint here. We
@@ -50,7 +51,7 @@ from ._proc import run_text
 # Optimization levels scanned by default. The ct stage's own opt level is added
 # on top of these per-harness by the caller so the "absent at <ct opt>" note is
 # always backed by an actual scan.
-DEFAULT_OPT_LEVELS: Tuple[str, ...] = ("-O0", "-Os", "-O2")
+DEFAULT_OPT_LEVELS: Tuple[str, ...] = ("-O0", "-O1", "-O2", "-O3", "-Os")
 
 # A disassembled instruction is a variable-latency *division candidate* if its
 # mnemonic fully matches one of these. x86 size suffixes (idivl/divq/…), ARM

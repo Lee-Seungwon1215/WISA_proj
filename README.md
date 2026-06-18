@@ -621,7 +621,7 @@ python -m ctkat parse path/to/valgrind.log
 python -m ctkat asm-scan --config <ctkat.yaml> [--opt -O0 --opt -Os ...] [--cc gcc --cc clang ...]
 ```
 
-`asm-scan`: `ct.harnesses[].sources`를 여러 최적화 레벨(`-O0/-Os/-O2` + ct의 실제
+`asm-scan`: `ct.harnesses[].sources`를 여러 최적화 레벨(`-O0/-O1/-O2/-O3/-Os` + ct의 실제
 `-O`)과 **여러 컴파일러**(`--cc` 반복, 기본 `gcc`)로 컴파일해 `objdump`로
 `div/idiv/sdiv/udiv/…` 위치를 모으고, **어느 컴파일러 × 어느 빌드에서 나눗셈이
 살아남나**를 `reports/ctkat_varlat_candidates.csv/json`에 적는다(CSV엔 `compiler`
@@ -648,7 +648,7 @@ python -m ctkat ct-matrix --config <ctkat.yaml>
 ```
 
 `ct-matrix`: 각 template 하니스를 `matrix:` 의 모든 빌드 설정(compilers × 이름붙은
-cflags 조합; 기본 `gcc × debug/release/size`)으로 **재컴파일**해서 *같은* 구조적
+cflags 조합; 기본 `gcc × debug/opt1/release/opt3/size`)으로 **재컴파일**해서 *같은* 구조적
 CT(Valgrind/Memcheck) 검사를 돌리고, cell별 PASS/FAIL/ERROR를
 `reports/ctkat_ct_matrix.csv`/`.json`에 적는다. **이건 별도 산출물이고
 `ctkat_verdict.csv`나 `run` 게이트를 절대 건드리지 않는다(관찰 전용).** 목적은 "같은
@@ -668,11 +668,13 @@ matrix:
   # 이름붙은 cflags 조합. artifact의 combo = "{cc}_{이름}", 이름은 [A-Za-z0-9_-]+
   ct_cflags:
     debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    opt1:    [-O1, -g, -fno-omit-frame-pointer, -fno-lto]
     release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    opt3:    [-O3, -g, -fno-omit-frame-pointer, -fno-lto]
     size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]
 ```
 
-위 예시 = `compilers(2) × ct_cflags(3)` = harness당 6 combo. CSV의 `cflags`
+위 예시 = `compilers(2) × ct_cflags(5)` = harness당 10 combo. CSV의 `cflags`
 컬럼엔 실제 플래그가 그대로 들어간다.
 
 `screen`: 위 단계들(build → KAT → ct → ct-matrix → asm-scan → dudect)을 **한

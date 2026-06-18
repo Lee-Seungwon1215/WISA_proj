@@ -51,4 +51,6 @@ matrix:
   compilers: [gcc, clang]
   ct_cflags:
     debug:   [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    opt1:    [-std=c99, -O1, -g, -fno-omit-frame-pointer, -fno-lto]
     release: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    opt3:    [-std=c99, -O3, -g, -fno-omit-frame-pointer, -fno-lto]

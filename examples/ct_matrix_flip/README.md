@@ -26,10 +26,14 @@ PYTHONPATH=. python -m ctkat ct-matrix -c examples/ct_matrix_flip/ctkat.yaml
 ```
  harness   combo         cc    status
  leaky     gcc_debug     gcc   FAIL     ← secret branch visible at -O0
- leaky     gcc_release   gcc   PASS     ← gcc optimized the branch away at -O2
+ leaky     gcc_opt1      gcc   PASS     ← gcc optimized the branch away at -O1
+ leaky     gcc_release   gcc   PASS     ← ...and at -O2
+ leaky     gcc_opt3      gcc   PASS     ← ...and at -O3
  leaky     gcc_size      gcc   PASS     ← ...and at -Os
  safe      gcc_debug     gcc   PASS
+ safe      gcc_opt1      gcc   PASS
  safe      gcc_release   gcc   PASS
+ safe      gcc_opt3      gcc   PASS
  safe      gcc_size      gcc   PASS
 ```
 
@@ -44,8 +48,8 @@ ct-matrix: harness 'leaky' has DIFFERENT CT results across builds (FAIL, PASS)
 `leaky_select` is **leaky in the source at every optimization level** — the
 data-dependent branch never goes away. But the structural CT check
 (Valgrind/Memcheck) only *sees* it at `-O0`; once gcc lowers the branch to
-branch-free code at `-O2`/`-Os`, the finding disappears. So a single `-O2` run
-would report a clean PASS on code that still leaks.
+branch-free code at `-O1`/`-O2`/`-O3`/`-Os`, the finding disappears. So a single
+optimized run would report a clean PASS on code that still leaks.
 
 That is the whole reason `ct-matrix` exists: a single-build CT result can be
 misleading, because **the binary you tested is not necessarily the binary you

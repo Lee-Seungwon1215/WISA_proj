@@ -862,12 +862,16 @@ class DudectConfig(BaseModel):
 
 
 def _default_matrix_cflags() -> Dict[str, List[str]]:
-    # debug / release / size presets — the three build shapes whose CT
-    # properties most often diverge (branch visible at -O0 but cmov-fused at
-    # -O2; constant division kept at -Os; etc.). Users override per project.
+    # Representative optimization presets for build-sensitive CT screening.
+    # -O0 keeps debug attribution sharp; -O2 is the common release baseline;
+    # -Os catches size-optimized codegen such as KyberSlash's surviving div.
+    # -O1/-O3 are included so the default sweep is not biased toward only the
+    # historically interesting levels; users can still override per project.
     return {
         "debug": ["-O0", "-g", "-fno-inline", "-fno-omit-frame-pointer"],
+        "opt1": ["-O1", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
         "release": ["-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
+        "opt3": ["-O3", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
         "size": ["-Os", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
     }
 

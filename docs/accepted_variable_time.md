@@ -45,9 +45,10 @@ matches the `poly_chknorm` entry.
 ## Limitation: inlining blurs finding attribution (build-dependent)
 
 Finding attribution is **per build**. At `-O0 -fno-inline` Valgrind names the
-real leak-site function (e.g. `poly_chknorm`); at `-O2`/`-Os` the inliner merges
-inner functions into the caller, so the SAME accepted branch is attributed to a
-parent frame (e.g. `crypto_sign_signature_ctx`). Because the corpus takes the
+real leak-site function (e.g. `poly_chknorm`); optimized cells
+(`-O1`/`-O2`/`-O3`/`-Os`) can merge inner functions into the caller, so the SAME
+accepted branch is attributed to a parent frame (e.g.
+`crypto_sign_signature_ctx`). Because the corpus takes the
 UNION of leak-site functions across the build matrix, an optimized-build parent
 frame can make a harness `needs-analysis` even when its precise-attribution
 debug build is cleanly accepted.

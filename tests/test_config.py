@@ -45,9 +45,11 @@ def test_minimal_config_validates(tmp_path: Path):
 def test_matrix_defaults_compilers_and_combos():
     m = MatrixConfig()
     assert m.compilers == ["gcc"]
-    assert set(m.ct_cflags) == {"debug", "release", "size"}
+    assert set(m.ct_cflags) == {"debug", "opt1", "release", "opt3", "size"}
     assert m.ct_cflags["debug"][0] == "-O0"
+    assert m.ct_cflags["opt1"][0] == "-O1"
     assert m.ct_cflags["release"][0] == "-O2"
+    assert m.ct_cflags["opt3"][0] == "-O3"
     assert m.ct_cflags["size"][0] == "-Os"
 
 

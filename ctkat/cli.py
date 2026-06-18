@@ -1459,8 +1459,8 @@ def _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=()):
 
     `extra_opts` adds the ct-matrix's configured opt levels to the scan so EVERY
     matrix cell has a matching asm scan (else a division surviving only at a
-    custom matrix opt — e.g. KyberSlash at -Os/-O3 not in DEFAULT_OPT_LEVELS —
-    would read as 0 divisions for that cell)."""
+    project-specific custom opt, e.g. `-Oz`, would read as 0 divisions for that
+    cell)."""
     ct_cwd = _resolve(cfg_dir, cfg.ct.workdir)
     candidates: list = []
     cc_errors: list = []
@@ -1832,7 +1832,7 @@ def asm_scan(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
     opt: Optional[List[str]] = typer.Option(
         None, "--opt",
-        help="Optimization level to scan (repeatable). Default: -O0 -Os -O2. "
+        help="Optimization level to scan (repeatable). Default: -O0 -O1 -O2 -O3 -Os. "
              "The ct stage's own -O level is always added on top.",
     ),
     cc: Optional[List[str]] = typer.Option(
@@ -1849,9 +1849,9 @@ def asm_scan(
 
     WHY multi-opt: a constant divisor (KyberSlash's `/KYBER_Q`) is
     strength-reduced away at the ct stage's gcc -O0 and only re-appears as a
-    real `div` at -Os, so a single-build scan would find nothing. This compiles
-    each source at several opt levels and reports which build a division
-    survives in.
+    real `div` at another optimization cell, so a single-build scan would find
+    nothing. This compiles each source at several opt levels and reports which
+    build a division survives in.
 
     NOT a taint analysis: it reports every division-family instruction in the
     sources, secret or not (so public divisions, e.g. Keccak rate math, also
@@ -2037,7 +2037,8 @@ def ct_matrix(
     """Compiler × cflags Valgrind matrix — OBSERVATIONAL, verdict-independent.
 
     Recompiles each template harness under every `matrix:` build configuration
-    (compilers × named cflags combos; default gcc × debug/release/size) and runs
+    (compilers × named cflags combos; default gcc ×
+    debug/opt1/release/opt3/size) and runs
     the SAME structural-CT (Valgrind/Memcheck) check on each, recording PASS /
     FAIL / ERROR per cell. The product is a SEPARATE artifact
     (reports/ctkat_ct_matrix.csv/.json) — it NEVER touches ctkat_verdict.csv or
