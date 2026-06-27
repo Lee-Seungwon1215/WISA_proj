@@ -416,3 +416,108 @@ def test_kem_default_does_not_use_fo_mode():
     out = render_timing_harness("kem", _kem_ctx())
     assert "ct_invalid" not in out
     assert "fo-leak mode" not in out
+
+
+# --- Signature template (CP D) -----------------------------------------------
+
+
+def _sign_ctx(**overrides):
+    ctx = {
+        "extra_headers": [],
+        "header": "api.h",
+        "prefix": "TEST_",
+        "measurements": 1000,
+        "warmup": 10,
+        "seed": 0xC0FFEE,
+        "clock": "monotonic",
+    }
+    ctx.update(overrides)
+    return ctx
+
+
+def test_sign_template_is_registered():
+    from ctkat.timing_harness_generator import TIMING_TEMPLATE_FILES
+    assert TIMING_TEMPLATE_FILES.get("sign") == "timing_sign.c.j2"
+
+
+def test_sign_keypair_outside_and_signature_inside_timed_window():
+    out = render_timing_harness("sign", _sign_ctx())
+    # keypair is generated before timing, never between t0 and t1
+    assert "TEST_crypto_sign_keypair(pk_fixed, sk_fixed)" in out
+    # the measured signature call sits between the two clock reads
+    t0 = out.index("t0 = ctkat_now()")
+    t1 = out.index("t1 = ctkat_now()")
+    sig_call = out.index("__ctkat_sig_rc")
+    assert t0 < sig_call < t1
+
+
+def test_sign_captures_return_with_ctkat_use():
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "__ctkat_sig_rc" in out
+    assert "CTKAT_USE(__ctkat_sig_rc)" in out
+
+
+def test_sign_sinks_signature_after_timed_window():
+    # A header/inline signer could elide the work that fills `sig` while keeping
+    # `rc`; the signature bytes must be sunk too, AND after t1 so the consume
+    # cost is not charged to the measurement.
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "volatile uint64_t __ctkat_sink" in out
+    assert "sig[__ctkat_si]" in out
+    assert out.index("t1 = ctkat_now()") < out.index("__ctkat_sink")
+
+
+def test_sign_cache_balance_warm_sign_present():
+    # Three signature calls total: warmup loop, cache-balance warm-sign, and the
+    # measured call. The warm-sign removes the class-1 keypair() asymmetry.
+    out = render_timing_harness("sign", _sign_ctx())
+    assert out.count("crypto_sign_signature(sig, &siglen") >= 3
+    assert "Cache-balance" in out
+
+
+def test_sign_fixed_vs_fresh_sk_axis():
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "sk_fixed" in out
+    assert "sk_random" in out
+    assert "TEST_crypto_sign_keypair(pk_random, sk_random)" in out
+
+
+def test_sign_weak_randombytes_override_preceded_by_header():
+    # Critical link fix: PQClean's randombytes.h does
+    # `#define randombytes PQCLEAN_randombytes`, so the override must be
+    # preceded by that include or it defines an unused literal `randombytes`
+    # and the link fails on an undefined PQCLEAN_randombytes.
+    out = render_timing_harness("sign", _sign_ctx())
+    assert '#include "randombytes.h"' in out
+    assert "__attribute__((weak)) int randombytes" in out
+    assert out.index('#include "randombytes.h"') < out.index(
+        "__attribute__((weak)) int randombytes"
+    )
+
+
+def test_sign_class_label_uses_high_bits():
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "prng_next() >> 32" in out
+
+
+def test_sign_underflow_clamp_present():
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "(t1 >= t0) ? (t1 - t0) : 0" in out
+
+
+def test_sign_rdtsc_has_lfence_serialization():
+    out = render_timing_harness("sign", _sign_ctx(clock="rdtsc"))
+    assert out.count("_mm_lfence") >= 2
+    assert "__rdtscp" in out
+
+
+def test_sign_monotonic_uses_clock_gettime():
+    out = render_timing_harness("sign", _sign_ctx(clock="monotonic"))
+    assert "clock_gettime" in out
+    assert "CLOCK_MONOTONIC_RAW" in out
+    assert "__rdtscp" not in out
+
+
+def test_sign_msg_len_is_overridable_define():
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "#ifndef CTKAT_SIGN_MSG_LEN" in out

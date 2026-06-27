@@ -44,6 +44,43 @@ ct:
         - ../pqc_mlkem768/common/fips202.c
         - ../pqc_mlkem768/common/randombytes.c
 
+dudect:
+  enabled: true
+  # Falcon-512 signing: Gaussian sampler + Falcon's own SHAKE PRNG (clean/rng.c)
+  # seeded through the weak randombytes override. Signature length is variable
+  # (<= CRYPTO_BYTES). Needs -std=c99 like the ct build. Modest committed
+  # default — NOT paper-grade.
+  measurements: 1000
+  warmup: 50
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON512_CLEAN_"
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        # common/randombytes.c omitted → weak override (seeded) is sole def.
+        - clean/codec.c
+        - clean/common.c
+        - clean/fft.c
+        - clean/fpr.c
+        - clean/keygen.c
+        - clean/pqclean.c
+        - clean/rng.c
+        - clean/sign.c
+        - clean/vrfy.c
+        - ../pqc_mlkem768/common/fips202.c
+
 report:
   output_dir: ./reports
 

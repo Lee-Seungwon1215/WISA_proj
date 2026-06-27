@@ -17,7 +17,7 @@ from unittest import mock
 import pytest
 from typer.testing import CliRunner
 
-from ctkat.cli import _compute_verdicts, _print_cflags_banner, app
+from ctkat.cli import _compute_verdicts, _dudect_context, _print_cflags_banner, app
 from ctkat.config import (
     BuildConfig,
     CtConfig,
@@ -1773,3 +1773,33 @@ def test_ct_kem_invalid_structural_harness_says_fo_is_valgrind_covered(monkeypat
     assert "under Valgrind" in out
     assert "kd_fo" in out
     assert "not analyzed by Valgrind" not in out
+
+
+# --- _dudect_context: sign template plumbing (CP A) -------------------------
+
+
+def test_dudect_context_sign_passes_header_and_prefix():
+    # CP A boundary: the sign timing template doesn't exist yet, so we only
+    # assert the *context dict* the generator would feed it. Rendering is
+    # covered in CP B once timing_sign.c.j2 lands.
+    from ctkat.config import DudectConfig, DudectHarnessConfig
+    h = DudectHarnessConfig(
+        name="sign", template="sign", header="api.h",
+        prefix="PQCLEAN_MLDSA44_CLEAN_",
+        extra_headers=["params.h"],
+    )
+    dud = DudectConfig(harnesses=[h], measurements=500, warmup=10, seed=0xC0FFEE)
+    ctx = _dudect_context(h, dud, 0xC0FFEE, "monotonic")
+
+    assert ctx["header"] == "api.h"
+    assert ctx["prefix"] == "PQCLEAN_MLDSA44_CLEAN_"
+    assert ctx["extra_headers"] == ["params.h"]
+    assert ctx["measurements"] == 500
+    assert ctx["warmup"] == 10
+    assert ctx["seed"] == 0xC0FFEE
+    assert ctx["clock"] == "monotonic"
+    # sign fixes its fixed-sk/fresh-sk axis in-template, so no kem leak_target
+    # and no generic-only keys should bleed into the context.
+    assert "leak_target" not in ctx
+    assert "function" not in ctx
+    assert "buffers" not in ctx

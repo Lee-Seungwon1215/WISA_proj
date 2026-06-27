@@ -41,6 +41,50 @@ ct:
         - ../pqc_mlkem768/common/fips202.c
         - ../pqc_mlkem768/common/randombytes.c
 
+dudect:
+  enabled: true
+  # ML-DSA-44 signing axis: class 0 fixed sk, class 1 fresh sk, message fixed.
+  # `measurements` is a modest committed default — NOT paper-grade. Real CT
+  # numbers need a stable native x86_64 box (pinned core, perf governor);
+  # override with `--measurements` there. A VM/WSL2 run is engineering-only.
+  measurements: 2000
+  warmup: 100
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    # Name `sign` pairs with the ct.harnesses[name=sign] entry above in the
+    # combined verdict matrix.
+    - name: sign
+      template: sign
+      header: api.h
+      # No params.h here (unlike the ct harness): api.h already defines the
+      # CRYPTO_*BYTES the timing template needs, and pulling params.h too would
+      # redefine them (-Wmacro-redefined). dudect uses no secret_regions, so
+      # the params.h-only macros (SEEDBYTES/TRBYTES/...) aren't needed.
+      prefix: "PQCLEAN_MLDSA44_CLEAN_"
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        # common/randombytes.c intentionally omitted: the timing template's
+        # weak `randombytes` override (seeded by dudect.seed) becomes the only
+        # definition → reproducible keygen/signing across runs.
+        - clean/sign.c
+        - clean/packing.c
+        - clean/polyvec.c
+        - clean/poly.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/rounding.c
+        - clean/symmetric-shake.c
+        - ../pqc_mlkem768/common/fips202.c
+
 report:
   output_dir: ./reports
 

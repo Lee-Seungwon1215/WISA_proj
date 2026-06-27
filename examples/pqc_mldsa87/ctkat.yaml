@@ -41,6 +41,40 @@ ct:
         - ../pqc_mlkem768/common/fips202.c
         - ../pqc_mlkem768/common/randombytes.c
 
+dudect:
+  enabled: true
+  # ML-DSA-87 signing axis: class 0 fixed sk, class 1 fresh sk, message fixed.
+  # Modest committed default — NOT paper-grade (see pqc_mldsa44 note).
+  measurements: 2000
+  warmup: 100
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_MLDSA87_CLEAN_"
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        # common/randombytes.c omitted → weak override (seeded) is sole def.
+        - clean/sign.c
+        - clean/packing.c
+        - clean/polyvec.c
+        - clean/poly.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/rounding.c
+        - clean/symmetric-shake.c
+        - ../pqc_mlkem768/common/fips202.c
+
 report:
   output_dir: ./reports
 

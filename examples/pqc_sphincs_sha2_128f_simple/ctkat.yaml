@@ -38,6 +38,44 @@ ct:
         - ../pqc_mlkem768/common/sha2.c
         - ../pqc_mlkem768/common/randombytes.c
 
+dudect:
+  enabled: true
+  # SPHINCS+-SHA2-128f signing is hash-tree heavy and SLOW (~ms per sign), so
+  # measurements/warmup are deliberately low — enough to exercise the harness,
+  # NOT paper-grade. Uses sha2.c (not fips202.c). api.h gives CRYPTO_*BYTES.
+  measurements: 500
+  warmup: 20
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  workdir: .
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_SPHINCSSHA2128FSIMPLE_CLEAN_"
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        # common/randombytes.c omitted → weak override (seeded) is sole def.
+        - clean/address.c
+        - clean/context_sha2.c
+        - clean/fors.c
+        - clean/hash_sha2.c
+        - clean/merkle.c
+        - clean/sign.c
+        - clean/thash_sha2_simple.c
+        - clean/utils.c
+        - clean/utilsx1.c
+        - clean/wots.c
+        - clean/wotsx1.c
+        - ../pqc_mlkem768/common/sha2.c
+
 report:
   output_dir: ./reports
 

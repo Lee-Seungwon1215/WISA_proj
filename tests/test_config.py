@@ -244,6 +244,15 @@ dudect:
       template: generic
 """
 
+_DUDECT_SIGN_WITHOUT_HEADER = """
+project: {name: demo}
+build: {command: "true"}
+dudect:
+  harnesses:
+    - name: h1
+      template: sign
+"""
+
 
 def test_dudect_kem_requires_header(tmp_path: Path):
     # Regression: previously the dudect validator was missing, so this
@@ -255,6 +264,27 @@ def test_dudect_kem_requires_header(tmp_path: Path):
 def test_dudect_generic_requires_function(tmp_path: Path):
     with pytest.raises(ValidationError, match="requires 'function'"):
         load_config(_write(tmp_path, _DUDECT_GENERIC_WITHOUT_FUNCTION))
+
+
+def test_dudect_sign_requires_header(tmp_path: Path):
+    # Same contract as the kem branch: the sign timing template pulls api.h
+    # for the CRYPTO_*BYTES macros and the crypto_sign_* declarations, so a
+    # missing header must fail at config load, not as a Jinja2 error later.
+    with pytest.raises(ValidationError, match="requires 'header'"):
+        load_config(_write(tmp_path, _DUDECT_SIGN_WITHOUT_HEADER))
+
+
+def test_dudect_sign_accepts_header_and_keeps_sk_default():
+    from ctkat.config import DudectHarnessConfig
+    h = DudectHarnessConfig(
+        name="sign", template="sign", header="api.h",
+        prefix="PQCLEAN_MLDSA44_CLEAN_",
+    )
+    assert h.template == "sign"
+    assert h.header == "api.h"
+    # leak_target is a kem-only axis; sign must keep the sk default so it
+    # doesn't trip the `template != "kem" and leak_target != "sk"` guard.
+    assert h.leak_target == "sk"
 
 
 def test_dudect_default_cflags_disable_lto():

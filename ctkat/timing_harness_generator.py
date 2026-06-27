@@ -28,6 +28,7 @@ from .harness_generator import (
 TIMING_TEMPLATE_FILES = {
     "generic": "timing_generic.c.j2",
     "kem": "timing_kem.c.j2",
+    "sign": "timing_sign.c.j2",
 }
 
 

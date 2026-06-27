@@ -714,7 +714,7 @@ class DudectHarnessConfig(BaseModel):
 
     # T7: filename-safe pattern, see HarnessConfig.name.
     name: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    template: Literal["generic", "kem"] = "generic"
+    template: Literal["generic", "kem", "sign"] = "generic"
     extra_headers: List[str] = Field(default_factory=list)
     include_dirs: List[Path] = Field(default_factory=list)
     sources: List[Path] = Field(default_factory=list)
@@ -753,6 +753,15 @@ class DudectHarnessConfig(BaseModel):
         if self.template == "kem" and not self.header:
             raise ValueError(
                 f"dudect harness {self.name!r}: template=kem requires 'header'"
+            )
+        if self.template == "sign" and not self.header:
+            # Same contract as the kem branch: the sign timing template needs
+            # `header` to pull in the api.h CRYPTO_*BYTES macros and the
+            # crypto_sign_keypair/signature declarations. Surface the mistake
+            # at config-load time, not as a Jinja2 StrictUndefined deep in the
+            # generator.
+            raise ValueError(
+                f"dudect harness {self.name!r}: template=sign requires 'header'"
             )
         if self.template != "kem" and self.leak_target != "sk":
             # leak_target is a KEM-specific axis; on the generic template

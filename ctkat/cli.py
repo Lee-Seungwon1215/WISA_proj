@@ -682,6 +682,16 @@ def _dudect_context(
             "prefix": h.prefix,
             "leak_target": h.leak_target,
         })
+    elif h.template == "sign":
+        # The sign timing template fixes the input axis as fixed-sk vs
+        # fresh-sk (analogous to the kem sk-leak mode), so there is no
+        # leak_target to thread through here. Message length is baked via a
+        # CTKAT_SIGN_MSG_LEN #ifndef default in the template (matching the
+        # structural harness_sign.c.j2), so it needs no context field either.
+        base.update({
+            "header": h.header,
+            "prefix": h.prefix,
+        })
     else:  # generic
         base.update({
             "function": h.function,
