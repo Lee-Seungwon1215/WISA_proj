@@ -69,6 +69,14 @@
 #include "{{ h }}"
 {% endfor %}
 
+/* PQClean's randombytes.h does `#define randombytes PQCLEAN_randombytes`, so
+ * keypair/enc call the namespaced symbol. Include it BEFORE the weak override
+ * below so the macro rewrites our definition to PQCLEAN_randombytes too —
+ * otherwise the link fails on an undefined PQCLEAN_randombytes once
+ * common/randombytes.c is omitted from the dudect sources. Same fix as
+ * timing_sign.c.j2. */
+#include "randombytes.h"
+
 /* CTKAT_USE: force `x` to be materialized (treated as observed) before the
  * next instruction, and act as a compiler memory barrier. Defends against
  * the compiler eliding an unused return value or hoisting loads/stores
