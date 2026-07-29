@@ -10,7 +10,6 @@ The point of this artifact is narrow:
 import csv
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MLKEM = ROOT / "examples" / "pqc_mlkem768"
 CORPUS = ROOT / "docs" / "corpus"
@@ -23,14 +22,16 @@ def _csv_rows(path: Path) -> list[dict[str, str]]:
 
 def _cell_rows(target: str, harness: str) -> list[dict[str, str]]:
     return [
-        row for row in _csv_rows(CORPUS / "corpus_cells.csv")
+        row
+        for row in _csv_rows(CORPUS / "corpus_cells.csv")
         if row["target"] == target and row["harness"] == harness
     ]
 
 
 def _summary_row(target: str, harness: str) -> dict[str, str]:
     matches = [
-        row for row in _csv_rows(CORPUS / "corpus_summary.csv")
+        row
+        for row in _csv_rows(CORPUS / "corpus_summary.csv")
         if row["target"] == target and row["harness"] == harness
     ]
     assert len(matches) == 1
@@ -72,11 +73,13 @@ def test_kyberslash_varlat_report_keeps_secret_and_public_triage_separate():
 
     stock_hits = {
         row["combo"]: set(filter(None, row["asm_div_funcs"].split(";")))
-        for row in stock_rows if row["asm_div_funcs"]
+        for row in stock_rows
+        if row["asm_div_funcs"]
     }
     vulnerable_hits = {
         row["combo"]: set(filter(None, row["asm_div_funcs"].split(";")))
-        for row in vulnerable_rows if row["asm_div_funcs"]
+        for row in vulnerable_rows
+        if row["asm_div_funcs"]
     }
 
     assert all(not (funcs & secret_funcs) for funcs in stock_hits.values())

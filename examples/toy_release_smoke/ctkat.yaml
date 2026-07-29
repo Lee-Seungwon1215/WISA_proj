@@ -1,0 +1,42 @@
+project:
+  name: toy_release_smoke
+  language: c
+  root: .
+
+execution_profile: untrusted
+
+build:
+  argv: ["test", "-f", "src/safe_compare.c"]
+  workdir: .
+  expected_artifacts:
+    - src/safe_compare.c
+
+kat:
+  argv: ["printf", "PASSED: 1 release smoke vector\n"]
+  workdir: .
+  expected_min: 1
+
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  harnesses:
+    - name: safe
+      template: generic
+      extra_headers: [safe_compare.h]
+      include_dirs: [include]
+      sources: [src/safe_compare.c]
+      function: safe_compare
+      return_type: int
+      args: [secret, guess, "sizeof(secret)"]
+      buffers:
+        - {name: secret, size: "16", role: secret}
+        - {name: guess, size: "16", role: public}
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug: [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+
+report:
+  output_dir: ./reports

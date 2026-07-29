@@ -9,8 +9,13 @@
 set -euo pipefail
 
 DEST="${1:-examples/pqc_mlkem768}"
-PQCLEAN_REV="${PQCLEAN_REV:-master}"
+PQCLEAN_REV="${PQCLEAN_REV:-202a8f96315f9ed219387a50f7e40d04af037ea8}"
 PQCLEAN_URL="${PQCLEAN_URL:-https://github.com/PQClean/PQClean.git}"
+
+if [[ ! "$PQCLEAN_REV" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "ERROR: PQCLEAN_REV must be a full 40-hex commit, got: $PQCLEAN_REV" >&2
+    exit 1
+fi
 
 # ML-KEM-768 vs Kyber768: PQClean renamed the scheme directory after FIPS 203.
 # Try ml-kem-768 first; fall back to kyber768 if not present.
@@ -19,13 +24,14 @@ SCHEME_CANDIDATES=("crypto_kem/ml-kem-768" "crypto_kem/kyber768")
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-echo "==> cloning PQClean (sparse, blob:none) into $WORK/pqclean"
-git clone --depth 1 --filter=blob:none --sparse --branch "$PQCLEAN_REV" \
-    "$PQCLEAN_URL" "$WORK/pqclean" >/dev/null
-
-cd "$WORK/pqclean"
+echo "==> fetching pinned PQClean commit into $WORK/pqclean"
+git init -q "$WORK/pqclean"
+git -C "$WORK/pqclean" remote add origin "$PQCLEAN_URL"
+git -C "$WORK/pqclean" sparse-checkout init --cone
 # Pull every candidate scheme dir + common; later we pick whichever exists.
-git sparse-checkout set "${SCHEME_CANDIDATES[@]}" common >/dev/null
+git -C "$WORK/pqclean" sparse-checkout set "${SCHEME_CANDIDATES[@]}" common
+git -C "$WORK/pqclean" fetch --depth 1 origin "$PQCLEAN_REV"
+git -C "$WORK/pqclean" checkout --detach FETCH_HEAD
 
 SCHEME_DIR=""
 for cand in "${SCHEME_CANDIDATES[@]}"; do
@@ -39,8 +45,6 @@ if [ -z "$SCHEME_DIR" ]; then
     echo "Looked for: ${SCHEME_CANDIDATES[*]}" >&2
     exit 1
 fi
-
-cd - >/dev/null
 
 # We need a randombytes implementation. PQClean stores test/build glue
 # separately, so we'll write a minimal one ourselves if the upstream
@@ -104,6 +108,7 @@ fi
 
 echo
 echo "==> done: $DEST"
+echo "==> run python scripts/check_third_party.py after updating the inventory hash"
 ls "$DEST/clean"
 echo "---"
 ls "$DEST/common"

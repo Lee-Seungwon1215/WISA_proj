@@ -24,34 +24,36 @@ from typing import Optional
 
 
 class Verdict(str, Enum):
-    CLEAN = "CLEAN"               # both stages clean (or only one stage ran and it passed)
+    CLEAN = "CLEAN"  # both stages clean (or only one stage ran and it passed)
     STRUCTURAL_LEAK = "STRUCTURAL_LEAK"  # Bundle I (U6 Option A): renamed from LOW_RISK.
-                                  # Valgrind confirmed a secret-dependent branch / memory
-                                  # access; dudect happened to PASS in this environment.
-                                  # "LOW" misled users into dismissing the finding —
-                                  # rename is the honest framing.
-    SUSPECT = "SUSPECT"           # weak statistical signal — dudect WARNING, Valgrind clean (or absent)
-    RISKY = "RISKY"               # one strong signal: either dudect FAIL alone, or Valgrind FAIL + dudect WARNING
-    CRITICAL = "CRITICAL"         # both stages flag the harness
-    INCONCLUSIVE = "INCONCLUSIVE" # at least one stage couldn't complete (crash/timeout/KAT FAIL)
+    # Valgrind confirmed a secret-dependent branch / memory
+    # access; dudect happened to PASS in this environment.
+    # "LOW" misled users into dismissing the finding —
+    # rename is the honest framing.
+    SUSPECT = "SUSPECT"  # weak statistical signal — dudect WARNING, Valgrind clean (or absent)
+    RISKY = (
+        "RISKY"  # one strong signal: either dudect FAIL alone, or Valgrind FAIL + dudect WARNING
+    )
+    CRITICAL = "CRITICAL"  # both stages flag the harness
+    INCONCLUSIVE = "INCONCLUSIVE"  # at least one stage couldn't complete (crash/timeout/KAT FAIL)
 
 
 # Style hints for terminal rendering (rich markup).
 VERDICT_STYLES = {
-    Verdict.CLEAN:           "bold green",
+    Verdict.CLEAN: "bold green",
     Verdict.STRUCTURAL_LEAK: "yellow",
-    Verdict.SUSPECT:         "yellow",
-    Verdict.RISKY:           "bold red",
-    Verdict.CRITICAL:        "bold red on white",
-    Verdict.INCONCLUSIVE:    "bold yellow on white",
+    Verdict.SUSPECT: "yellow",
+    Verdict.RISKY: "bold red",
+    Verdict.CRITICAL: "bold red on white",
+    Verdict.INCONCLUSIVE: "bold yellow on white",
 }
 
 
 @dataclass
 class HarnessVerdict:
     name: str
-    valgrind_status: str       # "PASS" | "FAIL" | "ERROR" | "NONE"
-    dudect_status: str         # "PASS" | "WARNING" | "FAIL" | "ERROR" | "NONE"
+    valgrind_status: str  # "PASS" | "FAIL" | "ERROR" | "NONE"
+    dudect_status: str  # "PASS" | "WARNING" | "FAIL" | "ERROR" | "NONE"
     verdict: Verdict
     valgrind_finding_count: int = 0
     dudect_abs_t: Optional[float] = None
@@ -64,30 +66,30 @@ class HarnessVerdict:
 # the documented CI gate — never silently downgrades a broken run to CLEAN.
 _MATRIX: dict[tuple[str, str], Verdict] = {
     # Both stages ran cleanly
-    ("PASS", "PASS"):    Verdict.CLEAN,
-    ("FAIL", "PASS"):    Verdict.STRUCTURAL_LEAK,
+    ("PASS", "PASS"): Verdict.CLEAN,
+    ("FAIL", "PASS"): Verdict.STRUCTURAL_LEAK,
     ("PASS", "WARNING"): Verdict.SUSPECT,
-    ("PASS", "FAIL"):    Verdict.RISKY,
+    ("PASS", "FAIL"): Verdict.RISKY,
     ("FAIL", "WARNING"): Verdict.RISKY,
-    ("FAIL", "FAIL"):    Verdict.CRITICAL,
+    ("FAIL", "FAIL"): Verdict.CRITICAL,
     # Only valgrind ran (dudect absent)
-    ("PASS", "NONE"):    Verdict.CLEAN,
-    ("FAIL", "NONE"):    Verdict.STRUCTURAL_LEAK,
+    ("PASS", "NONE"): Verdict.CLEAN,
+    ("FAIL", "NONE"): Verdict.STRUCTURAL_LEAK,
     # Only dudect ran (valgrind absent)
-    ("NONE", "PASS"):    Verdict.CLEAN,
+    ("NONE", "PASS"): Verdict.CLEAN,
     ("NONE", "WARNING"): Verdict.SUSPECT,
-    ("NONE", "FAIL"):    Verdict.RISKY,
+    ("NONE", "FAIL"): Verdict.RISKY,
     # Neither stage ran — vacuous, treated as clean
-    ("NONE", "NONE"):    Verdict.CLEAN,
+    ("NONE", "NONE"): Verdict.CLEAN,
     # Any ERROR — analysis incomplete, must not be silently green.
-    ("ERROR", "PASS"):    Verdict.INCONCLUSIVE,
+    ("ERROR", "PASS"): Verdict.INCONCLUSIVE,
     ("ERROR", "WARNING"): Verdict.INCONCLUSIVE,
-    ("ERROR", "FAIL"):    Verdict.INCONCLUSIVE,
-    ("ERROR", "ERROR"):   Verdict.INCONCLUSIVE,
-    ("ERROR", "NONE"):    Verdict.INCONCLUSIVE,
-    ("PASS", "ERROR"):    Verdict.INCONCLUSIVE,
-    ("FAIL", "ERROR"):    Verdict.INCONCLUSIVE,
-    ("NONE", "ERROR"):    Verdict.INCONCLUSIVE,
+    ("ERROR", "FAIL"): Verdict.INCONCLUSIVE,
+    ("ERROR", "ERROR"): Verdict.INCONCLUSIVE,
+    ("ERROR", "NONE"): Verdict.INCONCLUSIVE,
+    ("PASS", "ERROR"): Verdict.INCONCLUSIVE,
+    ("FAIL", "ERROR"): Verdict.INCONCLUSIVE,
+    ("NONE", "ERROR"): Verdict.INCONCLUSIVE,
 }
 
 
@@ -115,9 +117,7 @@ def combine(
     if kat == "FAIL":
         return Verdict.INCONCLUSIVE
     if kat not in ("PASS", "NONE"):
-        raise ValueError(
-            f"verdict.combine: kat_status must be PASS/FAIL/NONE, got {kat_status!r}"
-        )
+        raise ValueError(f"verdict.combine: kat_status must be PASS/FAIL/NONE, got {kat_status!r}")
     key = (valgrind_status.upper(), dudect_status.upper())
     if key not in _MATRIX:
         raise ValueError(

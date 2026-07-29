@@ -7,7 +7,7 @@ TimeoutExpired and lands the harness as status=ERROR → INCONCLUSIVE.
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from ._proc import run_text
 

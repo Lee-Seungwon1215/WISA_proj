@@ -13,17 +13,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment
 
 from ._proc import run_text
+from ._template_resources import make_environment
 from .harness_generator import (
     CompilerNotFoundError,
     HarnessGenerationError,
-    TEMPLATE_DIR,
     _atomic_write_text,
     _temp_output_path,
 )
-
 
 TIMING_TEMPLATE_FILES = {
     "generic": "timing_generic.c.j2",
@@ -40,20 +39,13 @@ class GeneratedTimingHarness:
 
 
 def _make_env() -> Environment:
-    return Environment(
-        loader=FileSystemLoader(str(TEMPLATE_DIR)),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
+    return make_environment(TIMING_TEMPLATE_FILES.values())
 
 
 def render_timing_harness(template: str, context: Dict[str, Any]) -> str:
     if template not in TIMING_TEMPLATE_FILES:
         raise HarnessGenerationError(
-            f"unknown timing template {template!r}; expected one of "
-            f"{sorted(TIMING_TEMPLATE_FILES)}"
+            f"unknown timing template {template!r}; expected one of {sorted(TIMING_TEMPLATE_FILES)}"
         )
     env = _make_env()
     return env.get_template(TIMING_TEMPLATE_FILES[template]).render(**context)
@@ -71,6 +63,7 @@ def _compile(
     timeout: float,
 ) -> str:
     import subprocess as _sp
+
     binary_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_binary = _temp_output_path(binary_path)
     cmd: List[str] = [cc]
@@ -115,6 +108,7 @@ def _compile(
         )
     try:
         import os
+
         os.replace(tmp_binary, binary_path)
     except OSError as e:
         try:

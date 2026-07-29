@@ -49,8 +49,7 @@ class ToolNotFoundError(FileNotFoundError):
     def __init__(self, tool: str, original: OSError) -> None:
         self.tool = tool
         super().__init__(
-            f"could not execute {tool!r}: {original} — is it installed, on "
-            f"PATH, and executable?"
+            f"could not execute {tool!r}: {original} — is it installed, on PATH, and executable?"
         )
 
 

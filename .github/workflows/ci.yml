@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install ".[test]"
+      - run: python -m pytest --cov=ctkat --cov-report=term-missing
+
+  quality:
+    name: Quality and artifact integrity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[quality]"
+      - run: ruff check ctkat scripts tests
+      - run: ruff format --check ctkat scripts tests
+      - run: mypy ctkat
+      - run: python scripts/check_corpus.py
+      - run: python scripts/render_readme_corpus.py --check
+      - run: python scripts/check_third_party.py
+      - run: python scripts/check_example_configs.py
+
+  package:
+    name: Wheel and sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install ".[release]"
+      - name: Hash source-checkout renders
+        run: PYTHONPATH=. python scripts/smoke_installed_package.py > "$RUNNER_TEMP/source.json"
+      - run: python -m build
+      - run: python scripts/check_distribution.py dist
+      - run: python -m twine check dist/*
+      - name: Clean wheel install outside checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/pip" install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-venv/bin/ctkat" --version
+          "$RUNNER_TEMP/wheel-venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/smoke_installed_package.py" > installed-wheel.json
+          diff source.json installed-wheel.json
+      - name: Clean sdist install outside checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/sdist-venv"
+          "$RUNNER_TEMP/sdist-venv/bin/pip" install dist/*.tar.gz
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/sdist-venv/bin/ctkat" --version
+          "$RUNNER_TEMP/sdist-venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/smoke_installed_package.py" > installed-sdist.json
+          diff source.json installed-sdist.json
+
+  linux-screen:
+    name: Installed wheel / Valgrind / gcc+clang
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install native screening tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends valgrind gcc clang binutils
+      - run: python -m pip install build
+      - run: python -m build --wheel
+      - run: python -m pip install dist/*.whl
+      - name: Run shell-free end-to-end release target
+        run: |
+          cd "$RUNNER_TEMP"
+          ctkat screen \
+            --config "$GITHUB_WORKSPACE/examples/toy_release_smoke/ctkat.yaml" \
+            --asm-cc gcc --asm-cc clang
+          grep -q robust \
+            "$GITHUB_WORKSPACE/examples/toy_release_smoke/reports/screen_summary.csv"
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build --tag ctkat-ci .
+      - run: docker run --rm ctkat-ci ctkat --version

@@ -31,11 +31,12 @@ def test_t_score_sign_follows_mean_difference():
     c0 = [10.0] * 100 + [11.0] * 100
     c1 = [20.0] * 100 + [21.0] * 100
     r = welch_t_test(c0, c1)
-    assert r.t_score < 0   # mean0 < mean1 => negative t
+    assert r.t_score < 0  # mean0 < mean1 => negative t
 
 
 def test_too_few_samples_raises():
     import pytest
+
     with pytest.raises(ValueError):
         welch_t_test([1.0], [2.0, 3.0])
 
@@ -151,6 +152,7 @@ def test_welch_with_cropping_returns_uncropped_when_no_outliers():
 
 def test_welch_with_cropping_too_few_samples_raises():
     import pytest
+
     with pytest.raises(ValueError):
         welch_with_cropping([1.0], [2.0, 3.0])
 
@@ -168,9 +170,15 @@ def test_welch_with_cropping_follows_pooled_protocol_not_per_class():
     on this data per-class actually reports the LARGER |t|.)
     """
     from bisect import bisect_right
+
     from ctkat.statistics import (
-        welch_t_test as wtt, welch_with_cropping, CROP_PERCENTILES,
+        CROP_PERCENTILES,
+        welch_with_cropping,
     )
+    from ctkat.statistics import (
+        welch_t_test as wtt,
+    )
+
     rng = random.Random(42)
     c0 = [rng.gauss(100, 5) for _ in range(2000)] + [1e6, 5e5, 8e5]
     c1 = [rng.gauss(110, 5) for _ in range(2000)] + [9e5]
@@ -184,12 +192,12 @@ def test_welch_with_cropping_follows_pooled_protocol_not_per_class():
             if p >= 1.0:
                 a, b = s0, s1
             elif per_class:
-                a = s0[:bisect_right(s0, s0[min(int(len(s0) * p), len(s0) - 1)])]
-                b = s1[:bisect_right(s1, s1[min(int(len(s1) * p), len(s1) - 1)])]
+                a = s0[: bisect_right(s0, s0[min(int(len(s0) * p), len(s0) - 1)])]
+                b = s1[: bisect_right(s1, s1[min(int(len(s1) * p), len(s1) - 1)])]
             else:
                 thr = pooled[min(int(n * p), n - 1)]
-                a = s0[:bisect_right(s0, thr)]
-                b = s1[:bisect_right(s1, thr)]
+                a = s0[: bisect_right(s0, thr)]
+                b = s1[: bisect_right(s1, thr)]
             if len(a) < 2 or len(b) < 2:
                 continue
             r = wtt(a, b)
@@ -239,7 +247,7 @@ def test_cohens_d_sign_positive_when_class1_slower():
     # secret) is slower than class 0 (fixed secret). Sanity check that
     # `m1 - m0` not `m0 - m1` is the convention we use.
     c0 = [100.0, 100.0, 100.0, 100.0]
-    c1 = [110.0, 110.0, 110.0, 111.0]   # one extra to avoid zero var
+    c1 = [110.0, 110.0, 110.0, 111.0]  # one extra to avoid zero var
     r = welch_t_test(c0, c1)
     assert r.cohens_d > 0
 
@@ -264,6 +272,7 @@ def test_cohens_d_inf_when_pooled_var_zero_and_means_differ():
     # Degenerate but defined: zero variance with unequal means matches
     # the t-score's `inf` convention rather than raising.
     import math
+
     c0 = [100.0] * 4
     c1 = [200.0] * 4
     r = welch_t_test(c0, c1)
@@ -311,6 +320,7 @@ def test_welch_with_cropping_rejects_cutoffs_not_starting_at_one():
     precondition. A caller passing cutoffs that don't start with 1.0 silently
     lost the uncropped baseline + fallback — now it raises."""
     import pytest
+
     c0 = [float(x) for x in range(20)]
     c1 = [float(x) + 1.0 for x in range(20)]
     with pytest.raises(ValueError, match="start with"):

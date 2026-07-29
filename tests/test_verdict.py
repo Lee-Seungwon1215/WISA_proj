@@ -45,6 +45,7 @@ def test_unknown_dudect_status_raises():
     # to CLEAN (that would mark a harness "safe" because the tool got
     # confused). Raise instead so the caller notices.
     import pytest
+
     with pytest.raises(ValueError, match="unrecognized"):
         combine("PASS", "UNKNOWN")
 
@@ -52,6 +53,7 @@ def test_unknown_dudect_status_raises():
 def test_unknown_valgrind_status_also_raises():
     # Symmetric coverage — neither side should silently fall through.
     import pytest
+
     with pytest.raises(ValueError, match="unrecognized"):
         combine("MAYBE", "PASS")
 
@@ -103,5 +105,6 @@ def test_kat_none_is_default():
 
 def test_kat_unknown_raises():
     import pytest
+
     with pytest.raises(ValueError, match="kat_status"):
         combine("PASS", "PASS", kat_status="MAYBE")

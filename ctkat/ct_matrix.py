@@ -25,7 +25,6 @@ from .ct_runner import classify_valgrind_run
 from .harness_generator import HarnessGenerationError, compile_harness
 from .valgrind_runner import run_valgrind
 
-
 # Flags whose VALUE is the NEXT token when they appear bare ("-D FOO", "-I dir",
 # "-isystem path"). The glued forms ("-DFOO", "-I/inc") are kept by the
 # startswith branch below. `-D`/`-U`/`-I` are valid in BOTH forms (e.g. flags
@@ -33,8 +32,15 @@ from .valgrind_runner import run_valgrind
 # value token of a spaced `-D FOO` would build a different/broken program than
 # the ct stage (the exact divergence this function exists to prevent).
 _PP_BARE_VALUE = (
-    "-D", "-U", "-I",
-    "-isystem", "-iquote", "-include", "-imacros", "-idirafter", "-isysroot",
+    "-D",
+    "-U",
+    "-I",
+    "-isystem",
+    "-iquote",
+    "-include",
+    "-imacros",
+    "-idirafter",
+    "-isysroot",
 )
 
 
@@ -54,12 +60,12 @@ def preprocessor_cflags(cflags: List[str]) -> List[str]:
     i = 0
     while i < len(cflags):
         f = cflags[i]
-        if f in _PP_BARE_VALUE:                 # spaced form: consume the value token
+        if f in _PP_BARE_VALUE:  # spaced form: consume the value token
             if i + 1 < len(cflags):
                 out.extend([f, cflags[i + 1]])
             i += 2
             continue
-        if f.startswith(("-D", "-U", "-I")):    # glued form: -DFOO / -I/inc
+        if f.startswith(("-D", "-U", "-I")):  # glued form: -DFOO / -I/inc
             out.append(f)
         i += 1
     return out
@@ -95,14 +101,14 @@ def expand_combos(compilers: List[str], ct_cflags: Dict[str, List[str]]) -> List
 @dataclass
 class CtMatrixRow:
     harness: str
-    combo: str                 # label, e.g. "gcc_release"
+    combo: str  # label, e.g. "gcc_release"
     cc: str
     cflags: Tuple[str, ...]
-    valgrind_status: str       # PASS | FAIL | ERROR
+    valgrind_status: str  # PASS | FAIL | ERROR
     findings: int = 0
-    finding_funcs: str = ""    # ";"-joined leak-site functions (for accepted-vs-leak triage)
-    error: str = ""            # reason when status == ERROR (compile/valgrind)
-    dropped: int = 0           # parser-ignored lines (stale-parser canary; not in CSV)
+    finding_funcs: str = ""  # ";"-joined leak-site functions (for accepted-vs-leak triage)
+    error: str = ""  # reason when status == ERROR (compile/valgrind)
+    dropped: int = 0  # parser-ignored lines (stale-parser canary; not in CSV)
 
 
 @dataclass
@@ -169,38 +175,68 @@ def scan_ct_matrix(
                     cc=combo.cc,
                 )
             except HarnessGenerationError as e:
-                rows.append(CtMatrixRow(
-                    harness=h.name, combo=combo.label, cc=combo.cc,
-                    cflags=combo.cflags, valgrind_status="ERROR", findings=0,
-                    error=f"compile failed: {_first_line(str(e))}",
-                ))
+                rows.append(
+                    CtMatrixRow(
+                        harness=h.name,
+                        combo=combo.label,
+                        cc=combo.cc,
+                        cflags=combo.cflags,
+                        valgrind_status="ERROR",
+                        findings=0,
+                        error=f"compile failed: {_first_line(str(e))}",
+                    )
+                )
                 continue
             result = run_valgrind(
-                binary, log, valgrind_flags, workdir, timeout=valgrind_timeout,
+                binary,
+                log,
+                valgrind_flags,
+                workdir,
+                timeout=valgrind_timeout,
             )
             outcome = classify_valgrind_run(
-                result, log, lookup_patterns=lookup_patterns,
+                result,
+                log,
+                lookup_patterns=lookup_patterns,
             )
-            rows.append(CtMatrixRow(
-                harness=h.name, combo=combo.label, cc=combo.cc,
-                cflags=combo.cflags, valgrind_status=outcome.status,
-                findings=len(outcome.findings), error=outcome.error,
-                dropped=outcome.dropped,
-                # leak-site (top-frame) functions — the triage surface that lets
-                # a human / the registry decide accepted-variable-time vs leak.
-                finding_funcs=";".join(sorted({
-                    f.frames[0].function for f in outcome.findings
-                    if getattr(f, "frames", None)
-                })),
-            ))
+            rows.append(
+                CtMatrixRow(
+                    harness=h.name,
+                    combo=combo.label,
+                    cc=combo.cc,
+                    cflags=combo.cflags,
+                    valgrind_status=outcome.status,
+                    findings=len(outcome.findings),
+                    error=outcome.error,
+                    dropped=outcome.dropped,
+                    # leak-site (top-frame) functions — the triage surface that lets
+                    # a human / the registry decide accepted-variable-time vs leak.
+                    finding_funcs=";".join(
+                        sorted(
+                            {
+                                f.frames[0].function
+                                for f in outcome.findings
+                                if getattr(f, "frames", None)
+                            }
+                        )
+                    ),
+                )
+            )
     return rows
 
 
 # --- artifact writers (separate file from ctkat_verdict.csv ON PURPOSE) ------
 
 CT_MATRIX_CSV_FIELDS = [
-    "project", "harness", "combo", "cc", "cflags",
-    "valgrind_status", "findings", "finding_funcs", "error",
+    "project",
+    "harness",
+    "combo",
+    "cc",
+    "cflags",
+    "valgrind_status",
+    "findings",
+    "finding_funcs",
+    "error",
 ]
 
 

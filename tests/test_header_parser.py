@@ -130,9 +130,10 @@ def test_discover_headers_finds_all_three():
 
 def test_parse_functions_with_stats_counts_function_pointer_skips():
     from ctkat.header_parser import parse_functions_with_stats
+
     text = (
         "int foo(int x);\n"
-        "int register_cb(int (*cb)(int));\n"     # function pointer — strict miss
+        "int register_cb(int (*cb)(int));\n"  # function pointer — strict miss
         "int bar(const uint8_t *p);\n"
     )
     sigs, skipped = parse_functions_with_stats(text)
@@ -146,6 +147,7 @@ def test_parse_functions_with_stats_counts_function_pointer_skips():
 
 def test_parse_functions_with_stats_zero_skips_on_clean_header():
     from ctkat.header_parser import parse_functions_with_stats
+
     text = "int foo(int x);\nvoid bar(void);\n"
     _, skipped = parse_functions_with_stats(text)
     assert skipped == 0
@@ -160,6 +162,7 @@ def test_attribute_with_nested_parens_does_not_drop_function():
     decl regex — the whole function vanished from `infer` and wasn't even
     counted in the skip total. It must now parse normally."""
     from ctkat.header_parser import parse_functions_with_stats
+
     text = (
         "int with_attr(unsigned char *bar) __attribute__((nonnull(1)));\n"
         "int plain(unsigned char *x);\n"
@@ -173,7 +176,7 @@ def test_attribute_with_nested_parens_does_not_drop_function():
 
 def test_attribute_format_printf_nested_parens():
     """T31: a second nested-paren attribute shape."""
-    text = 'int logf(const char *fmt) __attribute__((format(printf, 1, 2)));\n'
+    text = "int logf(const char *fmt) __attribute__((format(printf, 1, 2)));\n"
     sigs = parse_functions(text)
     assert [s.name for s in sigs] == ["logf"]
 
@@ -184,6 +187,7 @@ def test_anonymous_double_pointer_is_pointer():
     buffer as a scalar (never tainted). It must be is_pointer=True with a
     synthesized name."""
     from ctkat.header_parser import _parse_param
+
     p = _parse_param("unsigned char **", 0)
     assert p is not None
     assert p.is_pointer is True
@@ -195,6 +199,7 @@ def test_bare_type_param_keeps_type_not_name():
     """T32: a lone `size_t` is an unnamed param whose token is the TYPE. The
     old code stored name='size_t', type='' — losing the type entirely."""
     from ctkat.header_parser import _parse_param
+
     p = _parse_param("size_t", 1)
     assert p is not None
     assert p.type == "size_t"

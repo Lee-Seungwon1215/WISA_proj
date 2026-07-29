@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use CT-KAT, cite this software and pin the exact commit."
+title: "CT-KAT: Auditable Constant-Time Screening Orchestration"
+type: software
+authors:
+  - name: "CT-KAT contributors"
+version: "0.2.0-alpha.1"
+date-released: 2026-07-29
+repository-code: "https://github.com/Lee-Seungwon1215/WISA_proj"
+url: "https://github.com/Lee-Seungwon1215/WISA_proj"
+license: MIT
+keywords:
+  - constant-time
+  - side-channel
+  - cryptography
+  - Valgrind
+  - post-quantum cryptography

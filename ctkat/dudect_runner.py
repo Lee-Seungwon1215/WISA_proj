@@ -51,9 +51,9 @@ class TimingSamples:
     # audit the filter pipeline from the CSV alone. Without these, "n0=10924,
     # n1=18705 from measurements=50000" gives no clue where the missing
     # ~20k samples went.
-    raw_n_total: int = 0       # rows emitted by the C harness (pre-filter)
-    dropped_zero_n0: int = 0   # class-0 rows dropped by the zero-cycle filter
-    dropped_zero_n1: int = 0   # class-1 rows dropped by the zero-cycle filter
+    raw_n_total: int = 0  # rows emitted by the C harness (pre-filter)
+    dropped_zero_n0: int = 0  # class-0 rows dropped by the zero-cycle filter
+    dropped_zero_n1: int = 0  # class-1 rows dropped by the zero-cycle filter
 
     def __len__(self) -> int:
         return len(self.cycles)
@@ -196,9 +196,7 @@ def run_timing_harness(
                 )
             stderr_f.seek(0)
             stderr = stderr_f.read(MAX_TIMING_STDERR_BYTES + 1)
-            stderr_text = stderr[:MAX_TIMING_STDERR_BYTES].decode(
-                "utf-8", errors="replace"
-            )
+            stderr_text = stderr[:MAX_TIMING_STDERR_BYTES].decode("utf-8", errors="replace")
             if len(stderr) > MAX_TIMING_STDERR_BYTES:
                 stderr_text += "\n[ctkat] stderr truncated"
             if proc.returncode != 0:
@@ -209,7 +207,5 @@ def run_timing_harness(
             stdout_f.seek(0)
             text = stdout_f.read().decode("utf-8", errors="replace")
     except OSError as e:
-        raise RuntimeError(
-            f"timing harness {binary} could not be executed: {e}"
-        ) from e
+        raise RuntimeError(f"timing harness {binary} could not be executed: {e}") from e
     return parse_timing_csv(text)

@@ -16,7 +16,10 @@ def _result(rc: int, *, timed_out: bool = False, stderr: str = "") -> ValgrindRe
     # `log_path` on the result is unused by classify (it takes log_path
     # separately); only `returncode`/`timed_out` matter here.
     return ValgrindResult(
-        returncode=rc, log_path=Path("unused"), stdout="", stderr=stderr,
+        returncode=rc,
+        log_path=Path("unused"),
+        stdout="",
+        stderr=stderr,
         timed_out=timed_out,
     )
 

@@ -21,7 +21,6 @@ from ctkat.coverage_check import (
     check_secret_region_coverage,
 )
 
-
 # Skip the compile-path tests entirely on hosts without gcc — F6 itself
 # would just emit a yellow note there.
 _HAS_CC = shutil.which("gcc") is not None
@@ -37,7 +36,9 @@ def _write_fake_header(dir_path: Path, total: int, parts: dict) -> None:
 
 def test_render_sentinel_c_handles_empty_extras():
     code = _render_sentinel_c(
-        header="api.h", extra_headers=[], prefix="FOO_",
+        header="api.h",
+        extra_headers=[],
+        prefix="FOO_",
         secret_region_lengths=["32", "8"],
     )
     assert '#include "api.h"' in code
@@ -49,9 +50,13 @@ def test_no_secret_regions_returns_none(tmp_path):
     # Full-sk taint policy → nothing to verify, return None immediately
     # (and don't bother compiling).
     result = check_secret_region_coverage(
-        harness_name="h", header="fake_api.h", extra_headers=[],
-        prefix="TEST_", secret_region_lengths=[],
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="h",
+        header="fake_api.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=[],
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert result is None
 
@@ -60,9 +65,13 @@ def test_no_secret_regions_returns_none(tmp_path):
 def test_coverage_above_threshold_passes_silently(tmp_path, capsys):
     _write_fake_header(tmp_path, total=100, parts={"SEC_A": 80, "SEC_B": 20})
     result = check_secret_region_coverage(
-        harness_name="kem_full", header="fake_api.h", extra_headers=[],
-        prefix="TEST_", secret_region_lengths=["SEC_A", "SEC_B"],
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="kem_full",
+        header="fake_api.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=["SEC_A", "SEC_B"],
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert isinstance(result, CoverageResult)
     assert result.covered == 100
@@ -80,9 +89,13 @@ def test_coverage_below_threshold_warns(tmp_path, capsys):
     # "user typed `length: 32` instead of the real macro" mistake.
     _write_fake_header(tmp_path, total=2400, parts={"WRONG_LEN": 32})
     result = check_secret_region_coverage(
-        harness_name="kem_typo", header="fake_api.h", extra_headers=[],
-        prefix="TEST_", secret_region_lengths=["WRONG_LEN"],
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="kem_typo",
+        header="fake_api.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=["WRONG_LEN"],
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert result is not None
     assert result.covered == 32
@@ -99,9 +112,13 @@ def test_compile_failure_returns_none_with_note(tmp_path, capsys):
     # Reference an undefined macro — gcc errors, we must emit a yellow
     # note and return None (never block).
     result = check_secret_region_coverage(
-        harness_name="missing_header", header="does_not_exist.h",
-        extra_headers=[], prefix="TEST_", secret_region_lengths=["32"],
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="missing_header",
+        header="does_not_exist.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=["32"],
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert result is None
     out = capsys.readouterr().out
@@ -116,9 +133,13 @@ def test_total_zero_returns_result_but_skips_comparison(tmp_path, capsys):
     # when the threshold itself is undefined).
     _write_fake_header(tmp_path, total=0, parts={"SEC_A": 0})
     result = check_secret_region_coverage(
-        harness_name="zero_total", header="fake_api.h", extra_headers=[],
-        prefix="TEST_", secret_region_lengths=["SEC_A"],
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="zero_total",
+        header="fake_api.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=["SEC_A"],
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert result is not None
     assert result.total == 0
@@ -138,12 +159,23 @@ def test_filter_probe_cflags_keeps_define_and_include_only():
     drop the rest (`-O*`, `-g`, `-fno-lto`, etc.) since the probe is
     intentionally `-O0` and incompatible with some flags."""
     from ctkat.coverage_check import _filter_probe_cflags
+
     cflags = [
-        "-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto",
-        "-DCONFIG_X=1", "-D", "CONFIG_Y=2", "-UFOO",
-        "-isystem", "/usr/include/foo",
-        "-Ipath/inline", "-I", "path/separated",
-        "-Wall", "-Werror",
+        "-O2",
+        "-g",
+        "-fno-omit-frame-pointer",
+        "-fno-lto",
+        "-DCONFIG_X=1",
+        "-D",
+        "CONFIG_Y=2",
+        "-UFOO",
+        "-isystem",
+        "/usr/include/foo",
+        "-Ipath/inline",
+        "-I",
+        "path/separated",
+        "-Wall",
+        "-Werror",
     ]
     kept = _filter_probe_cflags(cflags)
     assert "-DCONFIG_X=1" in kept
@@ -153,8 +185,7 @@ def test_filter_probe_cflags_keeps_define_and_include_only():
     assert "-Ipath/inline" in kept
     assert "-I" in kept and "path/separated" in kept
     # Noise must be dropped.
-    for noise in ("-O2", "-g", "-fno-lto", "-fno-omit-frame-pointer",
-                  "-Wall", "-Werror"):
+    for noise in ("-O2", "-g", "-fno-lto", "-fno-omit-frame-pointer", "-Wall", "-Werror"):
         assert noise not in kept, f"{noise} leaked through filter"
 
 
@@ -164,10 +195,14 @@ def test_coverage_oob_region_warns(tmp_path, capsys):
     stack memory past `sk`. The probe computes max(offset+length) and warns."""
     _write_fake_header(tmp_path, total=100, parts={})
     result = check_secret_region_coverage(
-        harness_name="kem_oob", header="fake_api.h", extra_headers=[],
-        prefix="TEST_", secret_region_lengths=["80"],
-        secret_region_offsets=["40"],   # 40+80=120 > 100, ratio 0.8 (no low warn)
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="kem_oob",
+        header="fake_api.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=["80"],
+        secret_region_offsets=["40"],  # 40+80=120 > 100, ratio 0.8 (no low warn)
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert result is not None
     out = capsys.readouterr().out
@@ -180,10 +215,14 @@ def test_coverage_overlap_sum_exceeds_total_warns(tmp_path, capsys):
     """F21: regions summing past the total overlap / double-count."""
     _write_fake_header(tmp_path, total=100, parts={})
     result = check_secret_region_coverage(
-        harness_name="kem_overlap", header="fake_api.h", extra_headers=[],
-        prefix="TEST_", secret_region_lengths=["80", "80"],
-        secret_region_offsets=["0", "0"],   # sum 160 > 100, max_end 80 (no OOB)
-        include_dirs=[tmp_path], workdir=tmp_path,
+        harness_name="kem_overlap",
+        header="fake_api.h",
+        extra_headers=[],
+        prefix="TEST_",
+        secret_region_lengths=["80", "80"],
+        secret_region_offsets=["0", "0"],  # sum 160 > 100, max_end 80 (no OOB)
+        include_dirs=[tmp_path],
+        workdir=tmp_path,
     )
     assert result is not None
     out = capsys.readouterr().out

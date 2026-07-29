@@ -23,6 +23,7 @@ Example:
       --triage kem_dec=public --triage kem_dec_ct=public \\
       --out-dir docs/corpus
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,16 +40,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ctkat.verdict_class import load_registry, opt_of, summarize  # noqa: E402
 
 CELLS_FIELDS = [
-    "family", "target", "harness", "combo", "cc", "cc_version", "opt", "cflags",
-    "arch", "ctkat_commit", "ct_status", "ct_findings", "ct_finding_funcs", "ct_error",
-    "asm_div_count", "asm_div_funcs", "asm_error",
+    "family",
+    "target",
+    "harness",
+    "combo",
+    "cc",
+    "cc_version",
+    "opt",
+    "cflags",
+    "arch",
+    "ctkat_commit",
+    "ct_status",
+    "ct_findings",
+    "ct_finding_funcs",
+    "ct_error",
+    "asm_div_count",
+    "asm_div_funcs",
+    "asm_error",
 ]
 SUMMARY_FIELDS = [
-    "family", "target", "harness", "ct_flips", "ct_status_set", "ct_finding_funcs",
-    "varlat_candidates", "varlat_triage",
-    "dudect_status", "dudect_abs_t", "dudect_measurements", "dudect_leak_target",
-    "dudect_seed", "dudect_threshold",
-    "verdict_class", "basis", "notes",
+    "family",
+    "target",
+    "harness",
+    "ct_flips",
+    "ct_status_set",
+    "ct_finding_funcs",
+    "varlat_candidates",
+    "varlat_triage",
+    "dudect_status",
+    "dudect_abs_t",
+    "dudect_measurements",
+    "dudect_leak_target",
+    "dudect_seed",
+    "dudect_threshold",
+    "verdict_class",
+    "basis",
+    "notes",
 ]
 
 
@@ -80,8 +107,10 @@ def _dudect_cfg(project_dir: Path) -> dict:
     missing/odd config never breaks the merge."""
     try:
         import sys
+
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
         from ctkat.config import load_config
+
         cfg = load_config(project_dir / "ctkat.yaml")
         d = cfg.dudect
         if d is None:
@@ -103,8 +132,18 @@ def _dudect_cfg(project_dir: Path) -> dict:
         return {}
 
 
-def build(project_dir, family, target, cc_versions, arch, commit, triage,
-          verdict_override=None, note_override=None, registry=None):
+def build(
+    project_dir,
+    family,
+    target,
+    cc_versions,
+    arch,
+    commit,
+    triage,
+    verdict_override=None,
+    note_override=None,
+    registry=None,
+):
     if registry is None:
         registry = load_registry()
     reports = project_dir / "reports"
@@ -124,8 +163,7 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
     # a coverage choice, not an error; conflating them would false-flag and (via
     # the verdict fold below) false-downgrade those builds.
     asm_err_by_cc = {
-        e.get("compiler", ""): e.get("error", "")
-        for e in (varlat_json.get("errors") or [])
+        e.get("compiler", ""): e.get("error", "") for e in (varlat_json.get("errors") or [])
     }
 
     def _asm_error_for(cc: str) -> str:
@@ -144,17 +182,27 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
     for r in ctm:
         opt = opt_of(r.get("cflags", ""))
         hits = vindex.get((r["cc"], opt), [])
-        cells.append({
-            "family": family, "target": target, "harness": r["harness"],
-            "combo": r.get("combo", ""), "cc": r["cc"],
-            "cc_version": cc_versions.get(r["cc"], ""), "opt": opt,
-            "cflags": r.get("cflags", ""), "arch": arch, "ctkat_commit": commit,
-            "ct_status": r.get("valgrind_status", ""), "ct_findings": r.get("findings", ""),
-            "ct_finding_funcs": r.get("finding_funcs", ""), "ct_error": r.get("error", ""),
-            "asm_div_count": str(sum(c for _f, c in hits)),
-            "asm_div_funcs": ";".join(sorted({f for f, _c in hits})),
-            "asm_error": _asm_error_for(r["cc"]),
-        })
+        cells.append(
+            {
+                "family": family,
+                "target": target,
+                "harness": r["harness"],
+                "combo": r.get("combo", ""),
+                "cc": r["cc"],
+                "cc_version": cc_versions.get(r["cc"], ""),
+                "opt": opt,
+                "cflags": r.get("cflags", ""),
+                "arch": arch,
+                "ctkat_commit": commit,
+                "ct_status": r.get("valgrind_status", ""),
+                "ct_findings": r.get("findings", ""),
+                "ct_finding_funcs": r.get("finding_funcs", ""),
+                "ct_error": r.get("error", ""),
+                "asm_div_count": str(sum(c for _f, c in hits)),
+                "asm_div_funcs": ";".join(sorted({f for f, _c in hits})),
+                "asm_error": _asm_error_for(r["cc"]),
+            }
+        )
 
     # The per-harness classification + summary rows are produced by the shared
     # classifier (ctkat/verdict_class.py) so this script and `ctkat screen` can't
@@ -162,8 +210,14 @@ def build(project_dir, family, target, cc_versions, arch, commit, triage,
     # family/target/cc_version/arch/commit) stay here; only the taxonomy moved.
     dud_by = {d["harness"]: d for d in dud}
     summary = summarize(
-        cells, family=family, triage=triage, dud_by=dud_by, dcfg=dcfg,
-        registry=registry, verdict_override=verdict_override, note_override=note_override,
+        cells,
+        family=family,
+        triage=triage,
+        dud_by=dud_by,
+        dcfg=dcfg,
+        registry=registry,
+        verdict_override=verdict_override,
+        note_override=note_override,
     )
     return cells, summary
 
@@ -181,18 +235,32 @@ def merge_write(out_dir: Path, target: str, new_rows: list, fields: list, fname:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--project-dir", required=True, type=Path)
     ap.add_argument("--family", required=True)
     ap.add_argument("--target", required=True)
     ap.add_argument("--arch", default="")
     ap.add_argument("--ctkat-commit", default="")
     ap.add_argument("--cc-version", action="append", default=[], metavar="cc=version")
-    ap.add_argument("--triage", action="append", default=[], metavar="harness=public|secret-risk|none")
-    ap.add_argument("--verdict", action="append", default=[], metavar="harness=verdict_class",
-                    help="manual verdict_class override (domain triage, e.g. accepted-variable-time)")
-    ap.add_argument("--note", action="append", default=[], metavar="harness=text",
-                    help="append a manual note to a harness row")
+    ap.add_argument(
+        "--triage", action="append", default=[], metavar="harness=public|secret-risk|none"
+    )
+    ap.add_argument(
+        "--verdict",
+        action="append",
+        default=[],
+        metavar="harness=verdict_class",
+        help="manual verdict_class override (domain triage, e.g. accepted-variable-time)",
+    )
+    ap.add_argument(
+        "--note",
+        action="append",
+        default=[],
+        metavar="harness=text",
+        help="append a manual note to a harness row",
+    )
     ap.add_argument("--out-dir", type=Path, default=Path("docs/corpus"))
     a = ap.parse_args()
 
@@ -205,23 +273,34 @@ def main() -> None:
     # verdict field (ctkat/triage.py). A typo'd override would otherwise write a
     # bogus verdict_class straight into the corpus.
     from ctkat.verdict_class import VERDICT_CLASSES
+
     bad = {h: v for h, v in verdict_override.items() if v not in VERDICT_CLASSES}
     if bad:
-        ap.error(f"--verdict: unknown verdict_class(es) {bad}; "
-                 f"expected one of {list(VERDICT_CLASSES)}")
+        ap.error(
+            f"--verdict: unknown verdict_class(es) {bad}; expected one of {list(VERDICT_CLASSES)}"
+        )
 
     cells, summary = build(
-        a.project_dir, a.family, a.target, cc_versions, a.arch, a.ctkat_commit, triage,
-        verdict_override, note_override,
+        a.project_dir,
+        a.family,
+        a.target,
+        cc_versions,
+        a.arch,
+        a.ctkat_commit,
+        triage,
+        verdict_override,
+        note_override,
     )
     cp = merge_write(a.out_dir, a.target, cells, CELLS_FIELDS, "corpus_cells.csv")
     sp = merge_write(a.out_dir, a.target, summary, SUMMARY_FIELDS, "corpus_summary.csv")
     print(f"[corpus] {a.target}: {len(cells)} cells -> {cp}")
     print(f"[corpus] {a.target}: {len(summary)} summary rows -> {sp}")
     for s in summary:
-        print(f"    {s['harness']:12} verdict={s['verdict_class']:20} "
-              f"ct={s['ct_status_set']} dudect={s['dudect_status'] or '-'} "
-              f"varlat={s['varlat_candidates']} triage={s['varlat_triage']}")
+        print(
+            f"    {s['harness']:12} verdict={s['verdict_class']:20} "
+            f"ct={s['ct_status_set']} dudect={s['dudect_status'] or '-'} "
+            f"varlat={s['varlat_candidates']} triage={s['varlat_triage']}"
+        )
 
 
 if __name__ == "__main__":

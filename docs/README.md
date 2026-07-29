@@ -10,6 +10,9 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
 - `corpus_schema.md` — committed corpus CSV schema.
 - `tutorial.md` — quick usage guide.
 - `corpus/` — committed regression/demo corpus artifacts.
+- `ROADMAP_REJECTION_RECOVERY.md` — rejection-review adjudication and the
+  dependency-ordered completion plan, including the KyberSlash and Falcon
+  workstreams.
 
 ## Local-only archive
 

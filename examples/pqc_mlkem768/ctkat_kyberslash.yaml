@@ -4,7 +4,7 @@ project:
   root: .
 
 build:
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 # asm-scan demo only. The harness is never rendered or run — `ctkat asm-scan`

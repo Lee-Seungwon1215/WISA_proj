@@ -8,25 +8,13 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-
-def _fmt(x: Optional[float], digits: int = 3) -> str:
-    """CSV-safe float formatting: None and non-finite values become empty so
-    pandas/R don't have to special-case the literal strings 'None' / 'inf' /
-    'nan'. The accompanying `status` column already carries the information
-    that a measurement blew up (it'll be FAIL whenever t_score is infinite).
-
-    `None` is accepted because diagnostic fields (e.g. cropping cutoff when
-    cropping was disabled via --no-crop) can be absent."""
-    if x is None or not math.isfinite(x):
-        return ""
-    return f"{x:.{digits}f}"
-
 import typer
 import yaml
 from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from . import __version__
 from .asm_scan import (
     DEFAULT_OPT_LEVELS,
     AsmScanError,
@@ -47,25 +35,24 @@ from .config import (
 )
 from .coverage_check import check_secret_region_coverage
 from .ct_matrix import (
+    HarnessInputs,
     expand_combos,
     preprocessor_cflags,
     scan_ct_matrix,
     write_ct_matrix_csv,
     write_ct_matrix_json,
-    HarnessInputs,
 )
 from .ct_runner import MAX_VALGRIND_LOG_BYTES, classify_valgrind_run
 from .dudect_runner import TimingSamples, run_timing_harness
 from .harness_generator import (
     CompilerNotFoundError,
     HarnessGenerationError,
+    _atomic_write_text,
     generate_and_compile,
     render_harness,
-    _atomic_write_text,
 )
 from .header_parser import (
     discover_headers,
-    parse_header_file,
     parse_header_file_with_stats,
 )
 from .qemu_detect import detect_qemu_emulation
@@ -91,9 +78,40 @@ from .verdict_class import (
     summarize,
 )
 
-
 app = typer.Typer(help="CT-KAT: KAT + Valgrind based constant-time check framework")
 console = Console()
+
+
+def _fmt(x: Optional[float], digits: int = 3) -> str:
+    """CSV-safe float formatting: None and non-finite values become empty so
+    pandas/R don't have to special-case the literal strings 'None' / 'inf' /
+    'nan'. The accompanying `status` column already carries the information
+    that a measurement blew up (it'll be FAIL whenever t_score is infinite).
+
+    `None` is accepted because diagnostic fields (e.g. cropping cutoff when
+    cropping was disabled via --no-crop) can be absent."""
+    if x is None or not math.isfinite(x):
+        return ""
+    return f"{x:.{digits}f}"
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the installed CT-KAT version and exit.",
+    ),
+) -> None:
+    """CT-KAT command-line entry point."""
 
 
 def _resolve(base: Path, p: Path) -> Path:
@@ -114,7 +132,7 @@ def _load_config_or_exit(config: Path) -> CtkatConfig:
     ValidationError) into one clean exit 2.
     """
     try:
-        return load_config(config)
+        cfg = load_config(config)
     except FileNotFoundError:
         console.print(
             f"[bold red][CTKAT] config file not found:[/] {config}. "
@@ -122,10 +140,7 @@ def _load_config_or_exit(config: Path) -> CtkatConfig:
         )
         raise typer.Exit(2)
     except (IsADirectoryError, PermissionError, NotADirectoryError) as e:
-        console.print(
-            f"[bold red][CTKAT] config file not readable:[/] {config} — {e}. "
-            "(exit 2)"
-        )
+        console.print(f"[bold red][CTKAT] config file not readable:[/] {config} — {e}. (exit 2)")
         raise typer.Exit(2)
     except yaml.YAMLError as e:
         console.print(
@@ -139,6 +154,25 @@ def _load_config_or_exit(config: Path) -> CtkatConfig:
             "Fix the offending field(s). (exit 2)"
         )
         raise typer.Exit(2)
+    shell_steps = []
+    if cfg.build.command is not None:
+        shell_steps.append(("build", cfg.build.allow_shell))
+    if cfg.kat is not None and cfg.kat.command is not None:
+        shell_steps.append(("kat", cfg.kat.allow_shell))
+    for step, opted_in in shell_steps:
+        if opted_in is True:
+            console.print(
+                f"[bold yellow][CTKAT] shell enabled:[/] {step}.command will "
+                "run through the system shell because allow_shell=true."
+            )
+        else:
+            console.print(
+                f"[bold yellow][CTKAT] LEGACY SHELL CONFIG:[/] {step}.command "
+                "runs through the system shell. Migrate to argv, or add "
+                "allow_shell: true after reviewing the command. Legacy "
+                "implicit shell execution will be rejected in 0.3."
+            )
+    return cfg
 
 
 def _print_cflags_banner(cfg: CtkatConfig) -> None:
@@ -182,8 +216,10 @@ def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
     console.print(f"[bold cyan]==> Build[/]: {desc}")
     workdir = _resolve(cfg_dir, cfg.build.workdir)
     r = run_step(
-        command=cfg.build.command, argv=cfg.build.argv,
-        workdir=workdir, timeout=cfg.build.timeout,
+        command=cfg.build.command,
+        argv=cfg.build.argv,
+        workdir=workdir,
+        timeout=cfg.build.timeout,
     )
     if not r.ok:
         console.print("[bold red][CTKAT] Build: FAIL[/]")
@@ -193,8 +229,7 @@ def _do_build(cfg: CtkatConfig, cfg_dir: Path) -> bool:
             console.print(r.stderr)
         return False
     if cfg.build.expected_artifacts:
-        missing = [p for p in cfg.build.expected_artifacts
-                   if not _resolve(workdir, p).exists()]
+        missing = [p for p in cfg.build.expected_artifacts if not _resolve(workdir, p).exists()]
         if missing:
             console.print(
                 "[bold red][CTKAT] Build: FAIL[/] — expected_artifacts "
@@ -235,8 +270,10 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
     console.print(f"[bold cyan]==> KAT[/]: {desc}")
     workdir = _resolve(cfg_dir, cfg.kat.workdir)
     r = run_step(
-        command=cfg.kat.command, argv=cfg.kat.argv,
-        workdir=workdir, timeout=cfg.kat.timeout,
+        command=cfg.kat.command,
+        argv=cfg.kat.argv,
+        workdir=workdir,
+        timeout=cfg.kat.timeout,
     )
     if r.stdout:
         console.print(r.stdout)
@@ -291,8 +328,7 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
             )
             return False, count
         console.print(
-            f"[green][CTKAT] KAT: PASS[/] ({count} tests, expected >= "
-            f"{cfg.kat.expected_min})"
+            f"[green][CTKAT] KAT: PASS[/] ({count} tests, expected >= {cfg.kat.expected_min})"
         )
         return True, count
     console.print(
@@ -357,16 +393,18 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
         return paths
 
     for h in auto_harnesses:
-        console.print(
-            f"[bold cyan]==> Generate[/]: harness=[bold]{h.name}[/] template={h.template}"
-        )
+        template = h.template
+        if template is None:
+            # Kept fail-closed even though auto_harnesses filters this case.
+            raise ValueError(f"auto harness {h.name!r} has no template")
+        console.print(f"[bold cyan]==> Generate[/]: harness=[bold]{h.name}[/] template={template}")
         include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
         sources = [_resolve(cfg_dir, s) for s in h.sources]
         cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
         try:
             result = generate_and_compile(
                 name=h.name,
-                template=h.template,
+                template=template,
                 context=_template_context(h, cfg.ct.seed),
                 output_dir=generated_dir,
                 sources=sources,
@@ -379,7 +417,9 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
             # FN-5(exit-code): a missing/non-exec compiler is a toolchain error
             # → exit 2, matching asm-scan / ct-matrix, not exit 1 (real compile
             # failure) below.
-            console.print(f"[bold red][CTKAT] Harness generation FAIL ({h.name})[/] — toolchain error")
+            console.print(
+                f"[bold red][CTKAT] Harness generation FAIL ({h.name})[/] — toolchain error"
+            )
             console.print(str(e))
             raise typer.Exit(2)
         except HarnessGenerationError as e:
@@ -387,8 +427,7 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
             console.print(str(e))
             raise typer.Exit(1)
         console.print(
-            f"   [dim]source: {result.source_path}[/]\n"
-            f"   [dim]binary: {result.binary_path}[/]"
+            f"   [dim]source: {result.source_path}[/]\n   [dim]binary: {result.binary_path}[/]"
         )
         paths[h.name] = result.binary_path
 
@@ -397,11 +436,7 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
         # user actually specified secret_regions (otherwise full-sk taint is
         # applied and there's nothing to verify). kem/sign templates only —
         # generic has no canonical "sk" notion.
-        if (
-            h.template in ("kem", "sign")
-            and h.secret_regions
-            and h.header is not None
-        ):
+        if h.template in ("kem", "sign") and h.secret_regions and h.header is not None:
             check_secret_region_coverage(
                 harness_name=h.name,
                 header=h.header,
@@ -469,17 +504,13 @@ def _do_ct(
     # is needed to structurally exercise FO/implicit rejection under Valgrind.
     kem_ct = [h for h in cfg.ct.harnesses if h.template == "kem"]
     if kem_ct:
-        valid_structural = [
-            h.name for h in kem_ct if h.kem_decapsulation == "valid"
-        ]
-        invalid_structural = [
-            h.name for h in kem_ct if h.kem_decapsulation == "invalid"
-        ]
+        valid_structural = [h.name for h in kem_ct if h.kem_decapsulation == "valid"]
+        invalid_structural = [h.name for h in kem_ct if h.kem_decapsulation == "invalid"]
         if invalid_structural:
             valid_tail = (
                 f" Valid-ct normal-path harness(es): {', '.join(valid_structural)}."
-                if valid_structural else
-                " Add a valid-ct harness too if normal-path structural coverage is needed."
+                if valid_structural
+                else " Add a valid-ct harness too if normal-path structural coverage is needed."
             )
             console.print(
                 "[dim][CTKAT] note:[/dim] KEM structural CT includes invalid-ct "
@@ -489,15 +520,20 @@ def _do_ct(
             )
         else:
             fo_harnesses = [
-                h.name for h in (cfg.dudect.harnesses if cfg.dudect is not None else [])
+                h.name
+                for h in (cfg.dudect.harnesses if cfg.dudect is not None else [])
                 if getattr(h, "leak_target", None) == "fo"
             ]
             if fo_harnesses:
-                tail = (f"that path is timing-covered by your dudect leak_target=fo "
-                        f"harness(es): {', '.join(fo_harnesses)}.")
+                tail = (
+                    f"that path is timing-covered by your dudect leak_target=fo "
+                    f"harness(es): {', '.join(fo_harnesses)}."
+                )
             else:
-                tail = ("that path is NOT covered by this run — add a dudect harness "
-                        "with [bold]leak_target: fo[/] (see examples/pqc_mlkem768).")
+                tail = (
+                    "that path is NOT covered by this run — add a dudect harness "
+                    "with [bold]leak_target: fo[/] (see examples/pqc_mlkem768)."
+                )
             console.print(
                 "[dim][CTKAT] note:[/dim] KEM structural CT covers the valid-ct "
                 f"(normal) decapsulation path only; the implicit-rejection / FO "
@@ -524,16 +560,15 @@ def _do_ct(
             if h.binary is None:
                 # Should be caught by HarnessConfig._check_mode validator,
                 # but defend explicitly — `python -O` strips asserts.
-                raise ValueError(
-                    f"harness {h.name!r}: neither `binary` nor `template` set"
-                )
+                raise ValueError(f"harness {h.name!r}: neither `binary` nor `template` set")
             binary = _resolve(cfg_dir, h.binary)
         log_path = out_dir / f"valgrind_{h.name}.log"
-        console.print(
-            f"[bold cyan]==> Valgrind[/]: harness=[bold]{h.name}[/] bin={binary}"
-        )
+        console.print(f"[bold cyan]==> Valgrind[/]: harness=[bold]{h.name}[/] bin={binary}")
         result = run_valgrind(
-            binary, log_path, cfg.ct.valgrind_flags, ct_cwd,
+            binary,
+            log_path,
+            cfg.ct.valgrind_flags,
+            ct_cwd,
             timeout=cfg.ct.valgrind_timeout,
         )
         # F2: expected Valgrind exit codes are 0 (clean) and 99 (findings, via
@@ -542,15 +577,17 @@ def _do_ct(
         # rc/log/parse classification lives in ct_runner so the ct-matrix sweep
         # maps identically (T21: utf-8+replace decoding is inside the parser).
         outcome = classify_valgrind_run(
-            result, log_path, lookup_patterns=cfg.ct.lookup_function_patterns,
+            result,
+            log_path,
+            lookup_patterns=cfg.ct.lookup_function_patterns,
         )
         if outcome.status == "ERROR":
-            tail = (result.stderr or "").strip().splitlines()[-3:]
+            stderr_tail = (result.stderr or "").strip().splitlines()[-3:]
             console.print(
                 f"[bold red][CTKAT] ct: ERROR[/] — {outcome.error} on harness "
                 f"[bold]{h.name}[/]. Analysis incomplete; verdict will be "
                 f"INCONCLUSIVE. (F2)\n"
-                f"[dim]valgrind stderr tail: {tail or '(empty)'}[/]"
+                f"[dim]valgrind stderr tail: {stderr_tail or '(empty)'}[/]"
             )
             results.append((h.name, "ERROR", []))
             continue
@@ -573,15 +610,12 @@ def _do_ct(
                 # .strip() tolerates a custom pattern whose group incidentally
                 # captures surrounding whitespace (no-op for the default `\S+`);
                 # skip matches where the optional group didn't participate.
-                names = [
-                    m.group(1).strip()
-                    for m in pat.finditer(stdout)
-                    if m.group(1) is not None
-                ]
+                names = [m.group(1).strip() for m in pat.finditer(stdout) if m.group(1) is not None]
                 ok = h.name in names
                 why = (
                     f"emitted sentinel(s) naming {names!r}, not {h.name!r}"
-                    if names else "did not emit the sentinel"
+                    if names
+                    else "did not emit the sentinel"
                 )
             else:
                 # Group-less custom pattern: the user opted out of name
@@ -647,9 +681,7 @@ def _emit_report(
             table.add_column(col)
         for r in rows:
             loc = f"{r['file']}:{r['line']}" if r["file"] else ""
-            table.add_row(
-                r["harness"], r["function"], loc, r["severity"], r["type"]
-            )
+            table.add_row(r["harness"], r["function"], loc, r["severity"], r["type"])
         console.print(table)
 
     console.print(f"[dim]CSV : {csv_path}[/]")
@@ -677,28 +709,34 @@ def _dudect_context(
         "clock": effective_clock,
     }
     if h.template == "kem":
-        base.update({
-            "header": h.header,
-            "prefix": h.prefix,
-            "leak_target": h.leak_target,
-        })
+        base.update(
+            {
+                "header": h.header,
+                "prefix": h.prefix,
+                "leak_target": h.leak_target,
+            }
+        )
     elif h.template == "sign":
         # The sign timing template fixes the input axis as fixed-sk vs
         # fresh-sk (analogous to the kem sk-leak mode), so there is no
         # leak_target to thread through here. Message length is baked via a
         # CTKAT_SIGN_MSG_LEN #ifndef default in the template (matching the
         # structural harness_sign.c.j2), so it needs no context field either.
-        base.update({
-            "header": h.header,
-            "prefix": h.prefix,
-        })
+        base.update(
+            {
+                "header": h.header,
+                "prefix": h.prefix,
+            }
+        )
     else:  # generic
-        base.update({
-            "function": h.function,
-            "args": list(h.args),
-            "return_type": h.return_type,
-            "buffers": [b.model_dump() for b in h.buffers],
-        })
+        base.update(
+            {
+                "function": h.function,
+                "args": list(h.args),
+                "return_type": h.return_type,
+                "buffers": [b.model_dump() for b in h.buffers],
+            }
+        )
     return base
 
 
@@ -709,9 +747,14 @@ def _error_welch() -> WelchResult:
     → Verdict.INCONCLUSIVE so verdict CSV never silently downgrades a
     broken run to CLEAN. Used by Bundle E-1 (T6) and Bundle F (S4)."""
     return WelchResult(
-        n0=0, n1=0,
-        mean0=0.0, mean1=0.0, var0=0.0, var1=0.0,
-        t_score=0.0, abs_t_score=0.0,
+        n0=0,
+        n1=0,
+        mean0=0.0,
+        mean1=0.0,
+        var0=0.0,
+        var1=0.0,
+        t_score=0.0,
+        abs_t_score=0.0,
         status="ERROR",
     )
 
@@ -741,16 +784,31 @@ def _emit_dudect_report(
         # Bundle B (cropping), 18-20 added in Bundle F (S1 raw-count
         # bookkeeping). All new columns go at the END so awk-by-position
         # consumers keep working.
-        w.writerow([
-            "project", "harness",
-            "n0", "n1",
-            "mean0", "mean1", "var0", "var1",
-            "t_score", "abs_t_score", "status",
-            "batch_t_mean", "batch_t_max_abs", "batches",
-            "cropped_at", "t_score_uncropped", "abs_t_score_uncropped",
-            "raw_n_total", "dropped_zero_n0", "dropped_zero_n1",
-            "cohens_d",
-        ])
+        w.writerow(
+            [
+                "project",
+                "harness",
+                "n0",
+                "n1",
+                "mean0",
+                "mean1",
+                "var0",
+                "var1",
+                "t_score",
+                "abs_t_score",
+                "status",
+                "batch_t_mean",
+                "batch_t_max_abs",
+                "batches",
+                "cropped_at",
+                "t_score_uncropped",
+                "abs_t_score_uncropped",
+                "raw_n_total",
+                "dropped_zero_n0",
+                "dropped_zero_n1",
+                "cohens_d",
+            ]
+        )
         for harness_name, samples, r, batches in results:
             # Empty string when no batches — matches _print_dudect_summary's
             # on-screen "-" semantics and keeps pandas/R from reading the
@@ -761,27 +819,38 @@ def _emit_dudect_report(
             else:
                 batch_mean_str = ""
                 batch_max_str = ""
-            w.writerow([
-                project, harness_name,
-                r.n0, r.n1,
-                _fmt(r.mean0), _fmt(r.mean1),
-                _fmt(r.var0), _fmt(r.var1),
-                _fmt(r.t_score), _fmt(r.abs_t_score), r.status,
-                batch_mean_str, batch_max_str, len(batches),
-                _fmt(r.cropped_at), _fmt(r.t_score_uncropped),
-                _fmt(r.abs_t_score_uncropped),
-                # S1: raw bookkeeping straight from the parser. ERROR-status
-                # rows (T6/S4) have a default-constructed TimingSamples so
-                # these columns are all 0 — that's the correct semantic
-                # ("the run didn't produce any samples").
-                samples.raw_n_total,
-                samples.dropped_zero_n0,
-                samples.dropped_zero_n1,
-                # S3: standardized effect size. _fmt handles inf/NaN by
-                # emitting empty string — matches what we do with t_score
-                # so pandas/R get a consistent reading of "blew up".
-                _fmt(r.cohens_d),
-            ])
+            w.writerow(
+                [
+                    project,
+                    harness_name,
+                    r.n0,
+                    r.n1,
+                    _fmt(r.mean0),
+                    _fmt(r.mean1),
+                    _fmt(r.var0),
+                    _fmt(r.var1),
+                    _fmt(r.t_score),
+                    _fmt(r.abs_t_score),
+                    r.status,
+                    batch_mean_str,
+                    batch_max_str,
+                    len(batches),
+                    _fmt(r.cropped_at),
+                    _fmt(r.t_score_uncropped),
+                    _fmt(r.abs_t_score_uncropped),
+                    # S1: raw bookkeeping straight from the parser. ERROR-status
+                    # rows (T6/S4) have a default-constructed TimingSamples so
+                    # these columns are all 0 — that's the correct semantic
+                    # ("the run didn't produce any samples").
+                    samples.raw_n_total,
+                    samples.dropped_zero_n0,
+                    samples.dropped_zero_n1,
+                    # S3: standardized effect size. _fmt handles inf/NaN by
+                    # emitting empty string — matches what we do with t_score
+                    # so pandas/R get a consistent reading of "blew up".
+                    _fmt(r.cohens_d),
+                ]
+            )
     return raw_path, summary_path
 
 
@@ -830,14 +899,9 @@ def _do_dudect(
     # without this Python would log `seed = 0x0` while the binary ran with
     # 0xC0FFEE. Astronomically unlikely, but the layers must not disagree
     # (same invariant F16 enforced for yaml seed).
-    effective_seed = (
-        dud.seed if dud.seed is not None else (secrets.randbits(63) or 0xC0FFEE)
-    )
+    effective_seed = dud.seed if dud.seed is not None else (secrets.randbits(63) or 0xC0FFEE)
     console.print(f"[dim]dudect seed = 0x{effective_seed:X}[/]")
-    clock_display = (
-        f"{dud.clock}→{effective_clock}" if dud.clock == "auto"
-        else effective_clock
-    )
+    clock_display = f"{dud.clock}→{effective_clock}" if dud.clock == "auto" else effective_clock
     console.print(
         f"[dim]measurements={dud.measurements} warmup={dud.warmup} "
         f"batches={dud.batches} clock={clock_display} "
@@ -883,9 +947,7 @@ def _do_dudect(
 
     results: List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]] = []
     for h in dud.harnesses:
-        console.print(
-            f"[bold cyan]==> Generate timing harness[/]: [bold]{h.name}[/]"
-        )
+        console.print(f"[bold cyan]==> Generate timing harness[/]: [bold]{h.name}[/]")
         try:
             gen = generate_and_compile_timing(
                 name=h.name,
@@ -902,7 +964,9 @@ def _do_dudect(
         except CompilerNotFoundError as e:
             # FN-5(exit-code): toolchain error → exit 2, consistent with the ct
             # path and the asm-scan / ct-matrix preflights.
-            console.print(f"[bold red][CTKAT] Timing harness gen FAIL ({h.name})[/] — toolchain error")
+            console.print(
+                f"[bold red][CTKAT] Timing harness gen FAIL ({h.name})[/] — toolchain error"
+            )
             console.print(str(e))
             raise typer.Exit(2)
         except HarnessGenerationError as e:
@@ -913,8 +977,7 @@ def _do_dudect(
         console.print(f"   [dim]binary: {gen.binary_path}[/]")
 
         console.print(
-            f"[bold cyan]==> Run timing harness[/]: [bold]{h.name}[/] "
-            f"(this may take a while)"
+            f"[bold cyan]==> Run timing harness[/]: [bold]{h.name}[/] (this may take a while)"
         )
         # Bundle E-1 (T6): wrap every uncaught failure mode of the timing
         # harness (timeout, crash rc!=0, empty stdout, malformed CSV header)
@@ -927,9 +990,7 @@ def _do_dudect(
         # Bundle F (S4) will preserve already-completed harnesses' data the
         # same way; the `continue` here is the foundation.
         try:
-            samples = run_timing_harness(
-                gen.binary_path, workdir, timeout=dud.timeout
-            )
+            samples = run_timing_harness(gen.binary_path, workdir, timeout=dud.timeout)
         except subprocess.TimeoutExpired:
             console.print(
                 f"[bold red][CTKAT] dudect: ERROR[/] — harness "
@@ -940,8 +1001,7 @@ def _do_dudect(
             continue
         except RuntimeError as e:
             console.print(
-                f"[bold red][CTKAT] dudect: ERROR[/] — harness "
-                f"[bold]{h.name}[/] crashed: {e} (T6)"
+                f"[bold red][CTKAT] dudect: ERROR[/] — harness [bold]{h.name}[/] crashed: {e} (T6)"
             )
             results.append((h.name, TimingSamples(), _error_welch(), []))
             continue
@@ -968,7 +1028,8 @@ def _do_dudect(
             # Cropping path: the only place the bonferroni-scaled thresholds
             # (crop_warn_t/crop_fail_t) apply — see F20/F23 note above.
             overall = welch_with_cropping(
-                c0, c1,
+                c0,
+                c1,
                 warning_threshold=crop_warn_t,
                 fail_threshold=crop_fail_t,
             )
@@ -976,18 +1037,15 @@ def _do_dudect(
             # Uncropped single test: unscaled thresholds (F20).
             overall = welch_t_test(c0, c1, warn_t, fail_t)
         batches = batch_t_scores(
-            samples.classes, samples.cycles,
+            samples.classes,
+            samples.cycles,
             batches=dud.batches,
             warning_threshold=warn_t,
             fail_threshold=fail_t,
         )
         results.append((h.name, samples, overall, batches))
 
-        crop_tag = (
-            f" crop@{overall.cropped_at:.2f}"
-            if overall.cropped_at is not None
-            else ""
-        )
+        crop_tag = f" crop@{overall.cropped_at:.2f}" if overall.cropped_at is not None else ""
         console.print(
             f"   n0={overall.n0} n1={overall.n1} "
             f"mean0={overall.mean0:.1f} mean1={overall.mean1:.1f} "
@@ -1005,14 +1063,19 @@ def _print_dudect_summary(
         return
     table = Table(title="dudect timing summary")
     for col in (
-        "harness", "n0", "n1", "mean0", "mean1", "|t|", "crop@",
-        "status", "batch max|t|",
+        "harness",
+        "n0",
+        "n1",
+        "mean0",
+        "mean1",
+        "|t|",
+        "crop@",
+        "status",
+        "batch max|t|",
     ):
         table.add_column(col)
     for name, _, r, batches in results:
-        batch_max = (
-            f"{max(b.abs_t_score for b in batches):.2f}" if batches else "-"
-        )
+        batch_max = f"{max(b.abs_t_score for b in batches):.2f}" if batches else "-"
         style = {
             "PASS": "green",
             "WARNING": "yellow",
@@ -1020,9 +1083,7 @@ def _print_dudect_summary(
             "ERROR": "bold magenta",
         }.get(r.status, "")
         status_cell = f"[{style}]{r.status}[/]" if style else r.status
-        crop_cell = (
-            f"{r.cropped_at:.2f}" if r.cropped_at is not None else "-"
-        )
+        crop_cell = f"{r.cropped_at:.2f}" if r.cropped_at is not None else "-"
         # T22: an ERROR row means measurement never completed — the
         # underlying WelchResult is _error_welch's all-zeros sentinel.
         # Rendering `n0=0 mean=0.00 |t|=0.00` makes the row visually
@@ -1031,13 +1092,23 @@ def _print_dudect_summary(
         # and let the magenta status cell carry the signal.
         if r.status == "ERROR":
             table.add_row(
-                name, "-", "-", "-", "-", "-",
-                crop_cell, status_cell, "-",
+                name,
+                "-",
+                "-",
+                "-",
+                "-",
+                "-",
+                crop_cell,
+                status_cell,
+                "-",
             )
             continue
         table.add_row(
-            name, str(r.n0), str(r.n1),
-            f"{r.mean0:.1f}", f"{r.mean1:.1f}",
+            name,
+            str(r.n0),
+            str(r.n1),
+            f"{r.mean0:.1f}",
+            f"{r.mean1:.1f}",
             f"{r.abs_t_score:.2f}",
             crop_cell,
             status_cell,
@@ -1053,14 +1124,16 @@ def dudect(
         None, "--measurements", help="Override yaml measurement count."
     ),
     seed: Optional[str] = typer.Option(
-        None, "--seed",
+        None,
+        "--seed",
         help="Override yaml seed. Integer (decimal or 0x-prefixed hex) or 'random'.",
     ),
     crop: bool = typer.Option(
-        True, "--crop/--no-crop",
+        True,
+        "--crop/--no-crop",
         help="Apply dudect percentile cropping (default on). Use --no-crop "
-             "to report raw uncropped t-scores, e.g. for comparison against "
-             "external dudect runs.",
+        "to report raw uncropped t-scores, e.g. for comparison against "
+        "external dudect runs.",
     ),
 ):
     """Run only the dudect-style statistical timing check."""
@@ -1079,7 +1152,7 @@ def dudect(
         )
         raise typer.Exit(2)
 
-    updates = {}
+    updates: Dict[str, object] = {}
     if measurements is not None:
         updates["measurements"] = measurements
     if seed is not None:
@@ -1205,14 +1278,16 @@ def _compute_verdicts(
         else:
             d_status = dud_pair[0].status
             abs_t = dud_pair[0].abs_t_score
-        verdicts.append(HarnessVerdict(
-            name=name,
-            valgrind_status=v_status,
-            dudect_status=d_status,
-            verdict=combine(v_status, d_status, kat_status=kat_status),
-            valgrind_finding_count=(len(findings) if findings else 0),
-            dudect_abs_t=abs_t,
-        ))
+        verdicts.append(
+            HarnessVerdict(
+                name=name,
+                valgrind_status=v_status,
+                dudect_status=d_status,
+                verdict=combine(v_status, d_status, kat_status=kat_status),
+                valgrind_finding_count=(len(findings) if findings else 0),
+                dudect_abs_t=abs_t,
+            )
+        )
     return verdicts
 
 
@@ -1237,22 +1312,33 @@ def _emit_verdicts(
     kat_count_str = "" if kat_count is None else str(kat_count)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow([
-            "project", "harness",
-            "valgrind_status", "valgrind_findings",
-            "dudect_status", "dudect_abs_t",
-            "verdict",
-            "kat_status", "kat_count",
-        ])
+        w.writerow(
+            [
+                "project",
+                "harness",
+                "valgrind_status",
+                "valgrind_findings",
+                "dudect_status",
+                "dudect_abs_t",
+                "verdict",
+                "kat_status",
+                "kat_count",
+            ]
+        )
         for v in verdicts:
-            w.writerow([
-                project, v.name,
-                v.valgrind_status, v.valgrind_finding_count,
-                v.dudect_status,
-                _fmt(v.dudect_abs_t) if v.dudect_abs_t is not None else "",
-                v.verdict.value,
-                kat_status, kat_count_str,
-            ])
+            w.writerow(
+                [
+                    project,
+                    v.name,
+                    v.valgrind_status,
+                    v.valgrind_finding_count,
+                    v.dudect_status,
+                    _fmt(v.dudect_abs_t) if v.dudect_abs_t is not None else "",
+                    v.verdict.value,
+                    kat_status,
+                    kat_count_str,
+                ]
+            )
     return path
 
 
@@ -1275,9 +1361,10 @@ def run(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
     continue_on_kat_fail: bool = typer.Option(False, "--continue-on-kat-fail"),
     crop: bool = typer.Option(
-        True, "--crop/--no-crop",
+        True,
+        "--crop/--no-crop",
         help="Apply dudect percentile cropping (default on). Use --no-crop "
-             "for raw uncropped t-scores.",
+        "for raw uncropped t-scores.",
     ),
 ):
     """Run the full pipeline: build -> kat -> ct -> dudect -> report."""
@@ -1325,8 +1412,7 @@ def run(
             console.print("[bold red][CTKAT] Constant-Time Check: FAIL[/]")
         elif any_ct_error:
             console.print(
-                "[bold yellow][CTKAT] Constant-Time Check: INCOMPLETE[/] "
-                "(see ERROR lines above)"
+                "[bold yellow][CTKAT] Constant-Time Check: INCOMPLETE[/] (see ERROR lines above)"
             )
         else:
             console.print("[bold green][CTKAT] Constant-Time Check: PASS[/]")
@@ -1347,7 +1433,11 @@ def run(
             raise typer.Exit(2)
         out_dir = _resolve(cfg_dir, cfg.report.output_dir)
         dud_results = _do_dudect(
-            cfg.dudect, cfg_dir, cfg.project.name, out_dir, crop=crop,
+            cfg.dudect,
+            cfg_dir,
+            cfg.project.name,
+            out_dir,
+            crop=crop,
         )
         _print_dudect_summary(dud_results)
         any_dudect_fail = any(r.status == "FAIL" for _, _, r, _ in dud_results)
@@ -1361,8 +1451,11 @@ def run(
             _print_verdicts(verdicts)
             out_dir = _resolve(cfg_dir, cfg.report.output_dir)
             verdict_csv = _emit_verdicts(
-                out_dir, cfg.project.name, verdicts,
-                kat_status=kat_status, kat_count=kat_count,
+                out_dir,
+                cfg.project.name,
+                verdicts,
+                kat_status=kat_status,
+                kat_count=kat_count,
             )
             console.print(f"[dim]Verdict CSV: {verdict_csv}[/]")
             any_inconclusive = any(v.verdict == Verdict.INCONCLUSIVE for v in verdicts)
@@ -1388,14 +1481,35 @@ SCREEN_SUMMARY_FIELDS = [
     # A true superset-minus-provenance of the corpus SUMMARY_FIELDS, so a future
     # adapter can promote screen_summary.csv into the curated corpus (just add
     # family/target/cc_version/arch/commit).
-    "harness", "ct_flips", "ct_status_set", "ct_finding_funcs",
-    "varlat_candidates", "varlat_triage", "dudect_status", "dudect_abs_t",
-    "dudect_measurements", "dudect_leak_target", "dudect_seed", "dudect_threshold",
-    "verdict_class", "basis", "notes",
+    "harness",
+    "ct_flips",
+    "ct_status_set",
+    "ct_finding_funcs",
+    "varlat_candidates",
+    "varlat_triage",
+    "dudect_status",
+    "dudect_abs_t",
+    "dudect_measurements",
+    "dudect_leak_target",
+    "dudect_seed",
+    "dudect_threshold",
+    "verdict_class",
+    "basis",
+    "notes",
 ]
 SCREEN_CELLS_FIELDS = [
-    "harness", "combo", "cc", "opt", "cflags", "ct_status", "ct_findings",
-    "ct_finding_funcs", "ct_error", "asm_div_count", "asm_div_funcs", "asm_error",
+    "harness",
+    "combo",
+    "cc",
+    "opt",
+    "cflags",
+    "ct_status",
+    "ct_findings",
+    "ct_finding_funcs",
+    "ct_error",
+    "asm_div_count",
+    "asm_div_funcs",
+    "asm_error",
 ]
 
 
@@ -1435,18 +1549,24 @@ def _run_screen_matrix(cfg, cfg_dir, auto, matrix_cfg, out_dir):
             console.print(f"[bold red][CTKAT] screen: ct-matrix render FAIL ({h.name})[/]\n{e}")
             raise typer.Exit(1)
         _atomic_write_text(source_path, code)
-        harness_inputs.append(HarnessInputs(
-            name=h.name, source_path=source_path,
-            sources=sources, include_dirs=include_dirs,
-            # carry preprocessor defines into every cell or the matrix builds a
-            # different program than ct (and the cell join becomes meaningless).
-            extra_cflags=preprocessor_cflags(base_cflags),
-        ))
+        harness_inputs.append(
+            HarnessInputs(
+                name=h.name,
+                source_path=source_path,
+                sources=sources,
+                include_dirs=include_dirs,
+                # carry preprocessor defines into every cell or the matrix builds a
+                # different program than ct (and the cell join becomes meaningless).
+                extra_cflags=preprocessor_cflags(base_cflags),
+            )
+        )
     console.print(
         f"[bold cyan]==> screen: ct-matrix[/] combos = {', '.join(c.label for c in combos)}"
     )
     rows = scan_ct_matrix(
-        harness_inputs, combos, workdir=ct_cwd,
+        harness_inputs,
+        combos,
+        workdir=ct_cwd,
         binaries_dir=generated_dir / "matrix",
         valgrind_flags=cfg.ct.valgrind_flags,
         compile_timeout=cfg.ct.compile_timeout,
@@ -1456,8 +1576,11 @@ def _run_screen_matrix(cfg, cfg_dir, auto, matrix_cfg, out_dir):
     )
     write_ct_matrix_csv(cfg.project.name, rows, out_dir / "ctkat_ct_matrix.csv")
     write_ct_matrix_json(
-        cfg.project.name, rows, out_dir / "ctkat_ct_matrix.json",
-        combos=combos, compilers=list(dict.fromkeys(matrix_cfg.compilers)),
+        cfg.project.name,
+        rows,
+        out_dir / "ctkat_ct_matrix.json",
+        combos=combos,
+        compilers=list(dict.fromkeys(matrix_cfg.compilers)),
     )
     return rows
 
@@ -1487,13 +1610,22 @@ def _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=()):
                 ct_opt = extract_opt_level(base_cflags)
                 harness_opts = tuple(dict.fromkeys((ct_opt, *DEFAULT_OPT_LEVELS, *extra_opts)))
                 scanned.update(harness_opts)
-                cc_cands.extend(scan_harness(
-                    harness=h.name, sources=sources, source_display=source_display,
-                    include_dirs=include_dirs, base_cflags=base_cflags, workdir=ct_cwd,
-                    opt_levels=harness_opts, timeout=cfg.ct.compile_timeout, cc=cc_name,
-                    on_warn=lambda m, _cc=cc_name: console.print(
-                        f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"),
-                ))
+                cc_cands.extend(
+                    scan_harness(
+                        harness=h.name,
+                        sources=sources,
+                        source_display=source_display,
+                        include_dirs=include_dirs,
+                        base_cflags=base_cflags,
+                        workdir=ct_cwd,
+                        opt_levels=harness_opts,
+                        timeout=cfg.ct.compile_timeout,
+                        cc=cc_name,
+                        on_warn=lambda m, _cc=cc_name: console.print(
+                            f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"
+                        ),
+                    )
+                )
         except AsmScanError as e:
             cc_errors.append({"compiler": cc_name, "error": f"disassembly failed: {e}"})
             console.print(
@@ -1505,8 +1637,12 @@ def _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=()):
         scanned_ok.append(cc_name)
     write_varlat_csv(candidates, out_dir / "ctkat_varlat_candidates.csv")
     write_varlat_json(
-        cfg.project.name, candidates, out_dir / "ctkat_varlat_candidates.json",
-        opt_levels=tuple(sorted(scanned)), compilers=tuple(scanned_ok), errors=cc_errors,
+        cfg.project.name,
+        candidates,
+        out_dir / "ctkat_varlat_candidates.json",
+        opt_levels=tuple(sorted(scanned)),
+        compilers=tuple(scanned_ok),
+        errors=cc_errors,
     )
     return candidates, cc_errors
 
@@ -1514,6 +1650,7 @@ def _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=()):
 def _emit_screen_report(out_dir: Path, project: str, summary: list, cells: list):
     """Write screen_summary.{csv,json,md} + screen_cells.csv."""
     import json as _json
+
     out_dir.mkdir(parents=True, exist_ok=True)
     sp = out_dir / "screen_summary.csv"
     with open(sp, "w", newline="", encoding="utf-8") as f:
@@ -1529,12 +1666,18 @@ def _emit_screen_report(out_dir: Path, project: str, summary: list, cells: list)
             w.writerow({k: r.get(k, "") for k in SCREEN_CELLS_FIELDS})
     jp = out_dir / "screen_summary.json"
     with open(jp, "w", encoding="utf-8") as f:
-        _json.dump({"project": project, "kind": "screen_summary",
-                    "summary": summary, "cells": cells}, f, indent=2)
+        _json.dump(
+            {"project": project, "kind": "screen_summary", "summary": summary, "cells": cells},
+            f,
+            indent=2,
+        )
     mp = out_dir / "screen_summary.md"
-    md = [f"# CT-KAT screen — {project}", "",
-          "| harness | ct | varlat (triage) | dudect | verdict_class | basis | notes |",
-          "|---|---|---|---|---|---|---|"]
+    md = [
+        f"# CT-KAT screen — {project}",
+        "",
+        "| harness | ct | varlat (triage) | dudect | verdict_class | basis | notes |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for r in summary:
         md.append(
             f"| {r['harness']} | {r['ct_status_set']} | "
@@ -1551,14 +1694,18 @@ def _emit_screen_report(out_dir: Path, project: str, summary: list, cells: list)
 def screen(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
     triage: Optional[Path] = typer.Option(
-        None, "--triage", help="Path to triage.yaml (human-judgment layer)."),
+        None, "--triage", help="Path to triage.yaml (human-judgment layer)."
+    ),
     family: Optional[str] = typer.Option(
-        None, "--family",
+        None,
+        "--family",
         help="Registry family for accepted-variable-time (e.g. ML-DSA). "
-             "Default = project name; if it doesn't match a registry family, a "
-             "ct FAIL stays needs-analysis (default-deny)."),
+        "Default = project name; if it doesn't match a registry family, a "
+        "ct FAIL stays needs-analysis (default-deny).",
+    ),
     asm_cc: Optional[List[str]] = typer.Option(
-        None, "--asm-cc", help="Compiler(s) for asm-scan. Default = matrix compilers."),
+        None, "--asm-cc", help="Compiler(s) for asm-scan. Default = matrix compilers."
+    ),
     continue_on_kat_fail: bool = typer.Option(False, "--continue-on-kat-fail"),
     crop: bool = typer.Option(True, "--crop/--no-crop"),
 ):
@@ -1606,8 +1753,7 @@ def screen(
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
     matrix_cfg = cfg.matrix or MatrixConfig()
     auto = [h for h in cfg.ct.harnesses if h.template is not None and h.sources]
-    asm_ccs = (list(dict.fromkeys(asm_cc)) if asm_cc
-               else list(dict.fromkeys(matrix_cfg.compilers)))
+    asm_ccs = list(dict.fromkeys(asm_cc)) if asm_cc else list(dict.fromkeys(matrix_cfg.compilers))
 
     # Fail-closed toolchain preflight for the stages that will actually run.
     needed = ["valgrind", *matrix_cfg.compilers]
@@ -1648,7 +1794,9 @@ def screen(
     matrix_opts = {opt_of(" ".join(fl)) for fl in matrix_cfg.ct_cflags.values()}
     candidates, cc_errors = (
         _run_screen_asmscan(cfg, cfg_dir, auto, asm_ccs, out_dir, extra_opts=matrix_opts)
-        if auto else ([], []))
+        if auto
+        else ([], [])
+    )
     # 6. dudect
     dud_results = []
     if cfg.dudect is not None and cfg.dudect.enabled and cfg.dudect.harnesses:
@@ -1666,15 +1814,23 @@ def screen(
     for r in matrix_rows:
         o = opt_of(" ".join(r.cflags))
         hits = vindex.get((r.harness, r.cc, o), [])
-        cells.append({
-            "target": cfg.project.name, "harness": r.harness, "combo": r.combo,
-            "cc": r.cc, "opt": o, "cflags": " ".join(r.cflags),
-            "ct_status": r.valgrind_status, "ct_findings": str(r.findings),
-            "ct_finding_funcs": r.finding_funcs, "ct_error": r.error,
-            "asm_div_count": str(sum(n for _f, n in hits)),
-            "asm_div_funcs": ";".join(sorted({f for f, _n in hits})),
-            "asm_error": asm_err_by_cc.get(r.cc, ""),
-        })
+        cells.append(
+            {
+                "target": cfg.project.name,
+                "harness": r.harness,
+                "combo": r.combo,
+                "cc": r.cc,
+                "opt": o,
+                "cflags": " ".join(r.cflags),
+                "ct_status": r.valgrind_status,
+                "ct_findings": str(r.findings),
+                "ct_finding_funcs": r.finding_funcs,
+                "ct_error": r.error,
+                "asm_div_count": str(sum(n for _f, n in hits)),
+                "asm_div_funcs": ";".join(sorted({f for f, _n in hits})),
+                "asm_error": asm_err_by_cc.get(r.cc, ""),
+            }
+        )
     # Harnesses ct-matrix didn't cover (manual binaries, or no matrix) get a cell
     # from the plain ct run. A manual binary has NO sources, so asm-scan never ran
     # for it — we genuinely can't claim it division-free. Mark asm_error (a real
@@ -1686,23 +1842,31 @@ def screen(
     for name, status, findings in ct_results:
         if name in template_names and matrix_rows:
             continue
-        funcs = ";".join(sorted({f.primary_frame.function
-                                 for f in findings if f.primary_frame}))
+        funcs = ";".join(sorted({f.primary_frame.function for f in findings if f.primary_frame}))
         is_manual = name not in template_names
-        cells.append({
-            "target": cfg.project.name, "harness": name, "combo": "ct",
-            "cc": "gcc", "opt": ct_opt, "cflags": " ".join(cfg.ct.cflags),
-            "ct_status": status, "ct_findings": str(len(findings)),
-            "ct_finding_funcs": funcs, "ct_error": "",
-            "asm_div_count": "0", "asm_div_funcs": "",
-            "asm_error": ("asm-scan not run (manual binary has no sources)"
-                          if is_manual else ""),
-        })
+        cells.append(
+            {
+                "target": cfg.project.name,
+                "harness": name,
+                "combo": "ct",
+                "cc": "gcc",
+                "opt": ct_opt,
+                "cflags": " ".join(cfg.ct.cflags),
+                "ct_status": status,
+                "ct_findings": str(len(findings)),
+                "ct_finding_funcs": funcs,
+                "ct_error": "",
+                "asm_div_count": "0",
+                "asm_div_funcs": "",
+                "asm_error": (
+                    "asm-scan not run (manual binary has no sources)" if is_manual else ""
+                ),
+            }
+        )
 
     # 8. dudect lookups + classify (shared classifier).
     dud_by = {
-        name: {"status": w.status, "abs_t_score": _fmt(w.abs_t_score),
-               "n0": w.n0, "n1": w.n1}
+        name: {"status": w.status, "abs_t_score": _fmt(w.abs_t_score), "n0": w.n0, "n1": w.n1}
         for name, _samples, w, _batches in dud_results
     }
     dcfg: dict = {}
@@ -1710,12 +1874,19 @@ def screen(
         tw, tf = cfg.dudect.threshold_warning, cfg.dudect.threshold_fail
         for h in cfg.dudect.harnesses:
             dcfg[h.name] = {
-                "leak_target": h.leak_target, "seed": str(cfg.dudect.seed),
-                "threshold": f"{tw}/{tf}", "measurements": str(cfg.dudect.measurements),
+                "leak_target": h.leak_target,
+                "seed": str(cfg.dudect.seed),
+                "threshold": f"{tw}/{tf}",
+                "measurements": str(cfg.dudect.measurements),
             }
     summary = summarize(
-        cells, family=fam, triage=triage_cfg.varlat_map(), dud_by=dud_by, dcfg=dcfg,
-        registry=registry, verdict_override=triage_cfg.verdict_overrides(),
+        cells,
+        family=fam,
+        triage=triage_cfg.varlat_map(),
+        dud_by=dud_by,
+        dcfg=dcfg,
+        registry=registry,
+        verdict_override=triage_cfg.verdict_overrides(),
         note_override=triage_cfg.note_overrides(),
     )
 
@@ -1735,11 +1906,19 @@ def screen(
         # read robust — surface the partial-measurement as a note so it isn't
         # silent. (Gating it would need a classifier change + corpus regen; out of
         # Phase 1 scope.)
-        err_combos = sorted({c["combo"] for c in cells
-                             if c["harness"] == s["harness"] and c["ct_status"] == "ERROR"})
+        err_combos = sorted(
+            {
+                c["combo"]
+                for c in cells
+                if c["harness"] == s["harness"] and c["ct_status"] == "ERROR"
+            }
+        )
         if err_combos:
-            _add_note(s, f"{len(err_combos)} build cell(s) couldn't be measured "
-                         f"(ct ERROR): {', '.join(err_combos)}")
+            _add_note(
+                s,
+                f"{len(err_combos)} build cell(s) couldn't be measured "
+                f"(ct ERROR): {', '.join(err_combos)}",
+            )
 
     # 9. emit + render + exit.
     sp, _jp, _mp = _emit_screen_report(out_dir, cfg.project.name, summary, cells)
@@ -1750,7 +1929,8 @@ def screen(
     for s in summary:
         vc = s["verdict_class"]
         table.add_row(
-            s["harness"], s["ct_status_set"],
+            s["harness"],
+            s["ct_status_set"],
             f"{s['varlat_candidates']} ({s['varlat_triage']})",
             s.get("dudect_status") or "-",
             f"[{_vc_style.get(vc, '')}]{vc}[/]",
@@ -1771,8 +1951,9 @@ def screen(
     # those. (The classifier stays unchanged so the corpus output can't drift.)
     gating = set(VERDICT_CLASSES) - set(CLEAN_CLASSES)
     vc_gated = [s["harness"] for s in summary if s["verdict_class"] in gating]
-    dud_gated = sorted(h for h, dd in dud_by.items()
-                       if dd.get("status") in ("WARNING", "FAIL", "ERROR"))
+    dud_gated = sorted(
+        h for h, dd in dud_by.items() if dd.get("status") in ("WARNING", "FAIL", "ERROR")
+    )
     ct_errored = sorted({name for name, status, _ in ct_results if status == "ERROR"})
     reasons = []
     if vc_gated:
@@ -1785,8 +1966,7 @@ def screen(
         reasons.append("KAT FAIL")
     if reasons:
         console.print(
-            "[bold yellow][CTKAT] screen: NOT cleared (exit 2) — "
-            + "; ".join(reasons) + ".[/]"
+            "[bold yellow][CTKAT] screen: NOT cleared (exit 2) — " + "; ".join(reasons) + ".[/]"
         )
         raise typer.Exit(2)
     console.print(
@@ -1812,8 +1992,7 @@ def ct(
     # R-6: empty harness list = nothing analyzed; don't report a green PASS.
     if not cfg.ct.harnesses:
         console.print(
-            "[bold red][CTKAT] config error:[/] `ct` section has no harnesses "
-            "— nothing to analyze."
+            "[bold red][CTKAT] config error:[/] `ct` section has no harnesses — nothing to analyze."
         )
         raise typer.Exit(2)
     generated = _do_generate(cfg, cfg_dir)
@@ -1824,8 +2003,7 @@ def ct(
         console.print("[bold red][CTKAT] Constant-Time Check: FAIL[/]")
     elif any_ct_error:
         console.print(
-            "[bold yellow][CTKAT] Constant-Time Check: INCOMPLETE[/] "
-            "(see ERROR lines above)"
+            "[bold yellow][CTKAT] Constant-Time Check: INCOMPLETE[/] (see ERROR lines above)"
         )
     else:
         console.print("[bold green][CTKAT] Constant-Time Check: PASS[/]")
@@ -1841,17 +2019,19 @@ def ct(
 def asm_scan(
     config: Path = typer.Option(..., "--config", "-c", help="Path to ctkat.yaml"),
     opt: Optional[List[str]] = typer.Option(
-        None, "--opt",
+        None,
+        "--opt",
         help="Optimization level to scan (repeatable). Default: -O0 -O1 -O2 -O3 -Os. "
-             "The ct stage's own -O level is always added on top.",
+        "The ct stage's own -O level is always added on top.",
     ),
     cc: Optional[List[str]] = typer.Option(
-        None, "--cc",
+        None,
+        "--cc",
         help="Compiler(s) for the scan builds (repeatable: --cc gcc --cc clang). "
-             "Different compilers strength-reduce constant division differently, "
-             "so scanning several widens the leak surface. Default: gcc. A "
-             "requested compiler that is missing is skipped with an ERROR record "
-             "and the scan continues with the rest; if NONE are available, exit 2.",
+        "Different compilers strength-reduce constant division differently, "
+        "so scanning several widens the leak surface. Default: gcc. A "
+        "requested compiler that is missing is skipped with an ERROR record "
+        "and the scan continues with the rest; if NONE are available, exit 2.",
     ),
 ):
     """Warn-only scan for variable-latency instruction *candidates* (integer
@@ -1912,9 +2092,7 @@ def asm_scan(
     requested = list(dict.fromkeys(cc)) if cc else ["gcc"]
     available = [c for c in requested if shutil.which(c) is not None]
     missing_cc = [c for c in requested if shutil.which(c) is None]
-    cc_errors = [
-        {"compiler": c, "error": "compiler not found on PATH"} for c in missing_cc
-    ]
+    cc_errors = [{"compiler": c, "error": "compiler not found on PATH"} for c in missing_cc]
     if not available:
         console.print(
             f"[bold red][CTKAT] asm-scan: requested compiler(s) not found on PATH: "
@@ -1955,21 +2133,23 @@ def asm_scan(
                 ct_opt = extract_opt_level(base_cflags)
                 harness_opts = tuple(dict.fromkeys((ct_opt, *base_opts)))
                 scanned.update(harness_opts)
-                cc_cands.extend(scan_harness(
-                    harness=h.name,
-                    sources=sources,
-                    source_display=source_display,
-                    include_dirs=include_dirs,
-                    base_cflags=base_cflags,
-                    workdir=ct_cwd,
-                    opt_levels=harness_opts,
-                    timeout=cfg.ct.compile_timeout,
-                    cc=cc_name,
-                    # default-arg binds cc_name per iteration (avoid late-binding)
-                    on_warn=lambda m, _cc=cc_name: console.print(
-                        f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"
-                    ),
-                ))
+                cc_cands.extend(
+                    scan_harness(
+                        harness=h.name,
+                        sources=sources,
+                        source_display=source_display,
+                        include_dirs=include_dirs,
+                        base_cflags=base_cflags,
+                        workdir=ct_cwd,
+                        opt_levels=harness_opts,
+                        timeout=cfg.ct.compile_timeout,
+                        cc=cc_name,
+                        # default-arg binds cc_name per iteration (avoid late-binding)
+                        on_warn=lambda m, _cc=cc_name: console.print(
+                            f"[dim][CTKAT] asm-scan note ({_cc}):[/dim] {m}"
+                        ),
+                    )
+                )
         except AsmScanError as e:
             # `--cc` ran but produced no object / objdump couldn't read it (a stub
             # or wrong wrapper that passed the which() preflight). Per the
@@ -2004,7 +2184,9 @@ def asm_scan(
     json_path = out_dir / "ctkat_varlat_candidates.json"
     write_varlat_csv(candidates, csv_path)
     write_varlat_json(
-        cfg.project.name, candidates, json_path,
+        cfg.project.name,
+        candidates,
+        json_path,
         opt_levels=tuple(sorted(scanned)),
         compilers=tuple(scanned_ok),
         errors=cc_errors,
@@ -2014,11 +2196,16 @@ def asm_scan(
         table = Table(title="Variable-latency candidates in harness sources (warn-only)")
         for col in ("compiler", "harness", "source", "function", "hint", "mnem", "opt levels", "n"):
             table.add_column(col)
-        for c in candidates:
+        for candidate in candidates:
             table.add_row(
-                c.compiler, c.harness, c.source_file, c.function,
-                c.triage_hint,
-                ";".join(c.mnemonics), ";".join(c.opt_levels), str(c.count),
+                candidate.compiler,
+                candidate.harness,
+                candidate.source_file,
+                candidate.function,
+                candidate.triage_hint,
+                ";".join(candidate.mnemonics),
+                ";".join(candidate.opt_levels),
+                str(candidate.count),
             )
         console.print(table)
         console.print(
@@ -2117,6 +2304,9 @@ def ct_matrix(
     # compiles that same source under every (cc, cflags) cell.
     harness_inputs: List[HarnessInputs] = []
     for h in auto:
+        template = h.template
+        if template is None:
+            raise ValueError(f"ct-matrix auto harness {h.name!r} has no template")
         include_dirs = [_resolve(cfg_dir, d) for d in h.include_dirs]
         sources = [_resolve(cfg_dir, s) for s in h.sources]
         # The harness's effective cflags carry build-selection flags (e.g.
@@ -2126,23 +2316,28 @@ def ct_matrix(
         base_cflags = h.cflags if h.cflags is not None else cfg.ct.cflags
         source_path = generated_dir / f"harness_{h.name}.c"
         try:
-            code = render_harness(h.template, _template_context(h, cfg.ct.seed))
+            code = render_harness(template, _template_context(h, cfg.ct.seed))
         except HarnessGenerationError as e:
             console.print(f"[bold red][CTKAT] ct-matrix: harness render FAIL ({h.name})[/]\n{e}")
             raise typer.Exit(1)
         _atomic_write_text(source_path, code)
-        harness_inputs.append(HarnessInputs(
-            name=h.name, source_path=source_path,
-            sources=sources, include_dirs=include_dirs,
-            extra_cflags=preprocessor_cflags(base_cflags),
-        ))
+        harness_inputs.append(
+            HarnessInputs(
+                name=h.name,
+                source_path=source_path,
+                sources=sources,
+                include_dirs=include_dirs,
+                extra_cflags=preprocessor_cflags(base_cflags),
+            )
+        )
 
     console.print(
         f"[bold cyan]==> ct-matrix[/]: combos = {', '.join(c.label for c in combos)} "
         "[dim](observational; NOT a verdict gate)[/]"
     )
     rows = scan_ct_matrix(
-        harness_inputs, combos,
+        harness_inputs,
+        combos,
         workdir=ct_cwd,
         binaries_dir=generated_dir / "matrix",
         valgrind_flags=cfg.ct.valgrind_flags,
@@ -2156,8 +2351,11 @@ def ct_matrix(
     json_path = out_dir / "ctkat_ct_matrix.json"
     write_ct_matrix_csv(cfg.project.name, rows, csv_path)
     write_ct_matrix_json(
-        cfg.project.name, rows, json_path,
-        combos=combos, compilers=requested_compilers,
+        cfg.project.name,
+        rows,
+        json_path,
+        combos=combos,
+        compilers=requested_compilers,
     )
 
     table = Table(title="CT matrix — Valgrind per build config (observational, NOT a verdict)")
@@ -2177,19 +2375,19 @@ def ct_matrix(
     # means "couldn't measure", not a different conclusion, so mixing it in
     # ({PASS, ERROR}) must NOT be reported as a CT disagreement. ERROR cells get
     # their own "some cells couldn't be measured" note.
-    for h in harness_inputs:
-        h_rows = [r for r in rows if r.harness == h.name]
+    for harness_input in harness_inputs:
+        h_rows = [r for r in rows if r.harness == harness_input.name]
         verdicts = {r.valgrind_status for r in h_rows if r.valgrind_status in ("PASS", "FAIL")}
         errored = [r for r in h_rows if r.valgrind_status == "ERROR"]
         if len(verdicts) > 1:
             console.print(
-                f"[bold yellow]ct-matrix: harness '{h.name}' has DIFFERENT CT "
+                f"[bold yellow]ct-matrix: harness '{harness_input.name}' has DIFFERENT CT "
                 f"results across builds[/] ({', '.join(sorted(verdicts))}) — the "
                 "tested binary and a differently-built binary disagree."
             )
         if errored:
             console.print(
-                f"[yellow]ct-matrix: harness '{h.name}': {len(errored)} build "
+                f"[yellow]ct-matrix: harness '{harness_input.name}': {len(errored)} build "
                 f"cell(s) ERRORed (couldn't measure — not a CT result): "
                 f"{', '.join(r.combo for r in errored)}.[/]"
             )
@@ -2342,9 +2540,7 @@ def infer(
     unknown_count = _print_inferred(all_funcs)
     console.print()
     if unknown_count > 0:
-        console.print(
-            f"[bold magenta]{unknown_count} parameter(s) need manual role assignment.[/]"
-        )
+        console.print(f"[bold magenta]{unknown_count} parameter(s) need manual role assignment.[/]")
     else:
         console.print("[bold green]All parameters inferred.[/]")
 
@@ -2352,7 +2548,11 @@ def infer(
 @app.command()
 def parse(
     log: Path = typer.Argument(
-        ..., exists=True, file_okay=True, dir_okay=False, readable=True,
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
         help="Path to a valgrind log file",
     ),
 ):
@@ -2375,9 +2575,7 @@ def parse(
         console.print("[green]No findings.[/]")
         return
     for i, f in enumerate(findings, 1):
-        console.print(
-            f"[bold]{i}.[/] [{f.severity.value}] [bold]{f.type.value}[/] — {f.message}"
-        )
+        console.print(f"[bold]{i}.[/] [{f.severity.value}] [bold]{f.type.value}[/] — {f.message}")
         for fr in f.frames[:3]:
             loc = f"{fr.file}:{fr.line}" if fr.file else "?"
             console.print(f"   at {fr.function} ({loc})")

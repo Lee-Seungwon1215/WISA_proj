@@ -79,10 +79,12 @@ def test_generic_render_emits_volatile_sink_to_resist_O2_dce():
 
 
 def test_generic_render_marks_output_buffers_defined():
-    ctx = _generic_ctx(buffers=[
-        {"name": "secret", "size": "16", "role": "secret"},
-        {"name": "result", "size": "16", "role": "output"},
-    ])
+    ctx = _generic_ctx(
+        buffers=[
+            {"name": "secret", "size": "16", "role": "secret"},
+            {"name": "result", "size": "16", "role": "output"},
+        ]
+    )
     out = render_harness("generic", ctx)
     # output buffer should be marked DEFINED after the call (so subsequent reads
     # don't trigger false positives)
@@ -90,7 +92,9 @@ def test_generic_render_marks_output_buffers_defined():
 
 
 def test_kem_render_contains_dec_taint():
-    out = render_harness("kem", {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []})
+    out = render_harness(
+        "kem", {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []}
+    )
     assert '#include "api.h"' in out
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk" in out
     assert "crypto_kem_dec(ss_actual, ct, sk);" in out
@@ -100,25 +104,32 @@ def test_kem_render_contains_dec_taint():
 def test_kem_render_has_no_memcmp_kat_check():
     # Correctness (enc/dec roundtrip) is a KAT concern, not a CT one — it
     # lives in a separate binary now (see doc §7.1 vs §13.4 mismatch).
-    out = render_harness("kem", {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []})
+    out = render_harness(
+        "kem", {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []}
+    )
     assert "memcmp" not in out
     assert "KAT/runtime check" not in out
 
 
 def test_kem_render_uses_volatile_sink_to_keep_dec_alive():
     # Without sinking the result, -O2 can DCE the dec call entirely.
-    out = render_harness("kem", {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []})
+    out = render_harness(
+        "kem", {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []}
+    )
     assert "volatile" in out
     assert "ctkat_sink" in out
 
 
 def test_kem_render_applies_pqclean_prefix():
-    out = render_harness("kem", {
-        "header": "api.h",
-        "prefix": "PQCLEAN_MLKEM768_CLEAN_",
-        "extra_headers": [],
-        "secret_regions": [],
-    })
+    out = render_harness(
+        "kem",
+        {
+            "header": "api.h",
+            "prefix": "PQCLEAN_MLKEM768_CLEAN_",
+            "extra_headers": [],
+            "secret_regions": [],
+        },
+    )
     assert "PQCLEAN_MLKEM768_CLEAN_crypto_kem_dec(" in out
     assert "PQCLEAN_MLKEM768_CLEAN_CRYPTO_SECRETKEYBYTES" in out
 
@@ -126,15 +137,18 @@ def test_kem_render_applies_pqclean_prefix():
 def test_kem_render_partial_taint_with_secret_regions():
     # When ML-KEM-style sk holds public material inside, we taint only the
     # listed byte ranges instead of the whole buffer.
-    out = render_harness("kem", {
-        "header": "api.h",
-        "prefix": "PQCLEAN_MLKEM768_CLEAN_",
-        "extra_headers": [],
-        "secret_regions": [
-            {"offset": "0", "length": "1152", "comment": "indcpa secret s"},
-            {"offset": "2368", "length": "32", "comment": "FO rejection seed z"},
-        ],
-    })
+    out = render_harness(
+        "kem",
+        {
+            "header": "api.h",
+            "prefix": "PQCLEAN_MLKEM768_CLEAN_",
+            "extra_headers": [],
+            "secret_regions": [
+                {"offset": "0", "length": "1152", "comment": "indcpa secret s"},
+                {"offset": "2368", "length": "32", "comment": "FO rejection seed z"},
+            ],
+        },
+    )
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk + (0), (1152));" in out
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk + (2368), (32));" in out
     # Full-buffer taint must NOT be emitted when regions are given
@@ -142,13 +156,16 @@ def test_kem_render_partial_taint_with_secret_regions():
 
 
 def test_kem_render_invalid_decapsulation_flips_ciphertext_and_witnesses_path():
-    out = render_harness("kem", {
-        "header": "api.h",
-        "prefix": "",
-        "extra_headers": [],
-        "secret_regions": [],
-        "kem_decapsulation": "invalid",
-    })
+    out = render_harness(
+        "kem",
+        {
+            "header": "api.h",
+            "prefix": "",
+            "extra_headers": [],
+            "secret_regions": [],
+            "kem_decapsulation": "invalid",
+        },
+    )
     assert "ct[0] ^= 0x01u;" in out
     assert "CTKAT-KEM-INVALID-PATH-NOT-EXERCISED" in out
     assert "CTKAT-KEM-DECAPSULATION: invalid" in out
@@ -191,13 +208,16 @@ def test_sign_render_secret_regions_partial_taint():
     # Regression for the bug where sign template silently ignored
     # secret_regions. With this fixture set, only the listed ranges should
     # be tainted, NOT the whole sk buffer.
-    out = render_harness("sign", _sign_ctx(
-        prefix="PQCLEAN_MLDSA65_CLEAN_",
-        secret_regions=[
-            {"offset": "0", "length": "32", "comment": "rho seed"},
-            {"offset": "1024", "length": "256", "comment": "s1 secret"},
-        ],
-    ))
+    out = render_harness(
+        "sign",
+        _sign_ctx(
+            prefix="PQCLEAN_MLDSA65_CLEAN_",
+            secret_regions=[
+                {"offset": "0", "length": "32", "comment": "rho seed"},
+                {"offset": "1024", "length": "256", "comment": "s1 secret"},
+            ],
+        ),
+    )
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk + (0), (32));" in out
     assert "VALGRIND_MAKE_MEM_UNDEFINED(sk + (1024), (256));" in out
     # Full-buffer taint must NOT be emitted when regions are given
@@ -217,6 +237,7 @@ def test_atomic_write_text_replaces_full_content(tmp_path):
     via rename, not via incremental append/truncate. Verified by writing
     twice and asserting only the second content survives intact."""
     from ctkat.harness_generator import _atomic_write_text
+
     target = tmp_path / "harness_foo.c"
     _atomic_write_text(target, "first contents\n")
     _atomic_write_text(target, "second contents\n")
@@ -231,6 +252,7 @@ def test_atomic_write_text_uses_utf8_encoding(tmp_path):
     explicitly so a non-utf-8 locale (Windows cp1252) doesn't corrupt
     Korean comments / non-ASCII source. T19 + T21 family."""
     from ctkat.harness_generator import _atomic_write_text
+
     target = tmp_path / "harness.c"
     body = "/* 한글 주석 */\nint main(void){return 0;}\n"
     _atomic_write_text(target, body)
@@ -238,6 +260,7 @@ def test_atomic_write_text_uses_utf8_encoding(tmp_path):
 
 
 # --- Phase C: compile_harness `cc` parameterization -------------------------
+
 
 class _FakeProc:
     returncode = 0
@@ -249,6 +272,7 @@ def test_compile_harness_uses_given_cc(tmp_path, monkeypatch):
     # ct-matrix recompiles the same harness under several compilers; the cc
     # must reach argv[0] and the returned command string.
     from ctkat import harness_generator as hg
+
     captured = {}
 
     def fake_run_text(cmd, *a, **k):
@@ -261,8 +285,14 @@ def test_compile_harness_uses_given_cc(tmp_path, monkeypatch):
     src = tmp_path / "h.c"
     src.write_text("int main(void){return 0;}\n")
     cmd_str = hg.compile_harness(
-        source_path=src, binary_path=tmp_path / "h", sources=[],
-        include_dirs=[], cflags=["-O2"], workdir=tmp_path, timeout=30, cc="clang",
+        source_path=src,
+        binary_path=tmp_path / "h",
+        sources=[],
+        include_dirs=[],
+        cflags=["-O2"],
+        workdir=tmp_path,
+        timeout=30,
+        cc="clang",
     )
     assert captured["cmd"][0] == "clang"
     assert captured["cmd"][captured["cmd"].index("-o") + 1] != str(tmp_path / "h")
@@ -273,6 +303,7 @@ def test_compile_harness_uses_given_cc(tmp_path, monkeypatch):
 def test_compile_harness_defaults_to_gcc(tmp_path, monkeypatch):
     # No cc => gcc, so the single-build ct stage is unchanged.
     from ctkat import harness_generator as hg
+
     captured = {}
 
     def fake_run_text(cmd, *a, **k):
@@ -285,8 +316,13 @@ def test_compile_harness_defaults_to_gcc(tmp_path, monkeypatch):
     src = tmp_path / "h.c"
     src.write_text("int main(void){return 0;}\n")
     hg.compile_harness(
-        source_path=src, binary_path=tmp_path / "h", sources=[],
-        include_dirs=[], cflags=["-O0"], workdir=tmp_path, timeout=30,
+        source_path=src,
+        binary_path=tmp_path / "h",
+        sources=[],
+        include_dirs=[],
+        cflags=["-O0"],
+        workdir=tmp_path,
+        timeout=30,
     )
     assert captured["cmd"][0] == "gcc"
     assert (tmp_path / "h").read_bytes() == b"binary"

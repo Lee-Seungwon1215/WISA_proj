@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .qemu_detect import detect_qemu_emulation
 
-
 # Bundle O (T20, T7 follow-up): yaml fields that flow into generated C
 # source or Jinja contexts. Validators run at config-load time so a
 # malicious / typo'd value surfaces as a clear ValidationError instead of
@@ -89,9 +88,7 @@ def _check_c_expr(where: str, label: str, value: str) -> None:
                 "or array early."
             )
     if depth_p != 0 or depth_b != 0:
-        raise ValueError(
-            f"{where}: {label}={value!r} has unbalanced parentheses or brackets."
-        )
+        raise ValueError(f"{where}: {label}={value!r} has unbalanced parentheses or brackets.")
     for m in _C_CALL_HEAD.finditer(value):
         if m.group(1) != "sizeof":
             raise ValueError(
@@ -151,8 +148,7 @@ def _check_project_relative_path(where: str, label: str, value: Path) -> None:
     s = str(value)
     if value.is_absolute():
         raise ValueError(
-            f"{where}: {label}={s!r} must be project-relative — absolute paths "
-            "are rejected."
+            f"{where}: {label}={s!r} must be project-relative — absolute paths are rejected."
         )
 
 
@@ -295,12 +291,14 @@ class ProjectConfig(BaseModel):
 class BuildConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # `command` (shell=True) is the legacy/convenient path. `argv`
-    # (shell=False, Bundle H2 T4) is the structured alternative for
-    # users who don't want yaml to be implicitly shell-executable.
-    # Exactly one must be set.
+    # `argv` (shell=False) is the default and documented path. `command`
+    # remains as a compatibility escape hatch because some build pipelines
+    # need pipes/redirection/chaining, but new configs must explicitly opt in
+    # with `allow_shell: true`.  `None` preserves 0.1.x configs for one
+    # deprecation cycle; the CLI prints a loud warning before executing them.
     command: Optional[str] = None
     argv: Optional[List[str]] = None
+    allow_shell: Optional[bool] = None
     workdir: Path = Path(".")
     # Paths the build is expected to produce (Bundle E-1, F10). Each path
     # is resolved relative to `workdir` (or absolute). After the step
@@ -317,9 +315,15 @@ class BuildConfig(BaseModel):
     def _check_mode(self) -> "BuildConfig":
         if (self.command is None) == (self.argv is None):
             raise ValueError(
-                "build: exactly one of `command` (shell=True, legacy) or "
-                "`argv` (shell=False, T4 safer alternative) must be set"
+                "build: exactly one of `argv` (shell=False, preferred) or "
+                "`command` (shell=True, explicit opt-in) must be set"
             )
+        if self.command is not None and self.allow_shell is False:
+            raise ValueError(
+                "build.command requires allow_shell: true; use argv for shell-free execution"
+            )
+        if self.argv is not None and self.allow_shell is True:
+            raise ValueError("build.allow_shell applies only to command; remove it when using argv")
         # T39: `argv: []` passes the exactly-one check (it's not None) but
         # `run_argv([])` → subprocess.run([]) raises a raw IndexError. The
         # first element is the program to exec, so an empty list is never
@@ -335,11 +339,11 @@ class BuildConfig(BaseModel):
 class KatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Bundle H2 (T4): same command/argv split as BuildConfig. argv path
-    # bypasses the shell entirely so an untrusted yaml can't smuggle
-    # `; rm -rf /` past the framework.
+    # Same policy as BuildConfig: argv is preferred; command is a compatibility
+    # escape hatch with an explicit shell opt-in.
     command: Optional[str] = None
     argv: Optional[List[str]] = None
+    allow_shell: Optional[bool] = None
     workdir: Path = Path(".")
     # Minimum number of KAT vectors the user expects to have executed
     # (Bundle E-1, F1). cli._do_kat greps the command's stdout with
@@ -362,9 +366,15 @@ class KatConfig(BaseModel):
     def _check_mode(self) -> "KatConfig":
         if (self.command is None) == (self.argv is None):
             raise ValueError(
-                "kat: exactly one of `command` (shell=True, legacy) or "
-                "`argv` (shell=False, T4 safer alternative) must be set"
+                "kat: exactly one of `argv` (shell=False, preferred) or "
+                "`command` (shell=True, explicit opt-in) must be set"
             )
+        if self.command is not None and self.allow_shell is False:
+            raise ValueError(
+                "kat.command requires allow_shell: true; use argv for shell-free execution"
+            )
+        if self.argv is not None and self.allow_shell is True:
+            raise ValueError("kat.allow_shell applies only to command; remove it when using argv")
         # T39: empty argv would crash subprocess with a raw IndexError.
         if self.argv is not None and len(self.argv) == 0:
             raise ValueError(
@@ -501,25 +511,19 @@ class HarnessConfig(BaseModel):
     def _check_mode(self) -> "HarnessConfig":
         if self.binary is None and self.template is None:
             raise ValueError(
-                f"harness {self.name!r}: must set either 'binary' (manual) "
-                "or 'template' (auto)"
+                f"harness {self.name!r}: must set either 'binary' (manual) or 'template' (auto)"
             )
         if self.binary is not None and self.template is not None:
             raise ValueError(
                 f"harness {self.name!r}: 'binary' and 'template' are mutually exclusive"
             )
         if self.template == "generic" and not self.function:
-            raise ValueError(
-                f"harness {self.name!r}: template=generic requires 'function'"
-            )
+            raise ValueError(f"harness {self.name!r}: template=generic requires 'function'")
         if self.template in ("kem", "sign") and not self.header:
-            raise ValueError(
-                f"harness {self.name!r}: template={self.template} requires 'header'"
-            )
+            raise ValueError(f"harness {self.name!r}: template={self.template} requires 'header'")
         if self.template != "kem" and self.kem_decapsulation != "valid":
             raise ValueError(
-                f"harness {self.name!r}: kem_decapsulation is only valid for "
-                "template=kem"
+                f"harness {self.name!r}: kem_decapsulation is only valid for template=kem"
             )
         # Bundle O (T20, T7 follow-up): enforce the regex policy that was
         # left as Bundle H2 follow-up after the `name` field landed.
@@ -532,13 +536,9 @@ class HarnessConfig(BaseModel):
             return_type=self.return_type,
         )
         for i, p in enumerate(self.sources):
-            _check_project_relative_path(
-                f"ct harness {self.name!r}", f"sources[{i}]", p
-            )
+            _check_project_relative_path(f"ct harness {self.name!r}", f"sources[{i}]", p)
         for i, p in enumerate(self.include_dirs):
-            _check_project_relative_path(
-                f"ct harness {self.name!r}", f"include_dirs[{i}]", p
-            )
+            _check_project_relative_path(f"ct harness {self.name!r}", f"include_dirs[{i}]", p)
         # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
         for i, a in enumerate(self.args):
             _check_c_expr(f"ct harness {self.name!r}", f"args[{i}]", a)
@@ -631,8 +631,7 @@ class CtConfig(BaseModel):
             re.compile(self.sentinel_pattern)
         except re.error as e:
             raise ValueError(
-                f"ct.sentinel_pattern is not a valid regex: {e} "
-                f"(pattern={self.sentinel_pattern!r})"
+                f"ct.sentinel_pattern is not a valid regex: {e} (pattern={self.sentinel_pattern!r})"
             )
         return self
 
@@ -746,23 +745,16 @@ class DudectHarnessConfig(BaseModel):
         # mistakes surface at config-load time rather than as a confusing
         # Jinja2 KeyError deep inside the generator.
         if self.template == "generic" and not self.function:
-            raise ValueError(
-                f"dudect harness {self.name!r}: template=generic requires "
-                "'function'"
-            )
+            raise ValueError(f"dudect harness {self.name!r}: template=generic requires 'function'")
         if self.template == "kem" and not self.header:
-            raise ValueError(
-                f"dudect harness {self.name!r}: template=kem requires 'header'"
-            )
+            raise ValueError(f"dudect harness {self.name!r}: template=kem requires 'header'")
         if self.template == "sign" and not self.header:
             # Same contract as the kem branch: the sign timing template needs
             # `header` to pull in the api.h CRYPTO_*BYTES macros and the
             # crypto_sign_keypair/signature declarations. Surface the mistake
             # at config-load time, not as a Jinja2 StrictUndefined deep in the
             # generator.
-            raise ValueError(
-                f"dudect harness {self.name!r}: template=sign requires 'header'"
-            )
+            raise ValueError(f"dudect harness {self.name!r}: template=sign requires 'header'")
         if self.template != "kem" and self.leak_target != "sk":
             # leak_target is a KEM-specific axis; on the generic template
             # there's no canonical "sk vs ct" split, so silently accepting
@@ -780,13 +772,9 @@ class DudectHarnessConfig(BaseModel):
             return_type=self.return_type,
         )
         for i, p in enumerate(self.sources):
-            _check_project_relative_path(
-                f"dudect harness {self.name!r}", f"sources[{i}]", p
-            )
+            _check_project_relative_path(f"dudect harness {self.name!r}", f"sources[{i}]", p)
         for i, p in enumerate(self.include_dirs):
-            _check_project_relative_path(
-                f"dudect harness {self.name!r}", f"include_dirs[{i}]", p
-            )
+            _check_project_relative_path(f"dudect harness {self.name!r}", f"include_dirs[{i}]", p)
         # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
         for i, a in enumerate(self.args):
             _check_c_expr(f"dudect harness {self.name!r}", f"args[{i}]", a)
@@ -920,9 +908,7 @@ class MatrixConfig(BaseModel):
         for name in self.ct_cflags:
             # combo name -> artifact label + binary/log filename suffix.
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
-                raise ValueError(
-                    f"matrix.ct_cflags combo name {name!r} must match [A-Za-z0-9_-]+"
-                )
+                raise ValueError(f"matrix.ct_cflags combo name {name!r} must match [A-Za-z0-9_-]+")
         return self
 
 
@@ -947,6 +933,10 @@ class CtkatConfig(BaseModel):
     # as the cost of consistency. Per-stage explicit `cflags` still take
     # precedence to allow targeted overrides.
     shared_cflags: Optional[List[str]] = None
+    # `untrusted` is the fail-closed profile for configs obtained from pull
+    # requests or downloads. It rejects shell commands even when a config
+    # author wrote `allow_shell: true`.
+    execution_profile: Literal["trusted", "untrusted"] = "trusted"
 
     @model_validator(mode="after")
     def _apply_shared_cflags(self) -> "CtkatConfig":
@@ -961,11 +951,24 @@ class CtkatConfig(BaseModel):
         # equal-to-default keeps the user's intent.
         if self.ct is not None and "cflags" not in self.ct.model_fields_set:
             self.ct.cflags = list(self.shared_cflags)
-        if (
-            self.dudect is not None
-            and "cflags" not in self.dudect.compiler.model_fields_set
-        ):
+        if self.dudect is not None and "cflags" not in self.dudect.compiler.model_fields_set:
             self.dudect.compiler.cflags = list(self.shared_cflags)
+        return self
+
+    @model_validator(mode="after")
+    def _enforce_execution_profile(self) -> "CtkatConfig":
+        if self.execution_profile != "untrusted":
+            return self
+        shell_steps = []
+        if self.build.command is not None:
+            shell_steps.append("build.command")
+        if self.kat is not None and self.kat.command is not None:
+            shell_steps.append("kat.command")
+        if shell_steps:
+            raise ValueError(
+                "execution_profile=untrusted forbids shell-backed steps: "
+                f"{', '.join(shell_steps)}; migrate them to argv"
+            )
         return self
 
 
@@ -990,20 +993,20 @@ def _check_config_paths_under_project_root(cfg: CtkatConfig, cfg_dir: Path) -> N
                     value=p,
                 )
     if cfg.dudect is not None:
-        for h in cfg.dudect.harnesses:
-            for i, p in enumerate(h.sources):
+        for dudect_harness in cfg.dudect.harnesses:
+            for i, p in enumerate(dudect_harness.sources):
                 _check_path_under_root(
                     cfg_dir=cfg_dir,
                     project_root=project_root,
-                    where=f"dudect harness {h.name!r}",
+                    where=f"dudect harness {dudect_harness.name!r}",
                     label=f"sources[{i}]",
                     value=p,
                 )
-            for i, p in enumerate(h.include_dirs):
+            for i, p in enumerate(dudect_harness.include_dirs):
                 _check_path_under_root(
                     cfg_dir=cfg_dir,
                     project_root=project_root,
-                    where=f"dudect harness {h.name!r}",
+                    where=f"dudect harness {dudect_harness.name!r}",
                     label=f"include_dirs[{i}]",
                     value=p,
                 )

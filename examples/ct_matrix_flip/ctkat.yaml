@@ -4,7 +4,7 @@ project:
   root: .
 
 build:
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 # Two generic harnesses over the same source:

@@ -23,10 +23,10 @@ MAX_VALGRIND_LOG_BYTES = 128 * 1024 * 1024
 class CtRunOutcome:
     """The classified result of one Valgrind run."""
 
-    status: str                                   # "PASS" | "FAIL" | "ERROR"
+    status: str  # "PASS" | "FAIL" | "ERROR"
     findings: List[Finding] = field(default_factory=list)
-    dropped: int = 0                              # parser-ignored lines (caller may warn if high)
-    error: str = ""                               # human-readable reason when status == "ERROR"
+    dropped: int = 0  # parser-ignored lines (caller may warn if high)
+    error: str = ""  # human-readable reason when status == "ERROR"
 
 
 def classify_valgrind_run(

@@ -17,6 +17,7 @@ from unittest import mock
 import pytest
 from typer.testing import CliRunner
 
+from ctkat.asm_scan import Occurrence, VarLatCandidate
 from ctkat.cli import _compute_verdicts, _dudect_context, _print_cflags_banner, app
 from ctkat.config import (
     BuildConfig,
@@ -27,7 +28,6 @@ from ctkat.config import (
     HarnessConfig,
     ProjectConfig,
 )
-from ctkat.asm_scan import Occurrence, VarLatCandidate
 from ctkat.ct_matrix import CtMatrixRow
 from ctkat.dudect_runner import TimingSamples
 from ctkat.statistics import WelchResult
@@ -38,7 +38,6 @@ from ctkat.valgrind_parser import (
     StackFrame,
 )
 from ctkat.verdict import Verdict
-
 
 FIXTURES = Path(__file__).parent / "fixtures" / "headers"
 
@@ -60,8 +59,10 @@ def test_infer_function_filter_narrows_output():
         app,
         [
             "infer",
-            "--header", str(FIXTURES / "kem.h"),
-            "--function", "crypto_kem_dec",
+            "--header",
+            str(FIXTURES / "kem.h"),
+            "--function",
+            "crypto_kem_dec",
         ],
     )
     assert result.exit_code == 0
@@ -105,7 +106,8 @@ def test_parse_subcommand_runs_on_valid_log(tmp_path):
 
 def _write_dudect_config(tmp_path) -> Path:
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent("""
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: demo}
         build: {command: "true"}
         dudect:
@@ -114,14 +116,22 @@ def _write_dudect_config(tmp_path) -> Path:
             - name: h1
               template: generic
               function: f
-    """))
+    """)
+    )
     return cfg
 
 
 def _error_dudect_results(*_a, **_k):
     err = WelchResult(
-        n0=0, n1=0, mean0=0.0, mean1=0.0, var0=0.0, var1=0.0,
-        t_score=0.0, abs_t_score=0.0, status="ERROR",
+        n0=0,
+        n1=0,
+        mean0=0.0,
+        mean1=0.0,
+        var0=0.0,
+        var1=0.0,
+        t_score=0.0,
+        abs_t_score=0.0,
+        status="ERROR",
     )
     return [("h1", TimingSamples(), err, [])]
 
@@ -171,8 +181,15 @@ def test_dudect_subcommand_fail_still_exits_two(tmp_path):
 
     def _fail(*_a, **_k):
         r = WelchResult(
-            n0=10, n1=10, mean0=1.0, mean1=2.0, var0=1.0, var1=1.0,
-            t_score=99.0, abs_t_score=99.0, status="FAIL",
+            n0=10,
+            n1=10,
+            mean0=1.0,
+            mean1=2.0,
+            var0=1.0,
+            var1=1.0,
+            t_score=99.0,
+            abs_t_score=99.0,
+            status="FAIL",
         )
         return [("h1", TimingSamples(), r, [])]
 
@@ -212,9 +229,15 @@ def _ct_error(harness: str) -> Tuple[str, str, List[Finding]]:
 
 def _dudect_result(harness: str, status: str, abs_t: float = 5.0):
     r = WelchResult(
-        n0=100, n1=100, mean0=1.0, mean1=2.0,
-        var0=0.5, var1=0.5,
-        t_score=-abs_t, abs_t_score=abs_t, status=status,
+        n0=100,
+        n1=100,
+        mean0=1.0,
+        mean1=2.0,
+        var0=0.5,
+        var1=0.5,
+        t_score=-abs_t,
+        abs_t_score=abs_t,
+        status=status,
     )
     return (harness, TimingSamples(), r, [])
 
@@ -253,8 +276,10 @@ def test_fmt_drops_non_finite_floats():
     # Regression: previously `f"{x:.3f}"` for inf/nan produced literal "inf"
     # or "nan" strings in CSVs, which pandas/R treat inconsistently and which
     # blew up downstream R code on a colleague's analysis script.
-    from ctkat.cli import _fmt
     import math
+
+    from ctkat.cli import _fmt
+
     assert _fmt(math.inf) == ""
     assert _fmt(-math.inf) == ""
     assert _fmt(math.nan) == ""
@@ -267,6 +292,7 @@ def test_fmt_accepts_none():
     # Bundle B: diagnostic fields (cropped_at when --no-crop, etc.) can be
     # None — must serialize to empty string, not the literal "None".
     from ctkat.cli import _fmt
+
     assert _fmt(None) == ""
 
 
@@ -280,10 +306,18 @@ def test_dudect_summary_csv_preserves_status_column_position(tmp_path):
     from ctkat.statistics import WelchResult
 
     r = WelchResult(
-        n0=100, n1=100, mean0=1.0, mean1=2.0,
-        var0=0.5, var1=0.5,
-        t_score=-5.0, abs_t_score=5.0, status="WARNING",
-        cropped_at=0.95, t_score_uncropped=-3.0, abs_t_score_uncropped=3.0,
+        n0=100,
+        n1=100,
+        mean0=1.0,
+        mean1=2.0,
+        var0=0.5,
+        var1=0.5,
+        t_score=-5.0,
+        abs_t_score=5.0,
+        status="WARNING",
+        cropped_at=0.95,
+        t_score_uncropped=-3.0,
+        abs_t_score_uncropped=3.0,
     )
     results = [("h1", TimingSamples(), r, [])]
     _emit_dudect_report("proj", tmp_path, results)
@@ -291,9 +325,9 @@ def test_dudect_summary_csv_preserves_status_column_position(tmp_path):
     header = summary[0].split(",")
     # awk's $1 == header[0] etc. — these positions are part of the public
     # CSV contract.
-    assert header[10] == "status"          # awk $11
-    assert header[0]  == "project"         # awk $1
-    assert header[1]  == "harness"         # awk $2
+    assert header[10] == "status"  # awk $11
+    assert header[0] == "project"  # awk $1
+    assert header[1] == "harness"  # awk $2
     # New columns at the end (15-17 in 1-indexed awk, 14-16 in 0-indexed).
     assert header[14] == "cropped_at"
     assert header[15] == "t_score_uncropped"
@@ -313,6 +347,7 @@ def test_valgrind_unexpected_returncode_yields_error(monkeypatch, tmp_path):
     instead of green-light.
     """
     import textwrap
+
     from ctkat import cli as cli_module
     from ctkat.valgrind_runner import ValgrindResult
 
@@ -345,7 +380,7 @@ def test_valgrind_unexpected_returncode_yields_error(monkeypatch, tmp_path):
     assert "ct: ERROR" in result.stdout
     assert "137" in result.stdout
     assert "INCOMPLETE" in result.stdout  # subcommand summary line
-    assert result.exit_code == 2          # E-2: ct ERROR also exits 2
+    assert result.exit_code == 2  # E-2: ct ERROR also exits 2
 
 
 def test_compute_verdicts_unions_harness_names_across_stages():
@@ -420,6 +455,7 @@ def test_cflags_banner_silent_when_dudect_disabled(capsys):
 
 def _kat_cfg(command: str, expected_min=None, pattern=None):
     from ctkat.config import KatConfig
+
     kwargs = dict(command=command)
     if expected_min is not None:
         kwargs["expected_min"] = expected_min
@@ -434,6 +470,7 @@ def _kat_cfg(command: str, expected_min=None, pattern=None):
 
 def test_kat_passes_when_count_meets_expected_min(tmp_path, capsys):
     from ctkat.cli import _do_kat
+
     cfg = _kat_cfg('echo "PASSED: 100 tests"', expected_min=50)
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is True
@@ -443,6 +480,7 @@ def test_kat_passes_when_count_meets_expected_min(tmp_path, capsys):
 
 def test_kat_fails_when_count_below_expected_min(tmp_path, capsys):
     from ctkat.cli import _do_kat
+
     cfg = _kat_cfg('echo "PASSED: 3 tests"', expected_min=10)
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is False
@@ -454,6 +492,7 @@ def test_kat_fails_when_count_below_expected_min(tmp_path, capsys):
 
 def test_kat_fails_when_pattern_does_not_match(tmp_path, capsys):
     from ctkat.cli import _do_kat
+
     cfg = _kat_cfg('echo "everything is fine"', expected_min=1)
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is False
@@ -467,6 +506,7 @@ def test_kat_unset_expected_min_warns_but_passes(tmp_path, capsys):
     # F1 backward-compat: legacy yaml (no expected_min) still passes on rc=0
     # but emits a one-time note pointing users at the new field.
     from ctkat.cli import _do_kat
+
     cfg = _kat_cfg('echo "hi"')  # no expected_min
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is True
@@ -480,6 +520,7 @@ def test_kat_no_op_still_passes_without_expected_min(tmp_path, capsys):
     # (`true`) still PASSes when expected_min is unset. This test pins
     # current legacy behavior so a future change is intentional.
     from ctkat.cli import _do_kat
+
     cfg = _kat_cfg("true")  # no stdout at all
     ok, _ = _do_kat(cfg, tmp_path)
     assert ok is True
@@ -492,11 +533,11 @@ def test_kat_anchored_pattern_rejects_substring_in_error_line(tmp_path, capsys):
     fix anchors the default pattern with `^...` + re.MULTILINE, so the
     match only fires on a standalone summary line."""
     from ctkat.cli import _do_kat
+
     # Single-line stdout with "PASSED: 100" embedded inside an error msg.
     # `printf` keeps it on one line — the offending substring is mid-line,
     # not at the start, so the anchored default must not match.
-    cfg = _kat_cfg('printf "ERROR vector 50 differs. PASSED: 100 prior\\n"',
-                   expected_min=10)
+    cfg = _kat_cfg('printf "ERROR vector 50 differs. PASSED: 100 prior\\n"', expected_min=10)
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is False
     assert count is None
@@ -507,8 +548,8 @@ def test_kat_anchored_pattern_still_matches_pqclean_style_line(tmp_path, capsys)
     emit a standalone `PASSED: 100 tests` summary line, which the anchored
     default still matches."""
     from ctkat.cli import _do_kat
-    cfg = _kat_cfg('printf "running ML-KEM-768 KAT\\nPASSED: 100 tests\\n"',
-                   expected_min=50)
+
+    cfg = _kat_cfg('printf "running ML-KEM-768 KAT\\nPASSED: 100 tests\\n"', expected_min=50)
     ok, count = _do_kat(cfg, tmp_path)
     assert ok is True
     assert count == 100
@@ -516,6 +557,7 @@ def test_kat_anchored_pattern_still_matches_pqclean_style_line(tmp_path, capsys)
 
 def test_build_passes_when_expected_artifacts_present(tmp_path, capsys):
     from ctkat.cli import _do_build
+
     artifact = tmp_path / "out.bin"
     cfg = CtkatConfig(
         project=ProjectConfig(name="t"),
@@ -531,6 +573,7 @@ def test_build_passes_when_expected_artifacts_present(tmp_path, capsys):
 
 def test_build_fails_when_expected_artifact_missing(tmp_path, capsys):
     from ctkat.cli import _do_build
+
     cfg = CtkatConfig(
         project=ProjectConfig(name="t"),
         build=BuildConfig(
@@ -551,16 +594,20 @@ def test_dudect_summary_error_row_hides_numeric_cells(monkeypatch):
     happened to be all zeros. The fix collapses every numeric cell to `-`
     so the magenta status badge carries the signal alone."""
     import io
+
     from rich.console import Console as _RichConsole
+
     from ctkat import cli as cli_module
-    from ctkat.cli import _print_dudect_summary, _error_welch
+    from ctkat.cli import _error_welch, _print_dudect_summary
     from ctkat.dudect_runner import TimingSamples
+
     # Rich's auto-attached terminal doesn't write through capsys; replace
     # the module-level console with one that writes to a StringIO so we
     # can inspect what would have hit the user's terminal.
     buf = io.StringIO()
     monkeypatch.setattr(
-        cli_module, "console",
+        cli_module,
+        "console",
         _RichConsole(file=buf, force_terminal=False, width=120),
     )
     err_result = _error_welch()
@@ -586,8 +633,7 @@ def test_infer_surfaces_skipped_declaration_count(tmp_path, capsys):
     header.write_text(
         # One parseable decl + one function-pointer parameter (skipped by
         # the strict regex).
-        "int normal_fn(int x);\n"
-        "int register_cb(int (*cb)(int));\n",
+        "int normal_fn(int x);\nint register_cb(int (*cb)(int));\n",
         encoding="utf-8",
     )
     runner = CliRunner()
@@ -604,6 +650,7 @@ def test_build_timeout_yields_fail_not_hang(tmp_path, capsys):
     `Build: FAIL` (rc=124) instead of stalling. Use `sleep 5` with a
     0.1-second timeout to keep the test under a second."""
     from ctkat.cli import _do_build
+
     cfg = CtkatConfig(
         project=ProjectConfig(name="t"),
         build=BuildConfig(command="sleep 5", workdir=tmp_path, timeout=1),
@@ -620,6 +667,7 @@ def test_build_unset_expected_artifacts_warns(tmp_path, capsys):
     # F10 backward-compat: legacy yaml (no expected_artifacts) still passes
     # on rc=0 but a one-time note is emitted.
     from ctkat.cli import _do_build
+
     cfg = CtkatConfig(
         project=ProjectConfig(name="t"),
         build=BuildConfig(command="true", workdir=tmp_path),
@@ -636,6 +684,7 @@ def test_dudect_cli_measurements_override_rejects_above_cap(tmp_path):
     `Field(le=10_000_000)` because `model_copy(update=...)` does not
     re-validate. The fix routes overrides through `model_validate`."""
     import textwrap
+
     yaml_text = textwrap.dedent("""
         project: {name: demo}
         build: {command: "true"}
@@ -658,6 +707,7 @@ def test_dudect_cli_measurements_override_rejects_above_cap(tmp_path):
 
 def test_ct_subcommand_exits_2_when_ct_section_missing(tmp_path):
     import textwrap
+
     yaml_text = textwrap.dedent("""
         project: {name: demo}
         build: {command: "true"}
@@ -673,6 +723,7 @@ def test_ct_subcommand_exits_2_when_ct_section_missing(tmp_path):
 
 def test_kat_subcommand_exits_2_when_kat_section_missing(tmp_path):
     import textwrap
+
     yaml_text = textwrap.dedent("""
         project: {name: demo}
         build: {command: "true"}
@@ -712,6 +763,7 @@ def test_compute_verdicts_kat_pass_unchanged_from_legacy():
 def test_emit_verdicts_csv_includes_kat_columns(tmp_path):
     from ctkat.cli import _emit_verdicts
     from ctkat.verdict import HarnessVerdict
+
     v = HarnessVerdict(
         name="h1",
         valgrind_status="PASS",
@@ -721,12 +773,16 @@ def test_emit_verdicts_csv_includes_kat_columns(tmp_path):
         dudect_abs_t=1.5,
     )
     path = _emit_verdicts(
-        tmp_path, "proj", [v], kat_status="PASS", kat_count=100,
+        tmp_path,
+        "proj",
+        [v],
+        kat_status="PASS",
+        kat_count=100,
     )
     lines = path.read_text().splitlines()
     header = lines[0].split(",")
-    assert header[6] == "verdict"          # awk $7 must stay stable
-    assert header[7] == "kat_status"       # appended at end
+    assert header[6] == "verdict"  # awk $7 must stay stable
+    assert header[7] == "kat_status"  # appended at end
     assert header[8] == "kat_count"
     row = lines[1].split(",")
     assert row[6] == "CLEAN"
@@ -742,6 +798,7 @@ def _stub_compile(name, **kwargs):
     test is what happens when the binary itself misbehaves at run time,
     not the compile path."""
     from ctkat.timing_harness_generator import GeneratedTimingHarness
+
     return GeneratedTimingHarness(
         source_path=Path(f"/tmp/{name}.c"),
         binary_path=Path(f"/tmp/{name}"),
@@ -751,6 +808,7 @@ def _stub_compile(name, **kwargs):
 
 def _dud_cfg_with_harness(timeout=600):
     from ctkat.config import DudectHarnessConfig
+
     return DudectConfig(
         timeout=timeout,
         clock="monotonic",
@@ -769,11 +827,14 @@ def _dud_cfg_with_harness(timeout=600):
 
 def test_dudect_timeout_yields_error_status(tmp_path, monkeypatch, capsys):
     import subprocess
+
     import ctkat.cli as cli_module
+
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
 
     def fake_run(binary, workdir, timeout):
         raise subprocess.TimeoutExpired(cmd=str(binary), timeout=timeout)
+
     monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
 
     dud = _dud_cfg_with_harness(timeout=1)
@@ -787,10 +848,12 @@ def test_dudect_timeout_yields_error_status(tmp_path, monkeypatch, capsys):
 
 def test_dudect_crash_yields_error_status(tmp_path, monkeypatch, capsys):
     import ctkat.cli as cli_module
+
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
 
     def fake_run(binary, workdir, timeout):
         raise RuntimeError(f"timing harness {binary} failed (rc=139)")
+
     monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
 
     dud = _dud_cfg_with_harness()
@@ -801,10 +864,12 @@ def test_dudect_crash_yields_error_status(tmp_path, monkeypatch, capsys):
 
 def test_dudect_empty_output_yields_error_status(tmp_path, monkeypatch, capsys):
     import ctkat.cli as cli_module
+
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
 
     def fake_run(binary, workdir, timeout):
         raise ValueError("empty timing harness output")
+
     monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
 
     dud = _dud_cfg_with_harness()
@@ -815,9 +880,11 @@ def test_dudect_empty_output_yields_error_status(tmp_path, monkeypatch, capsys):
 
 def test_dudect_error_flows_to_inconclusive_verdict(tmp_path, monkeypatch):
     import ctkat.cli as cli_module
+
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
     monkeypatch.setattr(
-        cli_module, "run_timing_harness",
+        cli_module,
+        "run_timing_harness",
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("rc=139")),
     )
     dud = _dud_cfg_with_harness()
@@ -831,6 +898,7 @@ def test_dudect_error_flows_to_inconclusive_verdict(tmp_path, monkeypatch):
 
 def _ctkat_yaml(extra_ct_keys: str = "", harness_block: str = "") -> str:
     import textwrap
+
     return textwrap.dedent(f"""
         project: {{name: demo}}
         build: {{command: "true"}}
@@ -854,8 +922,10 @@ def _stub_ct_setup(monkeypatch, *, returncode: int, stdout: str, write_log: bool
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_path.write_text("==1== ERROR SUMMARY: 0 errors from 0 contexts\n")
         return ValgrindResult(
-            returncode=returncode, log_path=log_path,
-            stdout=stdout, stderr="",
+            returncode=returncode,
+            log_path=log_path,
+            stdout=stdout,
+            stderr="",
         )
 
     monkeypatch.setattr(cli_module, "run_valgrind", fake_run_valgrind)
@@ -892,8 +962,10 @@ def test_ct_sentinel_required_but_missing_yields_error(monkeypatch, tmp_path):
 def test_ct_sentinel_required_and_present_passes(monkeypatch, tmp_path):
     # F5: require_sentinel=true + sentinel present → normal PASS path.
     _stub_ct_setup(
-        monkeypatch, returncode=0,
-        stdout="CTKAT-HARNESS-RAN: h\nother output\n", write_log=True,
+        monkeypatch,
+        returncode=0,
+        stdout="CTKAT-HARNESS-RAN: h\nother output\n",
+        write_log=True,
     )
     yaml_text = _ctkat_yaml(
         extra_ct_keys="  require_sentinel: true",
@@ -911,8 +983,10 @@ def test_ct_sentinel_wrong_name_yields_error(monkeypatch, tmp_path):
     # Before the fix, `re.search(...) is not None` accepted any sentinel, so a
     # binary that ran 'other' silently passed for 'h' — defeating F5.
     _stub_ct_setup(
-        monkeypatch, returncode=0,
-        stdout="CTKAT-HARNESS-RAN: other\n", write_log=True,
+        monkeypatch,
+        returncode=0,
+        stdout="CTKAT-HARNESS-RAN: other\n",
+        write_log=True,
     )
     yaml_text = _ctkat_yaml(
         extra_ct_keys="  require_sentinel: true",
@@ -930,8 +1004,10 @@ def test_ct_sentinel_multi_harness_binary_matches_by_name(monkeypatch, tmp_path)
     # N1: one binary may legitimately wrap several harnesses, emitting a sentinel
     # line per harness. A match for THIS harness's name anywhere in stdout passes.
     _stub_ct_setup(
-        monkeypatch, returncode=0,
-        stdout="CTKAT-HARNESS-RAN: other\nCTKAT-HARNESS-RAN: h\n", write_log=True,
+        monkeypatch,
+        returncode=0,
+        stdout="CTKAT-HARNESS-RAN: other\nCTKAT-HARNESS-RAN: h\n",
+        write_log=True,
     )
     yaml_text = _ctkat_yaml(
         extra_ct_keys="  require_sentinel: true",
@@ -983,8 +1059,15 @@ def test_dudect_summary_csv_header_snapshot(tmp_path):
     from ctkat.statistics import WelchResult
 
     r = WelchResult(
-        n0=1, n1=1, mean0=0.0, mean1=0.0, var0=0.0, var1=0.0,
-        t_score=0.0, abs_t_score=0.0, status="PASS",
+        n0=1,
+        n1=1,
+        mean0=0.0,
+        mean1=0.0,
+        var0=0.0,
+        var1=0.0,
+        t_score=0.0,
+        abs_t_score=0.0,
+        status="PASS",
     )
     _emit_dudect_report("p", tmp_path, [("h", TimingSamples(), r, [])])
     header = (tmp_path / "dudect_summary.csv").read_text().splitlines()[0]
@@ -1003,13 +1086,22 @@ def test_dudect_summary_csv_has_raw_count_columns(tmp_path):
     from ctkat.statistics import WelchResult
 
     samples = TimingSamples(
-        classes=[0, 1] * 50, cycles=[100.0, 200.0] * 50,
-        raw_n_total=200, dropped_zero_n0=30, dropped_zero_n1=2,
+        classes=[0, 1] * 50,
+        cycles=[100.0, 200.0] * 50,
+        raw_n_total=200,
+        dropped_zero_n0=30,
+        dropped_zero_n1=2,
     )
     r = WelchResult(
-        n0=50, n1=50, mean0=100.0, mean1=200.0,
-        var0=1.0, var1=1.0,
-        t_score=5.0, abs_t_score=5.0, status="FAIL",
+        n0=50,
+        n1=50,
+        mean0=100.0,
+        mean1=200.0,
+        var0=1.0,
+        var1=1.0,
+        t_score=5.0,
+        abs_t_score=5.0,
+        status="FAIL",
     )
     _emit_dudect_report("proj", tmp_path, [("h1", samples, r, [])])
     summary = (tmp_path / "dudect_summary.csv").read_text().splitlines()
@@ -1036,19 +1128,24 @@ def test_dudect_summary_csv_has_cohens_d_column(tmp_path):
     from ctkat.statistics import WelchResult
 
     r = WelchResult(
-        n0=10, n1=10, mean0=100.0, mean1=110.0,
-        var0=1.0, var1=1.0,
-        t_score=5.0, abs_t_score=5.0, status="WARNING",
+        n0=10,
+        n1=10,
+        mean0=100.0,
+        mean1=110.0,
+        var0=1.0,
+        var1=1.0,
+        t_score=5.0,
+        abs_t_score=5.0,
+        status="WARNING",
         cohens_d=2.5,
     )
-    _emit_dudect_report("proj", tmp_path,
-                       [("h1", TimingSamples(), r, [])])
+    _emit_dudect_report("proj", tmp_path, [("h1", TimingSamples(), r, [])])
     summary = (tmp_path / "dudect_summary.csv").read_text().splitlines()
     header = summary[0].split(",")
     # S3: col 21 (0-indexed 20). Existing positions still stable.
     assert header[20] == "cohens_d"
-    assert header[10] == "status"          # E-1/B contract
-    assert header[17] == "raw_n_total"     # Bundle F contract
+    assert header[10] == "status"  # E-1/B contract
+    assert header[17] == "raw_n_total"  # Bundle F contract
     row = summary[1].split(",")
     assert row[20] == "2.500"
 
@@ -1058,17 +1155,20 @@ def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
     thresholds to welch_with_cropping / welch_t_test / batch_t_scores.
     We monkeypatch those to capture their threshold kwargs."""
     import ctkat.cli as cli_module
+
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
 
     # Stub run_timing_harness to return enough samples for the t-test
     # to actually fire.
     def fake_run(binary, workdir, timeout):
         from ctkat.dudect_runner import TimingSamples
+
         s = TimingSamples()
         s.classes = [0, 1] * 50
         s.cycles = [100.0, 110.0] * 50
         s.raw_n_total = 100
         return s
+
     monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
 
     captured = {}
@@ -1077,7 +1177,9 @@ def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
         captured["warn"] = warning_threshold
         captured["fail"] = fail_threshold
         from ctkat.statistics import welch_t_test
+
         return welch_t_test(c0, c1, warning_threshold, fail_threshold)
+
     monkeypatch.setattr(cli_module, "welch_with_cropping", fake_welch_with_cropping)
 
     dud = _dud_cfg_with_harness()
@@ -1086,6 +1188,7 @@ def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
 
     # 4.5 * sqrt(5) ≈ 10.06, 10.0 * sqrt(5) ≈ 22.36
     import math
+
     expected_warn = 4.5 * math.sqrt(5)
     expected_fail = 10.0 * math.sqrt(5)
     assert abs(captured["warn"] - expected_warn) < 1e-6
@@ -1096,15 +1199,18 @@ def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
 
 def test_bonferroni_off_leaves_thresholds_alone(monkeypatch, tmp_path):
     import ctkat.cli as cli_module
+
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
 
     def fake_run(binary, workdir, timeout):
         from ctkat.dudect_runner import TimingSamples
+
         s = TimingSamples()
         s.classes = [0, 1] * 50
         s.cycles = [100.0, 110.0] * 50
         s.raw_n_total = 100
         return s
+
     monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
 
     captured = {}
@@ -1113,7 +1219,9 @@ def test_bonferroni_off_leaves_thresholds_alone(monkeypatch, tmp_path):
         captured["warn"] = warning_threshold
         captured["fail"] = fail_threshold
         from ctkat.statistics import welch_t_test
+
         return welch_t_test(c0, c1, warning_threshold, fail_threshold)
+
     monkeypatch.setattr(cli_module, "welch_with_cropping", fake_welch_with_cropping)
 
     dud = _dud_cfg_with_harness()  # bonferroni_correct=False default
@@ -1130,15 +1238,36 @@ def test_dudect_summary_csv_error_harness_has_zero_raw_counts(tmp_path):
     # `continue` instead of raise, but the CSV must reflect that.
     from ctkat.cli import _emit_dudect_report, _error_welch
     from ctkat.dudect_runner import TimingSamples
+
     welch = _error_welch()
     _emit_dudect_report(
-        "proj", tmp_path,
-        [("ok", TimingSamples(classes=[0, 1], cycles=[1.0, 2.0],
-                              raw_n_total=10, dropped_zero_n0=1,
-                              dropped_zero_n1=0),
-          WelchResult(n0=1, n1=1, mean0=1.0, mean1=2.0, var0=0.0, var1=0.0,
-                      t_score=0.0, abs_t_score=0.0, status="PASS"), []),
-         ("crashed", TimingSamples(), welch, [])],
+        "proj",
+        tmp_path,
+        [
+            (
+                "ok",
+                TimingSamples(
+                    classes=[0, 1],
+                    cycles=[1.0, 2.0],
+                    raw_n_total=10,
+                    dropped_zero_n0=1,
+                    dropped_zero_n1=0,
+                ),
+                WelchResult(
+                    n0=1,
+                    n1=1,
+                    mean0=1.0,
+                    mean1=2.0,
+                    var0=0.0,
+                    var1=0.0,
+                    t_score=0.0,
+                    abs_t_score=0.0,
+                    status="PASS",
+                ),
+                [],
+            ),
+            ("crashed", TimingSamples(), welch, []),
+        ],
     )
     rows = (tmp_path / "dudect_summary.csv").read_text().splitlines()[1:]
     by_name = {r.split(",")[1]: r.split(",") for r in rows}
@@ -1212,11 +1341,14 @@ def _patch_dudect_pipeline(monkeypatch, spy):
     monkeypatch.setattr(cli, "welch_with_cropping", fake_cropping)
     monkeypatch.setattr(cli, "welch_t_test", fake_welch)
     monkeypatch.setattr(cli, "batch_t_scores", fake_batch)
-    monkeypatch.setattr(cli, "_emit_dudect_report", lambda *a, **k: (Path("/tmp/a"), Path("/tmp/b")))
+    monkeypatch.setattr(
+        cli, "_emit_dudect_report", lambda *a, **k: (Path("/tmp/a"), Path("/tmp/b"))
+    )
 
 
 def _dud_cfg(**kw):
     from ctkat.config import DudectConfig, DudectHarnessConfig
+
     return DudectConfig(
         harnesses=[DudectHarnessConfig(name="h", template="generic", function="f")],
         **kw,
@@ -1227,7 +1359,9 @@ def test_bonferroni_scales_only_cropping_not_batch(monkeypatch):
     """F23: with cropping on, the bonferroni scale applies to the cropping
     welch call but NOT batch_t_scores (which never crops)."""
     import math
+
     import ctkat.cli as cli
+
     spy = {}
     _patch_dudect_pipeline(monkeypatch, spy)
     cli._do_dudect(_dud_cfg(bonferroni_correct=True), Path("/tmp"), "p", Path("/tmp"), crop=True)
@@ -1240,6 +1374,7 @@ def test_bonferroni_ignored_when_no_crop(monkeypatch):
     """F20: with --no-crop there is no multi-cutoff family — the bonferroni
     scale must NOT apply to the single uncropped test."""
     import ctkat.cli as cli
+
     spy = {}
     _patch_dudect_pipeline(monkeypatch, spy)
     cli._do_dudect(_dud_cfg(bonferroni_correct=True), Path("/tmp"), "p", Path("/tmp"), crop=False)
@@ -1251,6 +1386,7 @@ def test_seed_zero_randbits_falls_back_to_coffee(monkeypatch, capsys):
     """F19: the ~2^-63 case where secrets.randbits returns 0 must log the
     same 0xC0FFEE the C harness swaps to, not 0x0."""
     import ctkat.cli as cli
+
     spy = {}
     _patch_dudect_pipeline(monkeypatch, spy)
     monkeypatch.setattr(cli.secrets, "randbits", lambda n: 0)
@@ -1285,9 +1421,9 @@ def test_kat_nonnumeric_capture_group_warns(tmp_path):
     of silently returning PASS with no count."""
     cfg = tmp_path / "ctkat.yaml"
     cfg.write_text(
-        'project: {name: demo}\n'
+        "project: {name: demo}\n"
         'build: {command: "true"}\n'
-        'kat:\n'
+        "kat:\n"
         '  command: "echo RESULT: abc"\n'
         "  expected_pattern: 'RESULT: (\\w+)'\n"
     )
@@ -1305,12 +1441,14 @@ def test_run_empty_harness_lists_exit_nonzero(tmp_path):
     to analyze nothing yet exit 0 with a green PASS — the same fail-open R-1
     closed only for the standalone dudect subcommand."""
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent("""
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: d}
         build: {command: "true"}
         ct: {harnesses: []}
         dudect: {enabled: true, harnesses: []}
-    """))
+    """)
+    )
     result = CliRunner().invoke(app, ["run", "--config", str(cfg)])
     assert result.exit_code == 2
     assert "Constant-Time Check: PASS" not in result.stdout
@@ -1362,14 +1500,16 @@ def test_invalid_config_field_exits_two_not_traceback(tmp_path):
 
 def _minimal_dudect_yaml(tmp_path) -> Path:
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent("""
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: demo}
         build: {command: "true"}
         dudect:
           enabled: true
           harnesses:
             - {name: h1, template: generic, function: f}
-    """))
+    """)
+    )
     return cfg
 
 
@@ -1385,9 +1525,7 @@ def test_dudect_seed_zero_override_exits_two_cleanly(tmp_path):
 
 def test_dudect_measurements_out_of_bounds_override_exits_two(tmp_path):
     cfg = _minimal_dudect_yaml(tmp_path)
-    result = CliRunner().invoke(
-        app, ["dudect", "--config", str(cfg), "--measurements", "1"]
-    )
+    result = CliRunner().invoke(app, ["dudect", "--config", str(cfg), "--measurements", "1"])
     assert result.exit_code == 2
     assert "invalid dudect override" in result.stdout.lower()
 
@@ -1400,6 +1538,7 @@ def test_run_argv_missing_program_returns_127(tmp_path):
     used to raise a raw FileNotFoundError. Now it's a clean rc=127 RunResult so
     _do_build reports a normal Build FAIL."""
     from ctkat.builder import run_argv
+
     r = run_argv(["ctkat-no-such-program-xyz"], tmp_path, timeout=5)
     assert r.returncode == 127
     assert not r.ok
@@ -1411,7 +1550,9 @@ def test_run_argv_non_executable_program_returns_127(tmp_path):
     PermissionError (NOT FileNotFoundError) — it must also fail closed (rc=127),
     not escape as a raw traceback."""
     import os
+
     from ctkat.builder import run_argv
+
     stub = tmp_path / "stub.sh"
     stub.write_text("#!/bin/sh\necho hi\n")
     os.chmod(stub, 0o644)  # readable, NOT executable
@@ -1429,14 +1570,13 @@ def test_run_valgrind_missing_valgrind_returns_127(monkeypatch, tmp_path):
         raise FileNotFoundError(2, "No such file or directory", "valgrind")
 
     monkeypatch.setattr(vr, "run_text", _boom)
-    res = vr.run_valgrind(
-        tmp_path / "bin", tmp_path / "vg.log", [], tmp_path, timeout=5
-    )
+    res = vr.run_valgrind(tmp_path / "bin", tmp_path / "vg.log", [], tmp_path, timeout=5)
     assert res.returncode == 127
     assert "valgrind" in res.stderr.lower()
 
     # ...and classify routes that to ERROR (the fail-closed end state).
     from ctkat.ct_runner import classify_valgrind_run
+
     (tmp_path / "vg.log").write_text("")
     out = classify_valgrind_run(res, tmp_path / "vg.log")
     assert out.status == "ERROR"
@@ -1450,7 +1590,9 @@ def test_proc_non_executable_raises_toolnotfound(tmp_path):
     exists but isn't executable) into ToolNotFoundError too, not only
     FileNotFoundError — PermissionError is not a FileNotFoundError subclass."""
     import os
-    from ctkat._proc import run_text, ToolNotFoundError
+
+    from ctkat._proc import ToolNotFoundError, run_text
+
     stub = tmp_path / "x"
     stub.write_text("nope")
     os.chmod(stub, 0o644)
@@ -1463,7 +1605,9 @@ def test_compile_harness_non_executable_cc_raises_compiler_not_found(tmp_path):
     raw PermissionError at the compile site. Now it's a clean
     CompilerNotFoundError (-> the cli exits 2, toolchain error)."""
     import os
-    from ctkat.harness_generator import compile_harness, CompilerNotFoundError
+
+    from ctkat.harness_generator import CompilerNotFoundError, compile_harness
+
     stub = tmp_path / "fakecc"
     stub.write_text("#!/bin/sh\n")
     os.chmod(stub, 0o644)  # not executable
@@ -1471,8 +1615,13 @@ def test_compile_harness_non_executable_cc_raises_compiler_not_found(tmp_path):
     src.write_text("int main(void){return 0;}\n")
     with pytest.raises(CompilerNotFoundError):
         compile_harness(
-            source_path=src, binary_path=tmp_path / "h", sources=[],
-            include_dirs=[], cflags=[], workdir=tmp_path, timeout=10,
+            source_path=src,
+            binary_path=tmp_path / "h",
+            sources=[],
+            include_dirs=[],
+            cflags=[],
+            workdir=tmp_path,
+            timeout=10,
             cc=str(stub),
         )
 
@@ -1489,13 +1638,15 @@ def test_ct_missing_compiler_exits_two(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli_module, "generate_and_compile", _boom)
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent("""
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: d}
         build: {command: "true"}
         ct:
           harnesses:
             - {name: h, template: generic, function: f}
-    """))
+    """)
+    )
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
     assert result.exit_code == 2
     assert "toolchain error" in result.stdout.lower()
@@ -1509,17 +1660,19 @@ def test_ct_valgrind_flags_without_error_exitcode_rejected():
     """FN-3 (§4): dropping --error-exitcode=99 from valgrind_flags silently
     disables the rc=99 whitelist-gap safeguard, so it's rejected at load."""
     from pydantic import ValidationError
+
     from ctkat.config import CtConfig
+
     with pytest.raises(ValidationError, match=r"error-exitcode=99"):
         CtConfig.model_validate(
-            {"harnesses": [{"name": "h", "binary": "b"}],
-             "valgrind_flags": ["--tool=memcheck"]}
+            {"harnesses": [{"name": "h", "binary": "b"}], "valgrind_flags": ["--tool=memcheck"]}
         )
     # the default (which includes it) still loads
     CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}]})
 
 
 # --- Bundle R (Phase 1): `ctkat screen` smoke tests -------------------------
+
 
 def _screen_yaml(tmp_path) -> Path:
     # one template harness so screen's auto (matrix + asm-scan) path runs.
@@ -1535,11 +1688,19 @@ def _ctkat_yaml_path(tmp_path, *, harness_block: str) -> Path:
     return p
 
 
-def _patch_screen(monkeypatch, *, matrix_rows, candidates=(), cc_errors=(),
-                  ct_results=(("h", "PASS", []),), which=True):
+def _patch_screen(
+    monkeypatch,
+    *,
+    matrix_rows,
+    candidates=(),
+    cc_errors=(),
+    ct_results=(("h", "PASS", []),),
+    which=True,
+):
     """Patch screen's heavy stages + toolchain preflight so the smoke tests
     exercise the orchestration + classifier + emit + exit, not real valgrind/gcc."""
     from ctkat import cli as cli_module
+
     if which:
         monkeypatch.setattr(cli_module.shutil, "which", lambda t: "/usr/bin/" + t)
     else:
@@ -1549,14 +1710,21 @@ def _patch_screen(monkeypatch, *, matrix_rows, candidates=(), cc_errors=(),
     monkeypatch.setattr(cli_module, "_do_ct", lambda *a, **k: list(ct_results))
     monkeypatch.setattr(cli_module, "_emit_report", lambda *a, **k: None)
     monkeypatch.setattr(cli_module, "_run_screen_matrix", lambda *a, **k: list(matrix_rows))
-    monkeypatch.setattr(cli_module, "_run_screen_asmscan",
-                        lambda *a, **k: (list(candidates), list(cc_errors)))
+    monkeypatch.setattr(
+        cli_module, "_run_screen_asmscan", lambda *a, **k: (list(candidates), list(cc_errors))
+    )
 
 
 def _mrow(status, cc="gcc", cflags=("-O0",), funcs="", harness="h"):
-    return CtMatrixRow(harness=harness, combo=f"{cc}_{cflags[0].lstrip('-')}", cc=cc,
-                       cflags=cflags, valgrind_status=status, findings=0,
-                       finding_funcs=funcs)
+    return CtMatrixRow(
+        harness=harness,
+        combo=f"{cc}_{cflags[0].lstrip('-')}",
+        cc=cc,
+        cflags=cflags,
+        valgrind_status=status,
+        findings=0,
+        finding_funcs=funcs,
+    )
 
 
 def test_screen_clean_is_robust_exit0(monkeypatch, tmp_path):
@@ -1569,9 +1737,14 @@ def test_screen_clean_is_robust_exit0(monkeypatch, tmp_path):
 
 
 def test_screen_untriaged_candidate_gates_exit2(monkeypatch, tmp_path):
-    cand = VarLatCandidate(harness="h", source_file="x.c", function="div_fn",
-                           compiler="gcc", ct_opt="-O0",
-                           occurrences=[Occurrence("-O0", "0x10", "idiv")])
+    cand = VarLatCandidate(
+        harness="h",
+        source_file="x.c",
+        function="div_fn",
+        compiler="gcc",
+        ct_opt="-O0",
+        occurrences=[Occurrence("-O0", "0x10", "idiv")],
+    )
     _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[cand])
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 2
@@ -1581,9 +1754,14 @@ def test_screen_untriaged_candidate_gates_exit2(monkeypatch, tmp_path):
 
 
 def test_screen_asm_candidates_are_scoped_by_harness(monkeypatch, tmp_path):
-    cand = VarLatCandidate(harness="h2", source_file="x.c", function="div_fn",
-                           compiler="gcc", ct_opt="-O0",
-                           occurrences=[Occurrence("-O0", "0x10", "idiv")])
+    cand = VarLatCandidate(
+        harness="h2",
+        source_file="x.c",
+        function="div_fn",
+        compiler="gcc",
+        ct_opt="-O0",
+        occurrences=[Occurrence("-O0", "0x10", "idiv")],
+    )
     _patch_screen(
         monkeypatch,
         matrix_rows=[
@@ -1600,21 +1778,28 @@ def test_screen_asm_candidates_are_scoped_by_harness(monkeypatch, tmp_path):
 
 
 def test_screen_triage_public_clears_to_robust(monkeypatch, tmp_path):
-    cand = VarLatCandidate(harness="h", source_file="x.c", function="div_fn",
-                           compiler="gcc", ct_opt="-O0",
-                           occurrences=[Occurrence("-O0", "0x10", "idiv")])
+    cand = VarLatCandidate(
+        harness="h",
+        source_file="x.c",
+        function="div_fn",
+        compiler="gcc",
+        ct_opt="-O0",
+        occurrences=[Occurrence("-O0", "0x10", "idiv")],
+    )
     _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[cand])
     tri = tmp_path / "triage.yaml"
     tri.write_text("harnesses:\n  h:\n    varlat: public\n")
     result = CliRunner().invoke(
-        app, ["screen", "--config", str(_screen_yaml(tmp_path)), "--triage", str(tri)])
+        app, ["screen", "--config", str(_screen_yaml(tmp_path)), "--triage", str(tri)]
+    )
     assert result.exit_code == 0
     assert "robust" in (tmp_path / "reports" / "screen_summary.csv").read_text()
 
 
 def test_screen_ct_matrix_flip_is_build_sensitive_exit2(monkeypatch, tmp_path):
-    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS", cflags=("-O0",)),
-                                            _mrow("FAIL", cflags=("-O2",))])
+    _patch_screen(
+        monkeypatch, matrix_rows=[_mrow("PASS", cflags=("-O0",)), _mrow("FAIL", cflags=("-O2",))]
+    )
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 2
     assert "build-sensitive-ct" in (tmp_path / "reports" / "screen_summary.csv").read_text()
@@ -1630,8 +1815,10 @@ def test_screen_missing_valgrind_exits2_cleanly(monkeypatch, tmp_path):
 
 def test_screen_requires_ct_section_exit2(tmp_path):
     p = tmp_path / "ctkat.yaml"
-    p.write_text('project: {name: d}\nbuild: {command: "true"}\n'
-                 'dudect:\n  harnesses:\n    - {name: h, template: generic, function: f}\n')
+    p.write_text(
+        'project: {name: d}\nbuild: {command: "true"}\n'
+        "dudect:\n  harnesses:\n    - {name: h, template: generic, function: f}\n"
+    )
     result = CliRunner().invoke(app, ["screen", "--config", str(p)])
     assert result.exit_code == 2
     assert "needs a `ct` section" in result.stdout
@@ -1639,15 +1826,27 @@ def test_screen_requires_ct_section_exit2(tmp_path):
 
 # --- Bundle R review fixes: screen exit gate honors dudect/ct-error/kat -------
 
+
 def test_screen_dudect_fail_gates_exit2(monkeypatch, tmp_path):
     # HIGH (review): a confirmed timing leak (dudect FAIL) must gate screen even
     # when the structural verdict_class is robust — else a leak reads as exit 0.
     from ctkat import cli as cli_module
+
     _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")])
-    fail = WelchResult(n0=100, n1=100, mean0=1.0, mean1=2.0, var0=0.5, var1=0.5,
-                       t_score=-42.0, abs_t_score=42.0, status="FAIL")
-    monkeypatch.setattr(cli_module, "_do_dudect",
-                        lambda *a, **k: [("h", TimingSamples(), fail, [])])
+    fail = WelchResult(
+        n0=100,
+        n1=100,
+        mean0=1.0,
+        mean1=2.0,
+        var0=0.5,
+        var1=0.5,
+        t_score=-42.0,
+        abs_t_score=42.0,
+        status="FAIL",
+    )
+    monkeypatch.setattr(
+        cli_module, "_do_dudect", lambda *a, **k: [("h", TimingSamples(), fail, [])]
+    )
     monkeypatch.setattr(cli_module, "_emit_dudect_report", lambda *a, **k: (None, None))
     cfg = tmp_path / "ctkat.yaml"
     cfg.write_text(
@@ -1682,6 +1881,7 @@ def test_screen_primary_ct_error_gates_exit2(monkeypatch, tmp_path):
 def test_screen_kat_fail_with_continue_gates_exit2(monkeypatch, tmp_path):
     # review #10: KAT FAIL must propagate to the exit even under --continue-on-kat-fail.
     from ctkat import cli as cli_module
+
     _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")])
     monkeypatch.setattr(cli_module, "_do_kat", lambda *a, **k: (False, None))
     cfg = tmp_path / "ctkat.yaml"
@@ -1717,13 +1917,15 @@ def test_ct_kem_caveat_when_no_fo_harness_recommends_adding_one(monkeypatch, tmp
     # advertise coverage the run won't produce).
     _stub_kem_ct(monkeypatch, tmp_path)
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent('''
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: d}
         build: {command: "true"}
         ct:
           harnesses:
             - {name: kd, template: kem, header: api.h, prefix: "P_"}
-    '''))
+    """)
+    )
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
     # collapse Rich's line-wrapping so multi-word phrases match regardless of width
     out = " ".join(result.stdout.split())
@@ -1737,7 +1939,8 @@ def test_ct_kem_caveat_when_fo_harness_present_says_covered(monkeypatch, tmp_pat
     # must say that path is covered by it, naming the harness.
     _stub_kem_ct(monkeypatch, tmp_path)
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent('''
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: d}
         build: {command: "true"}
         ct:
@@ -1747,7 +1950,8 @@ def test_ct_kem_caveat_when_fo_harness_present_says_covered(monkeypatch, tmp_pat
           enabled: false
           harnesses:
             - {name: kd_fo, template: kem, header: api.h, prefix: "P_", leak_target: fo}
-    '''))
+    """)
+    )
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
     out = " ".join(result.stdout.split())
     assert "timing-covered by your dudect" in out.lower()
@@ -1759,14 +1963,16 @@ def test_ct_kem_invalid_structural_harness_says_fo_is_valgrind_covered(monkeypat
     # so the note must not keep saying the FO path is not covered structurally.
     _stub_kem_ct(monkeypatch, tmp_path)
     cfg = tmp_path / "ctkat.yaml"
-    cfg.write_text(textwrap.dedent('''
+    cfg.write_text(
+        textwrap.dedent("""
         project: {name: d}
         build: {command: "true"}
         ct:
           harnesses:
             - {name: kd, template: kem, header: api.h, prefix: "P_"}
             - {name: kd_fo, template: kem, header: api.h, prefix: "P_", kem_decapsulation: invalid}
-    '''))
+    """)
+    )
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
     out = " ".join(result.stdout.split())
     assert "invalid-ct" in out.lower()
@@ -1783,8 +1989,11 @@ def test_dudect_context_sign_passes_header_and_prefix():
     # assert the *context dict* the generator would feed it. Rendering is
     # covered in CP B once timing_sign.c.j2 lands.
     from ctkat.config import DudectConfig, DudectHarnessConfig
+
     h = DudectHarnessConfig(
-        name="sign", template="sign", header="api.h",
+        name="sign",
+        template="sign",
+        header="api.h",
         prefix="PQCLEAN_MLDSA44_CLEAN_",
         extra_headers=["params.h"],
     )

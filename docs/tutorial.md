@@ -1,4 +1,4 @@
-# CT-KAT — "내 함수에 dudect 걸어보기" 튜토리얼
+# CT-KAT — "내 함수에 timing screen 걸어보기" 튜토리얼
 
 `infer` 서브커맨드와 README의 yaml 참조만으로도 가능하지만, 처음 yaml을
 쓰는 사용자가 한 번 따라가면 좋은 30-line 워크스루.
@@ -12,7 +12,9 @@
 int secret_compare(const uint8_t *secret, const uint8_t *guess, size_t len);
 ```
 
-이게 constant-time인지 dudect로 확인하고 싶다.
+이 구현에서 fixed-vs-random timing 차이가 보이는지 1차 스크리닝하고 싶다.
+현재 `dudect` 서브커맨드는 공식 dudect가 아니라 CT-KAT 자체 first-order
+Welch screen이라는 점에 유의한다.
 
 ## 1. PRNG로 채우는 가장 단순한 yaml
 
@@ -23,7 +25,7 @@ project:
   root: .
 
 build:
-  command: "make"
+  argv: ["make"]
   workdir: .
   expected_artifacts:
     - lib/libmy.a            # build가 실제로 만들었는지 검증 (F10)

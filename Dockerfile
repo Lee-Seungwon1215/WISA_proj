@@ -38,6 +38,11 @@ RUN pip install --no-cache-dir \
         "rich>=13,<15" \
         "pytest>=8,<9"
 
+COPY pyproject.toml README.md LICENSE /opt/ctkat-src/
+COPY ctkat /opt/ctkat-src/ctkat
+RUN pip install --no-cache-dir --no-deps /opt/ctkat-src \
+    && rm -rf /opt/ctkat-src
+
 WORKDIR /workspace
 
 CMD ["/bin/bash"]

@@ -5,7 +5,7 @@ project:
 
 build:
   # Source is compiled in by the dudect harness step.
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 dudect:

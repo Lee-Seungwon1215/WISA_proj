@@ -6,7 +6,7 @@ project:
 build:
   # The generic harness ships its own compile step, so we don't need a
   # project-level Makefile invocation here.
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 ct:

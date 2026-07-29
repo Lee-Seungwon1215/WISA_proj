@@ -4,7 +4,7 @@ project:
   root: ..
 
 build:
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 # Falcon-512 encoded private-key split probe.

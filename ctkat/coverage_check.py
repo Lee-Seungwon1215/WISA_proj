@@ -37,10 +37,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ._proc import run_text
-
 from rich.console import Console
 
+from ._proc import run_text
 
 _console = Console()
 
@@ -48,9 +47,7 @@ _console = Console()
 # failed and bail.
 # Third group (max_end = max(offset+length)) is optional — only emitted when
 # offsets are supplied (F21). Old two-field callers still parse.
-_SENTINEL_RE = re.compile(
-    r"^CTKAT-COVERAGE\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*$", re.MULTILINE
-)
+_SENTINEL_RE = re.compile(r"^CTKAT-COVERAGE\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*$", re.MULTILINE)
 
 # Default warn threshold. Anything below this and the user almost
 # certainly mis-numbered a length field.
@@ -82,8 +79,7 @@ def _render_sentinel_c(
     includes = [f'#include "{header}"'] + [f'#include "{h}"' for h in extra_headers]
     head = (
         "#include <stddef.h>\n"
-        "#include <stdio.h>\n"
-        + "\n".join(includes) + "\n"
+        "#include <stdio.h>\n" + "\n".join(includes) + "\n"
         "int main(void) {\n"
         f"    size_t covered = (size_t)({sum_expr});\n"
         f"    size_t total = (size_t)({total_macro});\n"
@@ -93,10 +89,13 @@ def _render_sentinel_c(
         # out-of-bounds region (offset+length > CRYPTO_SECRETKEYBYTES), which
         # would taint stack memory past `sk`. The macros are only known to the
         # C preprocessor, so the arithmetic has to happen here, not in Python.
-        ends = ", ".join(
-            f"({o}) + ({l})"
-            for o, l in zip(secret_region_offsets, secret_region_lengths)
-        ) or "0"
+        ends = (
+            ", ".join(
+                f"({offset}) + ({length})"
+                for offset, length in zip(secret_region_offsets, secret_region_lengths)
+            )
+            or "0"
+        )
         return (
             head
             + f"    size_t ends[] = {{ {ends} }};\n"
@@ -164,7 +163,10 @@ def check_secret_region_coverage(
         # No secret_regions = full-sk taint policy, nothing to cross-check.
         return None
     src = _render_sentinel_c(
-        header, extra_headers, prefix, secret_region_lengths,
+        header,
+        extra_headers,
+        prefix,
+        secret_region_lengths,
         secret_region_offsets=secret_region_offsets,
     )
     with tempfile.TemporaryDirectory() as td:

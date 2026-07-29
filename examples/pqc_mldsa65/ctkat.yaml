@@ -4,7 +4,7 @@ project:
   root: ..
 
 build:
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 # PQClean ML-DSA-65 (Dilithium, FIPS 204) sign harness. robust 대조군 #2 (ML-DSA

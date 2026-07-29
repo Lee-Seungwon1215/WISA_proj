@@ -3,7 +3,6 @@ from pathlib import Path
 from ctkat.header_parser import parse_header_file
 from ctkat.secret_infer import infer_function, infer_functions
 
-
 FIXTURES = Path(__file__).parent / "fixtures" / "headers"
 
 
@@ -60,6 +59,7 @@ def test_toy_compare_keyword_heuristic():
 
 def test_scalar_param_classified_even_without_keyword_match():
     from ctkat.header_parser import parse_functions
+
     sigs = parse_functions("int f(int n);")
     inferred = infer_function(sigs[0])
     assert inferred.profile is None

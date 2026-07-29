@@ -1,29 +1,127 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ctkat"
-version = "0.1.0"
-description = "KAT + Valgrind based constant-time check framework"
+dynamic = ["version"]
+description = "Auditable orchestration for correctness and constant-time screening of C cryptography"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "CT-KAT contributors"},
+]
+maintainers = [
+    {name = "CT-KAT contributors"},
+]
+keywords = [
+    "constant-time",
+    "cryptography",
+    "side-channel",
+    "valgrind",
+    "pqc",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
 dependencies = [
-    "typer>=0.12",
-    "pydantic>=2",
-    "pyyaml>=6",
-    "jinja2>=3",
-    "rich>=13",
+    "typer>=0.12,<1",
+    "pydantic>=2,<3",
+    "pyyaml>=6,<7",
+    "jinja2>=3,<4",
+    "rich>=13,<15",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+test = [
+    "pytest>=8,<9",
+    "pytest-cov>=5,<8",
+]
+quality = [
+    "mypy>=1.14,<2",
+    "ruff>=0.9,<1",
+    "types-PyYAML>=6",
+]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
+]
+release = [
+    "build>=1.2,<2",
+    "twine>=6,<7",
+]
+dev = [
+    "pytest>=8,<9",
+    "pytest-cov>=5,<8",
+    "mypy>=1.14,<2",
+    "ruff>=0.9,<1",
+    "types-PyYAML>=6",
+    "build>=1.2,<2",
+    "twine>=6,<7",
+]
 
 [project.scripts]
 ctkat = "ctkat.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/Lee-Seungwon1215/WISA_proj"
+Repository = "https://github.com/Lee-Seungwon1215/WISA_proj.git"
+Issues = "https://github.com/Lee-Seungwon1215/WISA_proj/issues"
+Documentation = "https://github.com/Lee-Seungwon1215/WISA_proj/tree/main/docs"
+
+[tool.setuptools.dynamic]
+version = {attr = "ctkat.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["ctkat*"]
 exclude = ["tests*", "examples*", "scripts*"]
 
+[tool.setuptools.package-data]
+ctkat = ["templates/*.j2", "py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["ctkat"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 70
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "examples/pqc_*",
+    "paper",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+exclude = [
+    "^examples/pqc_",
+    "^paper/",
+]

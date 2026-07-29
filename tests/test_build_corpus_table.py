@@ -25,30 +25,71 @@ def _write_reports(tmp_path, ctm, varlat, dud):
             for r in rows:
                 wr.writerow(r)
 
-    w("ctkat_ct_matrix.csv",
-      ["project", "harness", "combo", "cc", "cflags", "valgrind_status", "findings",
-       "finding_funcs", "error"], ctm)
-    w("ctkat_varlat_candidates.csv",
-      ["compiler", "harness", "source_file", "function", "mnemonics", "opt_levels", "count", "addresses", "note"], varlat)
-    w("dudect_summary.csv",
-      ["project", "harness", "n0", "n1", "abs_t_score", "status"], dud)
+    w(
+        "ctkat_ct_matrix.csv",
+        [
+            "project",
+            "harness",
+            "combo",
+            "cc",
+            "cflags",
+            "valgrind_status",
+            "findings",
+            "finding_funcs",
+            "error",
+        ],
+        ctm,
+    )
+    w(
+        "ctkat_varlat_candidates.csv",
+        [
+            "compiler",
+            "harness",
+            "source_file",
+            "function",
+            "mnemonics",
+            "opt_levels",
+            "count",
+            "addresses",
+            "note",
+        ],
+        varlat,
+    )
+    w("dudect_summary.csv", ["project", "harness", "n0", "n1", "abs_t_score", "status"], dud)
 
 
 def _ctm(harness, combo, cc, cflags, status, findings="0"):
-    return {"project": "p", "harness": harness, "combo": combo, "cc": cc,
-            "cflags": cflags, "valgrind_status": status, "findings": findings, "error": ""}
+    return {
+        "project": "p",
+        "harness": harness,
+        "combo": combo,
+        "cc": cc,
+        "cflags": cflags,
+        "valgrind_status": status,
+        "findings": findings,
+        "error": "",
+    }
 
 
 def _vl(harness, cc, func, opts):
-    return {"compiler": cc, "harness": harness, "source_file": "x.c", "function": func,
-            "mnemonics": "div", "opt_levels": opts, "count": "1", "addresses": "", "note": ""}
+    return {
+        "compiler": cc,
+        "harness": harness,
+        "source_file": "x.c",
+        "function": func,
+        "mnemonics": "div",
+        "opt_levels": opts,
+        "count": "1",
+        "addresses": "",
+        "note": "",
+    }
 
 
 def test_opt_of():
     assert bct.opt_of("-O0 -g -fno-inline") == "-O0"
     assert bct.opt_of("-O2 -g -fno-lto") == "-O2"
     assert bct.opt_of("-Os -g") == "-Os"
-    assert bct.opt_of("-g -DX") == "-O0"   # no -O -> default -O0
+    assert bct.opt_of("-g -DX") == "-O0"  # no -O -> default -O0
 
 
 def test_build_robust_with_public_varlat(tmp_path):
@@ -56,14 +97,25 @@ def test_build_robust_with_public_varlat(tmp_path):
     # dudect WARNING must be surfaced (not hidden).
     _write_reports(
         tmp_path,
-        [_ctm("kem_dec", "gcc_size", "gcc", "-Os -g", "PASS"),
-         _ctm("kem_dec", "gcc_debug", "gcc", "-O0 -g", "PASS")],
+        [
+            _ctm("kem_dec", "gcc_size", "gcc", "-Os -g", "PASS"),
+            _ctm("kem_dec", "gcc_debug", "gcc", "-O0 -g", "PASS"),
+        ],
         [_vl("kem_dec", "gcc", "shake128", "-Os")],
-        [{"project": "p", "harness": "kem_dec", "n0": "100", "n1": "100",
-          "abs_t_score": "5.470", "status": "WARNING"}],
+        [
+            {
+                "project": "p",
+                "harness": "kem_dec",
+                "n0": "100",
+                "n1": "100",
+                "abs_t_score": "5.470",
+                "status": "WARNING",
+            }
+        ],
     )
-    cells, summary = bct.build(tmp_path, "ML-KEM", "t", {"gcc": "13.3.0"}, "x86_64", "abc",
-                              {"kem_dec": "public"})
+    cells, summary = bct.build(
+        tmp_path, "ML-KEM", "t", {"gcc": "13.3.0"}, "x86_64", "abc", {"kem_dec": "public"}
+    )
     by_combo = {c["combo"]: c for c in cells}
     assert by_combo["gcc_size"]["asm_div_count"] == "1"
     assert by_combo["gcc_size"]["asm_div_funcs"] == "shake128"
@@ -75,15 +127,18 @@ def test_build_robust_with_public_varlat(tmp_path):
     assert s["basis"] == "review"
     assert s["ct_flips"] == "no"
     assert s["dudect_status"] == "WARNING"
-    assert "WARNING" in s["notes"]            # surfaced, not hidden
+    assert "WARNING" in s["notes"]  # surfaced, not hidden
 
 
 def test_build_flip_is_build_sensitive(tmp_path):
     _write_reports(
         tmp_path,
-        [_ctm("f", "gcc_debug", "gcc", "-O0 -g", "FAIL", findings="1"),
-         _ctm("f", "gcc_release", "gcc", "-O2 -g", "PASS")],
-        [], [],
+        [
+            _ctm("f", "gcc_debug", "gcc", "-O0 -g", "FAIL", findings="1"),
+            _ctm("f", "gcc_release", "gcc", "-O2 -g", "PASS"),
+        ],
+        [],
+        [],
     )
     _cells, summary = bct.build(tmp_path, "syn", "t", {}, "", "", {})
     assert summary[0]["ct_flips"] == "yes"
@@ -121,9 +176,17 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
     reg = {"ML-DSA": {"poly_chknorm", "make_hint", "pack_sig"}}
 
     def _row(funcs):
-        return {"project": "p", "harness": "sign", "combo": "gcc_debug", "cc": "gcc",
-                "cflags": "-O0", "valgrind_status": "FAIL", "findings": "2",
-                "finding_funcs": funcs, "error": ""}
+        return {
+            "project": "p",
+            "harness": "sign",
+            "combo": "gcc_debug",
+            "cc": "gcc",
+            "cflags": "-O0",
+            "valgrind_status": "FAIL",
+            "findings": "2",
+            "finding_funcs": funcs,
+            "error": "",
+        }
 
     # suffix-match against PFX_-prefixed names; all registered -> accepted
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint;PFX_pack_sig")], [], [])
@@ -161,25 +224,40 @@ def test_asm_error_from_varlat_json_is_surfaced(tmp_path):
     # corpus cell. Before the fix asm_error was hardcoded "", so a partial scan
     # looked identical to a complete clean one.
     import json
+
     _write_reports(
         tmp_path,
-        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS"),
-         _ctm("kem_dec", "clang_o2", "clang", "-O2 -g", "PASS")],
-        [_vl("kem_dec", "gcc", "shake128", "-O2")],   # only gcc produced candidates
+        [
+            _ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS"),
+            _ctm("kem_dec", "clang_o2", "clang", "-O2 -g", "PASS"),
+        ],
+        [_vl("kem_dec", "gcc", "shake128", "-O2")],  # only gcc produced candidates
         [],
     )
     # asm-scan JSON: gcc scanned OK, clang errored (a source never compiled).
-    (tmp_path / "reports" / "ctkat_varlat_candidates.json").write_text(json.dumps({
-        "project": "p", "kind": "varlat_candidates", "warn_only": True,
-        "scanned_opt_levels": ["-O2"], "scanned_compilers": ["gcc"],
-        "errors": [{"compiler": "clang",
-                    "error": "source(s) never compiled under cc='clang': poly.c"}],
-        "candidates": [], "matrix": [],
-    }))
+    (tmp_path / "reports" / "ctkat_varlat_candidates.json").write_text(
+        json.dumps(
+            {
+                "project": "p",
+                "kind": "varlat_candidates",
+                "warn_only": True,
+                "scanned_opt_levels": ["-O2"],
+                "scanned_compilers": ["gcc"],
+                "errors": [
+                    {
+                        "compiler": "clang",
+                        "error": "source(s) never compiled under cc='clang': poly.c",
+                    }
+                ],
+                "candidates": [],
+                "matrix": [],
+            }
+        )
+    )
     cells, summary = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
     by_cc = {c["cc"]: c for c in cells}
-    assert by_cc["gcc"]["asm_error"] == ""                       # scanned OK
-    assert "never compiled" in by_cc["clang"]["asm_error"]       # surfaced, not blank
+    assert by_cc["gcc"]["asm_error"] == ""  # scanned OK
+    assert "never compiled" in by_cc["clang"]["asm_error"]  # surfaced, not blank
     # and the clang cell is not a misleading clean "0 divisions" with no caveat
     assert by_cc["clang"]["asm_div_count"] == "0"
     assert by_cc["clang"]["asm_error"] != ""
@@ -197,22 +275,34 @@ def test_asm_error_not_flagged_for_uncovered_compiler(tmp_path):
     # choice, not an error — it must NOT be labeled asm_error nor downgrade the
     # verdict. asm_error is reserved for genuine asm-scan errors (schema-locked).
     import json
+
     _write_reports(
         tmp_path,
-        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS"),
-         _ctm("kem_dec", "clang_o2", "clang", "-O2 -g", "PASS")],
-        [],   # no div candidates at all -> clean
+        [
+            _ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS"),
+            _ctm("kem_dec", "clang_o2", "clang", "-O2 -g", "PASS"),
+        ],
+        [],  # no div candidates at all -> clean
         [],
     )
     # clang is NOT in scanned_compilers and NOT in errors — just not requested.
-    (tmp_path / "reports" / "ctkat_varlat_candidates.json").write_text(json.dumps({
-        "project": "p", "kind": "varlat_candidates", "warn_only": True,
-        "scanned_opt_levels": ["-O2"], "scanned_compilers": ["gcc"],
-        "errors": [], "candidates": [], "matrix": [],
-    }))
+    (tmp_path / "reports" / "ctkat_varlat_candidates.json").write_text(
+        json.dumps(
+            {
+                "project": "p",
+                "kind": "varlat_candidates",
+                "warn_only": True,
+                "scanned_opt_levels": ["-O2"],
+                "scanned_compilers": ["gcc"],
+                "errors": [],
+                "candidates": [],
+                "matrix": [],
+            }
+        )
+    )
     cells, summary = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
     by_cc = {c["cc"]: c for c in cells}
-    assert by_cc["clang"]["asm_error"] == ""   # not an error — just not requested
+    assert by_cc["clang"]["asm_error"] == ""  # not an error — just not requested
     # a not-requested compiler must NOT downgrade the verdict: no genuine asm
     # error -> the ct-PASS / no-candidate harness stays 'robust'.
     assert summary[0]["verdict_class"] == "robust"

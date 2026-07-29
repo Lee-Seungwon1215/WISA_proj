@@ -4,7 +4,7 @@ project:
   root: ..
 
 build:
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 # Full ML-KEM-768 kem_dec, but clean/poly.c SWAPPED for the KyberSlash-vulnerable

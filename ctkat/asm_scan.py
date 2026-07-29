@@ -47,7 +47,6 @@ from typing import Dict, List, Optional, Tuple
 
 from ._proc import run_text
 
-
 # Optimization levels scanned by default. The ct stage's own opt level is added
 # on top of these per-harness by the caller so the "absent at <ct opt>" note is
 # always backed by an actual scan.
@@ -77,7 +76,7 @@ class Occurrence:
     """One division-family instruction at a concrete (opt level, address)."""
 
     opt: str
-    addr: str          # objdump hex, e.g. "222"
+    addr: str  # objdump hex, e.g. "222"
     mnemonic: str
 
 
@@ -90,10 +89,10 @@ class VarLatCandidate:
     missed it *if* the ct build uses the same compiler (see `_note_for`)."""
 
     harness: str
-    source_file: str          # as written in the yaml (for readability)
+    source_file: str  # as written in the yaml (for readability)
     function: str
-    compiler: str = "gcc"     # the scan compiler (`--cc`) this candidate came from
-    ct_opt: str = "-O0"       # the ct stage's effective opt level for this harness
+    compiler: str = "gcc"  # the scan compiler (`--cc`) this candidate came from
+    ct_opt: str = "-O0"  # the ct stage's effective opt level for this harness
     occurrences: List[Occurrence] = field(default_factory=list)
 
     @property
@@ -131,9 +130,7 @@ def triage_hint_for(source_file: str, function: str) -> str:
     """Heuristic-only label for common variable-latency candidate families."""
     src = source_file.lower()
     fn = function.lower()
-    if "kyberslash" in src and (
-        fn.endswith("poly_compress") or fn.endswith("poly_tomsg")
-    ):
+    if "kyberslash" in src and (fn.endswith("poly_compress") or fn.endswith("poly_tomsg")):
         return "kyberslash-poly-review-secret-risk"
     if any(part in src for part in ("fips202", "keccak", "sp800-185")) or fn.startswith(
         ("shake", "sha3", "keccak")
@@ -281,9 +278,7 @@ def _disasm_divisions(
         # `nm` site's existing FileNotFoundError tolerance.
         raise AsmScanError(f"objdump could not run ({' '.join(cmd)}): {e}") from e
     if proc.returncode != 0:
-        raise AsmScanError(
-            f"objdump failed ({' '.join(cmd)}):\n{proc.stderr or proc.stdout}"
-        )
+        raise AsmScanError(f"objdump failed ({' '.join(cmd)}):\n{proc.stderr or proc.stdout}")
     hits = parse_objdump(proc.stdout)
     if not hits:
         return []
@@ -325,8 +320,8 @@ def scan_harness(
     inc_flags = [f"-I{d}" for d in include_dirs]
     # key: (source_display, function) -> list[Occurrence]
     agg: Dict[Tuple[str, str], List[Occurrence]] = {}
-    attempted = 0   # (source, opt) compile attempts
-    compiled = 0    # ...that produced an object we could disassemble
+    attempted = 0  # (source, opt) compile attempts
+    compiled = 0  # ...that produced an object we could disassemble
     scanned_sources: set = set()  # source displays that compiled at >=1 opt
 
     with tempfile.TemporaryDirectory(prefix="ctkat_asm_") as td:
@@ -480,7 +475,9 @@ def build_matrix(candidates: List[VarLatCandidate]) -> List[Dict[str, object]]:
         }
         for (comp, opt, sf, fn, mn), n in agg.items()
     ]
-    rows.sort(key=lambda r: (r["compiler"], r["opt"], r["source_file"], r["function"], r["mnemonic"]))
+    rows.sort(
+        key=lambda r: (r["compiler"], r["opt"], r["source_file"], r["function"], r["mnemonic"])
+    )
     return rows
 
 

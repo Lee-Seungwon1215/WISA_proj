@@ -26,10 +26,10 @@ import pytest
 from typer.testing import CliRunner
 
 from ctkat.asm_scan import (
+    VARLAT_CSV_FIELDS,
     AsmScanError,
     Occurrence,
     VarLatCandidate,
-    VARLAT_CSV_FIELDS,
     candidate_to_row,
     extract_opt_level,
     parse_nm,
@@ -157,14 +157,16 @@ def test_resolve_functions_resolves_unknown_label():
 
 # --- extract_opt_level -------------------------------------------------------
 
+
 def test_extract_opt_level_picks_last_and_defaults_to_O0():
     assert extract_opt_level(["-O0", "-g", "-fno-inline"]) == "-O0"
-    assert extract_opt_level(["-g", "-DX=1"]) == "-O0"          # none -> -O0
-    assert extract_opt_level(["-O2", "-g", "-O0"]) == "-O0"     # gcc honours last
+    assert extract_opt_level(["-g", "-DX=1"]) == "-O0"  # none -> -O0
+    assert extract_opt_level(["-O2", "-g", "-O0"]) == "-O0"  # gcc honours last
     assert extract_opt_level(["-Os"]) == "-Os"
 
 
 # --- note / row logic --------------------------------------------------------
+
 
 def test_note_flags_optimized_only_as_ct_stage_miss():
     row = candidate_to_row(_cand("poly_tomsg", [("-Os", "222", "div")], ct_opt="-O0"))
@@ -194,14 +196,20 @@ def test_candidate_row_has_count_and_addresses():
 
 
 def test_triage_hint_labels_known_public_and_kyberslash_candidates():
-    assert triage_hint_for(
-        "../pqc_mlkem768/clean_kyberslash/poly.c",
-        "PQCLEAN_MLKEM768_CLEAN_poly_compress",
-    ) == "kyberslash-poly-review-secret-risk"
-    assert triage_hint_for(
-        "common/fips202.c",
-        "shake128",
-    ) == "keccak-rate-review-likely-public"
+    assert (
+        triage_hint_for(
+            "../pqc_mlkem768/clean_kyberslash/poly.c",
+            "PQCLEAN_MLKEM768_CLEAN_poly_compress",
+        )
+        == "kyberslash-poly-review-secret-risk"
+    )
+    assert (
+        triage_hint_for(
+            "common/fips202.c",
+            "shake128",
+        )
+        == "keccak-rate-review-likely-public"
+    )
     assert triage_hint_for("src/math.c", "local_div") == "unclassified-review-required"
 
 
@@ -227,6 +235,7 @@ def test_note_is_compiler_aware_and_conditionalizes_miss():
 
 
 # --- artifact writers --------------------------------------------------------
+
 
 def test_write_varlat_csv_columns_and_rows(tmp_path: Path):
     cands = [_cand("poly_tomsg", [("-Os", "222", "div")], harness="kem_dec", source="clean/poly.c")]
@@ -257,12 +266,18 @@ def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
 
     cands = [
         _cand("poly_tomsg", [("-Os", "222", "div")], source="clean/poly.c", compiler="gcc"),
-        _cand("poly_tomsg", [("-O0", "40", "idiv"), ("-Os", "222", "idiv")],
-              source="clean/poly.c", compiler="clang"),
+        _cand(
+            "poly_tomsg",
+            [("-O0", "40", "idiv"), ("-Os", "222", "idiv")],
+            source="clean/poly.c",
+            compiler="clang",
+        ),
     ]
     out = tmp_path / "v.json"
     write_varlat_json(
-        "proj", cands, out,
+        "proj",
+        cands,
+        out,
         opt_levels=("-O0", "-Os", "-O2"),
         compilers=("gcc", "clang"),
         errors=[{"compiler": "icc", "error": "compiler not found on PATH"}],
@@ -273,12 +288,24 @@ def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
     # normalized matrix: one row per (compiler, opt, source, function, mnemonic),
     # so a script can compare which compiler x opt kept a division alive.
     m = data["matrix"]
-    assert {"compiler": "gcc", "opt": "-Os", "source_file": "clean/poly.c",
-            "function": "poly_tomsg", "triage_hint": "unclassified-review-required",
-            "mnemonic": "div", "count": 1} in m
-    assert {"compiler": "clang", "opt": "-O0", "source_file": "clean/poly.c",
-            "function": "poly_tomsg", "triage_hint": "unclassified-review-required",
-            "mnemonic": "idiv", "count": 1} in m
+    assert {
+        "compiler": "gcc",
+        "opt": "-Os",
+        "source_file": "clean/poly.c",
+        "function": "poly_tomsg",
+        "triage_hint": "unclassified-review-required",
+        "mnemonic": "div",
+        "count": 1,
+    } in m
+    assert {
+        "compiler": "clang",
+        "opt": "-O0",
+        "source_file": "clean/poly.c",
+        "function": "poly_tomsg",
+        "triage_hint": "unclassified-review-required",
+        "mnemonic": "idiv",
+        "count": 1,
+    } in m
     gcc_opts = sorted(r["opt"] for r in m if r["compiler"] == "gcc")
     clang_opts = sorted(r["opt"] for r in m if r["compiler"] == "clang")
     assert gcc_opts == ["-Os"] and clang_opts == ["-O0", "-Os"]
@@ -321,8 +348,10 @@ def test_asm_scan_cli_writes_artifact_and_exits_zero(tmp_path: Path):
     yaml_path = _write_min_yaml(tmp_path)
     fake = [_cand("leaky", [("-Os", "222", "div")], harness="h1", source="foo.c")]
     # mock which() so the test doesn't depend on gcc/objdump being installed.
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.scan_harness", return_value=fake) as m:
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.scan_harness", return_value=fake) as m,
+    ):
         result = CliRunner().invoke(app, ["asm-scan", "-c", str(yaml_path)])
     assert result.exit_code == 0, result.stdout
     assert m.called
@@ -337,8 +366,10 @@ def test_asm_scan_cli_writes_artifact_and_exits_zero(tmp_path: Path):
 
 def test_asm_scan_cli_includes_ct_opt_and_custom_opts(tmp_path: Path):
     yaml_path = _write_min_yaml(tmp_path)
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/clang"), \
-         mock.patch("ctkat.cli.scan_harness", return_value=[]) as m:
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/clang"),
+        mock.patch("ctkat.cli.scan_harness", return_value=[]) as m,
+    ):
         result = CliRunner().invoke(
             app, ["asm-scan", "-c", str(yaml_path), "--opt", "-O3", "--cc", "clang"]
         )
@@ -364,8 +395,10 @@ def test_asm_scan_cli_disasm_error_exits_2(tmp_path: Path):
     # fails (no object produced). AsmScanError must be caught → clean exit 2,
     # not an escaping traceback (exit 1).
     yaml_path = _write_min_yaml(tmp_path)
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.scan_harness", side_effect=AsmScanError("objdump failed: boom")):
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.scan_harness", side_effect=AsmScanError("objdump failed: boom")),
+    ):
         result = CliRunner().invoke(app, ["asm-scan", "-c", str(yaml_path)])
     assert result.exit_code == 2
     assert "disassembly failed" in result.stdout
@@ -373,12 +406,14 @@ def test_asm_scan_cli_disasm_error_exits_2(tmp_path: Path):
 
 def test_asm_scan_cli_no_ct_section_exits_2(tmp_path: Path):
     p = tmp_path / "ctkat.yaml"
-    p.write_text(textwrap.dedent(
-        """
+    p.write_text(
+        textwrap.dedent(
+            """
         project: {name: p, language: c, root: .}
         build: {command: "true", workdir: .}
         """
-    ))
+        )
+    )
     result = CliRunner().invoke(app, ["asm-scan", "-c", str(p)])
     assert result.exit_code == 2
 
@@ -392,11 +427,12 @@ def test_asm_scan_cli_multiple_compilers_recorded(tmp_path: Path):
 
     def fake_scan(*_a, **k):
         cc = k["cc"]
-        return [_cand("leaky", [("-Os", "222", "div")], harness="h1",
-                      source="foo.c", compiler=cc)]
+        return [_cand("leaky", [("-Os", "222", "div")], harness="h1", source="foo.c", compiler=cc)]
 
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.scan_harness", side_effect=fake_scan) as m:
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.scan_harness", side_effect=fake_scan) as m,
+    ):
         result = CliRunner().invoke(
             app, ["asm-scan", "-c", str(yaml_path), "--cc", "gcc", "--cc", "clang"]
         )
@@ -426,8 +462,10 @@ def test_asm_scan_cli_partial_missing_compiler_continues(tmp_path: Path):
 
     yaml_path = _write_min_yaml(tmp_path)
     fake = [_cand("leaky", [("-Os", "222", "div")], harness="h1", source="foo.c")]
-    with mock.patch("ctkat.cli.shutil.which", side_effect=_which_only("gcc", "objdump", "nm")), \
-         mock.patch("ctkat.cli.scan_harness", return_value=fake) as m:
+    with (
+        mock.patch("ctkat.cli.shutil.which", side_effect=_which_only("gcc", "objdump", "nm")),
+        mock.patch("ctkat.cli.scan_harness", return_value=fake) as m,
+    ):
         result = CliRunner().invoke(
             app, ["asm-scan", "-c", str(yaml_path), "--cc", "gcc", "--cc", "clang"]
         )
@@ -480,17 +518,24 @@ def test_asm_scan_cli_failed_compiler_discards_partial_candidates(tmp_path: Path
     def fake_scan(*_a, **k):
         if k["cc"] == "gcc" and k["harness"] == "h2":
             raise AsmScanError("objdump failed: boom")  # gcc dies AFTER h1 succeeded
-        return [_cand("leaky", [("-Os", "222", "div")], harness=k["harness"],
-                      source="foo.c", compiler=k["cc"])]
+        return [
+            _cand(
+                "leaky",
+                [("-Os", "222", "div")],
+                harness=k["harness"],
+                source="foo.c",
+                compiler=k["cc"],
+            )
+        ]
 
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.scan_harness", side_effect=fake_scan):
-        result = CliRunner().invoke(
-            app, ["asm-scan", "-c", str(p), "--cc", "gcc", "--cc", "clang"]
-        )
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.scan_harness", side_effect=fake_scan),
+    ):
+        result = CliRunner().invoke(app, ["asm-scan", "-c", str(p), "--cc", "gcc", "--cc", "clang"])
     assert result.exit_code == 0, result.stdout
     data = json.loads((tmp_path / "reports" / "ctkat_varlat_candidates.json").read_text())
-    assert data["scanned_compilers"] == ["clang"]           # gcc dropped entirely
+    assert data["scanned_compilers"] == ["clang"]  # gcc dropped entirely
     assert [e["compiler"] for e in data["errors"]] == ["gcc"]
     # NO gcc rows survive (its partial h1 candidate was discarded); clang ran both.
     assert {c["compiler"] for c in data["candidates"]} == {"clang"}
@@ -511,6 +556,7 @@ def _gcc_is_real_gnu() -> bool:
     if not _HAVE_TOOLCHAIN:
         return False
     import subprocess
+
     try:
         out = subprocess.run(
             ["gcc", "--version"], capture_output=True, text=True, timeout=10
@@ -523,7 +569,7 @@ def _gcc_is_real_gnu() -> bool:
 _needs_gnu_gcc = pytest.mark.skipif(
     not _gcc_is_real_gnu(),
     reason="needs real GNU gcc (clang / Apple-gcc strength-reduce constant "
-           "division differently); runs in the Docker amd64 image / CI",
+    "division differently); runs in the Docker amd64 image / CI",
 )
 
 
@@ -559,9 +605,15 @@ def test_scan_raises_when_every_compile_fails(tmp_path: Path):
     src.write_text("this is not valid C @@@ #$%\n")
     with pytest.raises(AsmScanError):
         scan_harness(
-            harness="t", sources=[src], source_display=["bad.c"], include_dirs=[],
-            base_cflags=["-g"], workdir=tmp_path, opt_levels=("-O0", "-O2"),
-            timeout=60, cc="gcc",
+            harness="t",
+            sources=[src],
+            source_display=["bad.c"],
+            include_dirs=[],
+            base_cflags=["-g"],
+            workdir=tmp_path,
+            opt_levels=("-O0", "-O2"),
+            timeout=60,
+            cc="gcc",
         )
 
 
@@ -597,9 +649,15 @@ def test_scan_kyberslash_constant_div_survives_only_when_size_optimized(tmp_path
     src = tmp_path / "ks.c"
     src.write_text("unsigned ksmod(unsigned x){ return x % 3329u; }\n")  # 3329 = KYBER_Q
     cands = scan_harness(
-        harness="t", sources=[src], source_display=["ks.c"], include_dirs=[],
-        base_cflags=["-g"], workdir=tmp_path,
-        opt_levels=("-O0", "-Os", "-O2"), timeout=120, cc="gcc",
+        harness="t",
+        sources=[src],
+        source_display=["ks.c"],
+        include_dirs=[],
+        base_cflags=["-g"],
+        workdir=tmp_path,
+        opt_levels=("-O0", "-Os", "-O2"),
+        timeout=120,
+        cc="gcc",
     )
     hits = [c for c in cands if c.function.endswith("ksmod")]
     assert hits, f"no division candidate for ksmod; got {[c.function for c in cands]}"
@@ -628,17 +686,27 @@ def test_asm_scan_flags_kyberslash_in_real_mlkem_poly(tmp_path):
 
     def scan(src, name):
         return scan_harness(
-            harness=name, sources=[src], source_display=[name], include_dirs=inc,
-            base_cflags=["-g"], workdir=clean, opt_levels=("-O0", "-Os", "-O2"),
-            timeout=180, cc="gcc",
+            harness=name,
+            sources=[src],
+            source_display=[name],
+            include_dirs=inc,
+            base_cflags=["-g"],
+            workdir=clean,
+            opt_levels=("-O0", "-Os", "-O2"),
+            timeout=180,
+            cc="gcc",
         )
 
     targets = ("poly_compress", "poly_tomsg")
     vuln = [c for c in scan(_KYBERSLASH_POLY, "vuln") if c.function.endswith(targets)]
     assert vuln, "no div candidate in vulnerable poly_compress/poly_tomsg"
     for c in vuln:
-        assert "-Os" in c.opt_levels, f"{c.function}: KyberSlash div should survive at -Os; got {c.opt_levels}"
-        assert "-O0" not in c.opt_levels, f"{c.function}: gcc -O0 strength-reduces it away; got {c.opt_levels}"
+        assert "-Os" in c.opt_levels, (
+            f"{c.function}: KyberSlash div should survive at -Os; got {c.opt_levels}"
+        )
+        assert "-O0" not in c.opt_levels, (
+            f"{c.function}: gcc -O0 strength-reduces it away; got {c.opt_levels}"
+        )
 
     fixed = [c.function for c in scan(clean / "poly.c", "fixed") if c.function.endswith(targets)]
     assert not fixed, f"shipped (fixed) poly.c must not flag poly_compress/poly_tomsg; got {fixed}"
@@ -672,7 +740,7 @@ def test_scan_harness_unscanned_source_raises(tmp_path):
             cc=cc,
         )
     assert "bad.c" in str(ei.value)
-    assert "good.c" not in str(ei.value)   # good.c compiled, so it's not flagged
+    assert "good.c" not in str(ei.value)  # good.c compiled, so it's not flagged
 
 
 def test_scan_harness_all_good_sources_no_raise(tmp_path):
@@ -683,7 +751,14 @@ def test_scan_harness_all_good_sources_no_raise(tmp_path):
     src = tmp_path / "ok.c"
     src.write_text("int add(int a,int b){return a+b;}\n")
     out = scan_harness(
-        harness="h", sources=[src], source_display=["ok.c"], include_dirs=[],
-        base_cflags=["-O0"], workdir=tmp_path, opt_levels=("-O0",), timeout=30, cc=cc,
+        harness="h",
+        sources=[src],
+        source_display=["ok.c"],
+        include_dirs=[],
+        base_cflags=["-O0"],
+        workdir=tmp_path,
+        opt_levels=("-O0",),
+        timeout=30,
+        cc=cc,
     )
-    assert isinstance(out, list)   # add() has no division -> []
+    assert isinstance(out, list)  # add() has no division -> []

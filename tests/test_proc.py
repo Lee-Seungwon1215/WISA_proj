@@ -26,8 +26,7 @@ def test_run_text_garbage_bytes_do_not_raise_unicodedecodeerror():
     # — instead the bytes survive as replacement characters and the
     # caller can include them in its diagnostic.
     proc = run_text(
-        ["python3", "-c",
-         "import sys; sys.stdout.buffer.write(b'\\xff\\xfe garbage\\n')"],
+        ["python3", "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe garbage\\n')"],
         timeout=5,
     )
     assert proc.returncode == 0

@@ -16,7 +16,9 @@ def _write(tmp_path, body: str) -> Path:
 
 
 def test_load_triage_parses_fields(tmp_path):
-    p = _write(tmp_path, """
+    p = _write(
+        tmp_path,
+        """
         registry: docs/accepted_variable_time.md
         harnesses:
           kem_dec:
@@ -24,7 +26,8 @@ def test_load_triage_parses_fields(tmp_path):
             note: "fips202 divs are public"
           sign:
             verdict: accepted-variable-time
-    """)
+    """,
+    )
     t = load_triage(p)
     assert t.registry == Path("docs/accepted_variable_time.md")
     assert t.varlat_map() == {"kem_dec": "public", "sign": "untriaged"}
@@ -46,12 +49,15 @@ def test_unknown_top_key_rejected(tmp_path):
 
 
 def test_unknown_harness_key_rejected(tmp_path):
-    p = _write(tmp_path, """
+    p = _write(
+        tmp_path,
+        """
         harnesses:
           h:
             varlat: public
             typo_field: x
-    """)
+    """,
+    )
     with pytest.raises(ValidationError):
         load_triage(p)
 

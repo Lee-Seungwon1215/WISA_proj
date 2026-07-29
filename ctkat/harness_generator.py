@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment
 
 from ._proc import run_text
+from ._template_resources import make_environment
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
@@ -52,9 +53,7 @@ def _temp_output_path(path: Path, *, suffix: str = ".tmp") -> Path:
     return Path(tmp_name)
 
 
-TEMPLATE_DIR = Path(__file__).parent / "templates"
-
-# Map of yaml `template` value -> template file under TEMPLATE_DIR.
+# Map of yaml `template` value -> bundled package resource.
 TEMPLATE_FILES = {
     "generic": "harness_generic.c.j2",
     "kem": "harness_kem.c.j2",
@@ -74,6 +73,7 @@ class CompilerNotFoundError(HarnessGenerationError):
     catch it FIRST and exit 2 (toolchain error) — consistent with the
     objdump/valgrind/ct-matrix preflights — instead of exit 1 (a real
     compile failure). FN-5(exit-code)."""
+
     pass
 
 
@@ -85,13 +85,7 @@ class GeneratedHarness:
 
 
 def _make_env() -> Environment:
-    return Environment(
-        loader=FileSystemLoader(str(TEMPLATE_DIR)),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
+    return make_environment(TEMPLATE_FILES.values())
 
 
 def render_harness(template: str, context: Dict[str, Any]) -> str:
@@ -127,6 +121,7 @@ def compile_harness(
     the gcc default so existing behavior is unchanged.
     """
     import subprocess as _sp  # local import to keep TimeoutExpired narrow
+
     binary_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_binary = _temp_output_path(binary_path)
     cmd: List[str] = [cc]

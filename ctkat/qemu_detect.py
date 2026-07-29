@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 # Each entry: (path, needle). Reading "QEMU" from MULTIPLE of these paths
 # at the same time is strong evidence we're inside an emulator — DMI
 # product_name + sys_vendor + cpuinfo all aligning would be hard to

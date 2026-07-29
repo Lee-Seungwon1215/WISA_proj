@@ -24,7 +24,6 @@ from typing import Dict, List, Optional, Tuple
 
 from .header_parser import FunctionSig, ParamInfo
 
-
 Role = str  # "secret" | "public" | "output" | "scalar" | "unknown"
 
 
@@ -56,13 +55,13 @@ class InferredFunction:
 
 _PQC_PROFILES: Dict[str, Tuple[str, List[Role]]] = {
     # KEM
-    "crypto_kem_keypair":   ("kem_keypair",   ["output", "output"]),
-    "crypto_kem_enc":       ("kem_enc",       ["output", "output", "public"]),
-    "crypto_kem_dec":       ("kem_dec",       ["output", "public", "secret"]),
+    "crypto_kem_keypair": ("kem_keypair", ["output", "output"]),
+    "crypto_kem_enc": ("kem_enc", ["output", "output", "public"]),
+    "crypto_kem_dec": ("kem_dec", ["output", "public", "secret"]),
     # Signature (detached signature API)
-    "crypto_sign_keypair":  ("sign_keypair",  ["output", "output"]),
-    "crypto_sign_signature":("sign_signature",["output", "output", "public", "scalar", "secret"]),
-    "crypto_sign_verify":   ("sign_verify",   ["public", "scalar", "public", "scalar", "public"]),
+    "crypto_sign_keypair": ("sign_keypair", ["output", "output"]),
+    "crypto_sign_signature": ("sign_signature", ["output", "output", "public", "scalar", "secret"]),
+    "crypto_sign_verify": ("sign_verify", ["public", "scalar", "public", "scalar", "public"]),
 }
 
 
@@ -78,21 +77,45 @@ def _match_profile(func_name: str) -> Optional[Tuple[str, List[Role]]]:
 # Keep these conservative. Anything not in these sets falls back to `unknown`
 # so the user must confirm rather than risk a wrong auto-assignment.
 
-_SECRET_KEYWORDS = frozenset({
-    "sk", "secret", "secret_key", "secretkey",
-    "private", "private_key", "privatekey",
-    "seed", "coins", "noise",
-})
-_PUBLIC_KEYWORDS = frozenset({
-    "pk", "public", "public_key", "publickey",
-    "ct", "ciphertext",
-    "msg", "message", "input",
-})
-_OUTPUT_KEYWORDS = frozenset({
-    "ss", "shared_secret", "sharedsecret",
-    "sig", "signature",
-    "out", "output", "result",
-})
+_SECRET_KEYWORDS = frozenset(
+    {
+        "sk",
+        "secret",
+        "secret_key",
+        "secretkey",
+        "private",
+        "private_key",
+        "privatekey",
+        "seed",
+        "coins",
+        "noise",
+    }
+)
+_PUBLIC_KEYWORDS = frozenset(
+    {
+        "pk",
+        "public",
+        "public_key",
+        "publickey",
+        "ct",
+        "ciphertext",
+        "msg",
+        "message",
+        "input",
+    }
+)
+_OUTPUT_KEYWORDS = frozenset(
+    {
+        "ss",
+        "shared_secret",
+        "sharedsecret",
+        "sig",
+        "signature",
+        "out",
+        "output",
+        "result",
+    }
+)
 
 
 def _heuristic_role(param: ParamInfo) -> Tuple[Role, str]:
@@ -112,7 +135,7 @@ def infer_function(sig: FunctionSig) -> InferredFunction:
     profile_match = _match_profile(sig.name)
     if profile_match is not None and len(profile_match[1]) == len(sig.params):
         profile_name, roles = profile_match
-        assignments = [
+        profile_assignments = [
             RoleAssignment(
                 param=p,
                 role=role,
@@ -122,13 +145,21 @@ def infer_function(sig: FunctionSig) -> InferredFunction:
         ]
         # Scalar params keep their natural classification when the profile
         # marks them so (e.g. msglen). Buffer params keep the profile role.
-        return InferredFunction(signature=sig, profile=profile_name, assignments=assignments)
+        return InferredFunction(
+            signature=sig,
+            profile=profile_name,
+            assignments=profile_assignments,
+        )
 
-    assignments: List[RoleAssignment] = []
+    heuristic_assignments: List[RoleAssignment] = []
     for p in sig.params:
         role, reason = _heuristic_role(p)
-        assignments.append(RoleAssignment(param=p, role=role, reason=reason))
-    return InferredFunction(signature=sig, profile=None, assignments=assignments)
+        heuristic_assignments.append(RoleAssignment(param=p, role=role, reason=reason))
+    return InferredFunction(
+        signature=sig,
+        profile=None,
+        assignments=heuristic_assignments,
+    )
 
 
 def infer_functions(sigs: List[FunctionSig]) -> List[InferredFunction]:

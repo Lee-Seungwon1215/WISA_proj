@@ -1,5 +1,4 @@
 import math
-from pathlib import Path
 
 import pytest
 
@@ -18,14 +17,7 @@ def test_parse_drops_nonfinite_cycles_as_malformed():
     # and are not == 0.0, so they used to slip into samples and poison the
     # t-test (abs(nan) < every threshold => silent PASS). They must be dropped
     # as malformed, leaving only finite samples.
-    text = (
-        "sample_id,class,cycles\n"
-        "0,0,100\n"
-        "1,1,nan\n"
-        "2,1,inf\n"
-        "3,1,-inf\n"
-        "4,0,110\n"
-    )
+    text = "sample_id,class,cycles\n0,0,100\n1,1,nan\n2,1,inf\n3,1,-inf\n4,0,110\n"
     s = parse_timing_csv(text)
     assert s.classes == [0, 0]
     assert s.cycles == [100, 110]
@@ -35,7 +27,7 @@ def test_parse_drops_nonfinite_cycles_as_malformed():
 def test_parse_nonfinite_flood_trips_malformed_warning(capsys):
     # The dropped non-finite rows feed the existing malformed-rate warning so a
     # corrupt run is surfaced, not silently shrunk.
-    rows = "".join(f"{i},{i%2},nan\n" for i in range(20))
+    rows = "".join(f"{i},{i % 2},nan\n" for i in range(20))
     parse_timing_csv("sample_id,class,cycles\n0,0,100\n" + rows)
     assert "malformed" in capsys.readouterr().err.lower()
 
@@ -51,6 +43,7 @@ def test_run_timing_harness_missing_binary_raises_runtimeerror(tmp_path):
 
 def test_run_timing_harness_stdout_cap(monkeypatch, tmp_path):
     import subprocess
+
     from ctkat import dudect_runner as dr
 
     monkeypatch.setattr(dr, "MAX_TIMING_STDOUT_BYTES", 16)
@@ -71,8 +64,8 @@ def test_parse_skips_malformed_rows():
         "sample_id,class,cycles\n"
         "0,0,100\n"
         "garbage line\n"
-        "1,abc,200\n"      # bad class
-        "2,1,xyz\n"        # bad cycles
+        "1,abc,200\n"  # bad class
+        "2,1,xyz\n"  # bad cycles
         "3,1,300\n"
     )
     s = parse_timing_csv(text)
@@ -144,8 +137,14 @@ def test_low_zero_rate_is_silent(capsys):
 def test_timing_samples_tracks_raw_counts_and_per_class_drops():
     # 4 class-0 rows: 1 zero, 3 valid. 4 class-1 rows: 0 zero, 4 valid.
     rows = [
-        "0,0,100", "1,0,0", "2,0,200", "3,0,300",
-        "4,1,1000", "5,1,1100", "6,1,1200", "7,1,1300",
+        "0,0,100",
+        "1,0,0",
+        "2,0,200",
+        "3,0,300",
+        "4,1,1000",
+        "5,1,1100",
+        "6,1,1200",
+        "7,1,1300",
     ]
     text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
     s = parse_timing_csv(text)
@@ -160,9 +159,9 @@ def test_asymmetric_zero_drop_emits_per_class_warning(capsys):
     # Class 0: 10 valid + 10 zero (50% drop). Class 1: 100 valid + 0 zero.
     # Per-class gap = 50% vs 0%, well above the 5% threshold → warn.
     rows = (
-        [f"{i},0,{100+i}" for i in range(10)]
-        + [f"{10+i},0,0" for i in range(10)]
-        + [f"{20+i},1,{1000+i}" for i in range(100)]
+        [f"{i},0,{100 + i}" for i in range(10)]
+        + [f"{10 + i},0,0" for i in range(10)]
+        + [f"{20 + i},1,{1000 + i}" for i in range(100)]
     )
     text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
     parse_timing_csv(text)
@@ -176,10 +175,10 @@ def test_symmetric_zero_drop_no_per_class_warning(capsys):
     # Both classes drop ~50% — that's a noisy host, not a bias signal.
     # Per-class warning should NOT fire (the overall zero-rate warning may).
     rows = (
-        [f"{i},0,{100+i}" for i in range(10)]
-        + [f"{10+i},0,0" for i in range(10)]
-        + [f"{20+i},1,{1000+i}" for i in range(10)]
-        + [f"{30+i},1,0" for i in range(10)]
+        [f"{i},0,{100 + i}" for i in range(10)]
+        + [f"{10 + i},0,0" for i in range(10)]
+        + [f"{20 + i},1,{1000 + i}" for i in range(10)]
+        + [f"{30 + i},1,0" for i in range(10)]
     )
     text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
     parse_timing_csv(text)
@@ -191,7 +190,7 @@ def test_symmetric_zero_drop_no_per_class_warning(capsys):
 def test_per_class_warning_silent_when_one_class_empty(capsys):
     # A single-class harness (only class 0) must not trip the per-class
     # check trivially — without a class-1 baseline there's no gap to detect.
-    rows = [f"{i},0,{100+i}" for i in range(10)] + [f"{10+i},0,0" for i in range(10)]
+    rows = [f"{i},0,{100 + i}" for i in range(10)] + [f"{10 + i},0,0" for i in range(10)]
     text = "sample_id,class,cycles\n" + "\n".join(rows) + "\n"
     parse_timing_csv(text)
     err = capsys.readouterr().err.lower()

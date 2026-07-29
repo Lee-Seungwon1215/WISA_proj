@@ -1,7 +1,7 @@
 import pytest
 
-from ctkat.timing_harness_generator import render_timing_harness
 from ctkat.harness_generator import HarnessGenerationError
+from ctkat.timing_harness_generator import render_timing_harness
 
 
 def _ctx(**overrides):
@@ -126,7 +126,9 @@ def test_void_output_buffer_is_sunk(tmp_path):
     # the call (esp. inline/header impls) → false PASS. The Valgrind harness
     # already does this; the timing harness must too.
     ctx = _ctx(
-        function="fill", return_type="void", args=["out", "in_"],
+        function="fill",
+        return_type="void",
+        args=["out", "in_"],
         buffers=[
             {"name": "out", "size": "32", "role": "output"},
             {"name": "in_", "size": "32", "role": "public"},
@@ -134,7 +136,7 @@ def test_void_output_buffer_is_sunk(tmp_path):
     )
     out = render_timing_harness("generic", ctx)
     assert "volatile uint64_t __ctkat_sink" in out
-    assert "out[__ctkat_si]" in out          # output buffer actually consumed
+    assert "out[__ctkat_si]" in out  # output buffer actually consumed
     # the sink lives AFTER the timed window so it doesn't charge the measurement
     assert out.index("t1 = ctkat_now()") < out.index("__ctkat_sink")
 
@@ -142,14 +144,17 @@ def test_void_output_buffer_is_sunk(tmp_path):
 def test_void_output_sink_compiles(tmp_path):
     # The rendered void+output harness must be valid C (catches sizeof-on-array,
     # missing decls, Jinja slips). Skips if no C compiler is available.
-    import os
     import shutil
     import subprocess
+
     cc = shutil.which("gcc") or shutil.which("cc")
     if cc is None:
         pytest.skip("no C compiler available")
     ctx = _ctx(
-        clock="monotonic", extra_headers=[], function="fill", return_type="void",
+        clock="monotonic",
+        extra_headers=[],
+        function="fill",
+        return_type="void",
         args=["out", "in_"],
         buffers=[
             {"name": "out", "size": "32", "role": "output"},
@@ -158,13 +163,13 @@ def test_void_output_sink_compiles(tmp_path):
     )
     src = (
         "static void fill(unsigned char *o, unsigned char *i){"
-        "for(int k=0;k<32;k++) o[k]=i[k];}\n"
-        + render_timing_harness("generic", ctx)
+        "for(int k=0;k<32;k++) o[k]=i[k];}\n" + render_timing_harness("generic", ctx)
     )
     c = tmp_path / "t.c"
     c.write_text(src)
-    r = subprocess.run([cc, "-O2", "-c", str(c), "-o", str(tmp_path / "t.o")],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [cc, "-O2", "-c", str(c), "-o", str(tmp_path / "t.o")], capture_output=True, text=True
+    )
     assert r.returncode == 0, r.stderr[-1000:]
 
 
@@ -280,7 +285,7 @@ def test_kem_randombytes_uses_xorshift_prng():
     # Find the randombytes definition and check it calls our rand_bytes.
     idx = out.find("int randombytes(")
     assert idx > 0
-    body = out[idx:idx + 200]
+    body = out[idx : idx + 200]
     assert "rand_bytes(" in body  # delegates to seeded xorshift PRNG
 
 
@@ -324,6 +329,7 @@ def _strip_comments(src: str) -> str:
     breadcrumbs left inside doc comments. Crude but enough for these tests
     — the harness template uses C99 comment styles only."""
     import re as _re
+
     src = _re.sub(r"/\*.*?\*/", "", src, flags=_re.DOTALL)
     src = _re.sub(r"//.*", "", src)
     return src
@@ -437,6 +443,7 @@ def _sign_ctx(**overrides):
 
 def test_sign_template_is_registered():
     from ctkat.timing_harness_generator import TIMING_TEMPLATE_FILES
+
     assert TIMING_TEMPLATE_FILES.get("sign") == "timing_sign.c.j2"
 
 

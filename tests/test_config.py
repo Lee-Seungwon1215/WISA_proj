@@ -13,7 +13,6 @@ from ctkat.config import (
     load_config,
 )
 
-
 MINIMAL_YAML = """
 project:
   name: demo
@@ -41,6 +40,7 @@ def test_minimal_config_validates(tmp_path: Path):
 
 
 # --- Phase C: MatrixConfig (ct-matrix sweep) --------------------------------
+
 
 def test_matrix_defaults_compilers_and_combos():
     m = MatrixConfig()
@@ -89,14 +89,16 @@ def test_matrix_empty_cflags_rejected():
 
 
 def test_matrix_wires_into_ctkat_config():
-    cfg = CtkatConfig.model_validate({
-        "project": {"name": "d"},
-        "build": {"command": "true"},
-        "matrix": {
-            "compilers": ["gcc", "clang"],
-            "ct_cflags": {"debug": ["-O0", "-g"], "rel": ["-O2"]},
-        },
-    })
+    cfg = CtkatConfig.model_validate(
+        {
+            "project": {"name": "d"},
+            "build": {"command": "true"},
+            "matrix": {
+                "compilers": ["gcc", "clang"],
+                "ct_cflags": {"debug": ["-O0", "-g"], "rel": ["-O2"]},
+            },
+        }
+    )
     assert cfg.matrix.compilers == ["gcc", "clang"]
     assert set(cfg.matrix.ct_cflags) == {"debug", "rel"}
 
@@ -276,8 +278,11 @@ def test_dudect_sign_requires_header(tmp_path: Path):
 
 def test_dudect_sign_accepts_header_and_keeps_sk_default():
     from ctkat.config import DudectHarnessConfig
+
     h = DudectHarnessConfig(
-        name="sign", template="sign", header="api.h",
+        name="sign",
+        template="sign",
+        header="api.h",
         prefix="PQCLEAN_MLDSA44_CLEAN_",
     )
     assert h.template == "sign"
@@ -293,12 +298,14 @@ def test_dudect_default_cflags_disable_lto():
     # return value is unused. Keep the flag in the default set so users who
     # don't override `dudect.compiler.cflags` are protected by default.
     from ctkat.config import DudectCompilerConfig
+
     flags = DudectCompilerConfig().cflags
     assert "-fno-lto" in flags
 
 
 def test_dudect_compiler_with_path_separator_rejected():
     from ctkat.config import DudectCompilerConfig
+
     with pytest.raises(ValidationError, match="PATH command name"):
         DudectCompilerConfig(cc="/usr/bin/gcc")
     with pytest.raises(ValidationError, match="PATH command name"):
@@ -307,6 +314,7 @@ def test_dudect_compiler_with_path_separator_rejected():
 
 def test_dudect_compiler_common_names_allowed():
     from ctkat.config import DudectCompilerConfig
+
     for cc in ("gcc", "clang++", "gcc-13", "arm-none-eabi-gcc"):
         assert DudectCompilerConfig(cc=cc).cc == cc
 
@@ -316,18 +324,21 @@ def test_dudect_compiler_common_names_allowed():
 
 def test_dudect_clock_default_is_auto():
     from ctkat.config import DudectConfig
+
     cfg = DudectConfig(harnesses=[])
     assert cfg.clock == "auto"
 
 
 def test_resolve_clock_passes_through_explicit_values():
     from ctkat.config import resolve_clock
+
     assert resolve_clock("rdtsc") == "rdtsc"
     assert resolve_clock("monotonic") == "monotonic"
 
 
 def test_resolve_clock_auto_picks_rdtsc_on_native_x86(monkeypatch):
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: False)
     assert cfg_mod.resolve_clock("auto") == "rdtsc"
@@ -337,6 +348,7 @@ def test_resolve_clock_auto_picks_monotonic_under_qemu(monkeypatch):
     # QEMU x86 (Docker on Apple Silicon) reports x86_64 but rdtsc is
     # unreliable — auto must downgrade to monotonic.
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: True)
     assert cfg_mod.resolve_clock("auto") == "monotonic"
@@ -344,6 +356,7 @@ def test_resolve_clock_auto_picks_monotonic_under_qemu(monkeypatch):
 
 def test_resolve_clock_auto_picks_monotonic_on_arm(monkeypatch):
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
     monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: False)
     assert cfg_mod.resolve_clock("auto") == "monotonic"
@@ -353,6 +366,7 @@ def test_resolve_clock_auto_handles_windows_amd64_casing(monkeypatch):
     # Regression guard: Windows reports "AMD64" (uppercase). Naive == check
     # against "amd64" would miss it and fall through to monotonic.
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "AMD64")
     monkeypatch.setattr(cfg_mod, "detect_qemu_emulation", lambda: False)
     assert cfg_mod.resolve_clock("auto") == "rdtsc"
@@ -360,6 +374,7 @@ def test_resolve_clock_auto_handles_windows_amd64_casing(monkeypatch):
 
 def test_explicit_rdtsc_on_arm_raises(monkeypatch, tmp_path: Path):
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
     body = (
         "project: {name: demo}\n"
@@ -374,6 +389,7 @@ def test_explicit_rdtsc_on_arm_raises(monkeypatch, tmp_path: Path):
 
 def test_explicit_monotonic_on_arm_is_fine(monkeypatch, tmp_path: Path):
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
     body = (
         "project: {name: demo}\n"
@@ -389,13 +405,10 @@ def test_explicit_monotonic_on_arm_is_fine(monkeypatch, tmp_path: Path):
 def test_auto_clock_on_arm_loads_cleanly(monkeypatch, tmp_path: Path):
     # The yaml stays "auto"; resolution happens lazily at runtime.
     import ctkat.config as cfg_mod
+
     monkeypatch.setattr(cfg_mod.platform, "machine", lambda: "arm64")
     body = (
-        "project: {name: demo}\n"
-        "build: {command: 'true'}\n"
-        "dudect:\n"
-        "  clock: auto\n"
-        "  harnesses: []\n"
+        "project: {name: demo}\nbuild: {command: 'true'}\ndudect:\n  clock: auto\n  harnesses: []\n"
     )
     cfg = load_config(_write(tmp_path, body))
     assert cfg.dudect.clock == "auto"
@@ -406,14 +419,19 @@ def test_auto_clock_on_arm_loads_cleanly(monkeypatch, tmp_path: Path):
 
 def test_dudect_harness_leak_target_default_is_sk():
     from ctkat.config import DudectHarnessConfig
+
     h = DudectHarnessConfig(name="h", template="kem", header="api.h")
     assert h.leak_target == "sk"
 
 
 def test_dudect_kem_can_set_leak_target_ct():
     from ctkat.config import DudectHarnessConfig
+
     h = DudectHarnessConfig(
-        name="h", template="kem", header="api.h", leak_target="ct",
+        name="h",
+        template="kem",
+        header="api.h",
+        leak_target="ct",
     )
     assert h.leak_target == "ct"
 
@@ -486,13 +504,7 @@ def test_build_argv_alternative_to_command(tmp_path: Path):
 
 
 def test_build_neither_command_nor_argv_raises(tmp_path: Path):
-    body = (
-        "project: {name: demo}\n"
-        "build: {}\n"
-        "ct:\n"
-        "  harnesses:\n"
-        "    - {name: h, binary: ./x}\n"
-    )
+    body = "project: {name: demo}\nbuild: {}\nct:\n  harnesses:\n    - {name: h, binary: ./x}\n"
     with pytest.raises(ValidationError, match="exactly one of"):
         load_config(_write(tmp_path, body))
 
@@ -510,11 +522,7 @@ def test_build_both_command_and_argv_raises(tmp_path: Path):
 
 
 def test_kat_argv_alternative_to_command(tmp_path: Path):
-    body = (
-        "project: {name: demo}\n"
-        "build: {command: 'true'}\n"
-        "kat: {argv: [./run_kat]}\n"
-    )
+    body = "project: {name: demo}\nbuild: {command: 'true'}\nkat: {argv: [./run_kat]}\n"
     cfg = load_config(_write(tmp_path, body))
     assert cfg.kat.argv == ["./run_kat"]
 
@@ -558,7 +566,7 @@ def test_harness_header_with_quote_rejected(tmp_path: Path):
         "build: {command: 'true'}\n"
         "ct:\n"
         "  harnesses:\n"
-        '    - {name: h, template: kem, header: \'foo.h"\\n#include "/etc/passwd\'}\n'
+        "    - {name: h, template: kem, header: 'foo.h\"\\n#include \"/etc/passwd'}\n"
     )
     with pytest.raises(ValidationError, match=r"header"):
         load_config(_write(tmp_path, body))
@@ -595,7 +603,7 @@ def test_harness_prefix_empty_is_allowed(tmp_path: Path):
         "build: {command: 'true'}\n"
         "ct:\n"
         "  harnesses:\n"
-        '    - {name: h, template: kem, header: api.h}\n'
+        "    - {name: h, template: kem, header: api.h}\n"
     )
     cfg = load_config(_write(tmp_path, body))
     assert cfg.ct.harnesses[0].prefix == ""
@@ -633,7 +641,7 @@ def test_dudect_harness_header_with_quote_rejected(tmp_path: Path):
         "build: {command: 'true'}\n"
         "dudect:\n"
         "  harnesses:\n"
-        '    - {name: h, template: kem, header: \'evil.h"\'}\n'
+        "    - {name: h, template: kem, header: 'evil.h\"'}\n"
     )
     with pytest.raises(ValidationError, match=r"header"):
         load_config(_write(tmp_path, body))
@@ -750,6 +758,7 @@ def test_example_yamls_have_fno_lto_when_overriding_dudect_cflags(tmp_path: Path
     the author remembers to re-add it.
     """
     import yaml as _yaml
+
     examples_dir = Path(__file__).parent.parent / "examples"
     offenders: list[str] = []
     for yaml_path in examples_dir.glob("*/ctkat*.yaml"):
@@ -783,9 +792,9 @@ def test_mlkem_dudect_harnesses_omit_randombytes_for_reproducibility():
     override in that template). Lints the actual example so the advertised
     reproducibility can't silently drift away again."""
     import yaml as _yaml
+
     cfg = _yaml.safe_load(
-        (Path(__file__).parent.parent
-         / "examples" / "pqc_mlkem768" / "ctkat.yaml").read_text()
+        (Path(__file__).parent.parent / "examples" / "pqc_mlkem768" / "ctkat.yaml").read_text()
     )
     for h in cfg["dudect"]["harnesses"]:
         srcs = h.get("sources", [])
@@ -815,6 +824,7 @@ def test_dudect_seed_zero_rejected(tmp_path: Path):
         "    - {name: h, template: generic, function: foo}\n"
     )
     import pytest as _pytest
+
     with _pytest.raises(Exception):
         load_config(_write(tmp_path, body))
 
@@ -847,6 +857,7 @@ def test_ct_seed_zero_rejected(tmp_path: Path):
         "    - {name: h, binary: ./x}\n"
     )
     import pytest as _pytest
+
     with _pytest.raises(Exception):
         load_config(_write(tmp_path, body))
 
@@ -958,9 +969,7 @@ def test_harness_args_legitimate_values_pass():
 def test_secret_region_length_injection_rejected():
     """T23: secret_region length is emitted inside VALGRIND_MAKE_MEM_*(...)."""
     with pytest.raises(ValidationError, match=r"length"):
-        SecretRegion.model_validate(
-            {"offset": "0", "length": '32);} system("id"); int z=(0'}
-        )
+        SecretRegion.model_validate({"offset": "0", "length": '32);} system("id"); int z=(0'})
 
 
 def test_secret_region_comment_injection_rejected():
@@ -987,16 +996,12 @@ def test_header_path_traversal_rejected():
     `..` traversal and absolute paths through the charset (`.`/`/` allowed)."""
     for bad in ("../../../etc/passwd", "/etc/hosts", "a/../../b.h"):
         with pytest.raises(ValidationError, match=r"header|traversal|relative"):
-            HarnessConfig.model_validate(
-                {"name": "h", "template": "kem", "header": bad}
-            )
+            HarnessConfig.model_validate({"name": "h", "template": "kem", "header": bad})
 
 
 def test_header_legitimate_relative_paths_pass():
     for good in ("api.h", "pqclean/include/foo.h", "gmp-6.h"):
-        HarnessConfig.model_validate(
-            {"name": "h", "template": "kem", "header": good}
-        )
+        HarnessConfig.model_validate({"name": "h", "template": "kem", "header": good})
 
 
 def test_ct_sources_and_include_dirs_must_stay_project_relative():
@@ -1014,6 +1019,7 @@ def test_ct_sources_and_include_dirs_must_stay_project_relative():
 
 def test_dudect_sources_and_include_dirs_must_stay_project_relative():
     from ctkat.config import DudectHarnessConfig
+
     for field in ("sources", "include_dirs"):
         with pytest.raises(ValidationError, match=field):
             DudectHarnessConfig.model_validate(
@@ -1064,9 +1070,7 @@ def test_validator_fullmatch_rejects_trailing_newline():
     trailing `\\n`, so `function: "f\\n"` smuggled a newline into the C
     identifier. `.fullmatch()` rejects it."""
     with pytest.raises(ValidationError, match=r"function"):
-        HarnessConfig.model_validate(
-            {"name": "h", "template": "generic", "function": "f\n"}
-        )
+        HarnessConfig.model_validate({"name": "h", "template": "generic", "function": "f\n"})
 
 
 # --- R-4 (T37/T39): config robustness regressions ---------------------------
@@ -1129,11 +1133,7 @@ def test_build_empty_argv_rejected(tmp_path: Path):
 
 
 def test_kat_empty_argv_rejected(tmp_path: Path):
-    body = (
-        "project: {name: demo}\n"
-        "build: {command: 'true'}\n"
-        "kat: {argv: []}\n"
-    )
+    body = "project: {name: demo}\nbuild: {command: 'true'}\nkat: {argv: []}\n"
     with pytest.raises(ValidationError, match=r"argv must be a non-empty"):
         load_config(_write(tmp_path, body))
 
@@ -1191,6 +1191,7 @@ def test_report_filename_traversal_rejected():
     """R-6: report.csv/json are written inside output_dir; a path-separator /
     `..` / absolute value would escape it (arbitrary file write)."""
     from ctkat.config import ReportConfig
+
     for bad in ("../../tmp/x.csv", "/tmp/abs.csv", "a/b.csv", "..", "sub\\x.csv"):
         with pytest.raises(ValidationError, match=r"plain filename"):
             ReportConfig.model_validate({"csv": bad})
@@ -1205,6 +1206,7 @@ def test_kat_expected_pattern_invalid_regex_rejected():
     """FN-5: a malformed `kat.expected_pattern` used to raise a raw `re.error`
     deep inside the KAT phase; it must now fail at config load."""
     from ctkat.config import KatConfig
+
     with pytest.raises(ValidationError, match=r"not a valid regex"):
         KatConfig.model_validate({"command": "true", "expected_pattern": "([0-9"})
     # a valid (even non-default) regex still loads
@@ -1215,6 +1217,7 @@ def test_ct_sentinel_pattern_invalid_regex_rejected():
     """FN-5: same for `ct.sentinel_pattern` (matched against manual-binary
     stdout in the F5 sentinel check)."""
     from ctkat.config import CtConfig
+
     with pytest.raises(ValidationError, match=r"not a valid regex"):
         CtConfig.model_validate(
             {"harnesses": [{"name": "h", "binary": "b"}], "sentinel_pattern": "(*bad"}
@@ -1231,6 +1234,7 @@ def test_ct_seed_above_uint64_rejected():
     """FN-4 (§4 layer contract): a seed > 2**64-1 loads fine in Python but
     fails to compile as a C ULL literal — reject it at load instead."""
     from ctkat.config import CtConfig
+
     with pytest.raises(ValidationError):
         CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}], "seed": 2**64})
     # the max valid seed and the default still load
@@ -1241,10 +1245,10 @@ def test_ct_seed_above_uint64_rejected():
 
 def test_dudect_seed_above_uint64_rejected():
     from ctkat.config import DudectConfig
+
     with pytest.raises(ValidationError):
         DudectConfig.model_validate(
-            {"harnesses": [{"name": "h", "template": "generic", "function": "f"}],
-             "seed": 2**64}
+            {"harnesses": [{"name": "h", "template": "generic", "function": "f"}], "seed": 2**64}
         )
 
 
@@ -1252,6 +1256,7 @@ def test_seed_zero_still_rejected_both_layers():
     """F16 regression guard: the existing `seed=0` rejection (xorshift64 stuck
     -at-zero swap) must survive the addition of the upper bound."""
     from ctkat.config import CtConfig, DudectConfig
+
     with pytest.raises(ValidationError):
         CtConfig.model_validate({"harnesses": [{"name": "h", "binary": "b"}], "seed": 0})
     with pytest.raises(ValidationError):

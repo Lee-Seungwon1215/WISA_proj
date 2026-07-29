@@ -1,12 +1,17 @@
 # ML-DSA-65 (Dilithium) source provenance
 
 - **Source**: PQClean — https://github.com/PQClean/PQClean
+- **Revision**: `202a8f96315f9ed219387a50f7e40d04af037ea8`
 - **Path**: `crypto_sign/ml-dsa-65/clean/` (FIPS 204 ML-DSA-65, reference "clean" impl)
-- **Fetch**: sparse-checkout (`--filter=blob:none --depth 1` of master).
+- **Local path**: `examples/pqc_mldsa65/clean`
+- **License**: `CC0-1.0`; see `examples/pqc_mldsa65/clean/LICENSE`
+- **Tree SHA-256**: `4bdf0e7315114fd86deda9871460b47559dfa10c4f69804bb5fec1213b6d6e1a`
 
-`clean/` holds the verbatim PQClean ML-DSA-65 reference sources. Common deps
-(`fips202`, `randombytes`) are reused from `../pqc_mlkem768/common` (identical
-PQClean files, no copy) — see `ctkat.yaml` include_dirs/sources.
+The C/header source files match the recorded revision. The upstream Makefile
+and Makefile.Microsoft_nmake are intentionally omitted because this target is
+compiled through generated harnesses. The previously missing upstream LICENSE
+has been restored. Common dependencies (`fips202`, `randombytes`) are reused
+from the separately inventoried `../pqc_mlkem768/common`.
 
 ## secret_regions derivation (NOT guessed)
 

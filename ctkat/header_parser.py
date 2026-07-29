@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 @dataclass
@@ -85,6 +85,7 @@ _DECL_LOOSE_RE = re.compile(
     """,
     re.VERBOSE,
 )
+
 
 def _blank_keep_newlines(m: "re.Match[str]") -> str:
     """Replace a stripped region with a single space plus exactly as many
@@ -160,12 +161,14 @@ def _strip_directives_and_inactive_blocks(text: str) -> str:
                 parent = current_active()
                 known = _eval_pp_condition(directive, arg)
                 active = parent and (known if known is not None else True)
-                stack.append({
-                    "parent": parent,
-                    "active": active,
-                    "known": known is not None,
-                    "taken": bool(known) if known is not None else active,
-                })
+                stack.append(
+                    {
+                        "parent": parent,
+                        "active": active,
+                        "known": known is not None,
+                        "taken": bool(known) if known is not None else active,
+                    }
+                )
             elif directive == "elif" and stack:
                 frame = stack[-1]
                 known = _eval_pp_condition("if", arg)
@@ -300,9 +303,7 @@ def parse_functions_with_stats(
     return _parse_functions_impl(text, source_file)
 
 
-def _parse_functions_impl(
-    text: str, source_file: Optional[str]
-) -> tuple[List[FunctionSig], int]:
+def _parse_functions_impl(text: str, source_file: Optional[str]) -> tuple[List[FunctionSig], int]:
     stripped = _strip_preprocessing(text)
     sigs: List[FunctionSig] = []
     strict_starts: set[int] = set()
@@ -315,19 +316,18 @@ def _parse_functions_impl(
             continue
         params_raw = m.group("params")
         params = [
-            p for p in (
-                _parse_param(s, i) for i, s in enumerate(_split_params(params_raw))
-            )
-            if p
+            p for p in (_parse_param(s, i) for i, s in enumerate(_split_params(params_raw))) if p
         ]
         strict_starts.add(m.start())
-        sigs.append(FunctionSig(
-            return_type=ret,
-            name=name,
-            params=params,
-            source_file=source_file,
-            source_line=_line_of(m.start(), stripped),
-        ))
+        sigs.append(
+            FunctionSig(
+                return_type=ret,
+                name=name,
+                params=params,
+                source_file=source_file,
+                source_line=_line_of(m.start(), stripped),
+            )
+        )
 
     # T11: count loose-only matches (anything that looks like a function
     # decl with nested parens but didn't survive the strict regex). Don't

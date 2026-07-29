@@ -17,7 +17,7 @@ project:
   root: .
 
 build:
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 ct:

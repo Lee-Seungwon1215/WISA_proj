@@ -82,13 +82,14 @@ def load_registry(path: Optional[Path] = None) -> Dict[str, Set[str]]:
 class _Agg:
     """Per-harness aggregate over its build cells — computed ONCE and shared by
     the classifier and the summary builder so they can't disagree."""
+
     statuses: Set[str]
-    ct_flips: str            # "yes" | "no"
-    only: Set[str]           # statuses minus ERROR
-    vcells: List[str]        # ["gcc:-Os", ...] where asm_div_count > 0
-    asm_err_ccs: List[str]   # compilers whose asm-scan ERRORED for this harness
-    asm_errors: List[str]    # distinct asm error strings (for the note)
-    ct_funcs: List[str]      # union of ct leak-site functions (sorted)
+    ct_flips: str  # "yes" | "no"
+    only: Set[str]  # statuses minus ERROR
+    vcells: List[str]  # ["gcc:-Os", ...] where asm_div_count > 0
+    asm_err_ccs: List[str]  # compilers whose asm-scan ERRORED for this harness
+    asm_errors: List[str]  # distinct asm error strings (for the note)
+    ct_funcs: List[str]  # union of ct leak-site functions (sorted)
 
 
 def _aggregate(harness_cells: List[dict]) -> _Agg:
@@ -99,12 +100,12 @@ def _aggregate(harness_cells: List[dict]) -> _Agg:
         statuses=statuses,
         ct_flips="yes" if len(verdicts) > 1 else "no",
         only=statuses - {"ERROR"},
-        vcells=sorted({f"{c['cc']}:{c['opt']}" for c in hc
-                       if int(c.get("asm_div_count") or 0) > 0}),
+        vcells=sorted(
+            {f"{c['cc']}:{c['opt']}" for c in hc if int(c.get("asm_div_count") or 0) > 0}
+        ),
         asm_err_ccs=sorted({c["cc"] for c in hc if c.get("asm_error")}),
         asm_errors=sorted({c["asm_error"] for c in hc if c.get("asm_error")}),
-        ct_funcs=sorted({ff for c in hc
-                         for ff in c.get("ct_finding_funcs", "").split(";") if ff}),
+        ct_funcs=sorted({ff for c in hc for ff in c.get("ct_finding_funcs", "").split(";") if ff}),
     )
 
 
@@ -112,8 +113,8 @@ def classify_harness(
     harness_cells: List[dict],
     *,
     family: str,
-    triage: str = "untriaged",          # public | secret-risk | none | untriaged
-    dudect_status: str = "",            # "" | PASS | WARNING | FAIL | ERROR
+    triage: str = "untriaged",  # public | secret-risk | none | untriaged
+    dudect_status: str = "",  # "" | PASS | WARNING | FAIL | ERROR
     registry: Optional[Dict[str, Set[str]]] = None,
     verdict_override: Optional[str] = None,
     note_override: Optional[str] = None,
@@ -171,30 +172,32 @@ def classify_harness(
     notes: List[str] = []
     unreg = [ff for ff in agg.ct_funcs if not any(ff.endswith(rf) for rf in accepted)]
     if auto_vclass == "accepted-variable-time":
-        notes.append("ct FAIL functions all in accepted-variable-time registry "
-                     "(see docs/accepted_variable_time.md)")
+        notes.append(
+            "ct FAIL functions all in accepted-variable-time registry "
+            "(see docs/accepted_variable_time.md)"
+        )
     elif auto_vclass == "needs-analysis" and verdict_override and verdict_override != auto_vclass:
         msg = f"manual verdict override: {auto_vclass} -> {vclass}"
         if unreg:
             msg += "; reviewed unregistered leak-site function(s): " + ";".join(unreg)
         notes.append(msg)
     elif auto_vclass == "needs-analysis":
-        notes.append("ct FAIL with unregistered leak-site function(s) — triage required: "
-                     + ";".join(unreg))
+        notes.append(
+            "ct FAIL with unregistered leak-site function(s) — triage required: " + ";".join(unreg)
+        )
     elif verdict_override and verdict_override != auto_vclass:
         notes.append(f"manual verdict override: {auto_vclass} -> {vclass}")
     if dudect_status == "WARNING":
         notes.append("dudect WARNING — likely QEMU env-noise; confirm natively")
     if agg.asm_err_ccs:
         notes.append(
-            "asm-scan incomplete/errored for " + ",".join(agg.asm_err_ccs)
+            "asm-scan incomplete/errored for "
+            + ",".join(agg.asm_err_ccs)
             + " — division-free claim does NOT cover those build(s): "
             + "; ".join(agg.asm_errors)
         )
     if "ERROR" in agg.statuses and agg.only == {"PASS"}:
-        notes.append(
-            "ct-matrix ERROR cell(s) present — clean claim does NOT cover every build"
-        )
+        notes.append("ct-matrix ERROR cell(s) present — clean claim does NOT cover every build")
     if not agg.vcells:
         pass
     elif tri == "untriaged":
@@ -266,8 +269,12 @@ def summarize(
         tri = triage.get(h, "untriaged")
 
         vclass, notes = classify_harness(
-            hc, family=family, triage=tri, dudect_status=d.get("status", ""),
-            registry=registry, verdict_override=verdict_override.get(h),
+            hc,
+            family=family,
+            triage=tri,
+            dudect_status=d.get("status", ""),
+            registry=registry,
+            verdict_override=verdict_override.get(h),
             note_override=note_override.get(h),
         )
         basis = verdict_basis(
@@ -285,23 +292,25 @@ def summarize(
             except (ValueError, TypeError):
                 meas = ""
 
-        summary.append({
-            "family": family,
-            "target": hc[0].get("target", "") if hc else "",
-            "harness": h,
-            "ct_flips": agg.ct_flips,
-            "ct_status_set": "{" + ",".join(sorted(agg.statuses)) + "}",
-            "ct_finding_funcs": ";".join(agg.ct_funcs),
-            "varlat_candidates": ";".join(agg.vcells) or "none",
-            "varlat_triage": tri,
-            "dudect_status": d.get("status", ""),
-            "dudect_abs_t": d.get("abs_t_score", ""),
-            "dudect_measurements": meas,
-            "dudect_leak_target": cf.get("leak_target", ""),
-            "dudect_seed": cf.get("seed", ""),
-            "dudect_threshold": cf.get("threshold", ""),
-            "verdict_class": vclass,
-            "basis": basis,
-            "notes": notes,
-        })
+        summary.append(
+            {
+                "family": family,
+                "target": hc[0].get("target", "") if hc else "",
+                "harness": h,
+                "ct_flips": agg.ct_flips,
+                "ct_status_set": "{" + ",".join(sorted(agg.statuses)) + "}",
+                "ct_finding_funcs": ";".join(agg.ct_funcs),
+                "varlat_candidates": ";".join(agg.vcells) or "none",
+                "varlat_triage": tri,
+                "dudect_status": d.get("status", ""),
+                "dudect_abs_t": d.get("abs_t_score", ""),
+                "dudect_measurements": meas,
+                "dudect_leak_target": cf.get("leak_target", ""),
+                "dudect_seed": cf.get("seed", ""),
+                "dudect_threshold": cf.get("threshold", ""),
+                "verdict_class": vclass,
+                "basis": basis,
+                "notes": notes,
+            }
+        )
     return summary

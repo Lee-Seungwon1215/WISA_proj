@@ -97,10 +97,19 @@ def _classify(message: str) -> Optional[Finding]:
 # their stack is a VALUE_USE (e.g. byte values being compared), not a
 # memory-address leak. Including them here would over-promote findings to
 # HIGH/MEMORY_ACCESS and inflate severity.
-_MEMORY_FUNCTION_NAMES = frozenset({
-    "memcpy", "__memcpy", "mempcpy", "memmove", "memset", "bcopy",
-    "strcpy", "strncpy", "stpcpy",
-})
+_MEMORY_FUNCTION_NAMES = frozenset(
+    {
+        "memcpy",
+        "__memcpy",
+        "mempcpy",
+        "memmove",
+        "memset",
+        "bcopy",
+        "strcpy",
+        "strncpy",
+        "stpcpy",
+    }
+)
 _LOOKUP_PATTERNS = ("sbox", "ttable", "tbox", "lookup", "_table")
 
 
@@ -134,9 +143,8 @@ def _finalize(
     memory_function_names: FrozenSet[str] = _MEMORY_FUNCTION_NAMES,
 ) -> Finding:
     """Optionally promote VALUE_USE to MEMORY_ACCESS based on stack context."""
-    if (
-        f.type == FindingType.SECRET_DEPENDENT_VALUE_USE
-        and _is_memory_access(f.frames, lookup_patterns, memory_function_names)
+    if f.type == FindingType.SECRET_DEPENDENT_VALUE_USE and _is_memory_access(
+        f.frames, lookup_patterns, memory_function_names
     ):
         f.type = FindingType.SECRET_DEPENDENT_MEMORY_ACCESS
         f.severity = Severity.HIGH

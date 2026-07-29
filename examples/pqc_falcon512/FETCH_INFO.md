@@ -1,16 +1,16 @@
-# Source
+# PQClean Falcon-512 source provenance
 
-Fetched from: https://github.com/PQClean/PQClean.git @ 202a8f9
-Scheme dir : crypto_sign/falcon-512/clean
-Fetched at : 2026-06-10
+- Source: `https://github.com/PQClean/PQClean`
+- Revision: `202a8f96315f9ed219387a50f7e40d04af037ea8`
+- Upstream path: `crypto_sign/falcon-512/clean`
+- Local path: `examples/pqc_falcon512/clean`
+- License: MIT with the upstream patent notice; see
+  `examples/pqc_falcon512/clean/LICENSE`
+- Tree SHA-256: `151dc842c4c9a0aa74b692f475380f675c3f968febe2399f2f9e5e7b70e2fd6d`
+- Local modifications: none; verified byte-identical to the recorded revision.
+- Originally fetched: `2026-06-10`
 
-# Scope
-
-This example is a first-pass Falcon/FN-DSA feasibility target. It is not promoted
-to the main corpus until the structural findings are attributed and documented.
-
-# Files
-
-The `clean/` directory is copied verbatim from PQClean's Falcon-512 clean
-implementation. Common SHAKE/randombytes dependencies are reused from
-`../pqc_mlkem768/common`.
+This example is a first-pass Falcon/FN-DSA feasibility target. It is a
+`needs-analysis` boundary target, not a constant-time implementation claim.
+Common SHAKE/randombytes dependencies are reused from the separately
+inventoried `../pqc_mlkem768/common`.

@@ -5,7 +5,7 @@ project:
 
 build:
   # All sources are passed through the generator; no separate make stage.
-  command: "true"
+  argv: ["true"]
   workdir: .
 
 ct:

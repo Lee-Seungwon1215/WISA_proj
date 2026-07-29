@@ -177,11 +177,7 @@ def test_strcmp_no_longer_promoted_to_memory_access():
 def test_unknown_message_is_skipped():
     # Whitelist policy: unrecognized diagnostics are skipped rather than
     # surfaced as UNKNOWN findings (avoids banner noise polluting the report).
-    text = (
-        "==1== Some unfamiliar valgrind diagnostic\n"
-        "==1==    at 0x1: weird (weird.c:1)\n"
-        "==1== \n"
-    )
+    text = "==1== Some unfamiliar valgrind diagnostic\n==1==    at 0x1: weird (weird.c:1)\n==1== \n"
     assert parse_valgrind_log(text) == []
 
 
@@ -220,6 +216,7 @@ def test_lookup_patterns_override_uses_user_list():
 def test_dropped_count_increments_on_unrecognized_lines():
     # T3: unrecognized header lines must be counted, not silently dropped.
     from ctkat.valgrind_parser import parse_valgrind_log_with_stats
+
     text = (
         "==1== Memcheck, a memory error detector\n"
         "==1== Command: ./bin/foo\n"
@@ -236,6 +233,7 @@ def test_dropped_count_increments_on_unrecognized_lines():
 
 def test_dropped_count_zero_on_pure_findings_log():
     from ctkat.valgrind_parser import parse_valgrind_log_with_stats
+
     text = (
         "==1== Conditional jump or move depends on uninitialised value(s)\n"
         "==1==    at 0x1: foo (foo.c:1)\n"

@@ -5,7 +5,6 @@ from typing import Dict, List
 
 from .valgrind_parser import Finding, FindingType
 
-
 CSV_FIELDS = [
     "project",
     "harness",
@@ -25,16 +24,11 @@ CSV_FIELDS = [
 # Short, actionable hint per finding type so a reader can scan the CSV
 # without having to look up what each `SECRET_DEPENDENT_*` actually implies.
 _RECOMMENDATIONS = {
-    FindingType.SECRET_DEPENDENT_BRANCH:
-        "Replace data-dependent branch with constant-time select/mask.",
-    FindingType.SECRET_DEPENDENT_MEMORY_ACCESS:
-        "Avoid table lookup indexed by secret; consider bitsliced or constant-time alternative.",
-    FindingType.SECRET_DEPENDENT_VALUE_USE:
-        "Verify the operation has data-independent latency on target CPU (esp. div/mul).",
-    FindingType.MEMORY_ERROR:
-        "Fix the underlying memory error before trusting CT analysis results.",
-    FindingType.UNKNOWN:
-        "Inspect manually — finding type not classified.",
+    FindingType.SECRET_DEPENDENT_BRANCH: "Replace data-dependent branch with constant-time select/mask.",
+    FindingType.SECRET_DEPENDENT_MEMORY_ACCESS: "Avoid table lookup indexed by secret; consider bitsliced or constant-time alternative.",
+    FindingType.SECRET_DEPENDENT_VALUE_USE: "Verify the operation has data-independent latency on target CPU (esp. div/mul).",
+    FindingType.MEMORY_ERROR: "Fix the underlying memory error before trusting CT analysis results.",
+    FindingType.UNKNOWN: "Inspect manually — finding type not classified.",
 }
 
 

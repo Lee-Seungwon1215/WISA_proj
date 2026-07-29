@@ -18,8 +18,12 @@ REG = {"ML-DSA": {"poly_chknorm", "poly_challenge", "make_hint", "pack_sig"}}
 
 def _cell(status, *, cc="gcc", opt="-O0", div="0", asm_error="", funcs=""):
     return {
-        "ct_status": status, "cc": cc, "opt": opt,
-        "asm_div_count": div, "asm_error": asm_error, "ct_finding_funcs": funcs,
+        "ct_status": status,
+        "cc": cc,
+        "opt": opt,
+        "asm_div_count": div,
+        "asm_error": asm_error,
+        "ct_finding_funcs": funcs,
     }
 
 
@@ -62,12 +66,18 @@ def test_build_sensitive_ct_on_status_flip():
 
 def test_accepted_variable_time_when_all_funcs_registered():
     vc, notes = classify_harness(
-        [_cell("FAIL", funcs=(
-            "PQCLEAN_MLDSA65_CLEAN_poly_chknorm;"
-            "PQCLEAN_MLDSA65_CLEAN_make_hint;"
-            "PQCLEAN_MLDSA65_CLEAN_pack_sig"
-        ))],
-        family="ML-DSA", registry=REG,
+        [
+            _cell(
+                "FAIL",
+                funcs=(
+                    "PQCLEAN_MLDSA65_CLEAN_poly_chknorm;"
+                    "PQCLEAN_MLDSA65_CLEAN_make_hint;"
+                    "PQCLEAN_MLDSA65_CLEAN_pack_sig"
+                ),
+            )
+        ],
+        family="ML-DSA",
+        registry=REG,
     )
     assert vc == "accepted-variable-time"
     assert "registry" in notes
@@ -81,11 +91,17 @@ def test_default_registry_loads_mldsa_pack_sig_review():
 
 def test_accepted_override_does_not_claim_all_funcs_were_registered():
     vc, notes = classify_harness(
-        [_cell("FAIL", funcs=(
-            "PQCLEAN_MLDSA65_CLEAN_pack_sig;"
-            "PQCLEAN_MLDSA65_CLEAN_crypto_sign_signature_ctx"
-        ))],
-        family="ML-DSA", registry=REG, verdict_override="accepted-variable-time",
+        [
+            _cell(
+                "FAIL",
+                funcs=(
+                    "PQCLEAN_MLDSA65_CLEAN_pack_sig;PQCLEAN_MLDSA65_CLEAN_crypto_sign_signature_ctx"
+                ),
+            )
+        ],
+        family="ML-DSA",
+        registry=REG,
+        verdict_override="accepted-variable-time",
     )
     assert vc == "accepted-variable-time"
     assert "manual verdict override" in notes
@@ -96,10 +112,11 @@ def test_accepted_override_does_not_claim_all_funcs_were_registered():
 def test_needs_analysis_on_unregistered_func():
     vc, notes = classify_harness(
         [_cell("FAIL", funcs="PFX_poly_chknorm;PFX_mystery_leak")],
-        family="ML-DSA", registry=REG,
+        family="ML-DSA",
+        registry=REG,
     )
     assert vc == "needs-analysis"
-    assert "mystery_leak" in notes          # the unregistered func is named
+    assert "mystery_leak" in notes  # the unregistered func is named
 
 
 def test_needs_analysis_when_no_registry():
@@ -138,12 +155,18 @@ def test_dudect_warning_surfaced_in_notes():
 def test_verdict_basis_distinguishes_auto_review_and_stop():
     assert verdict_basis("robust", varlat_candidates=False) == "auto"
     assert verdict_basis("robust", varlat_candidates=True, triage="public") == "review"
-    assert verdict_basis("varlat-secret-risk", varlat_candidates=True, triage="secret-risk") == "review"
-    assert verdict_basis(
-        "accepted-variable-time",
-        varlat_candidates=False,
-        verdict_override="accepted-variable-time",
-    ) == "review"
+    assert (
+        verdict_basis("varlat-secret-risk", varlat_candidates=True, triage="secret-risk")
+        == "review"
+    )
+    assert (
+        verdict_basis(
+            "accepted-variable-time",
+            varlat_candidates=False,
+            verdict_override="accepted-variable-time",
+        )
+        == "review"
+    )
     assert verdict_basis("needs-analysis", varlat_candidates=True, triage="untriaged") == "stop"
 
 
@@ -165,7 +188,7 @@ def test_summarize_groups_and_orders_by_harness():
     ]
     rows = summarize(cells, family="X", triage={}, dud_by={}, dcfg={})
     by = {r["harness"]: r for r in rows}
-    assert [r["harness"] for r in rows] == ["a", "b"]      # first-seen order
+    assert [r["harness"] for r in rows] == ["a", "b"]  # first-seen order
     assert by["a"]["verdict_class"] == "build-sensitive-ct"
     assert by["a"]["basis"] == "auto"
     assert by["b"]["verdict_class"] == "needs-analysis"

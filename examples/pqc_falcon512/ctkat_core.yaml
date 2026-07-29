@@ -4,7 +4,7 @@ project:
   root: ..
 
 build:
-  command: "make clean && make"
+  argv: ["make", "clean", "all"]
   workdir: .
   expected_artifacts:
     - build/harness_sign_core_dyn

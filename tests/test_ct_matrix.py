@@ -30,8 +30,8 @@ from ctkat.ct_matrix import (
 from ctkat.ct_runner import CtRunOutcome
 from ctkat.harness_generator import HarnessGenerationError
 
-
 # --- expand_combos ----------------------------------------------------------
+
 
 def test_expand_combos_cartesian_and_dedup():
     combos = expand_combos(["gcc", "clang", "gcc"], {"debug": ["-O0"], "rel": ["-O2"]})
@@ -47,9 +47,19 @@ def test_combo_label():
 
 # --- preprocessor_cflags (carry defines/includes into every combo) ----------
 
+
 def test_preprocessor_cflags_extracts_defines_and_includes():
-    flags = ["-O2", "-g", "-fno-inline", "-DFOO=1", "-DBAR", "-Iinc",
-             "-isystem", "/sys", "-fno-lto"]
+    flags = [
+        "-O2",
+        "-g",
+        "-fno-inline",
+        "-DFOO=1",
+        "-DBAR",
+        "-Iinc",
+        "-isystem",
+        "/sys",
+        "-fno-lto",
+    ]
     pp = preprocessor_cflags(flags)
     assert pp == ["-DFOO=1", "-DBAR", "-Iinc", "-isystem", "/sys"]
     # -O/-g/codegen flags are NOT carried — the combo owns those.
@@ -63,8 +73,13 @@ def test_preprocessor_cflags_keeps_spaced_define_include_value():
     assert preprocessor_cflags(["-I", "include/dir"]) == ["-I", "include/dir"]
     assert preprocessor_cflags(["-U", "NDEBUG"]) == ["-U", "NDEBUG"]
     # mixed glued + spaced + opt noise
-    assert preprocessor_cflags(["-O2", "-g", "-D", "PQ=1", "-DGLUED", "-I", "/inc"]) == \
-        ["-D", "PQ=1", "-DGLUED", "-I", "/inc"]
+    assert preprocessor_cflags(["-O2", "-g", "-D", "PQ=1", "-DGLUED", "-I", "/inc"]) == [
+        "-D",
+        "PQ=1",
+        "-DGLUED",
+        "-I",
+        "/inc",
+    ]
 
 
 def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monkeypatch):
@@ -78,14 +93,26 @@ def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monk
 
     src = tmp_path / "h.c"
     src.write_text("int main(void){return 0;}\n")
-    h = HarnessInputs(name="kem", source_path=src, sources=[], include_dirs=[],
-                      extra_cflags=["-DPQCLEAN_NO_GLIBC_RANDOMBYTES"])
+    h = HarnessInputs(
+        name="kem",
+        source_path=src,
+        sources=[],
+        include_dirs=[],
+        extra_cflags=["-DPQCLEAN_NO_GLIBC_RANDOMBYTES"],
+    )
     combos = expand_combos(["gcc"], {"debug": ["-O0", "-g"], "release": ["-O2"]})
-    m.scan_ct_matrix([h], combos, workdir=tmp_path, binaries_dir=tmp_path / "b",
-                     valgrind_flags=[], compile_timeout=10, valgrind_timeout=10)
+    m.scan_ct_matrix(
+        [h],
+        combos,
+        workdir=tmp_path,
+        binaries_dir=tmp_path / "b",
+        valgrind_flags=[],
+        compile_timeout=10,
+        valgrind_timeout=10,
+    )
     assert len(seen) == 2
     assert all("-DPQCLEAN_NO_GLIBC_RANDOMBYTES" in cf for cf in seen)
-    assert seen[0][0] == "-O0"   # combo opt flags come first, define appended
+    assert seen[0][0] == "-O0"  # combo opt flags come first, define appended
 
 
 def test_scan_carries_dropped_count_for_stale_parser_canary(tmp_path, monkeypatch):
@@ -93,19 +120,25 @@ def test_scan_carries_dropped_count_for_stale_parser_canary(tmp_path, monkeypatc
     # the row so the command can emit the stale-parser canary like _do_ct.
     monkeypatch.setattr(m, "compile_harness", lambda **k: "cmd")
     monkeypatch.setattr(m, "run_valgrind", lambda *a, **k: object())
-    monkeypatch.setattr(m, "classify_valgrind_run",
-                        lambda *a, **k: CtRunOutcome("PASS", dropped=99))
+    monkeypatch.setattr(
+        m, "classify_valgrind_run", lambda *a, **k: CtRunOutcome("PASS", dropped=99)
+    )
     src = tmp_path / "h.c"
     src.write_text("int main(void){return 0;}\n")
     rows = m.scan_ct_matrix(
-        [HarnessInputs("kem", src, [], [])], expand_combos(["gcc"], {"debug": ["-O0"]}),
-        workdir=tmp_path, binaries_dir=tmp_path / "b",
-        valgrind_flags=[], compile_timeout=10, valgrind_timeout=10,
+        [HarnessInputs("kem", src, [], [])],
+        expand_combos(["gcc"], {"debug": ["-O0"]}),
+        workdir=tmp_path,
+        binaries_dir=tmp_path / "b",
+        valgrind_flags=[],
+        compile_timeout=10,
+        valgrind_timeout=10,
     )
     assert rows[0].dropped == 99
 
 
 # --- scan_ct_matrix (mocked) ------------------------------------------------
+
 
 def _harness(tmp_path):
     src = tmp_path / "h.c"
@@ -116,18 +149,24 @@ def _harness(tmp_path):
 def test_scan_records_status_per_combo(tmp_path, monkeypatch):
     monkeypatch.setattr(m, "compile_harness", lambda **k: "cmd")
     monkeypatch.setattr(m, "run_valgrind", lambda *a, **k: object())
-    outcomes = iter([
-        CtRunOutcome("PASS"),
-        CtRunOutcome("FAIL", findings=[object(), object()]),
-        CtRunOutcome("PASS"),
-    ])
+    outcomes = iter(
+        [
+            CtRunOutcome("PASS"),
+            CtRunOutcome("FAIL", findings=[object(), object()]),
+            CtRunOutcome("PASS"),
+        ]
+    )
     monkeypatch.setattr(m, "classify_valgrind_run", lambda *a, **k: next(outcomes))
 
     combos = expand_combos(["gcc"], {"debug": ["-O0"], "release": ["-O2"], "size": ["-Os"]})
     rows = m.scan_ct_matrix(
-        [_harness(tmp_path)], combos,
-        workdir=tmp_path, binaries_dir=tmp_path / "b",
-        valgrind_flags=["--tool=memcheck"], compile_timeout=10, valgrind_timeout=10,
+        [_harness(tmp_path)],
+        combos,
+        workdir=tmp_path,
+        binaries_dir=tmp_path / "b",
+        valgrind_flags=["--tool=memcheck"],
+        compile_timeout=10,
+        valgrind_timeout=10,
     )
     assert [r.combo for r in rows] == ["gcc_debug", "gcc_release", "gcc_size"]
     assert [r.valgrind_status for r in rows] == ["PASS", "FAIL", "PASS"]
@@ -146,9 +185,13 @@ def test_scan_compile_failure_becomes_error_row_and_continues(tmp_path, monkeypa
 
     combos = expand_combos(["gcc", "clang"], {"debug": ["-O0"]})
     rows = m.scan_ct_matrix(
-        [_harness(tmp_path)], combos,
-        workdir=tmp_path, binaries_dir=tmp_path / "b",
-        valgrind_flags=[], compile_timeout=10, valgrind_timeout=10,
+        [_harness(tmp_path)],
+        combos,
+        workdir=tmp_path,
+        binaries_dir=tmp_path / "b",
+        valgrind_flags=[],
+        compile_timeout=10,
+        valgrind_timeout=10,
     )
     by_combo = {r.combo: r for r in rows}
     assert by_combo["gcc_debug"].valgrind_status == "PASS"
@@ -163,14 +206,19 @@ def test_scan_valgrind_error_propagates_as_error_row(tmp_path, monkeypatch):
     monkeypatch.setattr(m, "compile_harness", lambda **k: "cmd")
     monkeypatch.setattr(m, "run_valgrind", lambda *a, **k: object())
     monkeypatch.setattr(
-        m, "classify_valgrind_run",
+        m,
+        "classify_valgrind_run",
         lambda *a, **k: CtRunOutcome("ERROR", error="valgrind exited with code 124 (timeout)"),
     )
     combos = expand_combos(["gcc"], {"debug": ["-O0"]})
     rows = m.scan_ct_matrix(
-        [_harness(tmp_path)], combos,
-        workdir=tmp_path, binaries_dir=tmp_path / "b",
-        valgrind_flags=[], compile_timeout=10, valgrind_timeout=10,
+        [_harness(tmp_path)],
+        combos,
+        workdir=tmp_path,
+        binaries_dir=tmp_path / "b",
+        valgrind_flags=[],
+        compile_timeout=10,
+        valgrind_timeout=10,
     )
     assert rows[0].valgrind_status == "ERROR"
     assert "timeout" in rows[0].error
@@ -178,15 +226,24 @@ def test_scan_valgrind_error_propagates_as_error_row(tmp_path, monkeypatch):
 
 # --- artifact writers -------------------------------------------------------
 
+
 def test_write_ct_matrix_csv_columns_and_row(tmp_path):
-    rows = [CtMatrixRow(harness="kem", combo="gcc_release", cc="gcc",
-                        cflags=("-O2", "-g"), valgrind_status="FAIL", findings=2)]
+    rows = [
+        CtMatrixRow(
+            harness="kem",
+            combo="gcc_release",
+            cc="gcc",
+            cflags=("-O2", "-g"),
+            valgrind_status="FAIL",
+            findings=2,
+        )
+    ]
     out = tmp_path / "m.csv"
     write_ct_matrix_csv("proj", rows, out)
     lines = out.read_text().splitlines()
     assert lines[0] == ",".join(CT_MATRIX_CSV_FIELDS)
     assert "gcc_release" in lines[1]
-    assert "-O2 -g" in lines[1]      # cflags space-joined
+    assert "-O2 -g" in lines[1]  # cflags space-joined
     assert "FAIL" in lines[1]
 
 
@@ -241,9 +298,11 @@ def test_ct_matrix_cli_writes_artifacts_and_exits_zero(tmp_path):
         CtMatrixRow("kem_dec", "gcc_debug", "gcc", ("-O0", "-g"), "FAIL", 1, ""),
         CtMatrixRow("kem_dec", "gcc_release", "gcc", ("-O2", "-g"), "PASS", 0, ""),
     ]
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
-         mock.patch("ctkat.cli.scan_ct_matrix", return_value=fake_rows) as mscan:
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.render_harness", return_value="// code\n"),
+        mock.patch("ctkat.cli.scan_ct_matrix", return_value=fake_rows) as mscan,
+    ):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(yaml_path)])
     assert result.exit_code == 0, result.stdout
     assert mscan.called
@@ -264,13 +323,15 @@ def test_ct_matrix_cli_error_cell_not_reported_as_ct_difference(tmp_path):
         CtMatrixRow("kem_dec", "gcc_debug", "gcc", ("-O0",), "PASS", 0, ""),
         CtMatrixRow("kem_dec", "gcc_release", "gcc", ("-O2",), "ERROR", 0, "compile failed: x"),
     ]
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
-         mock.patch("ctkat.cli.scan_ct_matrix", return_value=rows):
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.render_harness", return_value="// code\n"),
+        mock.patch("ctkat.cli.scan_ct_matrix", return_value=rows),
+    ):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(yaml_path)])
     assert result.exit_code == 0, result.stdout
     assert "DIFFERENT CT results" not in result.stdout
-    assert "couldn't measure" in result.stdout       # the ERROR-cell note
+    assert "couldn't measure" in result.stdout  # the ERROR-cell note
 
 
 def test_ct_matrix_cli_missing_valgrind_exits_2(tmp_path):
@@ -317,9 +378,11 @@ def test_ct_matrix_cli_all_cells_error_exits_2(tmp_path):
     all_error = [
         CtMatrixRow("kem_dec", "gcc_debug", "gcc", ("-O0",), "ERROR", 0, "compile failed: x"),
     ]
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
-         mock.patch("ctkat.cli.scan_ct_matrix", return_value=all_error):
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.render_harness", return_value="// code\n"),
+        mock.patch("ctkat.cli.scan_ct_matrix", return_value=all_error),
+    ):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(yaml_path)])
     assert result.exit_code == 2
     assert "every build cell ERROR" in result.stdout
@@ -343,11 +406,15 @@ def test_ct_matrix_cli_uses_default_matrix_when_absent(tmp_path):
 
     def fake_scan(harnesses, combos, **k):
         captured["combos"] = [c.label for c in combos]
-        return [CtMatrixRow("kem_dec", combos[0].label, combos[0].cc, combos[0].cflags, "PASS", 0, "")]
+        return [
+            CtMatrixRow("kem_dec", combos[0].label, combos[0].cc, combos[0].cflags, "PASS", 0, "")
+        ]
 
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
-         mock.patch("ctkat.cli.scan_ct_matrix", side_effect=fake_scan):
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.render_harness", return_value="// code\n"),
+        mock.patch("ctkat.cli.scan_ct_matrix", side_effect=fake_scan),
+    ):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(_write(tmp_path, yaml))])
     assert result.exit_code == 0, result.stdout
     assert captured["combos"] == [
@@ -376,9 +443,11 @@ def test_ct_matrix_cli_notes_skipped_manual_harnesses(tmp_path):
         """
     )
     rows = [CtMatrixRow("tmpl", "gcc_debug", "gcc", ("-O0",), "PASS", 0)]
-    with mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"), \
-         mock.patch("ctkat.cli.render_harness", return_value="// code\n"), \
-         mock.patch("ctkat.cli.scan_ct_matrix", return_value=rows):
+    with (
+        mock.patch("ctkat.cli.shutil.which", return_value="/usr/bin/tool"),
+        mock.patch("ctkat.cli.render_harness", return_value="// code\n"),
+        mock.patch("ctkat.cli.scan_ct_matrix", return_value=rows),
+    ):
         result = CliRunner().invoke(app, ["ct-matrix", "-c", str(_write(tmp_path, yaml))])
     assert result.exit_code == 0, result.stdout
     assert "manual-binary harness(es) skipped" in result.stdout
@@ -386,6 +455,7 @@ def test_ct_matrix_cli_notes_skipped_manual_harnesses(tmp_path):
 
 
 # --- guarded end-to-end: the Phase C headline flip (real compile + Valgrind) -
+
 
 def _have_valgrind_and_gnu_gcc() -> bool:
     if shutil.which("valgrind") is None or shutil.which("gcc") is None:
@@ -402,7 +472,7 @@ def _have_valgrind_and_gnu_gcc() -> bool:
 _needs_valgrind_gcc = pytest.mark.skipif(
     not _have_valgrind_and_gnu_gcc(),
     reason="needs Valgrind + real GNU gcc (Linux/Docker); the -O0->-O2 CT flip is "
-           "gcc-specific and Valgrind doesn't run on macOS",
+    "gcc-specific and Valgrind doesn't run on macOS",
 )
 
 # A secret-dependent select: a conditional jump on tainted data at -O0 (Valgrind
@@ -433,9 +503,11 @@ def test_ct_matrix_secret_branch_flips_fail_O0_to_pass_O2(tmp_path):
     rows = m.scan_ct_matrix(
         [HarnessInputs(name="flip", source_path=src, sources=[], include_dirs=[])],
         combos,
-        workdir=tmp_path, binaries_dir=tmp_path / "m",
+        workdir=tmp_path,
+        binaries_dir=tmp_path / "m",
         valgrind_flags=["--tool=memcheck", "--track-origins=yes", "--error-exitcode=99"],
-        compile_timeout=60, valgrind_timeout=180,
+        compile_timeout=60,
+        valgrind_timeout=180,
     )
     by = {r.combo: r.valgrind_status for r in rows}
     assert by["gcc_O0"] == "FAIL", f"secret branch must leak at -O0; got {by}"

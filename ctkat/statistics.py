@@ -37,8 +37,8 @@ class WelchResult:
     # Diagnostic fields populated only by `welch_with_cropping`. `None` on
     # results from plain `welch_t_test` so the dataclass stays backward
     # compatible — old callers ignore these, new callers read them.
-    cropped_at: Optional[float] = None        # cutoff that produced max |t|
-    t_score_uncropped: Optional[float] = None # t at cutoff=1.0 (no cropping)
+    cropped_at: Optional[float] = None  # cutoff that produced max |t|
+    t_score_uncropped: Optional[float] = None  # t at cutoff=1.0 (no cropping)
     abs_t_score_uncropped: Optional[float] = None
     # Bundle G (S3): standardized effect size. t-score size is confounded
     # with sample size — a tiny leak with huge n can match a large leak with
@@ -106,10 +106,14 @@ def welch_t_test(
         status = "PASS"
 
     return WelchResult(
-        n0=n0, n1=n1,
-        mean0=m0, mean1=m1,
-        var0=v0, var1=v1,
-        t_score=t, abs_t_score=abs_t,
+        n0=n0,
+        n1=n1,
+        mean0=m0,
+        mean1=m1,
+        var0=v0,
+        var1=v1,
+        t_score=t,
+        abs_t_score=abs_t,
         status=status,
         cohens_d=_cohens_d(n0, n1, m0, m1, v0, v1),
     )
@@ -163,9 +167,7 @@ def batch_t_scores(
             continue
         # batch t-scores deliberately skip cropping — they measure raw
         # stability of the environment; cropping would smooth that signal.
-        results.append(
-            welch_t_test(c0, c1, warning_threshold, fail_threshold)
-        )
+        results.append(welch_t_test(c0, c1, warning_threshold, fail_threshold))
     return results
 
 
@@ -266,8 +268,8 @@ def welch_with_cropping(
             # pre-sorted class lists that prefix length is bisect_right(class, thr).
             idx = min(int(n_pooled * p), n_pooled - 1)
             thr = pooled[idx]
-            c0 = sorted_c0[:bisect_right(sorted_c0, thr)]
-            c1 = sorted_c1[:bisect_right(sorted_c1, thr)]
+            c0 = sorted_c0[: bisect_right(sorted_c0, thr)]
+            c1 = sorted_c1[: bisect_right(sorted_c1, thr)]
         if len(c0) < 2 or len(c1) < 2:
             continue
         r = welch_t_test(c0, c1, warning_threshold, fail_threshold)
@@ -281,9 +283,7 @@ def welch_with_cropping(
     if best is None:
         # Only reachable if every cutoff (including 1.0) had <2 samples
         # per class — same precondition welch_t_test would raise on.
-        raise ValueError(
-            "welch_with_cropping: every cutoff yielded <2 samples per class"
-        )
+        raise ValueError("welch_with_cropping: every cutoff yielded <2 samples per class")
 
     best.cropped_at = best_at
     best.t_score_uncropped = uncropped_t

@@ -1,16 +1,17 @@
 # CT-KAT
 
-KAT, Valgrind/Memcheck, asm-scan, ct-matrix, dudect를 묶어 쓰는
-constant-time **스크리닝** 프레임워크.
+KAT, Valgrind/Memcheck, asm-scan, ct-matrix와 자체
+dudect-inspired first-order timing screen을 묶어 쓰는 constant-time
+**스크리닝** 프레임워크.
 
-C/C/C++ 암호 구현을 던지면 설정된 하니스에 대해:
+C 암호 구현을 던지면 설정된 하니스에 대해:
 
 1. 빌드
 2. KAT (Known Answer Test) — 정확성 확인
 3. **Valgrind/Memcheck** — secret-tainted 값이 분기/메모리 주소 계산에 쓰였는지 (구조적 검사)
 4. **ct-matrix** — compiler × cflags별로 구조적 CT 결과가 바뀌는지 확인
 5. **asm-scan** — emitted assembly에서 `div/idiv` 같은 variable-latency 후보 수집
-6. **dudect** — fixed-vs-random class의 실행 시간 분포를 Welch t-test로 비교
+6. **timing screen (`dudect` 명령)** — fixed-vs-random class의 실행 시간 분포를 자체 Welch t-test 구현으로 비교
 7. CSV/JSON/Markdown 리포트 + triage 기반 verdict 출력
 
 `screen`의 `verdict_class`가 현재 논문/코퍼스의 기준이다. 예전 `run` 명령은
@@ -42,14 +43,23 @@ $ python -m ctkat run --config examples/toy_password/ctkat.yaml
 
 ## Quick start
 
-전제: Docker Desktop이 깔려 있고 실행 중.
+Python 패키지와 pure-Python 명령은 일반 환경에 설치할 수 있다:
 
 ```bash
-# 1. 컨테이너에 진입
+python -m pip install .
+ctkat --version
+ctkat infer --header tests/fixtures/headers/kem.h
+```
+
+Valgrind 구조 검사는 Linux가 필요하다. macOS/Windows 개발 환경에서는
+Docker Desktop을 실행한 뒤:
+
+```bash
+# 컨테이너에 진입
 ./scripts/dev.sh
 
-# 2. 컨테이너 안에서:
-PYTHONPATH=. python -m ctkat run --config examples/toy_password/ctkat.yaml
+# 컨테이너 안에서
+ctkat run --config examples/toy_password/ctkat.yaml
 PYTHONPATH=. pytest tests -v
 ```
 
@@ -57,7 +67,7 @@ PYTHONPATH=. pytest tests -v
 
 ```bash
 docker compose run --rm ctkat-dev bash -c \
-    "PYTHONPATH=. python -m ctkat run --config examples/toy_password/ctkat.yaml"
+    "ctkat run --config examples/toy_password/ctkat.yaml"
 ```
 
 처음 한 번은 도커 이미지 빌드에 5~10분 (Apple Silicon은 x86_64 에뮬레이션). 두 번째부터는 캐시.
@@ -79,7 +89,7 @@ WISA/
 ├── ctkat/                      # framework package
 │   ├── cli.py                  # typer CLI (run / ct / kat / dudect / infer / parse)
 │   ├── config.py               # pydantic yaml schema
-│   ├── builder.py              # build/KAT shell wrapper
+│   ├── builder.py              # build/KAT argv + explicit-shell wrapper
 │   ├── valgrind_runner.py
 │   ├── valgrind_parser.py      # finding extraction + heuristic re-classification
 │   ├── harness_generator.py    # Jinja2 → C harness (Valgrind side)
@@ -93,11 +103,12 @@ WISA/
 │   ├── report.py
 │   └── templates/
 │       ├── harness_generic.c.j2 / harness_kem.c.j2 / harness_sign.c.j2
-│       └── timing_generic.c.j2 / timing_kem.c.j2
+│       └── timing_generic.c.j2 / timing_kem.c.j2 / timing_sign.c.j2
 ├── examples/
 │   ├── toy_password/           # bad_compare vs safe_compare (Phase 0~2)
 │   ├── toy_dudect/             # leaky_function vs safe_function (Phase 4)
 │   ├── toy_lookup/             # secret-indexed S-box vs constant-index
+│   ├── toy_release_smoke/      # wheel-only CI end-to-end target
 │   ├── pqc_mlkem512/           # PQClean ML-KEM-512 + valid/invalid KEM paths
 │   ├── pqc_mlkem768/           # PQClean ML-KEM-768 + valid/invalid KEM paths
 │   ├── pqc_mlkem1024/          # PQClean ML-KEM-1024 + valid/invalid KEM paths
@@ -108,7 +119,7 @@ WISA/
 │   ├── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
 │   └── pqc_falcon512/          # Falcon/FN-DSA needs-analysis boundary target
 ├── tests/                      # pytest regression suite
-├── scripts/                    # dev.sh, run_check.sh, run_phaseN.sh, fetch_pqclean.sh
+├── scripts/                    # runners + release/corpus/provenance gates
 ├── Dockerfile, docker-compose.yml
 └── pyproject.toml
 ```
@@ -137,7 +148,7 @@ blind spot을 가진다:
     emitted assembly에서 div/idiv/sdiv/udiv 후보 수집
     "KyberSlash류 operand-latency 후보가 빌드에 살아남나?"
          ↓
-[5] dudect — Statistical Timing
+[5] dudect-inspired first-order screen — Statistical Timing
     fixed-vs-random secret + Welch t-test + percentile cropping (max |t|)
     "설정한 두 class의 실행 시간 분포가 통계적으로 다른가?"
          ↓
@@ -154,7 +165,7 @@ blind spot을 가진다:
 | Valgrind | secret-tainted branch, secret-indexed memory access | 명령어 latency 차이, 실행 안 된 경로, power/EM |
 | ct-matrix | 빌드별 structural verdict 변화 | 왜 변했는지의 보안 의미 |
 | asm-scan | `div/idiv` 등 variable-latency 명령 후보 | operand가 secret인지 자동 증명하지 못함 |
-| dudect | 설정한 두 class 사이의 timing 차이 | 정확한 코드 위치, rare trigger, noisy/QEMU 환경 |
+| timing screen | 설정한 두 class 사이의 timing 차이 | 공식 dudect protocol parity, 정확한 코드 위치, rare trigger, noisy/QEMU 환경 |
 | triage | public 후보와 secret-risk/accepted behavior 분리 | 사람이 쓴 근거가 틀리면 같이 틀림 |
 
 모든 configured layer가 통과해도 결론은 “이 하니스와 환경에서 새 후보가
@@ -172,8 +183,10 @@ project:
   language: c
   root: .                      # 다른 경로의 기준점
 
+execution_profile: trusted     # untrusted면 모든 shell-backed command 거부
+
 build:
-  command: "make clean && make"
+  argv: ["make", "clean", "all"]  # 기본: shell=False
   workdir: .
   expected_artifacts:          # (E-1) 빌드가 생산해야 할 파일들. rc=0인데
     - build/harness_foo        # 빠진 게 있으면 build FAIL. unset 시 legacy
@@ -181,7 +194,7 @@ build:
 
 # Optional. 없으면 KAT 단계 스킵.
 kat:
-  command: "./test_kat"
+  argv: ["./test_kat"]
   workdir: .
   expected_min: 100            # (E-1) stdout에서 expected_pattern으로 추출한
                                # 테스트 개수가 이 값 이상이어야 PASS. unset 시
@@ -291,11 +304,13 @@ report:
 
 ---
 
-## dudect 측정 강화 (Bundle A / B / C / D)
+## dudect-inspired timing screen (Bundle A / B / C / D)
 
-기본 동작이 dudect 원본 (Reparaz et al. 2017) 프로토콜에 정합되도록
-measurement primitives + 통계 레이어 모두 보강. 사용자가 켜는 옵션 ㄴ —
-기본 ON이 권장 동작.
+`dudect`는 호환성을 위해 남긴 CLI/config 이름이다. 현재 백엔드는 공식
+dudect를 실행하는 것이 아니라 CT-KAT 자체의 first-order Welch screen이며,
+5개 percentile cutoff만 검사하고 second-order test를 하지 않는다. 따라서
+이 결과를 “공식 dudect 통과”나 protocol parity로 해석하면 안 된다. 공식
+dudect backend 도입과 validity/power 상태는 roadmap M2 작업이다.
 
 ### clock 선택 (`clock: auto` default)
 
@@ -360,11 +375,11 @@ dudect:
 |---|---|
 | zero-cycle filter | parse 단계에서 cycles=0 (언더플로우 sentinel + ns-해상도 floor) drop. 1% 초과 시 전체 warning |
 | per-class drop 비대칭 warning (Bundle F, F4/S2) | class별 drop rate를 추적해서 어느 한쪽이 5% 초과 + 두 rate의 gap이 5% 초과면 별도 warning. 살아남은 샘플이 한 클래스의 slow tail로 편향되어 Welch t-score를 왜곡할 수 있음 |
-| percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. dudect 원본의 multi-cutoff scan 정신 따름 |
+| percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. 공식 dudect의 전체 percentile/second-order protocol과는 다름 |
 | batch t-score는 비-cropping | 환경 안정성 측정용이라 raw 신호 유지 |
 | secret_regions coverage probe (Bundle F, F6) | `template: kem/sign`이고 `secret_regions`가 설정된 하니스에 한해, 자동 생성 단계에서 별도 sentinel 프로그램을 잠시 컴파일·실행해 `sum(secret_regions.length)`와 `{prefix}CRYPTO_SECRETKEYBYTES`를 실제 컴파일러에서 평가. <50%면 yellow warning (sk 대부분을 public으로 취급 중 — yaml typo 의심). probe 컴파일/실행 실패는 yellow note만, blocking X |
 | 효과 크기 (Bundle G, S3) | 모든 t-score 결과에 Cohen's d 동반 (CSV col 21). pooled-SD 정확 버전, sign 유지. 같은 \|t\|=5라도 d=0.2 (작은 leak + 큰 n)과 d=2.0 (큰 leak + 작은 n)이 구별됨 |
-| multi-cutoff calibration (Bundle G, R2) | percentile cropping은 5개 cutoff에서 max \|t\|를 채택하므로 H0 하 Type-I 비율이 단일 Welch 대비 약간 inflate된다. `dudect.bonferroni_correct: true`를 박으면 threshold가 `sqrt(N_cutoffs)`≈2.24만큼 더 보수적으로 스케일됨. default False — 대부분의 문헌이 "단일-test 4.5/10.0" 기준이라 사용자가 혼란을 안 겪게 |
+| multi-cutoff calibration (legacy) | percentile cropping은 5개 cutoff에서 max \|t\|를 채택하므로 Type-I error가 inflate될 수 있다. 현재 `bonferroni_correct` 옵션은 이름과 달리 임계값을 `sqrt(N_cutoffs)`만큼 늘리는 경험적 스케일링이며, Bonferroni/FWER 보장을 구현하지 않는다. M2에서 이름과 calibration을 교체할 예정 |
 
 #### multi-cutoff calibration guide (R2)
 
@@ -379,9 +394,9 @@ cropping 5개 cutoff 중 max \|t\|를 채택하면 nominal보다 false-positive
 | 5.5 ~ 10 | WARNING | 강한 의심 — 환경 노이즈와 실제 timing 후보를 같이 검토 |
 | ≥ 10 | FAIL | 큰 신호 — 그래도 원인 attribution과 native 확인 필요 |
 
-엄격한 family-wise α 보존이 필요하면 `dudect.bonferroni_correct: true`
-박기. 그러면 threshold 자체가 ≈2.24배 올라가서 4.5→10.06, 10.0→22.36이
-되니까 "단일-test 4.5/10.0과 동등한 보수성"이 multi-cutoff에서도 유지됨.
+`dudect.bonferroni_correct: true`는 threshold를 ≈2.24배 올리지만 엄격한
+family-wise α 보존을 증명하지 않는다. 이 옵션을 켠 결과도 “Bonferroni
+corrected”라고 논문이나 artifact에 쓰지 말 것.
 
 ### 재현성 (seed)
 
@@ -638,7 +653,8 @@ note의 "ct 스테이지가 놓침" 판정은 ct 빌드가 **같은 컴파일러
 `0`(warn-only). 요청한 컴파일러 중 **일부**가 PATH에 없으면 그 컴파일러만 건너뛰고
 ERROR로 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단 `objdump`가 없거나 요청한
 컴파일러가 **하나도** 없으면 조용히 빈 결과로 exit 0 하지 않고 **config 에러로 exit
-2**(fail-closed). 기본 Docker 이미지엔 `gcc`만 있으므로 `--cc clang`은 clang 설치 후.
+2**(fail-closed). 기본 Docker 이미지에는 `gcc`와 `clang`이 모두 설치되어
+있다.
 정밀 taint는 패치드 Valgrind 필요(미구현). 현재 구현은 멀티 최적화
 `asm-scan` 후보 보고에 머문다.
 
@@ -732,6 +748,40 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 
 ## Examples / Case studies
 
+### Committed corpus snapshot
+
+<!-- BEGIN CTKAT CORPUS SNAPSHOT -->
+<!-- source: docs/corpus/corpus_summary.csv sha256=99c124b57be922731e4fafe920428bd22aa69d5f803081b66ed62fd6fbefaac2; regenerate: python scripts/render_readme_corpus.py --write -->
+
+`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:99c124b57be9`).
+
+| family | target / harness | structural CT | timing screen | verdict | basis |
+|---|---|---|---|---|---|
+| ML-KEM | pqclean_mlkem512 / kem_dec | {PASS} | — | robust | review |
+| ML-KEM | pqclean_mlkem512 / kem_dec_fo | {PASS} | — | robust | review |
+| ML-KEM | pqclean_mlkem768 / kem_dec | {PASS} | FAIL (\|t\|=145.316) | robust | review |
+| ML-KEM | pqclean_mlkem768 / kem_dec_ct | {PASS} | PASS (\|t\|=2.304) | robust | review |
+| ML-KEM | pqclean_mlkem768 / kem_dec_fo | {PASS} | PASS (\|t\|=2.103) | robust | review |
+| ML-KEM | pqclean_mlkem1024 / kem_dec | {PASS} | — | robust | review |
+| ML-KEM | pqclean_mlkem1024 / kem_dec_fo | {PASS} | — | robust | review |
+| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | {PASS} | — | varlat-secret-risk | review |
+| ML-DSA | pqclean_mldsa44 / sign | {FAIL} | PASS (\|t\|=1.153) | accepted-variable-time | review |
+| ML-DSA | pqclean_mldsa65 / sign | {FAIL} | PASS (\|t\|=1.661) | accepted-variable-time | review |
+| ML-DSA | pqclean_mldsa87 / sign | {FAIL} | PASS (\|t\|=1.748) | accepted-variable-time | review |
+| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | {FAIL} | PASS (\|t\|=1.523) | accepted-variable-time | review |
+| Falcon | pqclean_falcon512 / sign | {FAIL} | PASS (\|t\|=1.590) | needs-analysis | stop |
+| synthetic | toy_lookup / leaky | {FAIL} | — | ct-leak | review |
+| synthetic | toy_lookup / safe | {PASS} | — | robust | auto |
+| synthetic | ct_matrix_flip / leaky | {FAIL,PASS} | — | build-sensitive-ct | auto |
+| synthetic | ct_matrix_flip / safe | {PASS} | — | robust | auto |
+
+재생성: `python scripts/render_readme_corpus.py --write`
+<!-- END CTKAT CORPUS SNAPSHOT -->
+
+이 표는 현재 committed v1 결과를 숨김없이 보여준다. 특히 `timing
+FAIL + robust` 모순은 문서에서 지워버릴 문제가 아니라 M2 evidence schema가
+해결할 차단 결함이다.
+
 ### 1. `toy_password` — secret-dependent early return
 
 ```c
@@ -788,14 +838,9 @@ timing 결론은 native x86_64에서 재확인해야 한다.
 PYTHONPATH=. python -m ctkat run --config examples/pqc_mlkem768/ctkat.yaml
 ```
 
-현재 corpus에서 읽는 요약:
-
-| 검사 | 결과 |
-|---|---|
-| ct-matrix | configured cells에서 PASS |
-| asm-scan | FIPS202/Keccak division 후보는 public으로 triage |
-| dudect | QEMU/Docker에서 WARNING (`|t|=5.47`) |
-| screen/corpus | `robust`, 단 timing warning은 native 확인 권장 |
+현재 값은 이 절 위의 자동 생성 corpus snapshot을 기준으로 한다. 예전
+QEMU `|t|=5.47` 표는 제거했으며, native 측정과 그 confound note를 포함한
+CSV가 source of truth다.
 
 ML-KEM-512/1024는 ML-KEM-768과 같은 valid/invalid decapsulation 구조
 하니스를 사용한다. SPHINCS+-SHA2-128f-simple은 hash-based signature breadth
@@ -891,8 +936,8 @@ PQClean ML-KEM-768은 현재 configured ct-matrix cells에서 Valgrind PASS다.
 | 시나리오 | 권장 환경 |
 |---|---|
 | ct (Valgrind) 검사 | Linux/Docker 컨테이너. timing보다 재현성은 높지만, 컴파일러/flags/하니스 경로에 의존 |
-| dudect 검사 | **Native x86_64 Linux + rdtsc** 권장. Apple Silicon + Docker는 QEMU 에뮬레이션이라 timing 신뢰도 떨어짐 |
-| dudect on ARM mac | `clock: monotonic` 사용 (yaml 기본값). 정성적 비교는 가능, 절대적 결론은 native에서 확인 |
+| timing screen | **Native x86_64 Linux + rdtsc** 권장. Apple Silicon + Docker는 QEMU 에뮬레이션이라 timing 신뢰도 떨어짐 |
+| timing screen on ARM mac | `clock: monotonic` 사용 (yaml 기본값). 정성적 비교는 가능, 절대적 결론은 native에서 확인 |
 | 결과의 통계적 안정성 | `seed`를 바꿔가며 여러 번 실행해서 t-score 분포 확인. `batches` 분할 결과(`batch_t_max_abs`)가 클수록 환경 노이즈 큼 |
 
 ### 시스템 노이즈와 \|t\| 변동 (R3)
@@ -927,13 +972,17 @@ WARNING/FAIL 같은 status는 toy 케이스에선 안정적이지만 borderline 
 
 ### 보안 모델 (yaml 신뢰 가정)
 
-ctkat은 `build.command`, `kat.command` 같은 **사용자가 직접 적은 셸 명령**을 `subprocess`에 `shell=True`로 그대로 넘김. 즉 yaml 파일은 **실행권한과 동등**으로 취급됨:
+`build.argv`와 `kat.argv`는 shell 없이 실행되는 기본 경로다.
+`build.command`/`kat.command`는 shell 문법이 꼭 필요한 trusted workflow용
+escape hatch이며 `allow_shell: true`로 명시적으로 opt-in해야 한다. 0.1.x
+legacy config는 0.2 alpha에서 loud warning과 함께 한 번 더 허용하지만 0.3에서
+거부할 예정이다.
 
-- 신뢰할 수 없는 출처의 yaml(외부 PR, 다운로드한 데모 등)을 자동 실행 X
-- CI에서 외부 PR을 자동으로 `ctkat run` 시키지 X
-- `; rm -rf /` 같은 명령이 박혀있어도 ctkat은 막지 않음 — yaml 작성자가 책임
-
-이건 도구가 "사용자 빌드 시스템을 호출하는 wrapper" 본질상 어쩔 수 없는 trade-off임. 진짜로 untrusted yaml을 받아야 한다면 ctkat 호출을 sandbox(docker 격리, seccomp 등) 안에서 돌릴 것.
+다운로드/외부 PR config에는 `execution_profile: untrusted`를 사용한다. 이
+profile은 `allow_shell: true`가 있어도 shell-backed step을 거부한다. 다만
+`argv`가 지정한 프로그램, compiler와 입력 C 코드 자체도 실행 가능한
+공격면이므로 완전한 sandbox는 아니다. 신뢰할 수 없는 artifact는 disposable
+container/VM 안에서 실행할 것.
 
 ### 도구 자체 한계
 
@@ -986,7 +1035,9 @@ CSV col 7 값이 변경됨.
 
 - **PQClean** (<https://github.com/PQClean/PQClean>) — ML-KEM, ML-DSA, and SPHINCS+ clean reference implementations under `examples/pqc_*`.
 - **ctgrind** (Adam Langley) — Valgrind/Memcheck를 constant-time 검사에 응용한 원래 아이디어.
-- **dudect** (Reparaz, Balasch, Verbauwhede) — fixed-vs-random Welch t-test 기반 timing leak 검출.
+- **dudect** (Reparaz, Balasch, Verbauwhede) — CT-KAT의 현재 custom
+  first-order timing screen에 영감을 준 도구. 현재 backend와 protocol
+  parity를 주장하지 않는다.
 
 > **Note on historical drafts**
 >
@@ -998,4 +1049,6 @@ CSV col 7 값이 변경됨.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). PQClean 부분은 원래 CC0 라이센스 그대로 유지.
+CT-KAT 자체는 MIT — [LICENSE](LICENSE). Vendored/derived PQClean 자료는
+각 원래 라이선스를 유지하며 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에
+revision, local modification, tree hash를 기록한다.
