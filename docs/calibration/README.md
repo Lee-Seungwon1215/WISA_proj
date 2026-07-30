@@ -16,4 +16,5 @@ experiment. It cannot make a target run `timing_validity=valid`. Physical A/A,
 positive-control, pool/common-buffer symmetry, repeated processes, and native
 host checks are implemented by timing-harness-v2, but must still be executed
 and accepted for each concrete target/host. The committed corpus refresh is
-separate work.
+separate work. Its frozen execution plan and artifact gate live under
+[`../measurement/`](../measurement/README.md).

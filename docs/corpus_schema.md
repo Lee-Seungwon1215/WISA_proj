@@ -104,6 +104,13 @@ native-host gates all pass. Legacy KEM/sign artifacts remain `confounded` and
 generic targets remain `insufficient-power`; an official raw PASS or FAIL is
 non-decisional for the v2 headline unless those target-level gates pass.
 
+The deferred native refresh is frozen in
+[`measurement/native_timing_v2_campaign.yaml`](measurement/native_timing_v2_campaign.yaml).
+Its runner emits a checked `corpus_timing_updates.csv`, but never rewrites this
+curated corpus. Runtime report metadata is authoritative for backend, emitted
+sample count, and analysis seed; YAML values are only fallbacks because a
+campaign may deliberately override modest example defaults.
+
 ## Review artifacts
 
 V1 used `basis=review` and often stored the entire judgment in `notes`. V2 does
@@ -179,8 +186,10 @@ The first block is the normalized v2 decision object. The remaining columns are
 raw or migration provenance:
 
 - `ct_*` and `varlat_*` retain the per-layer observations;
-- `timing_raw_status` is the historical PASS/WARNING/FAIL/ERROR output;
-- `timing_*` parameters make the experiment traceable;
+- `timing_raw_status` preserves PASS/WARNING/FAIL/INSUFFICIENT/ERROR output;
+- `timing_*` parameters make the experiment traceable; official dudect uses
+  `timing_threshold=|t|>10;n0>=10001`, not the legacy `4.5/10.0` warning/fail
+  pair;
 - `legacy_*` makes the v1→v2 decision auditable but has no headline authority;
 - `notes` can explain evidence but cannot override typed fields.
 

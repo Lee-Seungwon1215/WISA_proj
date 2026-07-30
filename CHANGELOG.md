@@ -3,6 +3,47 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.6.0a1] - 2026-07-30
+
+### Added
+
+- A frozen native-x86_64 timing campaign manifest covering all six corpus
+  targets and all eight existing timing axes.
+- A repository-specific campaign runner with static corpus/config checks,
+  bare-metal preflight, explicit CPU pinning, resumable target execution, and
+  engineering-only dirty/virtualized overrides that can never become
+  promotion-ready.
+- Independent validation of the five timing-harness-v2 artifacts, their
+  hashes, official dudect revision, protocol roles/counts, seeded randomness,
+  physical controls, and target validity.
+- `campaign_report.json` and `corpus_timing_updates.csv` promotion candidates;
+  the runner deliberately does not mutate the curated corpus.
+- Unit-sized synthetic campaign fixtures so execution/validation logic is
+  covered without pretending CI or emulation is physical timing evidence.
+
+### Changed
+
+- Paper-grade campaign settings now override modest example defaults at
+  runtime: 30,000 target samples, 1,000 warmups, three process seeds,
+  target-specific control counts/effect curves, gcc/RDTSCP, and extended
+  expensive-target timeouts.
+- The corpus builder now takes sample count, backend, and analysis seed from
+  the runtime timing report before falling back to YAML defaults, and records
+  `sign_leak_target` for signature axes. Official rows use the upstream
+  `|t|>10; n0>=10001` contract instead of legacy warning/fail thresholds.
+- Native campaign output is ignored by default until a human reviews a
+  promotion candidate and its immutable artifacts.
+
+### Fixed
+
+- A native campaign run can no longer be published as the YAML's old 500–2,000
+  sample default or legacy timing backend.
+- A future signature `msg` timing row can no longer be mislabeled with the KEM
+  `leak_target` default.
+- Corpus timing coverage drift, a changed manifest, corrupt trace hash, wrong
+  protocol row count, non-native host, unpinned process, or dirty checkout now
+  fails before evidence promotion.
+
 ## [0.5.0a1] - 2026-07-30
 
 ### Added
@@ -148,7 +189,8 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.5.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/9768d83...main
+[0.6.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/186f8ef...main
+[0.5.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/9768d83...186f8ef
 [0.4.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/abaf92f...9768d83
 [0.3.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/619d73c...abaf92f
 [0.2.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b1ccd4d...619d73c

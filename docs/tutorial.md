@@ -135,6 +135,13 @@ reject된다.
 깨졌는지 확인한다. A/A/placebo 실패는 setup confound, positive power 실패는
 검출력 부족이다. 둘을 같은 “타이밍 애매함”으로 뭉개지 않는다.
 
+**g) 기존 corpus를 다시 잴 때는 동결 campaign 사용**:
+개별 YAML 숫자를 손으로 고쳐 돌리지 말고 먼저
+`python scripts/run_native_timing_campaign.py --check`, native host에서는
+`--execute --cpu <N> --output-root measurement_runs/corpus-native-timing-v2`를
+쓴다. 이 경로가 6 target/8 axis coverage, paper setting, host/commit,
+artifact hash와 승격 후보를 한 계약으로 묶는다.
+
 ## 5. 다음 단계 — legacy 결합 verdict
 
 dudect만으로는 한쪽 측면 — Valgrind ct 검사도 yaml에 같이 넣으면
@@ -186,5 +193,6 @@ config(ctkat.yaml)와 분리된 `triage.yaml`에 적는다(README §screen 참�
 - `README.md` — 모든 yaml 필드 + evidence v2 설명
 - `docs/corpus_schema.md` — layer enum, overall fold, migration contract
 - `docs/calibration/` — official backend synthetic A/A, effect curve, parity
+- `docs/measurement/` — native corpus campaign 실행·검증·승격 경계
 - `examples/toy_dudect/ctkat_combined.yaml` — ct + dudect 같이 돌리는 예제
 - `examples/pqc_mlkem768/` — PQClean ML-KEM-768 실전 yaml

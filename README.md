@@ -128,6 +128,7 @@ WISA/
 │   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
 │   ├── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
 │   └── pqc_falcon512/          # Falcon/FN-DSA needs-analysis boundary target
+├── docs/measurement/           # frozen native timing campaign + execution gate
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # runners + release/corpus/provenance gates
 ├── Dockerfile, docker-compose.yml
@@ -502,6 +503,37 @@ C와 Python Welch `|Δt| ≤ 1e-9`다.
 이건 **통계 adapter 자체**의 synthetic calibration이다. 실제 암호 target의
 하니스 대칭성, 물리 host A/A, process 반복이나 검출력을 검증한 게 아니다.
 그래서 이 artifact만으로 target run을 `timing_validity=valid`로 올리지 않는다.
+
+### Native corpus timing campaign
+
+현재 corpus에서 timing evidence가 있는 6개 target/8개 axis를
+timing-harness-v2로 다시 재기 위한 실행 계획은
+[`docs/measurement/native_timing_v2_campaign.yaml`](docs/measurement/native_timing_v2_campaign.yaml)에
+동결돼 있다. macOS/ARM이나 Docker/QEMU에서 가짜 결론을 만드는 대신, 지금
+checkout에서 가능한 준비 상태는 다음 명령으로 계속 검사한다.
+
+```bash
+python scripts/run_native_timing_campaign.py --check
+```
+
+bare-metal x86_64 Linux가 생기면 clean checkout에서 한 명령으로 preflight,
+CPU pinning, target별 3-process 측정, physical controls, artifact 검증과 corpus
+승격 후보 생성까지 실행한다.
+
+```bash
+python scripts/run_native_timing_campaign.py \
+  --execute \
+  --cpu 2 \
+  --output-root measurement_runs/corpus-native-timing-v2
+```
+
+중단한 run은 `--resume`, 일부 target은 반복 가능한 `--target`으로 이어간다.
+결과의 다섯 artifact와 hash/protocol row 수를 다시 검사하려면
+`--validate-run <output-root>`를 쓴다. exit `0`만 모든 선택 축이
+promotion-ready라는 뜻이고, `2`는 artifact는 완전하지만 validity gate가
+깨졌다는 뜻이다. runner는 `corpus_timing_updates.csv`만 만들며
+`docs/corpus`를 자동 수정하지 않는다. 자세한 host gate와 산출물 계약은
+[`docs/measurement/README.md`](docs/measurement/README.md)에 있다.
 
 ### 재현성 (seed)
 

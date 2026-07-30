@@ -183,7 +183,15 @@ def main() -> int:
                 f"corpus_cells.csv:{number}: malformed ctkat_commit {row['ctkat_commit']!r}"
             )
 
-    allowed_timing = {"", "PASS", "WARNING", "FAIL", "ERROR", "NONE"}
+    allowed_timing = {
+        "",
+        "PASS",
+        "WARNING",
+        "FAIL",
+        "INSUFFICIENT",
+        "ERROR",
+        "NONE",
+    }
     artifacts, artifact_errors = load_review_artifacts()
     errors.extend(artifact_errors)
     errors.extend(check_json_schema_contract())

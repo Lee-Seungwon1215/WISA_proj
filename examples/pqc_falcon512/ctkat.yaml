@@ -50,7 +50,7 @@ dudect:
   # Falcon-512 signing: Gaussian sampler + Falcon's own SHAKE PRNG (clean/rng.c)
   # seeded through the weak randombytes override. Signature length is variable
   # (<= CRYPTO_BYTES). Needs -std=c99 like the ct build. Modest committed
-  # default — NOT paper-grade.
+  # default — NOT paper-grade; the frozen native campaign supplies overrides.
   measurements: 1000
   warmup: 50
   batches: 10

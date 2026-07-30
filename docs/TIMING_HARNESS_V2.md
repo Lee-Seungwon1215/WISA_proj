@@ -98,4 +98,8 @@ minimum detectable effect를 함께 계산한다.
   통과했다는 주장
 
 따라서 다음 단계는 native single-CPU에서 기존 corpus를 v2로 재실행하고,
-target별 control artifact를 커밋한 뒤 evidence v2를 재분류하는 것이다.
+target별 control artifact를 검토한 뒤 evidence v2를 재분류하는 것이다.
+6 target/8 timing axis의 paper setting, host gate, 실행 재개, 무결성 검증
+계약은 [`measurement/`](measurement/README.md)에 준비돼 있다. 현재 상태는
+**campaign 준비 완료 / physical 실행 보류**이며, CI의 synthetic fixture나
+Docker/QEMU smoke는 이 미완료 실측을 대신하지 않는다.

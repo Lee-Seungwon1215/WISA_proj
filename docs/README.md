@@ -12,6 +12,8 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
 - `tutorial.md` — quick usage guide.
 - `calibration/` — pinned official-dudect backend synthetic A/A, injected
   effect curve, and same-trace parity artifact.
+- `measurement/` — frozen native timing-v2 campaign, bare-metal preflight,
+  resumable execution, artifact validation, and corpus-promotion boundary.
 - `corpus/` — committed v2 corpus, migration manifest, and frozen v1.2 archive.
 - `ROADMAP_REJECTION_RECOVERY.md` — rejection-review adjudication and the
   dependency-ordered completion plan, including the KyberSlash and Falcon

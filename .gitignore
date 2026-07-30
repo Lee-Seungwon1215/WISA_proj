@@ -26,6 +26,10 @@ examples/*/reports_*/
 # via `docker compose run --rm ctkat-dev bash scripts/run_phase4.sh`).
 baselines/
 
+# Native timing campaigns are large, host-specific evidence bundles. Validate
+# and review them before copying selected immutable artifacts into docs/corpus.
+measurement_runs/
+
 # Local-only historical notes / agent prompting files
 .local_archive/
 .claude/

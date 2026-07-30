@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from .evidence import LEGACY_TIMING_BACKEND, build_evidence
+from .official_dudect import (
+    OFFICIAL_DUDECT_BACKEND,
+    OFFICIAL_DUDECT_THRESHOLD_LABEL,
+)
 
 # The full taxonomy. Exposed so tests/docs/CLI can assert against it and so the
 # screen command can derive its default-deny gating set.
@@ -332,12 +336,25 @@ def summarize(
             review_id=review_id.get(h, ""),
         )
 
-        meas = cf.get("measurements", "")
+        # The runtime report wins over the YAML. Campaigns deliberately apply
+        # measurement/seed overrides without editing the modest example
+        # defaults; reading config first would publish the wrong sample count
+        # and base seed after a native refresh.
+        meas = ""
+        if d:
+            raw_total = d.get("raw_n_total", "")
+            try:
+                if int(raw_total) > 0:
+                    meas = str(int(raw_total))
+            except (ValueError, TypeError):
+                pass
         if not meas and d:
             try:
                 meas = str(int(d.get("n0", 0)) + int(d.get("n1", 0)))
             except (ValueError, TypeError):
                 meas = ""
+        if not meas:
+            meas = cf.get("measurements", "")
 
         if d.get("status") and evidence.timing_validity.value != "valid":
             timing_note = (
@@ -348,6 +365,13 @@ def summarize(
         if evidence.review.value == "pending" and basis in {"review", "stop"}:
             review_note = "review artifact pending; note text alone cannot clear evidence v2"
             notes = f"{notes}; {review_note}" if notes else review_note
+
+        timing_backend = d.get("backend") or cf.get("backend", LEGACY_TIMING_BACKEND if d else "")
+        timing_threshold = (
+            OFFICIAL_DUDECT_THRESHOLD_LABEL
+            if timing_backend == OFFICIAL_DUDECT_BACKEND
+            else cf.get("threshold", "")
+        )
 
         summary.append(
             {
@@ -360,13 +384,13 @@ def summarize(
                 "ct_finding_funcs": ";".join(agg.ct_funcs),
                 "varlat_candidates": ";".join(agg.vcells) or "none",
                 "varlat_triage": tri,
-                "timing_backend": cf.get("backend", LEGACY_TIMING_BACKEND if d else ""),
+                "timing_backend": timing_backend,
                 "timing_raw_status": d.get("status", ""),
                 "timing_abs_t": d.get("abs_t_score", ""),
                 "timing_measurements": meas,
                 "timing_leak_target": cf.get("leak_target", ""),
-                "timing_seed": cf.get("seed", ""),
-                "timing_threshold": cf.get("threshold", ""),
+                "timing_seed": d.get("analysis_seed") or cf.get("seed", ""),
+                "timing_threshold": timing_threshold,
                 "legacy_basis": basis,
                 "notes": notes,
             }

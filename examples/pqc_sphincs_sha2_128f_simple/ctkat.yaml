@@ -43,7 +43,8 @@ dudect:
   backend: official-dudect
   # SPHINCS+-SHA2-128f signing is hash-tree heavy and SLOW (~ms per sign), so
   # measurements/warmup are deliberately low — enough to exercise the harness,
-  # NOT paper-grade. Uses sha2.c (not fips202.c). api.h gives CRYPTO_*BYTES.
+  # NOT paper-grade. The frozen native campaign supplies the controlled
+  # override. Uses sha2.c (not fips202.c). api.h gives CRYPTO_*BYTES.
   measurements: 500
   warmup: 20
   batches: 10

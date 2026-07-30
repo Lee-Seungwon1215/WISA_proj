@@ -22,6 +22,11 @@
   3-process target 반복, physical A/A·setup-placebo·3-point positive control,
   run별 MDE/power artifact를 구현했다. 실제 target의 native control 통과는
   아직 실행하지 않았고 다음 corpus v2 refresh에서만 승격한다.
+- **M2 / native campaign 준비 완료 (2026-07-30, `0.6.0a1`)** — 현재 timing
+  evidence가 있는 6 target/8 axis를 manifest로 동결하고, native/bare-metal
+  preflight, CPU pinning, 실행 재개, artifact hash·protocol 검증,
+  `corpus_timing_updates.csv` 승격 후보 생성을 한 명령으로 묶었다. 현재
+  macOS/ARM 환경에서는 실측하지 않았으며 이 상태를 결과 완료로 쓰지 않는다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -30,7 +35,9 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- 다음 작업은 **기존 corpus의 timing-harness-v2 native 재실행/재분류**다.
+- native 장비를 기다리는 동안의 다음 작업은 **KyberSlash ground-truth와
+  Falcon comparator의 비-timing 기반·target/provenance 준비**다. native
+  장비가 확보되면 동결된 campaign을 실행해 기존 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
 
@@ -360,9 +367,12 @@ official dudect와 맞출 항목:
 **상태: 구현 완료 (2026-07-30, `0.5.0a1`)**
 
 아래 1–9는 생성 C, process runner, raw protocol CSV와 backend report schema
-v2에 구현됐다. 단, target별 physical acceptance artifact는 다음 corpus
+v2에 구현됐다. 6 target/8 axis의 실행 계약과 승격 전 검증은
+[`measurement/native_timing_v2_campaign.yaml`](measurement/native_timing_v2_campaign.yaml)과
+[`run_native_timing_campaign.py`](../scripts/run_native_timing_campaign.py)에
+동결했다. 단, target별 physical acceptance artifact는 native corpus
 refresh에서 생성한다. control 코드 unit test를 실제 native ML-KEM A/A
-통과로 둔갑시키지 않는다. 상세 계약은
+통과로 둔갑시키지 않는다. 상세 하니스 계약은
 [`TIMING_HARNESS_V2.md`](TIMING_HARNESS_V2.md)에 고정했다.
 
 공통 설계:
@@ -413,6 +423,25 @@ M2 종료 조건:
 `timing-harness-v2` 구현 완료만으로 슬쩍 체크 처리하지 않는다. 다음 단계에서
 native single-CPU로 corpus를 재실행하고 A/A false alarm, setup-placebo,
 positive power curve, MDE를 target별로 커밋한 뒤에만 체크한다.
+
+### `TIME-002` native corpus campaign
+
+**상태: 실행 준비 완료 / 실측 보류 (2026-07-30, `0.6.0a1`)**
+
+- [x] 현재 corpus timing row와 정확히 일치하는 6 target/8 axis manifest
+- [x] Linux/x86_64, emulation/VM/container, single-affinity, clean-git,
+  official adapter preflight
+- [x] target별 paper setting override와 중단 후 `--resume`
+- [x] raw/calibration/protocol/summary/backend artifact hash·row-count 검증
+- [x] runtime backend/sample/seed가 YAML 기본값보다 우선하도록 corpus 병합 수정
+- [x] curated corpus를 자동 수정하지 않는 승격 후보 CSV
+- [ ] bare-metal native x86_64에서 campaign 실행
+- [ ] 8개 축 모두 artifact review 후 corpus 재분류
+
+실행·검증 명령과 exit-code 계약은
+[`measurement/README.md`](measurement/README.md)에 있다. macOS/ARM,
+Docker/QEMU, cloud VM 결과는 engineering smoke로 보존할 수는 있어도 위 두
+체크를 닫지 못한다.
 
 ---
 
@@ -764,11 +793,12 @@ M5 종료 조건:
 | 2 | `evidence-schema-v2` | layer evidence + 5-state overall + migration |
 | 3 | `timing-backend-v2` | official dudect, backend validity/calibration/parity |
 | 4 | `timing-harness-pools` | KEM/sign pool, common buffer, AUX rejection |
-| 5 | `kyberslash-ground-truth` | KS1/KS2/stock/historical + operand attribution |
-| 6 | `falcon-comparators` | PQClean reference vs `c-fn-dsa` variants |
-| 7 | `baseline-adapters` | TIMECOP/MicroWalk same-corpus |
-| 8 | `diverse-corpus` | mlkem-native/mldsa-native/OpenSSL/AArch64 |
-| 9 | `paper-artifact` | one-command reproduction + blind rerun + rewrite |
+| 5 | `native-timing-campaign` | frozen 8-axis plan + preflight/runner/validator |
+| 6 | `kyberslash-ground-truth` | KS1/KS2/stock/historical + operand attribution |
+| 7 | `falcon-comparators` | PQClean reference vs `c-fn-dsa` variants |
+| 8 | `baseline-adapters` | TIMECOP/MicroWalk same-corpus |
+| 9 | `diverse-corpus` | mlkem-native/mldsa-native/OpenSSL/AArch64 |
+| 10 | `paper-artifact` | one-command reproduction + blind rerun + rewrite |
 
 각 묶음은 코드, regression test, 문서, migration note, raw artifact schema를
 같이 끝내야 한다. “코드만 먼저 넣고 문서는 나중에”는 지금 README drift가 왜
@@ -824,8 +854,11 @@ M5 종료 조건:
 2. ~~schema v2와 legacy migration~~ — 완료
 3. ~~official dudect backend와 timing validity~~ — 완료
 4. ~~KEM/sign pool 하니스 + physical control/power 프로토콜 구현~~ — 완료
-5. **기존 corpus를 native v2로 재실행·재분류** — 다음
-6. 그 다음에 KyberSlash/Falcon 실험 확장
+5. **기존 corpus native v2 캠페인 준비** — 실행기·검증기 완료,
+   bare-metal 실측/재분류만 `blocked-by-native-host`
+6. **KyberSlash ground-truth의 non-timing target/provenance부터 확장** — 다음
+7. **Falcon reference-vs-CT comparator의 build/structural 기반 확장**
+8. native 장비 확보 즉시 5번 campaign 실행·artifact review·재분류
 
 첫 구현 batch의 완료 기준:
 

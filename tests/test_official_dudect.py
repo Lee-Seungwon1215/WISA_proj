@@ -6,8 +6,11 @@ import pytest
 
 from ctkat.dudect_runner import TimingSamples
 from ctkat.official_dudect import (
+    OFFICIAL_DUDECT_ABS_T_THRESHOLD,
     OFFICIAL_DUDECT_HEADER_SHA256,
+    OFFICIAL_DUDECT_MIN_CLASS0,
     OFFICIAL_DUDECT_PROTOCOL_TESTS,
+    OFFICIAL_DUDECT_THRESHOLD_LABEL,
     OfficialDudectError,
     OfficialDudectUnavailable,
     analyze_with_official_dudect,
@@ -31,6 +34,9 @@ def _samples(count: int, *, leak: int = 0) -> TimingSamples:
 
 def test_vendored_official_header_hash_is_pinned():
     assert len(OFFICIAL_DUDECT_HEADER_SHA256) == 64
+    assert OFFICIAL_DUDECT_ABS_T_THRESHOLD == 10.0
+    assert OFFICIAL_DUDECT_MIN_CLASS0 == 10_001
+    assert OFFICIAL_DUDECT_THRESHOLD_LABEL == "|t|>10;n0>=10001"
     assert_official_source_integrity()
 
 

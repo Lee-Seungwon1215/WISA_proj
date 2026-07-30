@@ -56,7 +56,22 @@ def _write_reports(tmp_path, ctm, varlat, dud, *, asm_manifest=True):
         ],
         varlat,
     )
-    w("dudect_summary.csv", ["project", "harness", "n0", "n1", "abs_t_score", "status"], dud)
+    w(
+        "dudect_summary.csv",
+        [
+            "project",
+            "harness",
+            "n0",
+            "n1",
+            "abs_t_score",
+            "status",
+            "backend",
+            "timing_validity",
+            "raw_n_total",
+            "analysis_seed",
+        ],
+        dud,
+    )
     if asm_manifest:
         (rep / "ctkat_varlat_candidates.json").write_text(
             json.dumps(
@@ -154,6 +169,101 @@ def test_build_robust_with_public_varlat(tmp_path):
     assert s["ct_flips"] == "no"
     assert s["timing_raw_status"] == "WARNING"
     assert "WARNING" in s["notes"]  # surfaced, not hidden
+
+
+def test_runtime_timing_metadata_overrides_campaign_yaml_defaults(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("sign", "gcc_o2", "gcc", "-O2", "PASS")],
+        [],
+        [
+            {
+                "project": "p",
+                "harness": "sign",
+                "n0": "12001",
+                "n1": "12999",
+                "raw_n_total": "30000",
+                "abs_t_score": "2.5",
+                "status": "PASS",
+                "backend": "official-dudect-dc269651",
+                "timing_validity": "valid",
+                "analysis_seed": "424242",
+            }
+        ],
+    )
+    _cells, summary = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {})
+    row = summary[0]
+    assert row["timing_backend"] == "official-dudect-dc269651"
+    assert row["timing_measurements"] == "30000"
+    assert row["timing_seed"] == "424242"
+    assert row["timing_validity"] == "valid"
+    assert row["timing_threshold"] == "|t|>10;n0>=10001"
+
+
+def test_dudect_config_uses_signature_axis_instead_of_kem_axis(tmp_path):
+    (tmp_path / "ctkat.yaml").write_text(
+        """
+project:
+  name: signature-axis
+build:
+  argv: ["true"]
+dudect:
+  enabled: true
+  measurements: 1234
+  seed: 7
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      sign_leak_target: msg
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    config = bct._dudect_cfg(tmp_path)
+    assert config["sign"]["leak_target"] == "msg"
+    assert config["sign"]["measurements"] == "1234"
+    assert config["sign"]["seed"] == "7"
+    assert config["sign"]["threshold"] == "4.5/10.0"
+
+
+def test_legacy_report_keeps_legacy_threshold_with_current_official_yaml(tmp_path):
+    (tmp_path / "ctkat.yaml").write_text(
+        """
+project:
+  name: legacy-report
+build:
+  argv: ["true"]
+dudect:
+  enabled: true
+  backend: official-dudect
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+""".lstrip(),
+        encoding="utf-8",
+    )
+    _write_reports(
+        tmp_path,
+        [_ctm("sign", "gcc_o2", "gcc", "-O2", "PASS")],
+        [],
+        [
+            {
+                "project": "legacy-report",
+                "harness": "sign",
+                "n0": "11000",
+                "n1": "11000",
+                "abs_t_score": "1.5",
+                "status": "PASS",
+            }
+        ],
+    )
+
+    _cells, summary = bct.build(tmp_path, "signature", "legacy-report", {}, "", "", {})
+    row = summary[0]
+    assert row["timing_backend"] == "experimental-first-order-v1"
+    assert row["timing_threshold"] == "4.5/10.0"
 
 
 def test_build_flip_is_build_sensitive(tmp_path):

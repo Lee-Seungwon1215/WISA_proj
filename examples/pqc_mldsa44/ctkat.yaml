@@ -47,7 +47,8 @@ dudect:
   # ML-DSA-44 signing axis: pre-generated fixed-vs-random sk pools, message fixed.
   # `measurements` is a modest committed default — NOT paper-grade. Real CT
   # numbers need a stable native x86_64 box (pinned core, perf governor);
-  # override with `--measurements` there. A VM/WSL2 run is engineering-only.
+  # use docs/measurement/native_timing_v2_campaign.yaml there instead of
+  # hand-editing this file. A VM/WSL2 run is engineering-only.
   measurements: 2000
   warmup: 100
   batches: 10

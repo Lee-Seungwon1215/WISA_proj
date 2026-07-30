@@ -133,12 +133,19 @@ def _dudect_cfg(project_dir: Path) -> dict:
         tw = getattr(d, "threshold_warning", "")
         tf = getattr(d, "threshold_fail", "")
         meas = getattr(d, "measurements", "")
+        threshold = f"{tw}/{tf}" if tw != "" or tf != "" else ""
         per = {}
         for h in getattr(d, "harnesses", []) or []:
+            if getattr(h, "template", "") == "sign":
+                leak_target = getattr(h, "sign_leak_target", "")
+            elif getattr(h, "template", "") == "kem":
+                leak_target = getattr(h, "leak_target", "")
+            else:
+                leak_target = ""
             per[h.name] = {
-                "leak_target": getattr(h, "leak_target", ""),
+                "leak_target": leak_target,
                 "seed": str(seed),
-                "threshold": f"{tw}/{tf}" if tw != "" or tf != "" else "",
+                "threshold": threshold,
                 "measurements": str(meas),
             }
         return per
