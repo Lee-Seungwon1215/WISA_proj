@@ -10,13 +10,12 @@ build:
 
 dudect:
   enabled: true
+  backend: official-dudect
   measurements: 50000
   warmup: 500
   batches: 10
   clock: monotonic         # explicit for CI portability (see Bundle C)
   seed: 0xC0FFEE
-  threshold_warning: 4.5
-  threshold_fail: 10.0
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:

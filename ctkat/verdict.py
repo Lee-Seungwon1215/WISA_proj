@@ -57,6 +57,10 @@ class HarnessVerdict:
     verdict: Verdict
     valgrind_finding_count: int = 0
     dudect_abs_t: Optional[float] = None
+    # Empty means a legacy caller that predates evidence-v2. New timing runs
+    # set an explicit validity; anything other than "valid" is folded through
+    # the ERROR/INCONCLUSIVE matrix while preserving the raw status above.
+    dudect_validity: str = ""
 
 
 # Full (valgrind, dudect) → verdict matrix. "NONE" means the stage didn't

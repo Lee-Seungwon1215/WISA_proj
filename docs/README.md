@@ -10,6 +10,8 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
 - `corpus_schema.md` — evidence schema v2, overall fold, and corpus CSV contract.
 - `reviews/` — stable human-review artifacts referenced by `review_id`.
 - `tutorial.md` — quick usage guide.
+- `calibration/` — pinned official-dudect backend synthetic A/A, injected
+  effect curve, and same-trace parity artifact.
 - `corpus/` — committed v2 corpus, migration manifest, and frozen v1.2 archive.
 - `ROADMAP_REJECTION_RECOVERY.md` — rejection-review adjudication and the
   dependency-ordered completion plan, including the KyberSlash and Falcon

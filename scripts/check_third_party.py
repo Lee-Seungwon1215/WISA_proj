@@ -51,6 +51,11 @@ def discovered_vendor_dirs() -> set[str]:
             candidate.name == "common" or candidate.name.startswith("clean")
         ):
             found.add(candidate.relative_to(ROOT).as_posix())
+    vendor_root = ROOT / "ctkat" / "_vendor"
+    if vendor_root.is_dir():
+        for candidate in vendor_root.iterdir():
+            if candidate.is_dir() and any(path.is_file() for path in candidate.rglob("*")):
+                found.add(candidate.relative_to(ROOT).as_posix())
     return found
 
 

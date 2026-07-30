@@ -56,16 +56,26 @@ from .header_parser import (
     discover_headers,
     parse_header_file_with_stats,
 )
+from .official_dudect import (
+    OFFICIAL_DUDECT_BACKEND,
+    OFFICIAL_DUDECT_REVISION,
+    OfficialDudectAnalysis,
+    OfficialDudectError,
+    analyze_with_official_dudect,
+    build_official_dudect_adapter,
+)
 from .qemu_detect import detect_qemu_emulation
 from .report import finding_to_row, write_csv, write_json
 from .secret_infer import InferredFunction, infer_functions
 from .statistics import (
     CROP_PERCENTILES,
+    EXPERIMENTAL_FIRST_ORDER_BACKEND,
     WelchResult,
     batch_t_scores,
     welch_t_test,
     welch_with_cropping,
 )
+from .timing_environment import collect_timing_environment
 from .timing_harness_generator import generate_and_compile_timing
 from .triage import TriageConfig, load_triage
 from .valgrind_parser import Finding, parse_valgrind_log_with_stats
@@ -75,6 +85,8 @@ from .verdict_class import load_registry, opt_of, summarize
 
 app = typer.Typer(help="CT-KAT: KAT + Valgrind based constant-time check framework")
 console = Console()
+_CALIBRATION_SEED_DOMAIN = 0x9E3779B97F4A7C15
+_UINT64_MASK = 0xFFFFFFFFFFFFFFFF
 
 
 def _fmt(x: Optional[float], digits: int = 3) -> str:
@@ -735,7 +747,13 @@ def _dudect_context(
     return base
 
 
-def _error_welch() -> WelchResult:
+def _error_welch(
+    *,
+    backend: str = "",
+    reason: str = "timing stage did not complete",
+    analysis_seed: Optional[int] = None,
+    calibration_seed: Optional[int] = None,
+) -> WelchResult:
     """Sentinel WelchResult for a harness whose dudect stage couldn't
     complete (timeout / crash / unparseable output / insufficient samples).
     `status="ERROR"` flows through `_compute_verdicts` → verdict.combine()
@@ -751,6 +769,138 @@ def _error_welch() -> WelchResult:
         t_score=0.0,
         abs_t_score=0.0,
         status="ERROR",
+        backend=backend,
+        timing_validity="error",
+        validity_reasons=(reason,),
+        enough_measurements=False,
+        analysis_seed=analysis_seed,
+        calibration_seed=calibration_seed,
+    )
+
+
+def _official_t_value(test) -> float:
+    if test.t_score is not None:
+        return test.t_score
+    if test.t_nonfinite and test.mean0 is not None and test.mean1 is not None:
+        difference = test.mean0 - test.mean1
+        if difference != 0:
+            return math.copysign(math.inf, difference)
+    return math.nan
+
+
+def _official_to_welch(analysis: OfficialDudectAnalysis) -> WelchResult:
+    winning = analysis.winning_test
+    uncropped = analysis.uncropped_test
+    t_score = _official_t_value(winning)
+    return WelchResult(
+        n0=winning.n0,
+        n1=winning.n1,
+        mean0=winning.mean0 or 0.0,
+        mean1=winning.mean1 or 0.0,
+        var0=winning.var0 or 0.0,
+        var1=winning.var1 or 0.0,
+        t_score=t_score,
+        abs_t_score=analysis.max_abs_t,
+        status=analysis.status,
+        t_score_uncropped=_official_t_value(uncropped),
+        abs_t_score_uncropped=uncropped.abs_t_score,
+        backend=OFFICIAL_DUDECT_BACKEND,
+        test_kind=analysis.max_test_kind,
+        test_index=analysis.max_test_index,
+        protocol_test_count=len(analysis.tests),
+        max_tau=analysis.max_tau,
+        detection_estimate=analysis.detection_estimate,
+        enough_measurements=analysis.enough_measurements,
+        upstream_revision=analysis.upstream_revision,
+        protocol_results=[test.as_dict() for test in analysis.tests],
+    )
+
+
+def _set_timing_validity(
+    result: WelchResult,
+    samples: TimingSamples,
+    harness: DudectHarnessConfig,
+    environment: dict,
+    *,
+    expected_measurements: Optional[int] = None,
+) -> None:
+    """Attach fail-closed validity without laundering legacy harnesses.
+
+    STAT-001 validates the backend contract, not the KEM/sign measurement
+    design.  Those v1 templates remain confounded until TIME-001 replaces
+    fixed-vs-fresh setup with pools/common buffers and executes physical A/A
+    controls. Generic templates likewise remain insufficient-power until
+    target-level positive-control calibration exists.
+    """
+
+    result.environment = dict(environment)
+    environment_reasons = list(environment.get("rejection_reasons", []))
+    corruption_reasons: list[str] = []
+    interpretation_reasons: list[str] = []
+
+    def inspect_trace(trace: TimingSamples, label: str) -> None:
+        raw_total = trace.raw_n_total
+        dropped_zero = trace.dropped_zero_n0 + trace.dropped_zero_n1
+        malformed = raw_total - len(trace.classes) - dropped_zero
+        if expected_measurements is not None and raw_total != expected_measurements:
+            corruption_reasons.append(
+                f"{label} trace emitted {raw_total}/{expected_measurements} expected rows"
+            )
+        if malformed != 0:
+            corruption_reasons.append(
+                f"{label} trace bookkeeping found {malformed} malformed/unaccounted rows"
+            )
+        if raw_total and dropped_zero / raw_total > 0.01:
+            environment_reasons.append(
+                f"{label} zero-cycle drop rate {dropped_zero / raw_total:.2%} "
+                "exceeds 1% environment limit"
+            )
+
+        surviving_n0 = sum(clazz == 0 for clazz in trace.classes)
+        surviving_n1 = sum(clazz == 1 for clazz in trace.classes)
+        raw_n0 = surviving_n0 + trace.dropped_zero_n0
+        raw_n1 = surviving_n1 + trace.dropped_zero_n1
+        if raw_n0 and raw_n1:
+            zero_rate0 = trace.dropped_zero_n0 / raw_n0
+            zero_rate1 = trace.dropped_zero_n1 / raw_n1
+            if max(zero_rate0, zero_rate1) > 0.05 and abs(zero_rate0 - zero_rate1) > 0.05:
+                environment_reasons.append(
+                    f"{label} class-asymmetric zero-cycle filtering exceeds 5% environment limit"
+                )
+
+    inspect_trace(samples, "analysis")
+    if samples.calibration is not None:
+        inspect_trace(samples.calibration, "calibration")
+    environment_reasons = list(dict.fromkeys(environment_reasons))
+    result.environment["rejected"] = bool(environment_reasons)
+    result.environment["rejection_reasons"] = environment_reasons
+
+    if result.status == "ERROR":
+        result.timing_validity = "error"
+    elif corruption_reasons:
+        result.timing_validity = "error"
+    elif environment_reasons:
+        result.timing_validity = "environment-rejected"
+    elif result.status == "INSUFFICIENT":
+        result.timing_validity = "insufficient-power"
+        interpretation_reasons.append(
+            "official dudect minimum was not met "
+            "(more than 10,000 retained class-0 samples required)"
+        )
+    elif harness.template in {"kem", "sign"}:
+        result.timing_validity = "confounded"
+        interpretation_reasons.append(
+            f"legacy {harness.template} timing template lacks pool/common-buffer "
+            "symmetry and physical A/A control (TIME-001 pending)"
+        )
+    else:
+        result.timing_validity = "insufficient-power"
+        interpretation_reasons.append(
+            "target-level physical A/A and seeded positive-control power "
+            "calibration are not yet attached (TIME-001/POWER-001 pending)"
+        )
+    result.validity_reasons = tuple(
+        dict.fromkeys([*corruption_reasons, *environment_reasons, *interpretation_reasons])
     )
 
 
@@ -759,16 +909,37 @@ def _emit_dudect_report(
     out_dir: Path,
     results: List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]],
 ) -> Tuple[Path, Path]:
-    """Write dudect raw + summary CSVs. Returns (raw_path, summary_path)."""
+    """Write raw, summary, calibration, and backend-protocol artifacts.
+
+    The return pair remains ``(raw_path, summary_path)`` for compatibility.
+    Backend-v2 details live in appended summary columns and the lossless
+    ``dudect_backend_report.json`` sidecar.
+    """
+    import hashlib as _hashlib
+    import json as _json
+
     out_dir.mkdir(parents=True, exist_ok=True)
     raw_path = out_dir / "dudect_raw_timings.csv"
+    calibration_path = out_dir / "dudect_calibration_timings.csv"
     summary_path = out_dir / "dudect_summary.csv"
+    backend_path = out_dir / "dudect_backend_report.json"
 
     with open(raw_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["project", "harness", "sample_id", "class", "cycles"])
         for harness_name, samples, _, _ in results:
             for i, (cls, cyc) in enumerate(zip(samples.classes, samples.cycles)):
+                w.writerow([project, harness_name, i, cls, cyc])
+
+    with open(calibration_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["project", "harness", "sample_id", "class", "cycles"])
+        for harness_name, samples, _, _ in results:
+            if samples.calibration is None:
+                continue
+            for i, (cls, cyc) in enumerate(
+                zip(samples.calibration.classes, samples.calibration.cycles)
+            ):
                 w.writerow([project, harness_name, i, cls, cyc])
 
     with open(summary_path, "w", newline="", encoding="utf-8") as f:
@@ -802,6 +973,19 @@ def _emit_dudect_report(
                 "dropped_zero_n0",
                 "dropped_zero_n1",
                 "cohens_d",
+                "backend",
+                "timing_validity",
+                "validity_reasons",
+                "test_kind",
+                "test_index",
+                "protocol_test_count",
+                "max_tau",
+                "detection_estimate",
+                "enough_measurements",
+                "upstream_revision",
+                "calibration_raw_n_total",
+                "analysis_seed",
+                "calibration_seed",
             ]
         )
         for harness_name, samples, r, batches in results:
@@ -844,8 +1028,70 @@ def _emit_dudect_report(
                     # emitting empty string — matches what we do with t_score
                     # so pandas/R get a consistent reading of "blew up".
                     _fmt(r.cohens_d),
+                    r.backend,
+                    r.timing_validity,
+                    "; ".join(r.validity_reasons),
+                    r.test_kind,
+                    "" if r.test_index is None else r.test_index,
+                    r.protocol_test_count,
+                    _fmt(r.max_tau, digits=9),
+                    _fmt(r.detection_estimate),
+                    ("" if r.enough_measurements is None else str(r.enough_measurements).lower()),
+                    r.upstream_revision,
+                    (samples.calibration.raw_n_total if samples.calibration is not None else 0),
+                    "" if r.analysis_seed is None else r.analysis_seed,
+                    "" if r.calibration_seed is None else r.calibration_seed,
                 ]
             )
+
+    def json_number(value):
+        return value if value is not None and math.isfinite(value) else None
+
+    harness_reports = []
+    for harness_name, samples, result, batches in results:
+        harness_reports.append(
+            {
+                "harness": harness_name,
+                "backend": result.backend,
+                "upstream_revision": result.upstream_revision or None,
+                "raw_status": result.status,
+                "timing_validity": result.timing_validity,
+                "validity_reasons": list(result.validity_reasons),
+                "test_kind": result.test_kind,
+                "test_index": result.test_index,
+                "protocol_test_count": result.protocol_test_count,
+                "n0": result.n0,
+                "n1": result.n1,
+                "t_score": json_number(result.t_score),
+                "abs_t_score": json_number(result.abs_t_score),
+                "t_score_uncropped": json_number(result.t_score_uncropped),
+                "abs_t_score_uncropped": json_number(result.abs_t_score_uncropped),
+                "max_tau": json_number(result.max_tau),
+                "detection_estimate": json_number(result.detection_estimate),
+                "enough_measurements": result.enough_measurements,
+                "analysis_seed": result.analysis_seed,
+                "calibration_seed": result.calibration_seed,
+                "analysis_raw_n_total": samples.raw_n_total,
+                "calibration_raw_n_total": (
+                    samples.calibration.raw_n_total if samples.calibration is not None else 0
+                ),
+                "batch_t_scores": [json_number(batch.t_score) for batch in batches],
+                "environment": result.environment,
+                "tests": result.protocol_results,
+            }
+        )
+    backend_payload = {
+        "schema_version": "1.0",
+        "kind": "timing-backend-report",
+        "project": project,
+        "official_dudect_revision": OFFICIAL_DUDECT_REVISION,
+        "raw_trace_sha256": _hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+        "calibration_trace_sha256": _hashlib.sha256(calibration_path.read_bytes()).hexdigest(),
+        "harnesses": harness_reports,
+    }
+    with backend_path.open("w", encoding="utf-8") as f:
+        _json.dump(backend_payload, f, indent=2, sort_keys=True, allow_nan=False)
+        f.write("\n")
     return raw_path, summary_path
 
 
@@ -871,11 +1117,9 @@ def _do_dudect(
         )
     elif qemu and effective_clock == "monotonic":
         console.print(
-            "[yellow]Note:[/] QEMU emulation detected. clock=monotonic is "
-            "safe for [italic]qualitative[/] comparison (effect "
-            "presence/direction), but absolute timing conclusions and "
-            "borderline verdicts should be re-verified on a native x86_64 "
-            "Linux host."
+            "[bold yellow]WARNING:[/] QEMU emulation detected. The raw trace "
+            "will be retained, but backend-v2 marks its timing validity "
+            "`environment-rejected`; it cannot clear a verdict."
         )
 
     # CPU pin hint — Linux only (taskset isn't a thing on macOS/Windows) and
@@ -895,50 +1139,68 @@ def _do_dudect(
     # 0xC0FFEE. Astronomically unlikely, but the layers must not disagree
     # (same invariant F16 enforced for yaml seed).
     effective_seed = dud.seed if dud.seed is not None else (secrets.randbits(63) or 0xC0FFEE)
+    calibration_seed = (
+        (effective_seed + _CALIBRATION_SEED_DOMAIN) & _UINT64_MASK
+    ) or _CALIBRATION_SEED_DOMAIN
     console.print(f"[dim]dudect seed = 0x{effective_seed:X}[/]")
     clock_display = f"{dud.clock}→{effective_clock}" if dud.clock == "auto" else effective_clock
     console.print(
         f"[dim]measurements={dud.measurements} warmup={dud.warmup} "
         f"batches={dud.batches} clock={clock_display} "
-        f"cropping={'on' if crop else 'off'}[/]"
+        f"backend={dud.backend}[/]"
     )
 
-    # Bundle G (R2): bonferroni-like correction for multi-cutoff cropping.
-    # The correction only makes sense for the cropping protocol — it accounts
-    # for taking max |t| over N cropping cutoffs, which inflates the per-test
-    # Type-I rate. It does NOT apply to:
-    #   - F20: the uncropped (--no-crop) path — a single test, no family to
-    #     correct, so scaling there would just be wrongly conservative.
-    #   - F23: batch_t_scores — those never crop (they measure raw stability),
-    #     so they keep the unscaled thresholds. (Batch status doesn't feed the
-    #     verdict, but keeping it honest avoids a misleading display column.)
-    # So we keep `warn_t`/`fail_t` as the unscaled thresholds for batch + the
-    # uncropped path, and compute a separate scaled pair used ONLY for the
-    # cropping welch call below.
+    if dud.backend == "official-dudect" and not crop:
+        console.print(
+            "[bold red][CTKAT] config error:[/] `--no-crop` is only available "
+            "for `backend: experimental-first-order`. The official backend "
+            "always executes upstream's uncropped + 100 crop + second-order "
+            "family."
+        )
+        raise typer.Exit(2)
+
     warn_t = dud.threshold_warning
     fail_t = dud.threshold_fail
     crop_warn_t = warn_t
     crop_fail_t = fail_t
-    if dud.bonferroni_correct:
+    if dud.sqrt_m_threshold_scaling:
         if crop:
             scale = math.sqrt(len(CROP_PERCENTILES))
             crop_warn_t = warn_t * scale
             crop_fail_t = fail_t * scale
             console.print(
-                f"[dim]bonferroni correction: scaling the cropping thresholds "
+                f"[dim]experimental sqrt(m) threshold scaling: "
                 f"by sqrt({len(CROP_PERCENTILES)})={scale:.3f} → "
                 f"warning={crop_warn_t:.2f} fail={crop_fail_t:.2f} "
-                f"(batch + uncropped keep {warn_t}/{fail_t})[/]"
+                f"(not Bonferroni/FWER control; batch + uncropped keep "
+                f"{warn_t}/{fail_t})[/]"
             )
         else:
             console.print(
-                "[yellow]Note:[/] bonferroni_correct is set but cropping is "
-                "off (--no-crop) — there is no multi-cutoff family to correct, "
-                "so the correction is ignored this run (F20)."
+                "[yellow]Note:[/] sqrt_m_threshold_scaling is set but "
+                "cropping is off; the heuristic is ignored."
             )
 
     workdir = _resolve(cfg_dir, dud.workdir)
     gen_dir = _resolve(cfg_dir, dud.generated_dir)
+    environment = collect_timing_environment(emulated=qemu, clock=effective_clock)
+
+    official_adapter: Optional[Path] = None
+    if dud.backend == "official-dudect":
+        try:
+            official_adapter = build_official_dudect_adapter(
+                cc=dud.compiler.cc,
+                output_dir=gen_dir / "_backend",
+                timeout=dud.compile_timeout,
+            )
+        except OfficialDudectError as e:
+            console.print(f"[bold red][CTKAT] official dudect backend unavailable:[/] {e}")
+            raise typer.Exit(2)
+        console.print(
+            f"[dim]official dudect revision={OFFICIAL_DUDECT_REVISION} "
+            "tests=102 (raw + 100 crop + second-order); first trace batch "
+            "is calibration-only[/]"
+        )
 
     results: List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]] = []
     for h in dud.harnesses:
@@ -984,28 +1246,96 @@ def _do_dudect(
         # check (T41) — keep both paths in sync when changing the sentinel.
         # Bundle F (S4) will preserve already-completed harnesses' data the
         # same way; the `continue` here is the foundation.
+        backend_id = (
+            OFFICIAL_DUDECT_BACKEND
+            if dud.backend == "official-dudect"
+            else EXPERIMENTAL_FIRST_ORDER_BACKEND
+        )
+        calibration: Optional[TimingSamples] = None
+        phase = "analysis"
         try:
+            if dud.backend == "official-dudect":
+                phase = "percentile calibration"
+                console.print(
+                    "   [dim]batch 1/2: percentile calibration "
+                    f"(discarded, seed=0x{calibration_seed:X})[/]"
+                )
+                calibration = run_timing_harness(
+                    gen.binary_path,
+                    workdir,
+                    timeout=dud.timeout,
+                    seed_override=calibration_seed,
+                )
+                phase = "analysis"
+                console.print("   [dim]batch 2/2: independent analysis trace[/]")
             samples = run_timing_harness(gen.binary_path, workdir, timeout=dud.timeout)
+            samples.calibration = calibration
         except subprocess.TimeoutExpired:
             console.print(
                 f"[bold red][CTKAT] dudect: ERROR[/] — harness "
-                f"[bold]{h.name}[/] exceeded timeout={dud.timeout}s. "
+                f"[bold]{h.name}[/] {phase} exceeded timeout={dud.timeout}s. "
                 f"Bump dudect.timeout or reduce measurements. (T6)"
             )
-            results.append((h.name, TimingSamples(), _error_welch(), []))
+            failed_samples = TimingSamples(calibration=calibration)
+            results.append(
+                (
+                    h.name,
+                    failed_samples,
+                    _error_welch(
+                        backend=backend_id,
+                        reason=f"{phase} timed out after {dud.timeout}s",
+                        analysis_seed=effective_seed,
+                        calibration_seed=(
+                            calibration_seed if dud.backend == "official-dudect" else None
+                        ),
+                    ),
+                    [],
+                )
+            )
             continue
         except RuntimeError as e:
             console.print(
-                f"[bold red][CTKAT] dudect: ERROR[/] — harness [bold]{h.name}[/] crashed: {e} (T6)"
+                f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                f"[bold]{h.name}[/] {phase} crashed: {e} (T6)"
             )
-            results.append((h.name, TimingSamples(), _error_welch(), []))
+            failed_samples = TimingSamples(calibration=calibration)
+            results.append(
+                (
+                    h.name,
+                    failed_samples,
+                    _error_welch(
+                        backend=backend_id,
+                        reason=f"{phase} crashed: {e}",
+                        analysis_seed=effective_seed,
+                        calibration_seed=(
+                            calibration_seed if dud.backend == "official-dudect" else None
+                        ),
+                    ),
+                    [],
+                )
+            )
             continue
         except ValueError as e:
             console.print(
                 f"[bold red][CTKAT] dudect: ERROR[/] — harness "
-                f"[bold]{h.name}[/] output unparseable: {e} (T6)"
+                f"[bold]{h.name}[/] {phase} output unparseable: {e} (T6)"
             )
-            results.append((h.name, TimingSamples(), _error_welch(), []))
+            failed_samples = TimingSamples(calibration=calibration)
+            results.append(
+                (
+                    h.name,
+                    failed_samples,
+                    _error_welch(
+                        backend=backend_id,
+                        reason=f"{phase} output unparseable: {e}",
+                        analysis_seed=effective_seed,
+                        calibration_seed=(
+                            calibration_seed if dud.backend == "official-dudect" else None
+                        ),
+                    ),
+                    [],
+                )
+            )
             continue
 
         c0 = [c for cls, c in zip(samples.classes, samples.cycles) if cls == 0]
@@ -1016,21 +1346,78 @@ def _do_dudect(
                 f"[bold]{h.name}[/] insufficient samples per class: "
                 f"n0={len(c0)} n1={len(c1)} (T6)"
             )
-            results.append((h.name, samples, _error_welch(), []))
+            results.append(
+                (
+                    h.name,
+                    samples,
+                    _error_welch(
+                        backend=backend_id,
+                        reason=f"insufficient samples per class: n0={len(c0)} n1={len(c1)}",
+                        analysis_seed=effective_seed,
+                        calibration_seed=(
+                            calibration_seed if dud.backend == "official-dudect" else None
+                        ),
+                    ),
+                    [],
+                )
+            )
             continue
 
-        if crop:
-            # Cropping path: the only place the bonferroni-scaled thresholds
-            # (crop_warn_t/crop_fail_t) apply — see F20/F23 note above.
-            overall = welch_with_cropping(
-                c0,
-                c1,
-                warning_threshold=crop_warn_t,
-                fail_threshold=crop_fail_t,
-            )
+        if dud.backend == "official-dudect":
+            assert official_adapter is not None
+            assert calibration is not None
+            try:
+                official_analysis = analyze_with_official_dudect(
+                    calibration,
+                    samples,
+                    adapter_binary=official_adapter,
+                    workdir=workdir,
+                    timeout=dud.backend_timeout,
+                )
+            except OfficialDudectError as e:
+                console.print(
+                    f"[bold red][CTKAT] dudect: ERROR[/] — official backend "
+                    f"failed for [bold]{h.name}[/]: {e}"
+                )
+                results.append(
+                    (
+                        h.name,
+                        samples,
+                        _error_welch(
+                            backend=backend_id,
+                            reason=f"official backend failed: {e}",
+                            analysis_seed=effective_seed,
+                            calibration_seed=calibration_seed,
+                        ),
+                        [],
+                    )
+                )
+                continue
+            overall = _official_to_welch(official_analysis)
         else:
-            # Uncropped single test: unscaled thresholds (F20).
-            overall = welch_t_test(c0, c1, warn_t, fail_t)
+            if crop:
+                overall = welch_with_cropping(
+                    c0,
+                    c1,
+                    warning_threshold=crop_warn_t,
+                    fail_threshold=crop_fail_t,
+                )
+                overall.test_kind = "experimental-first-order-cropped"
+                overall.test_index = (
+                    CROP_PERCENTILES.index(overall.cropped_at)
+                    if overall.cropped_at in CROP_PERCENTILES
+                    else None
+                )
+                overall.protocol_test_count = len(CROP_PERCENTILES)
+            else:
+                overall = welch_t_test(c0, c1, warn_t, fail_t)
+                overall.test_kind = "experimental-first-order-uncropped"
+                overall.test_index = 0
+                overall.protocol_test_count = 1
+            overall.backend = EXPERIMENTAL_FIRST_ORDER_BACKEND
+
+        overall.analysis_seed = effective_seed
+        overall.calibration_seed = calibration_seed if dud.backend == "official-dudect" else None
         batches = batch_t_scores(
             samples.classes,
             samples.cycles,
@@ -1038,13 +1425,26 @@ def _do_dudect(
             warning_threshold=warn_t,
             fail_threshold=fail_t,
         )
+        _set_timing_validity(
+            overall,
+            samples,
+            h,
+            environment,
+            expected_measurements=dud.measurements,
+        )
         results.append((h.name, samples, overall, batches))
 
-        crop_tag = f" crop@{overall.cropped_at:.2f}" if overall.cropped_at is not None else ""
+        if overall.test_kind == "first-order-cropped":
+            test_tag = f" test=crop[{overall.test_index}]"
+        elif overall.test_kind == "second-order":
+            test_tag = " test=second-order"
+        else:
+            test_tag = f" crop@{overall.cropped_at:.2f}" if overall.cropped_at is not None else ""
         console.print(
             f"   n0={overall.n0} n1={overall.n1} "
             f"mean0={overall.mean0:.1f} mean1={overall.mean1:.1f} "
-            f"t={overall.t_score:+.2f}{crop_tag} [bold]{overall.status}[/]"
+            f"t={overall.t_score:+.2f}{test_tag} [bold]{overall.status}[/] "
+            f"validity={overall.timing_validity}"
         )
 
     _emit_dudect_report(project_name, out_dir, results)
@@ -1059,13 +1459,16 @@ def _print_dudect_summary(
     table = Table(title="dudect timing summary")
     for col in (
         "harness",
+        "backend",
         "n0",
         "n1",
         "mean0",
         "mean1",
         "|t|",
-        "crop@",
+        "max test",
+        "tau",
         "status",
+        "validity",
         "batch max|t|",
     ):
         table.add_column(col)
@@ -1076,9 +1479,17 @@ def _print_dudect_summary(
             "WARNING": "yellow",
             "FAIL": "bold red",
             "ERROR": "bold magenta",
+            "INSUFFICIENT": "bold yellow",
         }.get(r.status, "")
         status_cell = f"[{style}]{r.status}[/]" if style else r.status
-        crop_cell = f"{r.cropped_at:.2f}" if r.cropped_at is not None else "-"
+        if r.test_kind == "first-order-cropped":
+            test_cell = f"crop[{r.test_index}]"
+        elif r.cropped_at is not None:
+            test_cell = f"crop@{r.cropped_at:.2f}"
+        else:
+            test_cell = r.test_kind or "-"
+        backend_cell = r.backend or "-"
+        tau_cell = _fmt(r.max_tau, digits=3) or "-"
         # T22: an ERROR row means measurement never completed — the
         # underlying WelchResult is _error_welch's all-zeros sentinel.
         # Rendering `n0=0 mean=0.00 |t|=0.00` makes the row visually
@@ -1088,25 +1499,31 @@ def _print_dudect_summary(
         if r.status == "ERROR":
             table.add_row(
                 name,
+                backend_cell,
                 "-",
                 "-",
                 "-",
                 "-",
                 "-",
-                crop_cell,
+                test_cell,
+                tau_cell,
                 status_cell,
+                r.timing_validity or "error",
                 "-",
             )
             continue
         table.add_row(
             name,
+            backend_cell,
             str(r.n0),
             str(r.n1),
             f"{r.mean0:.1f}",
             f"{r.mean1:.1f}",
             f"{r.abs_t_score:.2f}",
-            crop_cell,
+            test_cell,
+            tau_cell,
             status_cell,
+            r.timing_validity or "-",
             batch_max,
         )
     console.print(table)
@@ -1126,12 +1543,11 @@ def dudect(
     crop: bool = typer.Option(
         True,
         "--crop/--no-crop",
-        help="Apply dudect percentile cropping (default on). Use --no-crop "
-        "to report raw uncropped t-scores, e.g. for comparison against "
-        "external dudect runs.",
+        help="Legacy experimental backend only: toggle its five-cutoff "
+        "cropping. The official backend always runs all 102 upstream tests.",
     ),
 ):
-    """Run only the dudect-style statistical timing check."""
+    """Run only the configured timing measurement/statistical backend."""
     cfg = _load_config_or_exit(config)
     cfg_dir = config.parent.resolve()
     if cfg.dudect is None:
@@ -1212,15 +1628,30 @@ def dudect(
     # and exited 0 — `ctkat dudect -c x.yaml && deploy` would green-light a
     # run whose timing analysis never completed.
     any_err = any(r.status == "ERROR" for _, _, r, _ in results)
-    if any_fail:
-        console.print("[bold red][CTKAT] dudect Timing Check: FAIL[/]")
-        raise typer.Exit(2)
     if any_err:
         console.print(
             "[bold yellow][CTKAT] dudect Timing Check: INCOMPLETE[/] "
             "(see ERROR lines above) — analysis did not complete for at "
             "least one harness; this is NOT a PASS."
         )
+        raise typer.Exit(2)
+    invalid = [
+        (name, r.status, r.timing_validity)
+        for name, _, r, _ in results
+        if r.timing_validity != "valid"
+    ]
+    if invalid:
+        details = "; ".join(
+            f"{name}=raw:{status}/validity:{validity}" for name, status, validity in invalid
+        )
+        console.print(
+            "[bold yellow][CTKAT] dudect Timing Check: INCONCLUSIVE[/] — "
+            f"{details}. Raw signal is retained but cannot clear or convict "
+            "the target."
+        )
+        raise typer.Exit(2)
+    if any_fail:
+        console.print("[bold red][CTKAT] dudect Timing Check: FAIL[/]")
         raise typer.Exit(2)
     if any_warn:
         # WARNING must NOT exit 0 — that would be indistinguishable from
@@ -1270,17 +1701,22 @@ def _compute_verdicts(
         if dud_pair is None:
             d_status = "NONE"
             abs_t: Optional[float] = None
+            d_validity = ""
+            decision_status = d_status
         else:
             d_status = dud_pair[0].status
             abs_t = dud_pair[0].abs_t_score
+            d_validity = dud_pair[0].timing_validity
+            decision_status = d_status if d_validity in {"", "valid"} else "ERROR"
         verdicts.append(
             HarnessVerdict(
                 name=name,
                 valgrind_status=v_status,
                 dudect_status=d_status,
-                verdict=combine(v_status, d_status, kat_status=kat_status),
+                verdict=combine(v_status, decision_status, kat_status=kat_status),
                 valgrind_finding_count=(len(findings) if findings else 0),
                 dudect_abs_t=abs_t,
+                dudect_validity=d_validity,
             )
         )
     return verdicts
@@ -1318,6 +1754,7 @@ def _emit_verdicts(
                 "verdict",
                 "kat_status",
                 "kat_count",
+                "dudect_validity",
             ]
         )
         for v in verdicts:
@@ -1332,6 +1769,7 @@ def _emit_verdicts(
                     v.verdict.value,
                     kat_status,
                     kat_count_str,
+                    v.dudect_validity,
                 ]
             )
     return path
@@ -1341,13 +1779,20 @@ def _print_verdicts(verdicts: List[HarnessVerdict]) -> None:
     if not verdicts:
         return
     table = Table(title="Combined verdict (Valgrind + dudect)")
-    for col in ("harness", "valgrind", "dudect", "|t|", "verdict"):
+    for col in ("harness", "valgrind", "dudect", "validity", "|t|", "verdict"):
         table.add_column(col)
     for v in verdicts:
         abs_t = (_fmt(v.dudect_abs_t, digits=2) or "inf") if v.dudect_abs_t is not None else "-"
         style = VERDICT_STYLES.get(v.verdict, "")
         verdict_cell = f"[{style}]{v.verdict.value}[/]" if style else v.verdict.value
-        table.add_row(v.name, v.valgrind_status, v.dudect_status, abs_t, verdict_cell)
+        table.add_row(
+            v.name,
+            v.valgrind_status,
+            v.dudect_status,
+            v.dudect_validity or "-",
+            abs_t,
+            verdict_cell,
+        )
     console.print(table)
 
 
@@ -1951,18 +2396,41 @@ def screen(
 
     # 8. dudect lookups + classify (shared classifier).
     dud_by = {
-        name: {"status": w.status, "abs_t_score": _fmt(w.abs_t_score), "n0": w.n0, "n1": w.n1}
+        name: {
+            "status": w.status,
+            "abs_t_score": _fmt(w.abs_t_score),
+            "n0": w.n0,
+            "n1": w.n1,
+            "timing_validity": w.timing_validity,
+            "backend": w.backend,
+        }
         for name, _samples, w, _batches in dud_results
     }
+    timing_result_by = {name: result for name, _, result, _ in dud_results}
     dcfg: dict = {}
     if cfg.dudect is not None:
         tw, tf = cfg.dudect.threshold_warning, cfg.dudect.threshold_fail
         for h in cfg.dudect.harnesses:
+            timing_result = timing_result_by.get(h.name)
             dcfg[h.name] = {
                 "leak_target": h.leak_target,
                 "seed": str(cfg.dudect.seed),
-                "threshold": f"{tw}/{tf}",
+                "threshold": (
+                    "upstream>10" if cfg.dudect.backend == "official-dudect" else f"{tw}/{tf}"
+                ),
                 "measurements": str(cfg.dudect.measurements),
+                "backend": (
+                    timing_result.backend
+                    if timing_result is not None
+                    else (
+                        OFFICIAL_DUDECT_BACKEND
+                        if cfg.dudect.backend == "official-dudect"
+                        else EXPERIMENTAL_FIRST_ORDER_BACKEND
+                    )
+                ),
+                "timing_validity": (
+                    timing_result.timing_validity if timing_result is not None else ""
+                ),
             }
     summary = summarize(
         cells,
@@ -1986,9 +2454,12 @@ def screen(
 
     for s in summary:
         ds = dud_by.get(s["harness"], {}).get("status", "")
-        if ds in ("FAIL", "ERROR"):
+        if ds in ("FAIL", "ERROR", "INSUFFICIENT"):
             at = dud_by[s["harness"]].get("abs_t_score", "")
-            _add_note(s, f"dudect {ds}" + (f" (|t|={at})" if at else "") + " — gated")
+            _add_note(
+                s,
+                f"timing backend {ds}" + (f" (|t|={at})" if at else "") + " — gated",
+            )
         # Name partial build cells in the note as well as the normalized
         # structural=incomplete state. Evidence v2 gates that state as
         # inconclusive, even though the legacy classifier still folds ERROR out

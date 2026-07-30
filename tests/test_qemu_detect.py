@@ -53,6 +53,14 @@ def test_two_signals_returns_true(monkeypatch):
     assert qd.detect_qemu_emulation() is True
 
 
+def test_virtualapple_cpu_is_a_strong_emulation_signal(monkeypatch):
+    _mock_read_text(
+        monkeypatch,
+        {"/proc/cpuinfo": ("vendor_id\t: VirtualApple\nmodel name\t: VirtualApple @ 2.50GHz\n")},
+    )
+    assert qd.detect_qemu_emulation() is True
+
+
 def test_signal_without_needle_doesnt_count(monkeypatch):
     # File exists but doesn't carry the marker — neutral.
     _mock_read_text(

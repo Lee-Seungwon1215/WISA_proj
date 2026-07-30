@@ -33,6 +33,10 @@ def _wheel_checks(path: Path) -> list[str]:
         expected = {f"ctkat/templates/{name}" for name in TEMPLATES}
         expected.add("ctkat/py.typed")
         expected.add("ctkat/schemas/evidence-v2.schema.json")
+        expected.add("ctkat/_vendor/dudect/dudect.h")
+        expected.add("ctkat/_vendor/dudect/LICENSE")
+        expected.add("ctkat/_vendor/dudect_FETCH_INFO.md")
+        expected.add("ctkat/native/official_dudect_adapter.c")
         missing = expected - names
         if missing:
             errors.append(f"{path.name}: missing wheel resources {sorted(missing)}")
@@ -73,6 +77,10 @@ def _sdist_checks(path: Path) -> list[str]:
                 "pyproject.toml",
                 "ctkat/py.typed",
                 "ctkat/schemas/evidence-v2.schema.json",
+                "ctkat/_vendor/dudect/dudect.h",
+                "ctkat/_vendor/dudect/LICENSE",
+                "ctkat/_vendor/dudect_FETCH_INFO.md",
+                "ctkat/native/official_dudect_adapter.c",
                 "CHANGELOG.md",
                 "SECURITY.md",
                 "THIRD_PARTY_NOTICES.md",

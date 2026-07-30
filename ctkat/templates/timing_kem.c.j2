@@ -104,6 +104,18 @@ static void prng_init(uint64_t seed) {
     for (int i = 0; i < 8; i++) (void)prng_next();
 }
 
+/* Optional runtime seed for domain-separated official calibration/analysis. */
+static int ctkat_runtime_seed(int argc, char **argv, uint64_t *seed) {
+    *seed = CTKAT_SEED;
+    if (argc == 1) return 0;
+    if (argc != 2 || argv[1][0] == '\0') return -1;
+    char *end = NULL;
+    unsigned long long parsed = strtoull(argv[1], &end, 10);
+    if (end == NULL || *end != '\0' || parsed == 0) return -1;
+    *seed = (uint64_t)parsed;
+    return 0;
+}
+
 static void rand_bytes(uint8_t *buf, size_t len) {
     for (size_t i = 0; i < len; i++) {
         buf[i] = (uint8_t)(prng_next() & 0xff);
@@ -154,8 +166,13 @@ static inline uint64_t ctkat_now(void) {
 static uint64_t cycles_buf[CTKAT_MEASUREMENTS];
 static uint8_t  classes_buf[CTKAT_MEASUREMENTS];
 
-int main(void) {
-    prng_init(CTKAT_SEED);
+int main(int argc, char **argv) {
+    uint64_t runtime_seed;
+    if (ctkat_runtime_seed(argc, argv, &runtime_seed) != 0) {
+        fprintf(stderr, "usage: %s [nonzero-decimal-seed]\n", argv[0]);
+        return 2;
+    }
+    prng_init(runtime_seed);
 
 {% if leak_target | default("sk") == "fo" %}
     /* === fo-leak mode (Bundle K, U2 #1) ===

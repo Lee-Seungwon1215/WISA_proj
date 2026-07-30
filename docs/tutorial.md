@@ -13,8 +13,8 @@ int secret_compare(const uint8_t *secret, const uint8_t *guess, size_t len);
 ```
 
 이 구현에서 fixed-vs-random timing 차이가 보이는지 1차 스크리닝하고 싶다.
-현재 `dudect` 서브커맨드는 공식 dudect가 아니라 CT-KAT 자체 first-order
-Welch screen이라는 점에 유의한다.
+기본 backend는 pinned official dudect C engine이고, CT-KAT은 raw timing
+trace 생성과 validity 판단을 담당한다.
 
 ## 1. PRNG로 채우는 가장 단순한 yaml
 
@@ -32,6 +32,7 @@ build:
 
 dudect:
   enabled: true
+  backend: official-dudect  # 기본값; x86_64 only
   measurements: 50000
   warmup: 1000
   batches: 10
@@ -61,6 +62,9 @@ dudect:
   으로 채워짐. `public`은 매 호출 같은 값. `output`은 출력 버퍼 (호출 후
   Valgrind 관점에서 결과 보호용).
 - `dudect.timeout` 미설정 시 600s default. 한 함수 호출이 비싼 경우 늘릴 것.
+- official backend는 calibration trace와 analysis trace를 따로 만들므로 timing
+  harness가 두 번 실행된다. `measurements`는 각 trace의 row 수다.
+- upstream minimum은 zero filter 뒤 class 0 sample 10,000개 초과다.
 
 ## 2. 실행
 
@@ -72,49 +76,61 @@ $ python -m ctkat dudect --config ctkat.yaml
 
 ```
 ==> Generate timing harness: secret_compare
-==> Run timing harness: secret_compare (this may take a while)
-   n0=24910 n1=25030 mean0=120.3 mean1=124.7 t=+8.42 crop@0.95 [WARNING]
+==> Run timing calibration trace: secret_compare (discarded by protocol)
+==> Run timing analysis trace: secret_compare
+   backend=official-dudect-dc269651 max-test=crop[37] |t|=12.4 [FAIL]
+   validity=insufficient-power
 ```
 
 - `n0`/`n1`: zero-filter 후 클래스별 sample 수. raw count는 CSV col 18-20.
-- `|t|`가 4.5 미만이면 PASS, 4.5–10이면 WARNING, ≥10이면 FAIL.
-- `crop@0.95`: percentile cropping이 잡아낸 cutoff. 0.95면 상위 5% 떨어뜨림.
+- official backend는 uncropped first-order 1개, crop 100개, second-order 1개
+  중 max `|t|`를 고르고 `|t| > 10`이면 raw FAIL이다.
+- `validity`는 raw signal과 별개다. generic target의 physical A/A와
+  positive-control power artifact가 없으면 기본 `insufficient-power`다.
 
 ## 3. 결과 파일
 
-- `reports/dudect_summary.csv` — 통계 요약 (21개 컬럼, README §"dudect_summary.csv 컬럼 reference" 참고)
-- `reports/dudect_raw_timings.csv` — 원시 cycle 측정 (재현성 디버깅용)
+- `reports/dudect_summary.csv` — 통계·validity 요약 (34개 컬럼)
+- `reports/dudect_raw_timings.csv` — analysis raw trace
+- `reports/dudect_calibration_timings.csv` — crop threshold용 discarded trace
+- `reports/dudect_backend_report.json` — 102개 검정 전체, host manifest,
+  validity 사유, 두 trace hash/seed
 
 여기서 PASS는 **raw timing threshold 결과**일 뿐 evidence-v2의
-`timing_validity=valid`를 뜻하지 않는다. 현재 backend에는 A/A 및
-positive-control power calibration이 없으므로 `screen`에서는 기본적으로
-`insufficient-power`가 되어 clean 근거로 쓰이지 않는다. WARNING이면 아래
-진단을 하되, PASS도 backend-v2 전에는 non-decisional이다.
+`timing_validity=valid`를 뜻하지 않는다. backend 자체의 synthetic A/A와
+effect curve는 `docs/calibration/timing_backend_v2.json`에 있지만 target
+하니스·물리 host control은 아니다. 따라서 `screen`에서는 기본적으로
+`insufficient-power`가 되어 clean 근거로 쓰이지 않는다.
 
-## 4. WARNING 이 떴을 때
+## 4. raw FAIL 또는 invalid timing이 떴을 때
 
-**a) 환경 노이즈 확인** (R3): 같은 yaml을 두 번 더 돌려서 \|t\| 분포 확인.
-±20% 정도 흔들리는 게 정상. status가 매번 WARNING이면 진짜 신호 의심.
+**a) validity부터 확인**: `confounded`, `environment-rejected`,
+`insufficient-power`라면 raw FAIL도 target leak 결론이 아니다.
+`validity_reasons`에 적힌 affinity/QEMU/drop/harness control 문제를 먼저
+해결한다.
 
 **b) per-class drop 비대칭 경고 확인** (F4/S2): console에 
 "zero-cycle filter asymmetric" 메시지가 떴다면 한 클래스의 slow tail로
 편향된 표본. 호스트가 너무 느리거나 함수가 너무 빠를 가능성.
 
-**c) Cohen's d 보기** (S3): `dudect_summary.csv` col 21. \|d\|>0.5면 효과가
-실재로 큰 것이고 \|d\|<0.2면 sample size로 부풀려진 \|t\|.
+**c) 102개 test와 tau 보기**: summary의 max row만 보지 말고
+`dudect_backend_report.json`에서 uncropped/cropped/second-order 중 어디서
+신호가 났는지 확인한다.
 
-**d) `--no-crop`으로 다시 돌려서 cropping 부작용 확인**: 외부 dudect와
-숫자 비교하고 싶을 때 유용.
+**d) native single-CPU process로 반복**: Linux에서는 예를 들어
+`taskset -c 0 python -m ctkat dudect ...`로 실행한다. QEMU 결과는 자동
+reject된다.
 
-**e) 그래도 WARNING이면 실제 leak일 가능성**. ct 검사도 추가해서 구조적
-확인 (README §"yaml 전체 필드" ct 섹션 참고).
+**e) experimental backend 비교가 필요하면 명시적 opt-in**:
+`backend: experimental-first-order`에서만 Cohen's d와 `--no-crop`을 쓸 수
+있다. 이 결과는 official protocol 결과로 부르면 안 된다.
 
 ## 5. 다음 단계 — legacy 결합 verdict
 
 dudect만으로는 한쪽 측면 — Valgrind ct 검사도 yaml에 같이 넣으면
 combined verdict (CLEAN / STRUCTURAL_LEAK / SUSPECT / RISKY / CRITICAL /
-INCONCLUSIVE)가 나옴. 이 `run` verdict는 호환용이고 timing validity,
-asm-scan, review를 포함하지 않는다. 신규 자동 게이트에는 다음 `screen`
+INCONCLUSIVE)가 나옴. 이 `run` verdict는 호환용이며 timing validity는
+fail-closed로 반영하지만 asm-scan과 review를 포함하지 않는다. 신규 자동 게이트에는 다음 `screen`
 evidence v2를 쓴다. CT 자동 모드의 보일러플레이트는
 `examples/toy_dudect/ctkat_combined.yaml` 참고.
 
@@ -133,8 +149,9 @@ asm-scan 후보가 public인지 secret-risk인지 등 **사람 판단**은 파�
 config(ctkat.yaml)와 분리된 `triage.yaml`에 적는다(README §screen 참고).
 최종 review에는 `review`와 `review_id`가 필요하며 note만으로는 clear되지
 않는다. default-deny: `overall=no-finding-observed`만 exit 0, 나머지는 exit
-2다. 현재 timing backend를 실행하면 validity가 기본
-`insufficient-power`이므로 역시 exit 2다. Valgrind 필요 → Linux/Docker.
+2다. TIME-001/POWER-001 target control이 아직 없으므로 generic timing은
+`insufficient-power`, legacy KEM/sign timing은 `confounded`로 exit 2다.
+Valgrind 필요 → Linux/Docker.
 
 ## 자주 빠지는 함정
 
@@ -148,10 +165,14 @@ config(ctkat.yaml)와 분리된 `triage.yaml`에 적는다(README §screen 참�
 - **manual binary mode 사용 시**: `ct.require_sentinel: true` + binary
   stdout에 `CTKAT-HARNESS-RAN: <name>` 박는 것 권장 (F5). /bin/true도
   silent PASS되는 fail-open 회피.
+- **official backend를 ARM/QEMU에서 결론으로 사용**: ARM native에서는
+  upstream engine이 build되지 않고, QEMU x86_64는 raw trace를 남겨도
+  `environment-rejected`다. target 결론은 native x86_64에서 낸다.
 
 ## See also
 
 - `README.md` — 모든 yaml 필드 + evidence v2 설명
 - `docs/corpus_schema.md` — layer enum, overall fold, migration contract
+- `docs/calibration/` — official backend synthetic A/A, effect curve, parity
 - `examples/toy_dudect/ctkat_combined.yaml` — ct + dudect 같이 돌리는 예제
 - `examples/pqc_mlkem768/` — PQClean ML-KEM-768 실전 yaml

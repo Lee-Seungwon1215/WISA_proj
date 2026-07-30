@@ -59,6 +59,25 @@ def test_run_timing_harness_stdout_cap(monkeypatch, tmp_path):
         run_timing_harness(binary, tmp_path, timeout=5)
 
 
+def test_run_timing_harness_passes_decimal_seed_override(monkeypatch, tmp_path):
+    import subprocess
+
+    from ctkat import dudect_runner as dr
+
+    captured = {}
+
+    def fake_run(cmd, *, cwd, stdout, stderr, timeout, check):
+        captured["cmd"] = cmd
+        stdout.write(b"sample_id,class,cycles\n0,0,100\n1,1,110\n")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(dr.subprocess, "run", fake_run)
+    binary = tmp_path / "h"
+    binary.write_text("#!/bin/sh\n")
+    run_timing_harness(binary, tmp_path, timeout=5, seed_override=0xDEADBEEF)
+    assert captured["cmd"] == [str(binary), str(0xDEADBEEF)]
+
+
 def test_parse_skips_malformed_rows():
     text = (
         "sample_id,class,cycles\n"

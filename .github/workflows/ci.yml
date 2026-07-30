@@ -48,6 +48,7 @@ jobs:
       - run: python scripts/render_readme_corpus.py --check
       - run: python scripts/check_third_party.py
       - run: python scripts/check_example_configs.py
+      - run: python scripts/calibrate_timing_backend.py --check
 
   package:
     name: Wheel and sdist
@@ -73,6 +74,9 @@ jobs:
           "$RUNNER_TEMP/wheel-venv/bin/python" \
             "$GITHUB_WORKSPACE/scripts/smoke_installed_package.py" > installed-wheel.json
           diff source.json installed-wheel.json
+          "$RUNNER_TEMP/wheel-venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/smoke_installed_official_backend.py" \
+            --workdir "$RUNNER_TEMP/official-backend-smoke"
       - name: Clean sdist install outside checkout
         run: |
           python -m venv "$RUNNER_TEMP/sdist-venv"
@@ -82,6 +86,9 @@ jobs:
           "$RUNNER_TEMP/sdist-venv/bin/python" \
             "$GITHUB_WORKSPACE/scripts/smoke_installed_package.py" > installed-sdist.json
           diff source.json installed-sdist.json
+          "$RUNNER_TEMP/sdist-venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/smoke_installed_official_backend.py" \
+            --workdir "$RUNNER_TEMP/official-backend-sdist-smoke"
 
   linux-screen:
     name: Installed wheel / Valgrind / gcc+clang

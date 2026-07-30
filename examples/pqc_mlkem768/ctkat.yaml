@@ -84,6 +84,7 @@ ct:
 
 dudect:
   enabled: true
+  backend: official-dudect
   # ML-KEM-768 dec on QEMU x86 emulation: ~50µs per call. With a fresh
   # keypair generated outside the timed region on every class-1 iteration
   # (~80µs), 10k measurements ≈ 1–2 minutes.
@@ -92,8 +93,6 @@ dudect:
   batches: 10
   clock: monotonic
   seed: 0xC0FFEE
-  threshold_warning: 4.5
-  threshold_fail: 10.0
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:

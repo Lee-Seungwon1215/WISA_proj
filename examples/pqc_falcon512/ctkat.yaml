@@ -46,6 +46,7 @@ ct:
 
 dudect:
   enabled: true
+  backend: official-dudect
   # Falcon-512 signing: Gaussian sampler + Falcon's own SHAKE PRNG (clean/rng.c)
   # seeded through the weak randombytes override. Signature length is variable
   # (<= CRYPTO_BYTES). Needs -std=c99 like the ct build. Modest committed
@@ -55,8 +56,6 @@ dudect:
   batches: 10
   clock: auto
   seed: 0xC0FFEE
-  threshold_warning: 4.5
-  threshold_fail: 10.0
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:

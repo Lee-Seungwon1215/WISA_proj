@@ -167,10 +167,10 @@ def timing_from_raw(
 ) -> tuple[TimingValidity, TimingSignal]:
     """Map the legacy timing status without pretending it has validated power.
 
-    Until the timing-backend-v2 work supplies A/A and positive-control
-    calibration, a completed legacy timing run defaults to
-    ``insufficient-power``.  An explicit validity supplied by a migration
-    manifest or a future backend wins.
+    A completed legacy timing run without explicit validity defaults to
+    ``insufficient-power``. Backend-v2 callers supply the environment,
+    harness-control, and power decision explicitly; migration manifests may
+    also preserve a stricter historical classification.
     """
     raw = raw_status.upper()
     if raw in {"", "NONE", "NOT-RUN"}:
@@ -179,6 +179,20 @@ def timing_from_raw(
         return TimingValidity.NOT_RUN, TimingSignal.NOT_RUN
     if raw == "ERROR":
         return TimingValidity.ERROR, TimingSignal.NOT_INTERPRETABLE
+    if raw == "INSUFFICIENT":
+        timing_validity = (
+            TimingValidity(validity) if validity else TimingValidity.INSUFFICIENT_POWER
+        )
+        if timing_validity not in {
+            TimingValidity.INSUFFICIENT_POWER,
+            TimingValidity.ENVIRONMENT_REJECTED,
+            TimingValidity.CONFOUNDED,
+            TimingValidity.ERROR,
+        }:
+            raise ValueError(
+                "raw timing status INSUFFICIENT requires a non-interpretable timing validity"
+            )
+        return timing_validity, TimingSignal.NOT_INTERPRETABLE
     if raw not in {"PASS", "WARNING", "FAIL"}:
         raise ValueError(f"unknown raw timing status: {raw_status!r}")
 

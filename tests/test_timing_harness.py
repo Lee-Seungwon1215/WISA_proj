@@ -43,6 +43,18 @@ def test_seed_is_baked_into_source():
     assert f"CTKAT_SEED         {0xDEADBEEF}ULL" in out
 
 
+@pytest.mark.parametrize("template,context", [("generic", _ctx()), ("kem", None), ("sign", None)])
+def test_timing_templates_accept_runtime_seed_override(template, context):
+    if template == "kem":
+        context = _kem_ctx()
+    elif template == "sign":
+        context = _sign_ctx()
+    out = render_timing_harness(template, context)
+    assert "ctkat_runtime_seed" in out
+    assert "int main(int argc, char **argv)" in out
+    assert "prng_init(runtime_seed)" in out
+
+
 def test_measurements_and_warmup_baked_in():
     out = render_timing_harness("generic", _ctx(measurements=12345, warmup=678))
     assert "CTKAT_MEASUREMENTS 12345" in out

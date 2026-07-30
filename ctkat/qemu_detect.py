@@ -1,10 +1,10 @@
-"""Best-effort detection of QEMU emulation.
+"""Best-effort detection of cross-architecture CPU emulation.
 
 When ctkat runs inside a Docker container on Apple Silicon, the container
-is x86_64 but executes under QEMU. In that environment the x86 `rdtsc`
-instruction yields cycle counts that don't reflect the host CPU's actual
-timing distribution. We surface a warning so the user can opt for the
-`clock_gettime`-based fallback instead.
+is x86_64 but executes under QEMU or Docker's newer VirtualApple translation
+path. In that environment the x86 `rdtsc` instruction yields cycle counts that
+don't reflect a native x86 CPU's actual timing distribution. We surface a
+warning and reject the experiment's timing validity.
 
 Bundle H2 (T9): the v1 single-substring match would false-positive on
 bare-metal hosts that happen to load QEMU-related kernel modules or DMI
@@ -35,13 +35,30 @@ _CANDIDATES = (
 # bare-metal workstations that only carry the string in a single file.
 _MIN_SIGNALS = 2
 
+# Modern Docker Desktop on Apple Silicon may expose neither QEMU DMI strings
+# nor a "QEMU" model name. Its translated x86 CPU instead reports
+# ``vendor_id/model name: VirtualApple`` in /proc/cpuinfo. That identifier
+# cannot occur on a native x86 CPU, so one occurrence is already a strong
+# cross-architecture signal and does not need the generic two-source rule.
+_STRONG_CANDIDATES = ((Path("/proc/cpuinfo"), "VirtualApple"),)
+
 
 def detect_qemu_emulation() -> bool:
-    """True iff at least `_MIN_SIGNALS` candidate paths carry the QEMU
-    marker. Returns False on read errors (file missing / permission denied
-    / OS-level error) — defaulting to "not emulated" keeps the rdtsc path
-    on hosts where we can't introspect (better than incorrectly downgrading
-    to monotonic on a real x86_64 box)."""
+    """Return whether the observable CPU is a translated/emulated target.
+
+    A strong VirtualApple marker is sufficient. Otherwise at least
+    ``_MIN_SIGNALS`` independent paths must carry the generic QEMU marker.
+    Read errors are neutral so a native x86 host with restricted proc/sys
+    access is not rejected merely because metadata is unavailable.
+    """
+    for path, needle in _STRONG_CANDIDATES:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except (FileNotFoundError, PermissionError, OSError):
+            continue
+        if needle in text:
+            return True
+
     signals = 0
     for path, needle in _CANDIDATES:
         try:

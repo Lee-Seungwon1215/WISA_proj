@@ -14,6 +14,9 @@
   single-source, third-party provenance, shell opt-in 정책을 구현했다.
 - **M2 / `EVID-001` 완료 (2026-07-30, `0.3.0a1`)** — evidence schema v2, 5상태
   `overall`, review artifact linkage, v1.2 결정론적 migration을 구현했다.
+- **M2 / `STAT-001` 완료 (2026-07-30, `0.4.0a1`)** — exact-pinned official
+  dudect 102-test backend, two-trace protocol, synthetic A/A·effect curve,
+  same-trace parity, host manifest와 fail-closed timing validity를 구현했다.
 - clean wheel/sdist 설치와 6개 template render hash 일치를 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
   `ctkat screen` toy end-to-end를 통과했다.
@@ -21,7 +24,9 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- 다음 작업은 **M2 / `STAT-001` timing-backend-v2**다.
+- 다음 작업은 **M2 / `TIME-001` timing-harness-pools**다. backend 자체는
+  검증됐지만 target-level physical A/A·power는 pool/common-buffer 하니스가
+  먼저라서 아직 timing result를 `valid`로 승격하지 않는다.
 
 ## 0. 결론부터
 
@@ -294,12 +299,36 @@ overall: no-finding-observed | risk-detected | needs-review | inconclusive | too
 
 ### `STAT-001` official dudect backend 기본화
 
+**상태: 완료 (2026-07-30, `0.4.0a1`)**
+
 가장 싸고 방어 가능한 선택:
 
 - CT-KAT은 input generation, harness, build, execution, artifact orchestration 담당
 - official dudect를 기본 statistical backend로 실행·parse
 - 현재 Python 구현은 `experimental-first-order` backend로 격하
 - 동일 raw trace를 두 backend에 넣는 parity test 제공
+
+구현 결과:
+
+- upstream `dc269651fb2567e46755cfb2a13d3875592968b5`의 `dudect.h`와
+  license를 exact vendoring하고 SHA-256 drift를 fail-closed 검사
+- 별도 C adapter process가 upstream 통계 함수를 직접 호출
+- calibration 전용 첫 trace와 analysis trace를 독립 실행
+- 같은 binary에 domain-separated runtime seed를 줘 두 trace의 deterministic
+  input stream도 분리하고 두 seed를 artifact에 기록
+- uncropped first-order 1 + crop 100 + second-order 1 = 102개 test 전체 저장
+- upstream minimum, max `|t|`, `tau`, detection estimate를 lossless JSON으로 저장
+- 기존 Python 구현은 `experimental-first-order` explicit opt-in으로 격하
+- `bonferroni_correct`는 경고 migration만 남기고 실제 동작명
+  `sqrt_m_threshold_scaling`으로 교체
+- backend-only synthetic 20회 A/A false alarm `0/20`, `d=0.2` detection
+  `20/20`, uncropped same-trace `|Δt| ≤ 1e-9`
+- QEMU와 Linux multi-CPU affinity, 과도/비대칭 zero drop을
+  `environment-rejected`로 보존
+
+경계도 같이 고정했다. 이 calibration은 statistical adapter 검증이지 target
+하니스 검증이 아니다. 현재 KEM/sign은 `confounded`, generic은
+`insufficient-power`이며 `TIME-001`/`POWER-001` 뒤에만 `valid` 후보가 된다.
 
 official dudect와 맞출 항목:
 
@@ -359,7 +388,11 @@ M2 종료 조건:
 - [x] 미실행 asm cell과 근거 없는 summary-only layer가 clean으로 승격되지 않음
 - [ ] A/A control이 사전 false-alarm budget을 만족
 - [ ] seeded effect가 목표 power로 반복 검출
-- [ ] official/custom backend parity report 존재
+- [x] backend-only synthetic A/A false-alarm budget과 injected-effect curve 존재
+- [x] official/custom uncropped same-trace parity report 존재
+
+앞의 미완료 두 항목은 실제 target/physical host 기준이다. backend synthetic
+결과로 슬쩍 체크 처리하지 않는다.
 
 ---
 
@@ -709,7 +742,7 @@ M5 종료 조건:
 |---:|---|---|
 | 1 | `release-plumbing` | wheel, metadata, CI, license, README drift |
 | 2 | `evidence-schema-v2` | layer evidence + 5-state overall + migration |
-| 3 | `timing-backend-v2` | official dudect, validity, power, A/A |
+| 3 | `timing-backend-v2` | official dudect, backend validity/calibration/parity |
 | 4 | `timing-harness-pools` | KEM/sign pool, common buffer, AUX rejection |
 | 5 | `kyberslash-ground-truth` | KS1/KS2/stock/historical + operand attribution |
 | 6 | `falcon-comparators` | PQClean reference vs `c-fn-dsa` variants |
@@ -740,6 +773,7 @@ M5 종료 조건:
 - [x] timing validity가 별도 field
 - [ ] A/A control 통과
 - [ ] positive-control power curve
+- [x] backend-only synthetic A/A/effect curve/parity
 - [x] official dudect backend 또는 명시적 experimental 명칭
 - [x] confounded/underpowered row가 clean 근거로 사용되지 않음
 - [ ] seed/process/host 반복 정책 충족
@@ -768,8 +802,8 @@ M5 종료 조건:
 
 1. ~~`PKG-001`, `DOC-001`, `LIC-001`, `CI-001`~~ — 완료
 2. ~~schema v2와 legacy migration~~ — 완료
-3. **official dudect backend와 timing validity** — 다음
-4. KEM/sign pool 하니스 + A/A calibration
+3. ~~official dudect backend와 timing validity~~ — 완료
+4. **KEM/sign pool 하니스 + physical A/A calibration** — 다음
 5. 기존 corpus를 v2로 재분류
 6. 그 다음에 KyberSlash/Falcon 실험 확장
 

@@ -1,7 +1,8 @@
 import platform
 import re
+import warnings
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -785,6 +786,10 @@ class DudectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
+    # Backend-v2 default. The official engine is pinned and compiled as a
+    # separate x86_64 process; the old Python five-cutoff implementation
+    # remains available only by explicit opt-in.
+    backend: Literal["official-dudect", "experimental-first-order"] = "official-dudect"
     # Bundle H2 (T8): defensive upper bounds. A typo (extra zero,
     # copy-paste mistake) on `measurements` previously allocated
     # ~800 MB in the C harness's static BSS arrays and produced an
@@ -815,6 +820,8 @@ class DudectConfig(BaseModel):
     # uint64_t, so a larger value would only surface as an "integer literal too
     # large" compile error deep in the timing harness. Reject it at load.
     seed: Optional[int] = Field(default=0xC0FFEE, gt=0, le=0xFFFFFFFFFFFFFFFF)
+    # Legacy experimental backend only. The official backend uses upstream's
+    # fixed |t| > 10 rule and rejects attempts to customize these values.
     threshold_warning: float = 4.5
     threshold_fail: float = 10.0
     compiler: DudectCompilerConfig = Field(default_factory=DudectCompilerConfig)
@@ -832,15 +839,36 @@ class DudectConfig(BaseModel):
     # cyclic include or pathological optimization. Separate knob so users
     # can keep the compile tight while the runtime is long.
     compile_timeout: int = Field(default=600, ge=1)
-    # Bundle G (R2): the multi-cutoff cropping protocol takes max |t| over
-    # 5 correlated tests, which inflates the per-test Type-I rate. When
-    # True, scale `threshold_warning` and `threshold_fail` by
-    # sqrt(len(CROP_PERCENTILES)) (≈2.24) — a conservative Bonferroni-like
-    # adjustment that keeps the family-wise error rate ≈ what a single
-    # Welch test would have. Default False because most users tune
-    # thresholds against the literature's "4.5 / 10.0 single-test" advice
-    # and would be confused by a stricter scale.
-    bonferroni_correct: bool = False
+    # Separate limit for the raw-trace statistics process (including the
+    # official adapter's 100 percentile sorts/tests).
+    backend_timeout: int = Field(default=120, ge=1)
+    # Legacy experimental heuristic. This is intentionally named for the
+    # operation it performs: it multiplies t thresholds by sqrt(m). It is NOT
+    # Bonferroni correction and makes no FWER claim.
+    sqrt_m_threshold_scaling: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_statistics_keys(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "bonferroni_correct" not in data:
+            return data
+        migrated = dict(data)
+        if "sqrt_m_threshold_scaling" in migrated:
+            raise ValueError(
+                "dudect config cannot set both legacy `bonferroni_correct` "
+                "and `sqrt_m_threshold_scaling`"
+            )
+        value = migrated.pop("bonferroni_correct")
+        migrated["sqrt_m_threshold_scaling"] = value
+        warnings.warn(
+            "`dudect.bonferroni_correct` was never Bonferroni correction. "
+            "It has been migrated to `sqrt_m_threshold_scaling`; update the "
+            "config. The heuristic is available only with "
+            "`backend: experimental-first-order`.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return migrated
 
     @model_validator(mode="after")
     def _check_clock_arch(self) -> "DudectConfig":
@@ -855,6 +883,23 @@ class DudectConfig(BaseModel):
             )
         # T37: reject duplicate harness names within the dudect list.
         _check_unique_names("dudect.harnesses", [h.name for h in self.harnesses])
+        if self.backend == "official-dudect" and self.sqrt_m_threshold_scaling:
+            raise ValueError(
+                "dudect.sqrt_m_threshold_scaling is a legacy experimental "
+                "heuristic and cannot be used with backend=official-dudect"
+            )
+        if self.threshold_warning <= 0 or self.threshold_fail <= self.threshold_warning:
+            raise ValueError(
+                "dudect experimental thresholds must satisfy 0 < threshold_warning < threshold_fail"
+            )
+        if self.backend == "official-dudect" and (
+            self.threshold_warning != 4.5 or self.threshold_fail != 10.0
+        ):
+            raise ValueError(
+                "dudect.threshold_warning/threshold_fail cannot customize the "
+                "official backend; upstream fixes the raw leak threshold at |t| > 10. "
+                "Select backend=experimental-first-order for custom thresholds."
+            )
         return self
 
 

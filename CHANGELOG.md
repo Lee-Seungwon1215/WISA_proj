@@ -3,6 +3,41 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.4.0a1] - 2026-07-30
+
+### Added
+
+- Exact-pinned official dudect C backend with all 102 upstream tests,
+  minimum-measurement semantics, tau, and detection estimates.
+- Independent calibration/analysis traces, a lossless backend JSON report,
+  environment manifest, and appended summary/verdict validity fields.
+- Domain-separated runtime seeds for calibration and analysis without
+  recompiling the measured target.
+- Deterministic backend-only synthetic A/A, injected-effect power curve, and
+  same-trace uncropped parity calibration.
+- Installed wheel/sdist smoke coverage for the vendored header and native adapter.
+
+### Changed
+
+- `official-dudect` is now the default timing backend; the previous Python
+  five-cutoff implementation requires explicit `experimental-first-order`
+  opt-in.
+- KEM/sign timing remains fail-closed as `confounded`, generic timing remains
+  `insufficient-power`, and QEMU or unpinned Linux timing is
+  `environment-rejected` pending target-level controls.
+- The misleading `bonferroni_correct` setting is migrated with a warning to
+  `sqrt_m_threshold_scaling` and is rejected by the official backend.
+
+### Fixed
+
+- A backend raw PASS can no longer imply target-level timing validity.
+- Official protocol parity can no longer be claimed by a name-only Python
+  approximation; upstream source identity and adapter output are validated.
+- Modern Docker Desktop `VirtualApple` x86 translation is rejected even when
+  legacy QEMU DMI strings are absent.
+- Missing or malformed rows and noisy discarded calibration traces now
+  invalidate timing just as strictly as analysis-trace corruption.
+
 ## [0.3.0a1] - 2026-07-30
 
 ### Added
@@ -64,6 +99,7 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.3.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/619d73c...main
+[0.4.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/abaf92f...main
+[0.3.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/619d73c...abaf92f
 [0.2.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b1ccd4d...619d73c
 [0.1.0]: https://github.com/Lee-Seungwon1215/WISA_proj/commits/20a20f72a65216bb2e4edafc0b054789281f3455

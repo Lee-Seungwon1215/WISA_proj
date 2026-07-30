@@ -129,3 +129,15 @@ python scripts/check_third_party.py --write-notices
 - Tree SHA-256: `151dc842c4c9a0aa74b692f475380f675c3f968febe2399f2f9e5e7b70e2fd6d`
 - Local modifications: None; byte-identical to the recorded upstream directory.
 - Detailed provenance: `examples/pqc_falcon512/FETCH_INFO.md`
+
+## official dudect statistical engine
+
+- Local path: `ctkat/_vendor/dudect`
+- Upstream: https://github.com/oreparaz/dudect
+- Revision: `dc269651fb2567e46755cfb2a13d3875592968b5`
+- Upstream path: `src/dudect.h and LICENSE`
+- License: `MIT (dudect.h also carries a public-domain dedication)`
+- License file: `ctkat/_vendor/dudect/LICENSE`
+- Tree SHA-256: `a672e626a6c39b53f653ab6c754700e806423244396c2a9bc4ee3bab7355bca4`
+- Local modifications: None; dudect.h and LICENSE are byte-identical to the pinned upstream revision. CT-KAT's adapter is maintained outside this vendored tree.
+- Detailed provenance: `ctkat/_vendor/dudect_FETCH_INFO.md`

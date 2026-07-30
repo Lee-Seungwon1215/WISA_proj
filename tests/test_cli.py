@@ -810,6 +810,8 @@ def _dud_cfg_with_harness(timeout=600):
     from ctkat.config import DudectHarnessConfig
 
     return DudectConfig(
+        backend="experimental-first-order",
+        measurements=100,
         timeout=timeout,
         clock="monotonic",
         harnesses=[
@@ -891,6 +893,150 @@ def test_dudect_error_flows_to_inconclusive_verdict(tmp_path, monkeypatch):
     results = cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=False)
     verdicts = _compute_verdicts([], results)
     assert verdicts[0].verdict == Verdict.INCONCLUSIVE
+
+
+def test_official_backend_runs_discarded_calibration_then_analysis(tmp_path, monkeypatch):
+    import ctkat.cli as cli_module
+    from ctkat.config import DudectConfig, DudectHarnessConfig
+    from ctkat.statistics import WelchResult
+
+    monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
+    monkeypatch.setattr(
+        cli_module,
+        "build_official_dudect_adapter",
+        lambda **kwargs: tmp_path / "adapter",
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "collect_timing_environment",
+        lambda **kwargs: {"rejected": False, "rejection_reasons": []},
+    )
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(kwargs.get("seed_override"))
+        return TimingSamples(
+            classes=[0, 1] * 50,
+            cycles=[float(100 + len(calls)), float(110 + len(calls))] * 50,
+            raw_n_total=100,
+        )
+
+    captured = {}
+
+    def fake_analyze(calibration, analysis, **kwargs):
+        captured["calibration"] = calibration
+        captured["analysis"] = analysis
+        return object()
+
+    monkeypatch.setattr(cli_module, "run_timing_harness", fake_run)
+    monkeypatch.setattr(cli_module, "analyze_with_official_dudect", fake_analyze)
+    monkeypatch.setattr(
+        cli_module,
+        "_official_to_welch",
+        lambda result: WelchResult(
+            n0=50,
+            n1=50,
+            mean0=102,
+            mean1=112,
+            var0=1,
+            var1=1,
+            t_score=-20,
+            abs_t_score=20,
+            status="FAIL",
+            backend="official-dudect-dc269651",
+            enough_measurements=True,
+        ),
+    )
+    monkeypatch.setattr(cli_module, "_emit_dudect_report", lambda *args, **kwargs: (None, None))
+
+    cfg = DudectConfig(
+        backend="official-dudect",
+        measurements=100,
+        clock="monotonic",
+        harnesses=[DudectHarnessConfig(name="h", template="generic", function="f")],
+    )
+    results = cli_module._do_dudect(cfg, tmp_path, "p", tmp_path)
+    assert len(calls) == 2
+    assert calls[0] is not None
+    assert calls[1] is None
+    assert results[0][1].calibration is captured["calibration"]
+    assert results[0][1] is captured["analysis"]
+    assert results[0][2].timing_validity == "insufficient-power"
+    assert results[0][2].calibration_seed == calls[0]
+    assert results[0][2].analysis_seed == cfg.seed
+
+
+def test_timing_validity_rejects_malformed_or_missing_trace_rows():
+    import ctkat.cli as cli_module
+    from ctkat.config import DudectHarnessConfig
+    from ctkat.statistics import WelchResult
+
+    samples = TimingSamples(
+        classes=[0, 1] * 49,
+        cycles=[100.0, 110.0] * 49,
+        raw_n_total=100,
+    )
+    result = WelchResult(
+        n0=49,
+        n1=49,
+        mean0=100.0,
+        mean1=110.0,
+        var0=1.0,
+        var1=1.0,
+        t_score=-1.0,
+        abs_t_score=1.0,
+        status="PASS",
+    )
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        DudectHarnessConfig(name="h", template="generic", function="f"),
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "error"
+    assert "2 malformed/unaccounted" in result.validity_reasons[0]
+
+
+def test_timing_validity_checks_discarded_calibration_trace_quality():
+    import ctkat.cli as cli_module
+    from ctkat.config import DudectHarnessConfig
+    from ctkat.statistics import WelchResult
+
+    calibration = TimingSamples(
+        classes=[0, 1] * 45,
+        cycles=[90.0, 91.0] * 45,
+        raw_n_total=100,
+        dropped_zero_n0=5,
+        dropped_zero_n1=5,
+    )
+    samples = TimingSamples(
+        classes=[0, 1] * 50,
+        cycles=[100.0, 110.0] * 50,
+        raw_n_total=100,
+        calibration=calibration,
+    )
+    result = WelchResult(
+        n0=50,
+        n1=50,
+        mean0=100.0,
+        mean1=110.0,
+        var0=1.0,
+        var1=1.0,
+        t_score=-1.0,
+        abs_t_score=1.0,
+        status="PASS",
+    )
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        DudectHarnessConfig(name="h", template="generic", function="f"),
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "environment-rejected"
+    assert any("calibration zero-cycle drop rate" in item for item in result.validity_reasons)
+    assert result.environment["rejected"] is True
 
 
 # --- Bundle E-2: F2 (valgrind ERROR) + F5 (sentinel) ----------------------
@@ -1044,6 +1190,15 @@ def test_ct_error_flows_to_inconclusive_verdict():
     assert by_name["safe"].verdict == Verdict.CLEAN  # unaffected harness stays CLEAN
 
 
+def test_nonvalid_timing_pass_cannot_make_combined_verdict_clean():
+    dud = _dudect_result("h", "PASS")
+    dud[2].timing_validity = "insufficient-power"
+    verdict = _compute_verdicts([_ct_clean("h")], [dud])[0]
+    assert verdict.dudect_status == "PASS"
+    assert verdict.dudect_validity == "insufficient-power"
+    assert verdict.verdict == Verdict.INCONCLUSIVE
+
+
 # --- Bundle F: S1 dudect_summary.csv raw-count columns (18-20) ------------
 
 
@@ -1075,9 +1230,67 @@ def test_dudect_summary_csv_header_snapshot(tmp_path):
         "project,harness,n0,n1,mean0,mean1,var0,var1,t_score,"
         "abs_t_score,status,batch_t_mean,batch_t_max_abs,batches,"
         "cropped_at,t_score_uncropped,abs_t_score_uncropped,"
-        "raw_n_total,dropped_zero_n0,dropped_zero_n1,cohens_d"
+        "raw_n_total,dropped_zero_n0,dropped_zero_n1,cohens_d,"
+        "backend,timing_validity,validity_reasons,test_kind,test_index,"
+        "protocol_test_count,max_tau,detection_estimate,enough_measurements,"
+        "upstream_revision,calibration_raw_n_total,analysis_seed,calibration_seed"
     )
     assert header == expected
+
+
+def test_dudect_backend_report_preserves_calibration_and_protocol(tmp_path):
+    import json
+
+    from ctkat.cli import _emit_dudect_report
+    from ctkat.dudect_runner import TimingSamples
+    from ctkat.statistics import WelchResult
+
+    calibration = TimingSamples(classes=[0, 1], cycles=[90.0, 91.0], raw_n_total=2)
+    samples = TimingSamples(
+        classes=[0, 1],
+        cycles=[100.0, 110.0],
+        raw_n_total=2,
+        calibration=calibration,
+    )
+    result = WelchResult(
+        n0=1,
+        n1=1,
+        mean0=100.0,
+        mean1=110.0,
+        var0=0.0,
+        var1=0.0,
+        t_score=-12.0,
+        abs_t_score=12.0,
+        status="FAIL",
+        backend="official-dudect-test",
+        timing_validity="confounded",
+        validity_reasons=("legacy harness",),
+        test_kind="second-order",
+        test_index=101,
+        protocol_test_count=102,
+        max_tau=0.1,
+        detection_estimate=2500.0,
+        enough_measurements=True,
+        upstream_revision="deadbeef",
+        analysis_seed=123,
+        calibration_seed=456,
+        protocol_results=[{"index": 0, "kind": "first-order-uncropped"}],
+        environment={"rejected": False},
+    )
+    _emit_dudect_report("p", tmp_path, [("h", samples, result, [])])
+
+    calibration_rows = (tmp_path / "dudect_calibration_timings.csv").read_text().splitlines()
+    assert len(calibration_rows) == 3
+    payload = json.loads((tmp_path / "dudect_backend_report.json").read_text())
+    harness = payload["harnesses"][0]
+    assert harness["backend"] == "official-dudect-test"
+    assert harness["timing_validity"] == "confounded"
+    assert harness["test_index"] == 101
+    assert harness["protocol_test_count"] == 102
+    assert harness["calibration_raw_n_total"] == 2
+    assert harness["analysis_seed"] == 123
+    assert harness["calibration_seed"] == 456
+    assert harness["tests"][0]["kind"] == "first-order-uncropped"
 
 
 def test_dudect_summary_csv_has_raw_count_columns(tmp_path):
@@ -1150,8 +1363,8 @@ def test_dudect_summary_csv_has_cohens_d_column(tmp_path):
     assert row[20] == "2.500"
 
 
-def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
-    """R2: when dud.bonferroni_correct=True, _do_dudect must pass scaled
+def test_sqrt_m_heuristic_scales_experimental_thresholds(monkeypatch, tmp_path, capsys):
+    """The explicitly named legacy heuristic must pass scaled
     thresholds to welch_with_cropping / welch_t_test / batch_t_scores.
     We monkeypatch those to capture their threshold kwargs."""
     import ctkat.cli as cli_module
@@ -1183,7 +1396,7 @@ def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli_module, "welch_with_cropping", fake_welch_with_cropping)
 
     dud = _dud_cfg_with_harness()
-    dud = dud.model_copy(update={"bonferroni_correct": True})
+    dud = dud.model_copy(update={"sqrt_m_threshold_scaling": True})
     cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=True)
 
     # 4.5 * sqrt(5) ≈ 10.06, 10.0 * sqrt(5) ≈ 22.36
@@ -1194,10 +1407,12 @@ def test_bonferroni_correction_scales_thresholds(monkeypatch, tmp_path, capsys):
     assert abs(captured["warn"] - expected_warn) < 1e-6
     assert abs(captured["fail"] - expected_fail) < 1e-6
     # Banner line must mention the scaling so the user knows it kicked in.
-    assert "bonferroni" in capsys.readouterr().out.lower()
+    banner = capsys.readouterr().out.lower()
+    assert "sqrt(m)" in banner
+    assert "not bonferroni/fwer" in banner
 
 
-def test_bonferroni_off_leaves_thresholds_alone(monkeypatch, tmp_path):
+def test_sqrt_m_heuristic_off_leaves_thresholds_alone(monkeypatch, tmp_path):
     import ctkat.cli as cli_module
 
     monkeypatch.setattr(cli_module, "generate_and_compile_timing", _stub_compile)
@@ -1224,7 +1439,7 @@ def test_bonferroni_off_leaves_thresholds_alone(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli_module, "welch_with_cropping", fake_welch_with_cropping)
 
-    dud = _dud_cfg_with_harness()  # bonferroni_correct=False default
+    dud = _dud_cfg_with_harness()
     cli_module._do_dudect(dud, tmp_path, "proj", tmp_path, crop=True)
 
     assert captured["warn"] == 4.5
@@ -1349,14 +1564,15 @@ def _patch_dudect_pipeline(monkeypatch, spy):
 def _dud_cfg(**kw):
     from ctkat.config import DudectConfig, DudectHarnessConfig
 
+    kw.setdefault("backend", "experimental-first-order")
     return DudectConfig(
         harnesses=[DudectHarnessConfig(name="h", template="generic", function="f")],
         **kw,
     )
 
 
-def test_bonferroni_scales_only_cropping_not_batch(monkeypatch):
-    """F23: with cropping on, the bonferroni scale applies to the cropping
+def test_sqrt_m_scales_only_cropping_not_batch(monkeypatch):
+    """With cropping on, sqrt(m) applies to the experimental cropping
     welch call but NOT batch_t_scores (which never crops)."""
     import math
 
@@ -1364,20 +1580,32 @@ def test_bonferroni_scales_only_cropping_not_batch(monkeypatch):
 
     spy = {}
     _patch_dudect_pipeline(monkeypatch, spy)
-    cli._do_dudect(_dud_cfg(bonferroni_correct=True), Path("/tmp"), "p", Path("/tmp"), crop=True)
+    cli._do_dudect(
+        _dud_cfg(sqrt_m_threshold_scaling=True),
+        Path("/tmp"),
+        "p",
+        Path("/tmp"),
+        crop=True,
+    )
     scale = math.sqrt(5)
     assert spy["crop"] == (round(4.5 * scale, 2), round(10.0 * scale, 2))
     assert spy["batch"] == (4.5, 10.0)  # unscaled
 
 
-def test_bonferroni_ignored_when_no_crop(monkeypatch):
-    """F20: with --no-crop there is no multi-cutoff family — the bonferroni
+def test_sqrt_m_ignored_when_no_crop(monkeypatch):
+    """With --no-crop there is no multi-cutoff family — the sqrt(m)
     scale must NOT apply to the single uncropped test."""
     import ctkat.cli as cli
 
     spy = {}
     _patch_dudect_pipeline(monkeypatch, spy)
-    cli._do_dudect(_dud_cfg(bonferroni_correct=True), Path("/tmp"), "p", Path("/tmp"), crop=False)
+    cli._do_dudect(
+        _dud_cfg(sqrt_m_threshold_scaling=True),
+        Path("/tmp"),
+        "p",
+        Path("/tmp"),
+        crop=False,
+    )
     assert spy["nocrop"] == (4.5, 10.0)  # unscaled
     assert spy["batch"] == (4.5, 10.0)
 
@@ -1912,7 +2140,7 @@ def test_screen_dudect_fail_gates_exit2(monkeypatch, tmp_path):
     assert "dudect" in result.stdout.lower()
     # the gating reason is surfaced in the emitted artifact too
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
-    assert "dudect FAIL" in out
+    assert "timing backend FAIL" in out
     assert "insufficient-power,signal" in out
     assert "inconclusive" in out
 

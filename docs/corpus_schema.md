@@ -74,10 +74,12 @@ Important invariants:
 - `asm=no-candidate|not-run` must use `not-applicable`.
 - An explicitly stored `overall` that differs from the fold is invalid.
 
-## Timing migration policy
+## Timing migration and backend policy
 
-The current Python timing implementation is recorded as
-`experimental-first-order-v1`, not official dudect.
+The frozen v1.2 corpus used the old Python implementation and is therefore
+recorded as `experimental-first-order-v1`. It is not relabelled after the fact.
+New runs default to the pinned `official-dudect-dc269651` backend, which
+executes the upstream 102-test family through a separate C adapter.
 
 V1 rows had no A/A false-alarm budget or positive-control power curve.
 Therefore:
@@ -90,8 +92,17 @@ Therefore:
   visible as provenance;
 - no historical timing row is silently promoted to `valid`.
 
-Future timing-backend work may emit `valid` only after the required controls and
-environment policy are implemented.
+Backend-v2 now records the environment, rejects QEMU and unpinned Linux
+processes, preserves raw `INSUFFICIENT`, and carries explicit validity reasons.
+Its committed synthetic calibration covers backend A/A, an injected-effect
+power curve, and uncropped same-trace parity. That artifact validates the
+statistical adapter only.
+
+Target runs may emit `valid` only after TIME-001/POWER-001 adds physical A/A,
+target positive controls, pool/common-buffer symmetry, and repeated-process
+policy. Until then, legacy KEM/sign templates are `confounded` and generic
+targets are `insufficient-power`; an official raw PASS or FAIL remains
+non-decisional for the v2 headline.
 
 ## Review artifacts
 

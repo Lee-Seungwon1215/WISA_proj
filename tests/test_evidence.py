@@ -61,6 +61,30 @@ def test_legacy_timing_pass_without_power_is_inconclusive():
     assert evidence.overall == Overall.INCONCLUSIVE
 
 
+def test_official_minimum_withholds_timing_conclusion():
+    from ctkat.evidence import timing_from_raw
+
+    validity, signal = timing_from_raw("INSUFFICIENT", "insufficient-power")
+    assert validity == TimingValidity.INSUFFICIENT_POWER
+    assert signal == TimingSignal.NOT_INTERPRETABLE
+
+
+def test_official_minimum_can_also_preserve_environment_rejection():
+    from ctkat.evidence import timing_from_raw
+
+    validity, signal = timing_from_raw("INSUFFICIENT", "environment-rejected")
+    assert validity == TimingValidity.ENVIRONMENT_REJECTED
+    assert signal == TimingSignal.NOT_INTERPRETABLE
+
+
+def test_corrupt_trace_overrides_official_minimum_as_tool_error():
+    from ctkat.evidence import timing_from_raw
+
+    validity, signal = timing_from_raw("INSUFFICIENT", "error")
+    assert validity == TimingValidity.ERROR
+    assert signal == TimingSignal.NOT_INTERPRETABLE
+
+
 def test_confounded_raw_fail_cannot_be_clean_or_risk():
     evidence = _evidence(
         timing_validity=TimingValidity.CONFOUNDED,

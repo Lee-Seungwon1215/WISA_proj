@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from rich.console import Console
 
@@ -54,6 +54,11 @@ class TimingSamples:
     raw_n_total: int = 0  # rows emitted by the C harness (pre-filter)
     dropped_zero_n0: int = 0  # class-0 rows dropped by the zero-cycle filter
     dropped_zero_n1: int = 0  # class-1 rows dropped by the zero-cycle filter
+    # The official backend follows upstream's two-batch lifecycle: the first
+    # run establishes crop thresholds and is discarded, while this object's
+    # primary classes/cycles are the independently measured analysis batch.
+    # Legacy/experimental runs leave this as None.
+    calibration: Optional["TimingSamples"] = None
 
     def __len__(self) -> int:
         return len(self.cycles)
@@ -165,6 +170,7 @@ def run_timing_harness(
     binary: Path,
     workdir: Path,
     timeout: int = 600,
+    seed_override: Optional[int] = None,
 ) -> TimingSamples:
     # The dudect harness emits one CSV row per measurement. Capturing that with
     # subprocess.PIPE makes the parent allocate the entire raw timing corpus in
@@ -177,10 +183,15 @@ def run_timing_harness(
     # handler catches it (status=ERROR -> INCONCLUSIVE) instead of a raw
     # traceback. The T6 comment in cli._do_dudect promised "every uncaught
     # failure mode -> ERROR"; this closes the executable-missing gap it left.
+    if seed_override is not None and not 0 < seed_override <= 0xFFFFFFFFFFFFFFFF:
+        raise ValueError("timing harness seed override must be a nonzero uint64")
+    command = [str(binary)]
+    if seed_override is not None:
+        command.append(str(seed_override))
     try:
         with tempfile.TemporaryFile() as stdout_f, tempfile.TemporaryFile() as stderr_f:
             proc = subprocess.run(
-                [str(binary)],
+                command,
                 cwd=str(workdir),
                 stdout=stdout_f,
                 stderr=stderr_f,

@@ -1,8 +1,9 @@
 # CT-KAT
 
-KAT, Valgrind/Memcheck, asm-scan, ct-matrix와 자체
-dudect-inspired first-order timing screen을 묶어 쓰는 constant-time
-**스크리닝** 프레임워크.
+KAT, Valgrind/Memcheck, asm-scan, ct-matrix와 pinned upstream
+**official dudect** 통계 백엔드를 묶어 쓰는 constant-time **스크리닝**
+프레임워크. 기존 Python first-order 구현은 명시적 experimental 백엔드로만
+남아 있다.
 
 C 암호 구현을 던지면 설정된 하니스에 대해:
 
@@ -11,7 +12,7 @@ C 암호 구현을 던지면 설정된 하니스에 대해:
 3. **Valgrind/Memcheck** — secret-tainted 값이 분기/메모리 주소 계산에 쓰였는지 (구조적 검사)
 4. **ct-matrix** — compiler × cflags별로 구조적 CT 결과가 바뀌는지 확인
 5. **asm-scan** — emitted assembly에서 `div/idiv` 같은 variable-latency 후보 수집
-6. **timing screen (`dudect` 명령)** — fixed-vs-random class의 실행 시간 분포를 자체 Welch t-test 구현으로 비교
+6. **timing screen (`dudect` 명령)** — CT-KAT이 측정한 fixed-vs-random raw trace를 official dudect의 102개 검정으로 분석
 7. CSV/JSON/Markdown 리포트 + triage가 연결된 evidence schema v2 출력
 
 `screen`의 5상태 `overall`이 현재 도구/코퍼스의 기준이다. raw layer,
@@ -79,7 +80,9 @@ docker compose run --rm ctkat-dev bash -c \
 ## Why Docker
 
 - **Valgrind는 macOS에서 동작 안 함** (특히 ARM/최신 OS). 리눅스 컨테이너 필수.
-- Apple Silicon 맥은 `platform: linux/amd64`로 강제해서 QEMU 에뮬레이션 — 구조 분석은 돌릴 수 있지만, dudect timing 숫자는 native x86_64보다 약하다.
+- Apple Silicon 맥은 `platform: linux/amd64`로 강제해서 QEMU 에뮬레이션 —
+  구조 분석과 official backend 회귀는 돌릴 수 있지만 target timing validity는
+  `environment-rejected`다.
 - 호스트 작업 디렉토리를 `/workspace`에 마운트하므로 호스트에서 편집해도 컨테이너가 즉시 봄.
 
 ---
@@ -97,12 +100,16 @@ WISA/
 │   ├── harness_generator.py    # Jinja2 → C harness (Valgrind side)
 │   ├── timing_harness_generator.py   # Jinja2 → C harness (dudect side)
 │   ├── dudect_runner.py
-│   ├── statistics.py           # Welch t-test + batch stability
+│   ├── official_dudect.py      # pinned upstream C backend adapter
+│   ├── timing_environment.py   # host manifest + fail-closed validity
+│   ├── statistics.py           # legacy experimental Welch backend
 │   ├── verdict.py              # Valgrind × dudect → combined verdict
 │   ├── header_parser.py        # C header → function signatures
 │   ├── secret_infer.py         # PQC profile + name heuristic
 │   ├── qemu_detect.py
 │   ├── report.py
+│   ├── native/                 # official dudect raw-trace C bridge
+│   ├── _vendor/dudect/         # exact pinned upstream header + license
 │   └── templates/
 │       ├── harness_generic.c.j2 / harness_kem.c.j2 / harness_sign.c.j2
 │       └── timing_generic.c.j2 / timing_kem.c.j2 / timing_sign.c.j2
@@ -150,8 +157,8 @@ blind spot을 가진다:
     emitted assembly에서 div/idiv/sdiv/udiv 후보 수집
     "KyberSlash류 operand-latency 후보가 빌드에 살아남나?"
          ↓
-[5] dudect-inspired first-order screen — Statistical Timing
-    fixed-vs-random secret + Welch t-test + percentile cropping (max |t|)
+[5] Timing measurement + official dudect — Statistical Timing
+    fixed-vs-random raw trace + raw/100 crop/second-order tests (max |t|)
     "설정한 두 class의 실행 시간 분포가 통계적으로 다른가?"
          ↓
 [triage] asm attribution + review state / artifact ID
@@ -170,7 +177,7 @@ blind spot을 가진다:
 | Valgrind | secret-tainted branch, secret-indexed memory access | 명령어 latency 차이, 실행 안 된 경로, power/EM |
 | ct-matrix | 빌드별 structural verdict 변화 | 왜 변했는지의 보안 의미 |
 | asm-scan | `div/idiv` 등 variable-latency 명령 후보 | operand가 secret인지 자동 증명하지 못함 |
-| timing screen | 설정한 두 class 사이의 timing 차이 | 공식 dudect protocol parity, 정확한 코드 위치, rare trigger, noisy/QEMU 환경 |
+| timing screen | 설정한 두 class 사이의 timing 차이 | 정확한 코드 위치, rare trigger, noisy/QEMU 환경, 하니스 confound |
 | triage | public 후보와 secret-risk/accepted behavior 분리 | 사람이 쓴 근거가 틀리면 같이 틀림 |
 
 모든 configured layer가 통과해도 결론은 “이 하니스와 환경에서 새 후보가
@@ -252,6 +259,7 @@ ct:
 # Optional. 없거나 enabled=false면 dudect 스킵.
 dudect:
   enabled: true
+  backend: official-dudect     # 기본값. pinned upstream C engine; x86_64 only
   measurements: 100000
   warmup: 1000
   batches: 10                  # batch stability 분할 수
@@ -261,14 +269,11 @@ dudect:
                                # crypto_kem_keypair/enc가 OS entropy(getrandom)을
                                # 쓰기 때문에 이 seed로 재현되지 않음. 자세한 건
                                # "재현성 (seed)" 섹션 참고.
-  threshold_warning: 4.5       # |t| 임계값
-  threshold_fail: 10.0
   timeout: 600                 # (E-1) per-harness wall-clock ceiling. 초과 시
                                # TimeoutExpired → status=ERROR → verdict
                                # INCONCLUSIVE. Python traceback이 나가지 않음.
-  bonferroni_correct: false    # (G/R2) true면 임계값을 sqrt(N_cutoffs)≈2.24
-                               # 배 스케일 — multi-cutoff cropping의 Type-I
-                               # inflation 상쇄. 보수적 calibration 원할 때만.
+  compile_timeout: 600         # timing harness / backend bridge compile ceiling
+  backend_timeout: 120         # raw trace를 통계 backend가 분석하는 시간 제한
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:
@@ -299,6 +304,21 @@ report:
   json: ctkat_report.json
 ```
 
+official backend의 판정 규칙(`|t| > 10`, class 0 retained sample 10,000개 초과)은
+upstream에 고정돼 있다. 예전 5-cutoff Python screen이 필요한 호환 실험만
+아래처럼 명시적으로 켠다:
+
+```yaml
+dudect:
+  backend: experimental-first-order
+  threshold_warning: 4.5
+  threshold_fail: 10.0
+  sqrt_m_threshold_scaling: false  # 경험적 sqrt(m) 배율; Bonferroni/FWER 아님
+```
+
+구형 `bonferroni_correct` 키는 경고와 함께 위 이름으로 한시 migration되지만,
+official backend와는 함께 쓸 수 없다.
+
 `ct.harnesses[*].binary` (수동) ↔ `template` (자동)은 **상호 배타**. 둘 중 하나만.
 
 수동 모드는 사용자 책임 영역이라 프레임워크가 binary 안에서 무슨 일이 일어나는지 모름 — `binary: /bin/true`도 "0 findings → PASS"로 통과되어 버린다 (F5). E-2부터는 `ct.require_sentinel: true`를 박으면 binary가 stdout에
@@ -309,13 +329,32 @@ report:
 
 ---
 
-## dudect-inspired timing screen (Bundle A / B / C / D)
+## official dudect timing backend
 
-`dudect`는 호환성을 위해 남긴 CLI/config 이름이다. 현재 백엔드는 공식
-dudect를 실행하는 것이 아니라 CT-KAT 자체의 first-order Welch screen이며,
-5개 percentile cutoff만 검사하고 second-order test를 하지 않는다. 따라서
-이 결과를 “공식 dudect 통과”나 protocol parity로 해석하면 안 된다. 공식
-dudect backend 도입과 validity/power 상태는 roadmap M2 작업이다.
+`dudect` CLI/config 이름은 그대로지만 기본 통계 엔진은
+[`oreparaz/dudect`](https://github.com/oreparaz/dudect)의
+`dc269651fb2567e46755cfb2a13d3875592968b5` revision이다. CT-KAT은 input
+generation, target build, timing measurement와 artifact orchestration을
+담당하고, 별도 C process가 hash 검증된 upstream `dudect.h`의 통계 함수를
+직접 실행한다.
+
+official protocol을 보존하려고 하니스를 두 번 실행한다. 첫 trace는 100개 crop
+threshold를 정하는 calibration batch라 통계에서 버리고, 독립된 두 번째 trace만
+분석한다. 결과는 uncropped first-order 1개 + cropped first-order 100개 +
+second-order 1개, 총 102개 검정의 max `|t|`, `tau=t/sqrt(n)`, detection
+estimate를 포함한다. upstream 규칙대로 class 0 retained sample이 10,000개를
+넘지 못하면 `INSUFFICIENT`이며 PASS가 아니다.
+
+두 run이 같은 deterministic input stream을 재사용하지 않도록 analysis는 yaml
+seed, calibration은 uint64 domain-separated seed를 같은 binary의 runtime
+argument로 사용한다. 두 seed는 summary/JSON에 함께 기록한다.
+
+이 upstream revision은 x86 intrinsics를 사용하므로 official backend는
+**x86_64 전용**이다. ARM/macOS에서는 native x86_64 Linux/macOS 장비를 쓰거나
+`backend: experimental-first-order`를 명시해야 한다. QEMU로 x86_64를
+에뮬레이션하면 raw 결과는 보존하지만 validity는
+`environment-rejected`라서 verdict를 clear하지 못한다. 최신 Docker
+Desktop의 `VirtualApple` x86 translation marker도 같은 정책으로 잡는다.
 
 ### clock 선택 (`clock: auto` default)
 
@@ -374,34 +413,53 @@ dudect:
     cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
 ```
 
-### 통계 layer (Python 측)
+### 통계·validity layer
 
-| 항목 | 내용 |
-|---|---|
-| zero-cycle filter | parse 단계에서 cycles=0 (언더플로우 sentinel + ns-해상도 floor) drop. 1% 초과 시 전체 warning |
-| per-class drop 비대칭 warning (Bundle F, F4/S2) | class별 drop rate를 추적해서 어느 한쪽이 5% 초과 + 두 rate의 gap이 5% 초과면 별도 warning. 살아남은 샘플이 한 클래스의 slow tail로 편향되어 Welch t-score를 왜곡할 수 있음 |
-| percentile cropping | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]`에서 각각 Welch t-test, **max \|t\|** 채택. 공식 dudect의 전체 percentile/second-order protocol과는 다름 |
-| batch t-score는 비-cropping | 환경 안정성 측정용이라 raw 신호 유지 |
-| secret_regions coverage probe (Bundle F, F6) | `template: kem/sign`이고 `secret_regions`가 설정된 하니스에 한해, 자동 생성 단계에서 별도 sentinel 프로그램을 잠시 컴파일·실행해 `sum(secret_regions.length)`와 `{prefix}CRYPTO_SECRETKEYBYTES`를 실제 컴파일러에서 평가. <50%면 yellow warning (sk 대부분을 public으로 취급 중 — yaml typo 의심). probe 컴파일/실행 실패는 yellow note만, blocking X |
-| 효과 크기 (Bundle G, S3) | 모든 t-score 결과에 Cohen's d 동반 (CSV col 21). pooled-SD 정확 버전, sign 유지. 같은 \|t\|=5라도 d=0.2 (작은 leak + 큰 n)과 d=2.0 (큰 leak + 작은 n)이 구별됨 |
-| multi-cutoff calibration (legacy) | percentile cropping은 5개 cutoff에서 max \|t\|를 채택하므로 Type-I error가 inflate될 수 있다. 현재 `bonferroni_correct` 옵션은 이름과 달리 임계값을 `sqrt(N_cutoffs)`만큼 늘리는 경험적 스케일링이며, Bonferroni/FWER 보장을 구현하지 않는다. M2에서 이름과 calibration을 교체할 예정 |
-
-#### multi-cutoff calibration guide (R2)
-
-cropping 5개 cutoff 중 max \|t\|를 채택하면 nominal보다 false-positive
-비율이 inflate된다 (대략 1.5-2배 수준, IID 가우시안 noise 기준의 회귀
-테스트로 추적 중). 실용 해석 가이드:
-
-| \|t\| | 단일-test 의미 | multi-cutoff (default) 의미 |
+| 항목 | official backend (기본) | experimental backend (opt-in) |
 |---|---|---|
-| < 4.5 | PASS | PASS (noise 영역) |
-| 4.5 ~ 5.5 | WARNING | 약한 신호 — seed/반복/native 재측정 권장 |
-| 5.5 ~ 10 | WARNING | 강한 의심 — 환경 노이즈와 실제 timing 후보를 같이 검토 |
-| ≥ 10 | FAIL | 큰 신호 — 그래도 원인 attribution과 native 확인 필요 |
+| first-order | uncropped 1개 + percentile crop 100개 | cutoff `[1.0, 0.99, 0.95, 0.90, 0.75]` 5개 |
+| second-order | 1개 | 없음 |
+| raw 판정 | upstream max `|t| > 10`이면 FAIL | `<4.5` PASS, `4.5–10` WARNING, `≥10` FAIL (설정 가능) |
+| 최소 표본 | class 0 retained sample >10,000, 아니면 `INSUFFICIENT` | 별도 upstream minimum 없음 |
+| 추가 통계 | max `tau`, detection estimate, 102개 test 전체 | batch t-score, uncropped score, Cohen's d |
+| evidence validity | 환경·하니스·power control을 별도 검사 | 항상 target-level power 미검증으로 non-decisional |
 
-`dudect.bonferroni_correct: true`는 threshold를 ≈2.24배 올리지만 엄격한
-family-wise α 보존을 증명하지 않는다. 이 옵션을 켠 결과도 “Bonferroni
-corrected”라고 논문이나 artifact에 쓰지 말 것.
+두 backend 모두 parse 단계에서 `cycles=0`을 버리고 클래스별 drop 수를
+기록한다. 전체 zero drop이 1%를 넘거나, 한 class의 drop이 5%를 넘으면서
+class 간 차이도 5%를 넘으면 `environment-rejected`다. official engine에
+넘기는 trace와 raw CSV는 같은 filtered sample을 사용한다. analysis와
+calibration trace 모두 expected row 수·malformed bookkeeping을 검사하며,
+한 행이라도 설명되지 않으면 `timing_validity=error`다.
+
+`template: kem/sign`의 현재 측정 설계는 pool/common-buffer와 physical A/A
+control이 아직 없으므로 raw status와 무관하게 `confounded`다. generic
+하니스도 target별 physical A/A·positive-control power artifact가 붙기 전에는
+`insufficient-power`다. 즉 official dudect의 raw PASS/FAIL은 엔진 출력이지
+그 자체로 유효한 target 결론이 아니다. 이 fail-closed 경계는 다음
+`TIME-001`/`POWER-001`에서 해제한다.
+
+Linux에서는 process affinity가 CPU 하나가 아니면, 그리고 모든 OS에서 QEMU
+emulation이면 `environment-rejected`다. system, machine, kernel, clock,
+affinity, governor, SMT, turbo, microcode는
+`dudect_backend_report.json`에 기록한다. CT-KAT이 host 설정을 몰래 바꾸지는
+않는다.
+
+기존 5-cutoff backend의 `sqrt_m_threshold_scaling`은 threshold에
+`sqrt(m)`을 곱하는 경험적 호환 옵션일 뿐 Bonferroni correction이나 FWER
+보장이 아니다. 이 옵션과 threshold 설정은
+`backend: experimental-first-order`에서만 의미가 있다.
+
+### backend synthetic calibration
+
+[`docs/calibration/timing_backend_v2.json`](docs/calibration/timing_backend_v2.json)은
+50,050-sample calibration/analysis trace, effect당 20회로 고정한 회귀
+artifact다. 현재 acceptance 결과는 A/A false alarm `0/20`, injected
+`d=0.1` 검출 `17/20`, `d=0.2` 검출 `20/20`, 같은 uncropped trace의 upstream
+C와 Python Welch `|Δt| ≤ 1e-9`다.
+
+이건 **통계 adapter 자체**의 synthetic calibration이다. 실제 암호 target의
+하니스 대칭성, 물리 host A/A, process 반복이나 검출력을 검증한 게 아니다.
+그래서 이 artifact만으로 target run을 `timing_validity=valid`로 올리지 않는다.
 
 ### 재현성 (seed)
 
@@ -470,39 +528,54 @@ compat 보장. GCC/Clang 기준 — Windows MSVC의 weak symbol 시맨틱은
 | col | 이름 | 의미 |
 |---|---|---|
 | 1-2 | `project`, `harness` | 식별자 |
-| 3-4 | `n0`, `n1` | 클래스별 sample 수 (cropping 후) |
-| 5-6 | `mean0`, `mean1` | 클래스별 평균 cycle / ns |
-| 7-8 | `var0`, `var1` | 클래스별 variance |
-| 9-10 | `t_score`, `abs_t_score` | max-cropped t-score |
-| 11 | `status` | PASS / WARNING / FAIL — **max-cropped 기준** |
+| 3-4 | `n0`, `n1` | max test에 포함된 클래스별 sample 수 |
+| 5-6 | `mean0`, `mean1` | max test의 클래스별 평균 cycle / ns |
+| 7-8 | `var0`, `var1` | max test의 클래스별 variance |
+| 9-10 | `t_score`, `abs_t_score` | protocol family의 max t-score |
+| 11 | `status` | PASS / WARNING / FAIL / INSUFFICIENT / ERROR |
 | 12-14 | `batch_t_mean`, `batch_t_max_abs`, `batches` | 배치 안정성 |
-| 15 | `cropped_at` | max \|t\|를 만든 cutoff (e.g., `0.95`). cropping 꺼짐이면 빈 칸 |
+| 15 | `cropped_at` | experimental backend에서 max \|t\|를 만든 cutoff |
 | 16-17 | `t_score_uncropped`, `abs_t_score_uncropped` | cutoff=1.0의 raw t-score (diagnostic, cropping 부작용 확인용) |
 | 18 | `raw_n_total` | Bundle F (S1): zero-filter 적용 전 C 하니스가 emit한 row 수. `measurements - raw_n_total`이 0 이상이면 하니스가 일부 측정을 누락. ERROR-status row는 0 |
 | 19-20 | `dropped_zero_n0`, `dropped_zero_n1` | Bundle F (S1): zero-cycle filter가 클래스별로 떨어뜨린 수. `n0 = (raw_n0 - dropped_zero_n0)` 식. 두 값이 비대칭하면 sample bias 의심 (F4/S2 console warning과 같이 봄) |
-| 21 | `cohens_d` | Bundle G (S3): 표준화 효과 크기 = `(mean1 - mean0) / pooled_SD`. t-score는 sample 크기에 같이 비례하지만 Cohen's d는 표본수에 무관 — "leak 자체가 얼마나 큰가"를 답함. 부호 유지(양수 = class 1이 느림). Cohen 1988 기준: \|d\|<0.2 trivial, ~0.5 medium, ≥0.8 large. ERROR row는 0.0 |
+| 21 | `cohens_d` | experimental backend의 표준화 효과 크기. official backend는 빈 칸 |
+| 22-24 | `backend`, `timing_validity`, `validity_reasons` | 정확한 엔진 ID와 fail-closed 해석 상태/사유 |
+| 25-27 | `test_kind`, `test_index`, `protocol_test_count` | max test 종류·index와 전체 검정 수 |
+| 28-29 | `max_tau`, `detection_estimate` | upstream `tau=t/sqrt(n)`와 `(5/tau)^2` estimate |
+| 30 | `enough_measurements` | official dudect minimum 충족 여부 |
+| 31 | `upstream_revision` | pinned upstream commit |
+| 32 | `calibration_raw_n_total` | 별도 calibration trace의 raw sample 수 |
+| 33-34 | `analysis_seed`, `calibration_seed` | 두 trace의 domain-separated PRNG seed |
 
 컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
 Bundle B diagnostic 컬럼, 18-20은 Bundle F (S1) raw-count 컬럼, 21은
-Bundle G (S3) 효과 크기. 모두 항상 끝에 append되므로 awk-by-position
-파서는 안 깨짐.
+Bundle G (S3) 효과 크기, 22-34는 timing-backend-v2 컬럼이다. 모두 끝에
+append됐으므로 기존 awk-by-position 파서는 안 깨진다.
+
+추가 timing artifact:
+
+- `dudect_raw_timings.csv` — analysis trace
+- `dudect_calibration_timings.csv` — official crop threshold 전용으로 버린 첫 trace
+- `dudect_backend_report.json` — 102개 test 전체, host manifest, validity 사유,
+  raw/calibration trace SHA-256
 
 ### `ctkat_verdict.csv` 컬럼 reference (legacy `run` compatibility)
 
-`run` 명령이 emit하는 Valgrind×timing 호환 CSV다. asm/matrix/review와 timing
-validity가 없으므로 신규 CI의 canonical gate가 아니다. 신규 게이트는
+`run` 명령이 emit하는 Valgrind×timing 호환 CSV다. asm/matrix/review가
+없으므로 신규 CI의 canonical gate가 아니다. 신규 게이트는
 `ctkat screen`의 evidence-v2 `screen_summary.*`와 `overall`을 사용한다.
 
 | col | 이름 | 의미 |
 |---|---|---|
 | 1-2 | `project`, `harness` | 식별자 |
 | 3-4 | `valgrind_status`, `valgrind_findings` | PASS / FAIL / ERROR / NONE + finding 개수 |
-| 5-6 | `dudect_status`, `dudect_abs_t` | PASS / WARNING / FAIL / ERROR / NONE + max-cropped \|t\| |
+| 5-6 | `dudect_status`, `dudect_abs_t` | PASS / WARNING / FAIL / INSUFFICIENT / ERROR / NONE + protocol max \|t\| |
 | 7 | `verdict` | CLEAN / STRUCTURAL_LEAK / SUSPECT / RISKY / CRITICAL / INCONCLUSIVE |
 | 8-9 | `kat_status`, `kat_count` | E-1: PASS / FAIL / NONE + (있다면) expected_pattern으로 추출한 테스트 개수 |
+| 10 | `dudect_validity` | valid / confounded / insufficient-power / environment-rejected / error / not-run |
 
 컬럼 1-7은 backward-compat 보장 (`scripts/run_phase4.sh`의 awk `$7=verdict`
-호환). 8-9는 E-1에서 끝에 append.
+호환). 8-9는 E-1, 10은 timing-backend-v2에서 끝에 append.
 
 ### KEM structural path — `valid` / `invalid`
 
@@ -748,8 +821,9 @@ data-flow note로만 받아들인다.
 scope에 포함하는지 CI가 확인한다. note 한 줄만 써놓고 reviewed라 우기는
 경로는 막혀 있다.
 
-`--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
-사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.
+`--no-crop`: `backend: experimental-first-order`의 5개 percentile cropping을
+끄고 raw uncropped t-score만 사용한다. official backend는 upstream 102-test
+family를 임의로 줄이지 않으므로 이 옵션을 config error로 거부한다.
 
 `screen` 종료 코드:
 
@@ -958,8 +1032,8 @@ PQClean ML-KEM-768은 현재 configured ct-matrix cells에서 Valgrind PASS다.
 | 시나리오 | 권장 환경 |
 |---|---|
 | ct (Valgrind) 검사 | Linux/Docker 컨테이너. timing보다 재현성은 높지만, 컴파일러/flags/하니스 경로에 의존 |
-| timing screen | **Native x86_64 Linux + rdtsc** 권장. Apple Silicon + Docker는 QEMU 에뮬레이션이라 timing 신뢰도 떨어짐 |
-| timing screen on ARM mac | `clock: monotonic` 사용 (yaml 기본값). 정성적 비교는 가능, 절대적 결론은 native에서 확인 |
+| official timing backend | **Native x86_64 Linux + rdtsc + 단일 CPU affinity**. QEMU는 raw trace만 보존하고 `environment-rejected` |
+| timing screen on ARM mac | official backend 미지원. `backend: experimental-first-order` + `clock: monotonic`으로 진단은 가능하지만 non-decisional |
 | 결과의 통계적 안정성 | `seed`를 바꿔가며 여러 번 실행해서 t-score 분포 확인. `batches` 분할 결과(`batch_t_max_abs`)가 클수록 환경 노이즈 큼 |
 
 ### 시스템 노이즈와 \|t\| 변동 (R3)
@@ -1017,7 +1091,8 @@ container/VM 안에서 실행할 것.
 ## Legacy `run` verdict matrix
 
 `run` 명령은 ct + raw timing 결과를 결합해 harness당 호환 verdict 1개를
-산출한다. 이 표에는 timing validity, asm attribution, review artifact가 없으므로
+산출한다. timing validity는 col 10으로 보존하고 non-valid timing은
+`INCONCLUSIVE`로 강등하지만, asm attribution과 review artifact는 없으므로
 evidence-v2 `overall` 대신 신규 배포 게이트로 사용하지 않는다.
 
 | Valgrind | dudect | Verdict | 의미 |
@@ -1059,9 +1134,10 @@ CSV col 7 값이 변경됨.
 
 - **PQClean** (<https://github.com/PQClean/PQClean>) — ML-KEM, ML-DSA, and SPHINCS+ clean reference implementations under `examples/pqc_*`.
 - **ctgrind** (Adam Langley) — Valgrind/Memcheck를 constant-time 검사에 응용한 원래 아이디어.
-- **dudect** (Reparaz, Balasch, Verbauwhede) — CT-KAT의 현재 custom
-  first-order timing screen에 영감을 준 도구. 현재 backend와 protocol
-  parity를 주장하지 않는다.
+- **dudect** (Reparaz, Balasch, Verbauwhede) — revision
+  `dc269651fb2567e46755cfb2a13d3875592968b5`의 `dudect.h`를 hash 검증해
+  official statistical backend로 실행한다. CT-KAT의 측정 하니스까지 upstream
+  dudect와 동일하다는 뜻은 아니다.
 
 > **Note on historical drafts**
 >
@@ -1073,6 +1149,7 @@ CSV col 7 값이 변경됨.
 
 ## License
 
-CT-KAT 자체는 MIT — [LICENSE](LICENSE). Vendored/derived PQClean 자료는
-각 원래 라이선스를 유지하며 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에
-revision, local modification, tree hash를 기록한다.
+CT-KAT 자체는 MIT — [LICENSE](LICENSE). Vendored/derived PQClean과 dudect
+자료는 각 원래 라이선스를 유지하며
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 revision, local
+modification, tree hash를 기록한다.

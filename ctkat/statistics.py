@@ -1,4 +1,4 @@
-"""Welch's t-test and batch stability checks for dudect-style timing analysis.
+"""Experimental first-order Welch and batch-stability analysis.
 
 Implements the formula from doc §17.3:
     t = (mean0 - mean1) / sqrt(var0/n0 + var1/n1)
@@ -8,19 +8,21 @@ Threshold defaults (§17.3):
     4.5 <= |t| < 10   => WARNING
     |t| >= 10         => FAIL
 
-`welch_with_cropping` implements dudect's percentile-cropping protocol
-(Reparaz et al. 2017, §3): re-run the t-test at several upper-tail cutoffs
-and report the max |t|. Outliers from preemption / cache-miss bursts inflate
-variance and mask leak signal; cropping the top 1-5% typically recovers it.
+This is the legacy ``experimental-first-order-v1`` backend.  It borrows
+dudect's pooled upper-tail cropping idea but is not the official protocol:
+there are only five cutoffs and no second-order test.  The separately compiled
+backend in :mod:`ctkat.official_dudect` executes the pinned upstream engine.
 """
 
 from __future__ import annotations
 
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite, sqrt
 from statistics import mean, variance
-from typing import List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+EXPERIMENTAL_FIRST_ORDER_BACKEND = "experimental-first-order-v1"
 
 
 @dataclass
@@ -47,7 +49,23 @@ class WelchResult:
     # samples we threw at it". Sign is preserved (positive means class 1 is
     # slower than class 0); interpretation per Cohen (1988): |d|<0.2 trivial,
     # ~0.5 medium, ≥0.8 large.
-    cohens_d: float = 0.0
+    cohens_d: Optional[float] = None
+    # Backend-v2 provenance. Plain statistical helpers leave these empty;
+    # `_do_dudect` fills them before any result reaches an artifact or verdict.
+    backend: str = ""
+    timing_validity: str = ""
+    validity_reasons: Tuple[str, ...] = ()
+    test_kind: str = "first-order-uncropped"
+    test_index: Optional[int] = None
+    protocol_test_count: int = 1
+    max_tau: Optional[float] = None
+    detection_estimate: Optional[float] = None
+    enough_measurements: Optional[bool] = None
+    upstream_revision: str = ""
+    analysis_seed: Optional[int] = None
+    calibration_seed: Optional[int] = None
+    protocol_results: List[Dict[str, Any]] = field(default_factory=list)
+    environment: Dict[str, Any] = field(default_factory=dict)
 
 
 def _cohens_d(n0: int, n1: int, m0: float, m1: float, v0: float, v1: float) -> float:

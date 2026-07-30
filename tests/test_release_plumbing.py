@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cli_version_matches_package_version():
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == __version__ == "0.3.0a1"
+    assert result.stdout.strip() == __version__ == "0.4.0a1"
 
 
 def test_all_six_templates_are_package_resources():

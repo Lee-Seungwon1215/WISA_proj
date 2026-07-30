@@ -414,6 +414,50 @@ def test_auto_clock_on_arm_loads_cleanly(monkeypatch, tmp_path: Path):
     assert cfg.dudect.clock == "auto"
 
 
+def test_dudect_backend_v2_defaults_to_official():
+    from ctkat.config import DudectConfig
+
+    assert DudectConfig().backend == "official-dudect"
+
+
+def test_legacy_bonferroni_key_warns_and_migrates():
+    from ctkat.config import DudectConfig
+
+    with pytest.warns(FutureWarning, match="never Bonferroni"):
+        cfg = DudectConfig.model_validate(
+            {
+                "backend": "experimental-first-order",
+                "bonferroni_correct": True,
+            }
+        )
+    assert cfg.sqrt_m_threshold_scaling is True
+
+
+def test_official_backend_rejects_legacy_sqrt_m_heuristic():
+    from ctkat.config import DudectConfig
+
+    with pytest.raises(ValidationError, match="cannot be used"):
+        DudectConfig(sqrt_m_threshold_scaling=True)
+
+
+def test_official_backend_rejects_custom_thresholds():
+    from ctkat.config import DudectConfig
+
+    with pytest.raises(ValidationError, match="cannot customize"):
+        DudectConfig(threshold_warning=6.0, threshold_fail=12.0)
+
+
+def test_experimental_backend_requires_ordered_positive_thresholds():
+    from ctkat.config import DudectConfig
+
+    with pytest.raises(ValidationError, match="threshold_warning < threshold_fail"):
+        DudectConfig(
+            backend="experimental-first-order",
+            threshold_warning=10.0,
+            threshold_fail=4.5,
+        )
+
+
 # --- Bundle D: leak_target field ---------------------------------------------
 
 

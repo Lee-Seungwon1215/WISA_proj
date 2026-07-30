@@ -1,0 +1,87 @@
+{
+  "acceptance": {
+    "aa_false_alarm_budget": 0.05,
+    "aa_observed_rate": 0.0,
+    "aa_pass": true,
+    "overall_pass": true,
+    "strong_effect_d": 0.2,
+    "strong_effect_min_power": 0.9,
+    "strong_effect_observed_power": 1.0,
+    "strong_effect_pass": true,
+    "uncropped_parity_abs_delta": 2.440714297335944e-10,
+    "uncropped_parity_pass": true,
+    "uncropped_parity_tolerance": 1e-09
+  },
+  "backend": "official-dudect-dc269651",
+  "design": {
+    "base_cycles": 100000,
+    "base_seed": 289177026900,
+    "injected_cohens_d": [
+      0.0,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "noise_sd_cycles": 100.0,
+    "samples_per_analysis_trace": 50050,
+    "samples_per_calibration_trace": 50050,
+    "trials_per_effect": 20
+  },
+  "kind": "timing-backend-synthetic-calibration",
+  "power_curve": [
+    {
+      "cohens_d_injected": 0.0,
+      "detection_rate": 0.0,
+      "detections": 0,
+      "max_abs_t_max": 2.700438798293428,
+      "max_abs_t_median": 1.6024390403145485,
+      "max_abs_t_min": 0.6597056705089016,
+      "trials": 20
+    },
+    {
+      "cohens_d_injected": 0.05,
+      "detection_rate": 0.0,
+      "detections": 0,
+      "max_abs_t_max": 7.895872848910599,
+      "max_abs_t_median": 6.041573345283515,
+      "max_abs_t_min": 4.104532225219302,
+      "trials": 20
+    },
+    {
+      "cohens_d_injected": 0.1,
+      "detection_rate": 0.85,
+      "detections": 17,
+      "max_abs_t_max": 12.86872602889108,
+      "max_abs_t_median": 10.736710905151451,
+      "max_abs_t_min": 9.529408137000866,
+      "trials": 20
+    },
+    {
+      "cohens_d_injected": 0.2,
+      "detection_rate": 1.0,
+      "detections": 20,
+      "max_abs_t_max": 24.400133249312642,
+      "max_abs_t_median": 22.27221711501867,
+      "max_abs_t_min": 20.969926403130952,
+      "trials": 20
+    }
+  ],
+  "protocol": {
+    "leak_threshold_abs_t": 10.0,
+    "minimum_class0_measurements": 10001,
+    "percentile_crops": 100,
+    "second_order": 1,
+    "tests": 102,
+    "uncropped_first_order": 1
+  },
+  "schema_version": "1.0",
+  "scope": "backend-only synthetic A/A and injected-effect calibration; does not validate a target harness, host, or measurement environment",
+  "uncropped_same_trace_parity": {
+    "abs_delta": 2.440714297335944e-10,
+    "comparison_trace_rule": "analysis rows [10,N), excluding negative cycles",
+    "experimental_python_t": -21.658917396151406,
+    "official_t": -21.658917396395477
+  },
+  "upstream_header_sha256": "3fb3b2bd7f9e17ae34b7c92518c1311c67342c56facc80da925d85f121b649da",
+  "upstream_revision": "dc269651fb2567e46755cfb2a13d3875592968b5"
+}

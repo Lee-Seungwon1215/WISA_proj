@@ -10,6 +10,7 @@ build:
 
 dudect:
   enabled: true
+  backend: official-dudect
   measurements: 50000
   warmup: 500
   batches: 10
@@ -17,8 +18,6 @@ dudect:
                          # (default since Bundle C) would also pick monotonic
                          # under QEMU but rdtsc on native x86_64 hosts
   seed: 0xC0FFEE
-  threshold_warning: 4.5
-  threshold_fail: 10.0
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:
