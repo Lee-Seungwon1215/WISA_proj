@@ -78,6 +78,42 @@ def test_run_timing_harness_passes_decimal_seed_override(monkeypatch, tmp_path):
     assert captured["cmd"] == [str(binary), str(0xDEADBEEF)]
 
 
+def test_run_timing_harness_passes_v2_mode_effect_and_count(monkeypatch, tmp_path):
+    import subprocess
+
+    from ctkat import dudect_runner as dr
+
+    captured = {}
+
+    def fake_run(cmd, *, cwd, stdout, stderr, timeout, check):
+        captured["cmd"] = cmd
+        stdout.write(
+            b"sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n"
+            b"0,0,100,7,7,,32\n1,1,220,7,7,,32\n"
+        )
+        stderr.write(
+            b"CTKAT-HARNESS-META protocol=timing-harness-v2 "
+            b"mode=positive randomness=seeded-interpose measurements=2\n"
+        )
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(dr.subprocess, "run", fake_run)
+    binary = tmp_path / "h"
+    binary.write_text("#!/bin/sh\n")
+    samples = run_timing_harness(
+        binary,
+        tmp_path,
+        timeout=5,
+        seed_override=123,
+        mode="positive",
+        effect_ticks=128,
+        measurements_override=2,
+    )
+    assert captured["cmd"] == [str(binary), "123", "positive", "128", "2"]
+    assert samples.runtime_metadata["protocol"] == "timing-harness-v2"
+    assert samples.runtime_metadata["randomness"] == "seeded-interpose"
+
+
 def test_parse_skips_malformed_rows():
     text = (
         "sample_id,class,cycles\n"
@@ -130,6 +166,39 @@ def test_zero_cycle_samples_dropped():
     s = parse_timing_csv(text)
     assert s.classes == [0, 0, 1]
     assert s.cycles == [100, 200, 300]
+
+
+def test_v2_parser_retains_aux_output_lengths_and_drop_reasons():
+    text = (
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n"
+        "0,0,100,3,3,,64\n"
+        "1,1,200,3,4,cpu-migration,65\n"
+        "2,0,0,3,3,clock-anomaly,66\n"
+        "3,1,110,3,3,,67\n"
+    )
+    samples = parse_timing_csv(text)
+    assert samples.protocol_version == "timing-harness-v2"
+    assert samples.sample_ids == [0, 3]
+    assert samples.aux_start == [3, 3]
+    assert samples.aux_end == [3, 3]
+    assert samples.output_lengths == [64, 67]
+    assert samples.dropped_migration_n1 == 1
+    assert samples.dropped_zero_n0 == 1
+    assert [drop.reason for drop in samples.dropped_samples] == [
+        "cpu-migration",
+        "clock-anomaly",
+    ]
+
+
+def test_v2_parser_fails_closed_on_unlabelled_aux_migration():
+    text = (
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n"
+        "0,0,100,9,10,,32\n"
+        "1,1,110,9,9,,32\n"
+    )
+    samples = parse_timing_csv(text)
+    assert samples.classes == [1]
+    assert samples.dropped_migration_n0 == 1
 
 
 def test_high_zero_rate_emits_warning(capsys):

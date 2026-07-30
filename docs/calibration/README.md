@@ -14,4 +14,6 @@ then records their numerical delta.
 This artifact validates the **statistical adapter**, not a cryptographic timing
 experiment. It cannot make a target run `timing_validity=valid`. Physical A/A,
 positive-control, pool/common-buffer symmetry, repeated processes, and native
-host checks remain TIME-001/POWER-001 work.
+host checks are implemented by timing-harness-v2, but must still be executed
+and accepted for each concrete target/host. The committed corpus refresh is
+separate work.

@@ -3,6 +3,55 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.5.0a1] - 2026-07-30
+
+### Added
+
+- KEM/sign `timing-harness-v2` with pre-generated class pools, symmetric
+  per-iteration copies, and same-address key/ciphertext/message work buffers.
+- Three independent target process/seed repetitions plus physical A/A,
+  setup-placebo, and three-point seeded positive-control traces from the same
+  generated target binary.
+- RDTSCP AUX capture and CPU-migration filtering, lossless drop reasons, real
+  sample identifiers, and signature output lengths in raw artifacts.
+- Target/run minimum-detectable-effect estimates, A/A false-alarm budget,
+  observed positive-control power curve, and fail-closed control gates.
+- Signature fixed-key/fixed-vs-random-message axis and an explicit full-API
+  scope manifest that distinguishes variable-length encoding from a separate
+  implementation-specific core harness.
+- `dudect_protocol_timings.csv` and timing backend report schema v2 containing
+  every target/control process trace, seed, effect, runtime randomness policy,
+  and trace hash.
+
+### Changed
+
+- KEM/sign timing can now become `timing_validity=valid`, but only when the
+  native host, trace integrity, three-repeat consistency, A/A budget,
+  setup-placebo, positive-control power, and seeded randomness gates all pass.
+- KEM `sk`, `ct`, and `fo` axes no longer keygen/encapsulate only one class
+  inside the measurement loop; all cryptographic input generation happens
+  before warmup.
+- Signature timing no longer generates a fresh class-1 key in the measurement
+  loop. Signing randomness, label generation, and pool selection use
+  domain-separated deterministic PRNG streams.
+- Physical control sample counts default to the target measurement count and
+  can be raised independently with `dudect.timing_protocol.control_measurements`.
+
+### Fixed
+
+- On RDTSCP hosts, a sample whose AUX value changes across the target call can
+  no longer enter a Welch/official dudect trace unnoticed.
+- Monotonic-clock harnesses now expose the POSIX clock API before any system
+  header and fall back cleanly where `CLOCK_MONOTONIC_RAW` is unavailable,
+  including strict C99 Linux builds.
+- Dropped timing rows are no longer renumbered away or omitted from the raw
+  artifact.
+- A class-dependent setup/cache artifact, label-only false alarm, or powerless
+  host can no longer be promoted to a valid target timing conclusion.
+- Falcon/other variable-length signature timing can no longer be silently
+  described as core signing cost; per-sample output length and scope are
+  explicit.
+
 ## [0.4.0a1] - 2026-07-30
 
 ### Added
@@ -99,7 +148,8 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.4.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/abaf92f...main
+[0.5.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/9768d83...main
+[0.4.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/abaf92f...9768d83
 [0.3.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/619d73c...abaf92f
 [0.2.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b1ccd4d...619d73c
 [0.1.0]: https://github.com/Lee-Seungwon1215/WISA_proj/commits/20a20f72a65216bb2e4edafc0b054789281f3455

@@ -1,0 +1,250 @@
+{#
+  Shared physical-measurement protocol for KEM/sign timing-harness-v2.
+  The including template must include its API header and randombytes.h first.
+#}
+
+#define CTKAT_USE(x) __asm__ __volatile__("" : : "g"(x) : "memory")
+#define CTKAT_BARRIER() __asm__ __volatile__("" : : : "memory")
+
+#define CTKAT_MEASUREMENTS {{ measurements }}
+#define CTKAT_WARMUP       {{ warmup }}
+#define CTKAT_POOL_SIZE    {{ pool_size | default(64) }}
+#define CTKAT_SEED         {{ seed }}ULL
+#define CTKAT_AUX_UNAVAILABLE UINT32_MAX
+
+enum ctkat_mode {
+    CTKAT_MODE_TARGET = 0,
+    CTKAT_MODE_AA = 1,
+    CTKAT_MODE_PLACEBO = 2,
+    CTKAT_MODE_POSITIVE = 3
+};
+
+enum ctkat_drop {
+    CTKAT_DROP_NONE = 0,
+    CTKAT_DROP_CLOCK = 1,
+    CTKAT_DROP_MIGRATION = 2
+};
+
+struct ctkat_options {
+    uint64_t seed;
+    enum ctkat_mode mode;
+    uint64_t effect_ticks;
+    size_t measurements;
+};
+
+/* Labels, pool selection, and target randomness are domain-separated.  A
+ * variable-time signer consuming more randombytes can therefore never alter
+ * future class labels or pool indices. */
+static uint64_t ctkat_label_state;
+static uint64_t ctkat_select_state;
+static uint64_t ctkat_random_state;
+static uint64_t ctkat_randombytes_calls;
+
+static uint64_t ctkat_xorshift64(uint64_t *state) {
+    uint64_t x = *state;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *state = x ? x : 0xC0FFEEULL;
+    return *state;
+}
+
+static void ctkat_prng_init(uint64_t seed) {
+    uint64_t base = seed ? seed : 0xC0FFEEULL;
+    ctkat_label_state = base ^ 0x4C4142454C5F5632ULL;
+    ctkat_select_state = base ^ 0x53454C4543545632ULL;
+    ctkat_random_state = base ^ 0x52414E444F4D5632ULL;
+    for (int i = 0; i < 8; i++) {
+        (void)ctkat_xorshift64(&ctkat_label_state);
+        (void)ctkat_xorshift64(&ctkat_select_state);
+        (void)ctkat_xorshift64(&ctkat_random_state);
+    }
+}
+
+static uint64_t ctkat_label_next(void) {
+    return ctkat_xorshift64(&ctkat_label_state);
+}
+
+static uint64_t ctkat_select_next(void) {
+    return ctkat_xorshift64(&ctkat_select_state);
+}
+
+static void ctkat_rand_bytes(uint8_t *buf, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        buf[i] = (uint8_t)(ctkat_xorshift64(&ctkat_random_state) & 0xffU);
+    }
+}
+
+/* If a strong target randombytes symbol is linked, it replaces this weak
+ * interpose and the counter remains zero.  That fact is emitted in the
+ * runtime manifest instead of falsely claiming seeded randomness. */
+__attribute__((weak)) int randombytes(uint8_t *buf, size_t len) {
+    ctkat_randombytes_calls++;
+    ctkat_rand_bytes(buf, len);
+    return 0;
+}
+
+static int ctkat_parse_u64(const char *text, uint64_t *value) {
+    char *end = NULL;
+    errno = 0;
+    if (text == NULL || text[0] == '\0' || text[0] == '-') return -1;
+    unsigned long long parsed = strtoull(text, &end, 10);
+    if (errno == ERANGE || end == NULL || *end != '\0') return -1;
+    *value = (uint64_t)parsed;
+    return 0;
+}
+
+static int ctkat_parse_options(
+    int argc,
+    char **argv,
+    struct ctkat_options *options
+) {
+    options->seed = CTKAT_SEED;
+    options->mode = CTKAT_MODE_TARGET;
+    options->effect_ticks = 0;
+    options->measurements = CTKAT_MEASUREMENTS;
+
+    /* v1-compatible forms: no args, or one explicit seed. */
+    if (argc == 1) return 0;
+    if (argc == 2) {
+        if (ctkat_parse_u64(argv[1], &options->seed) != 0 || options->seed == 0) return -1;
+        return 0;
+    }
+    /* v2 form: seed mode effect_ticks measurement_count (0 => compiled max). */
+    if (argc != 5 ||
+        ctkat_parse_u64(argv[1], &options->seed) != 0 ||
+        options->seed == 0) {
+        return -1;
+    }
+    if (strcmp(argv[2], "target") == 0) options->mode = CTKAT_MODE_TARGET;
+    else if (strcmp(argv[2], "aa") == 0) options->mode = CTKAT_MODE_AA;
+    else if (strcmp(argv[2], "placebo") == 0) options->mode = CTKAT_MODE_PLACEBO;
+    else if (strcmp(argv[2], "positive") == 0) options->mode = CTKAT_MODE_POSITIVE;
+    else return -1;
+
+    uint64_t requested = 0;
+    if (ctkat_parse_u64(argv[3], &options->effect_ticks) != 0 ||
+        ctkat_parse_u64(argv[4], &requested) != 0) {
+        return -1;
+    }
+    if (options->mode != CTKAT_MODE_POSITIVE && options->effect_ticks != 0) return -1;
+    if (requested > CTKAT_MEASUREMENTS) return -1;
+    if (requested != 0) options->measurements = (size_t)requested;
+    return 0;
+}
+
+static const char *ctkat_mode_name(enum ctkat_mode mode) {
+    switch (mode) {
+        case CTKAT_MODE_TARGET: return "target";
+        case CTKAT_MODE_AA: return "aa";
+        case CTKAT_MODE_PLACEBO: return "placebo";
+        case CTKAT_MODE_POSITIVE: return "positive";
+    }
+    return "unknown";
+}
+
+{% if clock == "rdtsc" -%}
+static inline uint64_t ctkat_now(uint32_t *aux) {
+    unsigned int local_aux = 0;
+    _mm_lfence();
+    uint64_t tick = __rdtscp(&local_aux);
+    _mm_lfence();
+    *aux = (uint32_t)local_aux;
+    return tick;
+}
+{% else -%}
+static inline uint64_t ctkat_now(uint32_t *aux) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    *aux = CTKAT_AUX_UNAVAILABLE;
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+{% endif %}
+
+/* Inject a clock-domain effect, not a compiler-dependent empty loop count.
+ * The measured positive-control artifact records the observed delta/power
+ * curve; this request is only the seeded lower bound. */
+static void ctkat_inject_delay(uint64_t ticks) {
+    if (ticks == 0) return;
+    uint32_t ignored_aux = 0;
+    uint64_t start = ctkat_now(&ignored_aux);
+    uint64_t now = start;
+    do {
+        CTKAT_BARRIER();
+        now = ctkat_now(&ignored_aux);
+    } while (now >= start && now - start < ticks);
+}
+
+static uint64_t cycles_buf[CTKAT_MEASUREMENTS];
+static uint8_t classes_buf[CTKAT_MEASUREMENTS];
+static uint32_t aux_start_buf[CTKAT_MEASUREMENTS];
+static uint32_t aux_end_buf[CTKAT_MEASUREMENTS];
+static uint8_t drop_buf[CTKAT_MEASUREMENTS];
+static size_t output_length_buf[CTKAT_MEASUREMENTS];
+
+static void ctkat_store_timing(
+    size_t index,
+    int clazz,
+    uint64_t t0,
+    uint64_t t1,
+    uint32_t aux0,
+    uint32_t aux1,
+    size_t output_length
+) {
+    classes_buf[index] = (uint8_t)clazz;
+    aux_start_buf[index] = aux0;
+    aux_end_buf[index] = aux1;
+    output_length_buf[index] = output_length;
+    if (t1 < t0) {
+        cycles_buf[index] = 0;
+        drop_buf[index] = CTKAT_DROP_CLOCK;
+    } else if (aux0 != CTKAT_AUX_UNAVAILABLE && aux0 != aux1) {
+        cycles_buf[index] = t1 - t0;
+        drop_buf[index] = CTKAT_DROP_MIGRATION;
+    } else {
+        cycles_buf[index] = t1 - t0;
+        drop_buf[index] = CTKAT_DROP_NONE;
+    }
+}
+
+static void ctkat_emit_trace(size_t measurements) {
+    printf("sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n");
+    for (size_t i = 0; i < measurements; i++) {
+        const char *reason = "";
+        if (drop_buf[i] == CTKAT_DROP_CLOCK) reason = "clock-anomaly";
+        else if (drop_buf[i] == CTKAT_DROP_MIGRATION) reason = "cpu-migration";
+        printf("%zu,%u,%llu,%u,%u,%s,%zu\n",
+               i,
+               (unsigned)classes_buf[i],
+               (unsigned long long)cycles_buf[i],
+               (unsigned)aux_start_buf[i],
+               (unsigned)aux_end_buf[i],
+               reason,
+               output_length_buf[i]);
+    }
+}
+
+static void ctkat_emit_metadata(
+    const struct ctkat_options *options,
+    uint64_t setup_rng_calls
+) {
+    const char *randomness =
+        ctkat_randombytes_calls > 0 ? "seeded-interpose" : "external-or-none";
+    uint64_t measured_calls =
+        ctkat_randombytes_calls >= setup_rng_calls
+            ? ctkat_randombytes_calls - setup_rng_calls
+            : 0;
+    fprintf(
+        stderr,
+        "CTKAT-HARNESS-META protocol=timing-harness-v2 mode=%s "
+        "randomness=%s setup_rng_calls=%llu measured_rng_calls=%llu "
+        "pool_size=%u effect_ticks=%llu measurements=%zu\n",
+        ctkat_mode_name(options->mode),
+        randomness,
+        (unsigned long long)setup_rng_calls,
+        (unsigned long long)measured_calls,
+        (unsigned)CTKAT_POOL_SIZE,
+        (unsigned long long)options->effect_ticks,
+        options->measurements
+    );
+}

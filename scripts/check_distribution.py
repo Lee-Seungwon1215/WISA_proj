@@ -23,6 +23,7 @@ TEMPLATES = {
     "timing_generic.c.j2",
     "timing_kem.c.j2",
     "timing_sign.c.j2",
+    "timing_v2_common.c.j2",
 }
 
 

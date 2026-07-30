@@ -112,7 +112,8 @@ WISA/
 │   ├── _vendor/dudect/         # exact pinned upstream header + license
 │   └── templates/
 │       ├── harness_generic.c.j2 / harness_kem.c.j2 / harness_sign.c.j2
-│       └── timing_generic.c.j2 / timing_kem.c.j2 / timing_sign.c.j2
+│       ├── timing_generic.c.j2 / timing_kem.c.j2 / timing_sign.c.j2
+│       └── timing_v2_common.c.j2   # KEM/sign pool/control/AUX protocol
 ├── examples/
 │   ├── toy_password/           # bad_compare vs safe_compare (Phase 0~2)
 │   ├── toy_dudect/             # leaky_function vs safe_function (Phase 4)
@@ -265,15 +266,24 @@ dudect:
   batches: 10                  # batch stability 분할 수
   clock: auto                  # auto (기본, 환경 감지) | monotonic | rdtsc (x86 only)
   seed: 0xC0FFEE               # null이면 매번 랜덤 시드 + 로그에 기록
-                               # ⚠ PQClean-backed KEM 하네스(template: kem)는
-                               # crypto_kem_keypair/enc가 OS entropy(getrandom)을
-                               # 쓰기 때문에 이 seed로 재현되지 않음. 자세한 건
-                               # "재현성 (seed)" 섹션 참고.
+                               # KEM/sign은 weak randombytes interpose 사용 여부를
+                               # runtime manifest로 확인. strong OS-random symbol이
+                               # 이기면 validity=confounded.
   timeout: 600                 # (E-1) per-harness wall-clock ceiling. 초과 시
                                # TimeoutExpired → status=ERROR → verdict
                                # INCONCLUSIVE. Python traceback이 나가지 않음.
   compile_timeout: 600         # timing harness / backend bridge compile ceiling
   backend_timeout: 120         # raw trace를 통계 backend가 분석하는 시간 제한
+  timing_protocol:             # KEM/sign timing-harness-v2 physical controls
+    process_repeats: 3         # valid 후보가 되기 위한 최소 독립 process/seed 수
+    pool_size: 64              # class 0/1 pool을 측정 전에 각각 생성
+    control_measurements: null # null이면 measurements 재사용
+    positive_control_effects: [32, 128, 512] # cycles(rdtscp) 또는 ns(monotonic)
+    aa_abs_t_limit: 4.5        # A/A·setup-placebo 사전 false-alarm limit
+    positive_abs_t_threshold: 10.0
+    aa_max_failures: 0
+    target_power: 0.80
+    power_alpha: 0.01
   workdir: .
   generated_dir: ./_generated_dudect
   compiler:
@@ -283,7 +293,7 @@ dudect:
     cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
   harnesses:
     - name: bar
-      template: generic        # generic | kem
+      template: generic        # generic | kem | sign
       extra_headers: [api.h]
       include_dirs: [include]
       sources: [src/foo.c]
@@ -293,10 +303,14 @@ dudect:
       args: [secret, "sizeof(secret)"]
       buffers:
         - {name: secret, size: "16", role: secret}
-      # kem 전용 (template: kem일 때):
+      # kem/sign 공통:
       header: api.h
       prefix: "PQCLEAN_FOO_CLEAN_"
-      kem_decapsulation: valid  # valid | invalid. invalid = FO/rejection 구조 경로
+      randombytes_header: randombytes.h # seeded weak interpose용; toy만 null
+      # kem 전용:
+      leak_target: sk          # sk | ct | fo
+      # sign 전용:
+      sign_leak_target: sk     # sk | msg
 
 report:
   output_dir: ./reports
@@ -338,16 +352,19 @@ generation, target build, timing measurement와 artifact orchestration을
 담당하고, 별도 C process가 hash 검증된 upstream `dudect.h`의 통계 함수를
 직접 실행한다.
 
-official protocol을 보존하려고 하니스를 두 번 실행한다. 첫 trace는 100개 crop
-threshold를 정하는 calibration batch라 통계에서 버리고, 독립된 두 번째 trace만
-분석한다. 결과는 uncropped first-order 1개 + cropped first-order 100개 +
+official protocol의 target repeat 하나마다 하니스를 두 번 실행한다. 첫 trace는
+100개 crop threshold를 정하는 calibration batch라 통계에서 버리고, 독립된
+두 번째 trace만 분석한다. KEM/sign v2 기본은 이 쌍을 세 process/seed에서
+반복한다. 결과는 uncropped first-order 1개 + cropped first-order 100개 +
 second-order 1개, 총 102개 검정의 max `|t|`, `tau=t/sqrt(n)`, detection
-estimate를 포함한다. upstream 규칙대로 class 0 retained sample이 10,000개를
-넘지 못하면 `INSUFFICIENT`이며 PASS가 아니다.
+estimate를 포함한다. upstream 규칙대로 각 repeat의 class 0 retained sample이
+10,000개를 넘지 못하면 `INSUFFICIENT`이며 PASS가 아니다. A/A/placebo/effect
+trace는 target의 102-test 판정과 섞지 않고 사전 선언한 raw first-order control
+threshold로 validity/power만 검증한다.
 
-두 run이 같은 deterministic input stream을 재사용하지 않도록 analysis는 yaml
-seed, calibration은 uint64 domain-separated seed를 같은 binary의 runtime
-argument로 사용한다. 두 seed는 summary/JSON에 함께 기록한다.
+모든 target/calibration/control process가 같은 deterministic input stream을
+재사용하지 않도록 yaml seed에서 role/repeat/effect별 uint64 seed를
+domain-separate한다. 모든 seed는 protocol CSV/JSON에 기록한다.
 
 이 upstream revision은 x86 intrinsics를 사용하므로 official backend는
 **x86_64 전용**이다. ARM/macOS에서는 native x86_64 Linux/macOS 장비를 쓰거나
@@ -374,12 +391,20 @@ Desktop의 `VirtualApple` x86 translation marker도 같은 정책으로 잡는�
 
 ### 측정 primitives (생성된 C harness)
 
+전체 gate/축/아티팩트 계약은
+[`docs/TIMING_HARNESS_V2.md`](docs/TIMING_HARNESS_V2.md)에 고정돼 있다.
+
 | 항목 | 내용 |
 |---|---|
-| rdtsc 직렬화 | `clock=rdtsc` 모드에서 `_mm_lfence` + `__rdtscp` + `_mm_lfence`. OOO/speculation으로 측정 명령이 timed region 밖으로 새는 것 방지 |
+| input pool | KEM/sign class 0/1 입력을 warmup 전에 전부 생성. 측정 loop 안 keygen/enc 없음 |
+| setup 대칭 | 두 class 모두 같은 길이 `memcpy`를 거쳐 동일 주소 `*_work` buffer 사용 |
+| timed region | target API 호출만 포함. positive control에서만 요청한 class-1 delay 추가 |
+| physical controls | 같은 binary/process 경계의 label-only A/A, common work buffer를 fixed data로 정규화하는 setup-placebo, 3단계 effect A/B |
+| PRNG domain | class label, pool index, target randombytes를 서로 다른 seed domain으로 분리 |
+| rdtsc 직렬화/AUX | `_mm_lfence` + `__rdtscp` + `_mm_lfence`; 전후 AUX가 다르면 `cpu-migration`으로 폐기 |
 | compiler 배리어 | `CTKAT_USE(ret)` 매크로로 비-void 리턴값 materialize. `-fno-lto` 기본값과 함께 외부 링크 함수 호출 elide 방어 |
-| class 라벨 균형 | xorshift64의 상위 비트 (`>>32 & 1`) 사용 — LSB는 분포 약함 |
-| 언더플로우 clamp | `(t1 < t0) ? 0 : t1-t0`. TSC skew/clock anomaly로 인한 uint64 wrap 방지 |
+| signature scope | full `crypto_sign_signature` API. `output_length`를 행마다 기록하며 core sampler는 별도 generic harness/row |
+| drop provenance | `clock-anomaly`, `cpu-migration`, malformed를 이유·class·실제 sample id와 함께 보존 |
 
 ### 컴파일 옵션 비대칭 경고 (Bundle E-3)
 
@@ -422,21 +447,38 @@ dudect:
 | raw 판정 | upstream max `|t| > 10`이면 FAIL | `<4.5` PASS, `4.5–10` WARNING, `≥10` FAIL (설정 가능) |
 | 최소 표본 | class 0 retained sample >10,000, 아니면 `INSUFFICIENT` | 별도 upstream minimum 없음 |
 | 추가 통계 | max `tau`, detection estimate, 102개 test 전체 | batch t-score, uncropped score, Cohen's d |
-| evidence validity | 환경·하니스·power control을 별도 검사 | 항상 target-level power 미검증으로 non-decisional |
+| evidence validity | 환경·하니스·power control을 별도 검사 | 항상 non-decisional; `valid` 승격은 pinned official backend만 |
 
-두 backend 모두 parse 단계에서 `cycles=0`을 버리고 클래스별 drop 수를
-기록한다. 전체 zero drop이 1%를 넘거나, 한 class의 drop이 5%를 넘으면서
-class 간 차이도 5%를 넘으면 `environment-rejected`다. official engine에
-넘기는 trace와 raw CSV는 같은 filtered sample을 사용한다. analysis와
-calibration trace 모두 expected row 수·malformed bookkeeping을 검사하며,
-한 행이라도 설명되지 않으면 `timing_validity=error`다.
+두 backend 모두 `clock-anomaly`와 RDTSCP AUX CPU migration sample을 버리고
+class별 이유/개수를 기록한다. 전체 drop이 1%를 넘거나 한 class의 drop이 5%를
+넘으면서 class 간 차이도 5%를 넘으면 `environment-rejected`다. official
+engine에는 raw CSV에서 `drop_reason`이 빈 retained row만 넘기고, CSV 자체는
+폐기 row도 원래 sample id로 보존한다. target, calibration, A/A,
+setup-placebo, positive trace를 전부 expected row
+수·malformed bookkeeping으로 검사하며 한 행이라도 설명되지 않으면
+`timing_validity=error`다.
 
-`template: kem/sign`의 현재 측정 설계는 pool/common-buffer와 physical A/A
-control이 아직 없으므로 raw status와 무관하게 `confounded`다. generic
-하니스도 target별 physical A/A·positive-control power artifact가 붙기 전에는
-`insufficient-power`다. 즉 official dudect의 raw PASS/FAIL은 엔진 출력이지
-그 자체로 유효한 target 결론이 아니다. 이 fail-closed 경계는 다음
-`TIME-001`/`POWER-001`에서 해제한다.
+KEM/sign이 `valid` 후보가 되려면 다음을 **전부** 통과해야 한다.
+
+1. native/non-emulated host와 Linux single-CPU affinity
+2. 세 개 이상 독립 process/seed에서 같은 target raw status
+3. label만 다른 physical A/A의 사전 false-alarm budget
+4. class setup 뒤 fixed target을 재는 setup-placebo 무신호
+5. 가장 큰 seeded effect가 설정한 `target_power`로 반복 검출
+6. 모든 official target repeat의 minimum measurement 충족
+7. runtime manifest가 seeded randombytes interpose 사용을 확인
+
+A/A/setup-placebo가 깨지면 `confounded`, effect power나 repeat 수/일관성이
+부족하면 `insufficient-power`다. 이 validity는 raw PASS/FAIL과 독립이라
+`valid + FAIL`은 유효한 timing signal, `valid + PASS`는 해당 run의 검출
+한계 안에서 no-signal이다. generic은 caller-defined setup을 자동 대칭화할
+수 없으므로 계속 `insufficient-power`다.
+
+`dudect_backend_report.json`에는 A/A별 t, false-alarm budget, 각 effect의
+실측 mean delta/detection rate, A/A noise로 계산한 run별 minimum detectable
+effect(MDE)가 들어간다. MDE는 `power_alpha`와 `target_power`를 쓴
+two-sided normal approximation이며 “검출 못 했으니 0” 같은 개소리를
+막기 위한 run 한계치다.
 
 Linux에서는 process affinity가 CPU 하나가 아니면, 그리고 모든 OS에서 QEMU
 emulation이면 `environment-rejected`다. system, machine, kernel, clock,
@@ -463,26 +505,22 @@ C와 Python Welch `|Δt| ≤ 1e-9`다.
 
 ### 재현성 (seed)
 
-`dudect.seed`는 **자동 생성 하네스의 xorshift64 PRNG**만 제어함. 구체적으로:
+`dudect.seed`에서 target/calibration/A/A/placebo/effect process seed를
+domain-separate하고, 각 process 안에서도 class label/pool index/target
+randomness PRNG를 분리한다.
 
 | 부분 | seed로 재현됨? |
 |---|---|
 | `template: generic`의 `rand_bytes()`로 채우는 secret/public 버퍼 | ✅ 예 |
-| `toy_kem_ct_leak` 등 합성 KEM 하네스의 PRNG-기반 ct 생성 | ✅ 예 |
-| `template: kem`에서 PQClean `crypto_kem_keypair()` 호출 결과 (sk-leak 모드 setup + class 1 매 반복, ct-leak 모드 setup) | ❌ **아니오** |
-| `template: kem`에서 PQClean `crypto_kem_enc()` 호출 결과 (ct-leak 모드 setup + class 1 매 반복) | ❌ **아니오** |
+| KEM/sign pool의 PQClean keypair/enc/sign randomness (`common/randombytes.c` 제외 시) | ✅ 예 |
+| class label sequence | ✅ 예; target random consumption과 별도 stream |
+| pool index sequence | ✅ 예; label/randomness와 별도 stream |
+| strong target `randombytes`를 함께 link한 경우 | ❌ OS/target 정책. runtime manifest가 `external-or-none`로 기록하고 validity를 `confounded`로 막음 |
 
-이유: PQClean의 `common/randombytes.c`는 `getrandom()` / `/dev/urandom`을
-직접 호출함 (OS entropy). yaml `seed`는 그 레이어에 닿지 않음.
-
-**실용적 함의**:
-- `dudect_raw_timings.csv` 두 run 사이 bit-identical diff를 기대하지 말 것 —
-  PQClean KEM 하네스에선 sk/ct 값 자체가 매번 달라짐 (legacy 동작).
-- |t| 절대값이 run 간 ±10-20% 흔들리는 게 정상 (OS 스케줄링/캐시 효과 포함).
-  PASS/WARNING/FAIL 상태와 자릿수만 비교.
-
-합성 하네스(`toy_dudect`, `toy_kem_ct_leak`)는 위 영향 없음 — 그 쪽은 모두
-xorshift PRNG로만 입력을 만든다.
+cycle/ns 값 자체는 scheduler, cache, frequency 때문에 bit-identical하지 않다.
+재현되는 것은 입력·label·effect protocol이다. 각 process의 seed와 실제
+randomness policy는 `dudect_backend_report.json`과
+`dudect_protocol_timings.csv`에 남는다.
 
 **`seed: 0` 금지** (F16). `ct.seed`와 `dudect.seed` 둘 다 config 로드
 단계에서 `0` 입력을 거부한다. 이유: 생성된 C 하네스의 xorshift64는
@@ -493,14 +531,14 @@ xorshift PRNG로만 입력을 만든다.
 silent로 어긋난다. validator가 그걸 막는다. 다른 값이 필요하면
 `seed: 1` 이상을 박거나, `dudect.seed: null`(랜덤 + 로그 출력)을 쓰면 됨.
 
-### 결정론적 PQClean dudect — `randombytes` interpose (Bundle J, R1 Option B)
+### 결정론적 PQClean dudect — `randombytes` interpose
 
-Bundle J부터 timing_kem 하네스가 자기 자신의 `randombytes(uint8_t *buf,
-size_t len)`을 **weak symbol**로 emit한다. xorshift PRNG (CTKAT_SEED 기반)
-로 buf를 채우는 구현. 사용자가 yaml `sources:`에서 PQClean의
+KEM/sign v2 하네스는 자기 자신의 `randombytes(uint8_t *buf, size_t len)`을
+**weak symbol**로 emit한다. target-randomness 전용 PRNG로 buf를 채운다.
+사용자가 yaml `sources:`에서 PQClean의
 `common/randombytes.c`를 **빼면** 우리 weak 정의가 유일 정의가 되어
-`crypto_kem_keypair` / `crypto_kem_enc`의 모든 randomness가 시드 결정론적
-이 된다 — `dudect_raw_timings.csv`가 bit-identical (modulo R3 시스템 노이즈).
+`crypto_kem_keypair` / `crypto_kem_enc` / `crypto_sign_*` randomness가
+기록된 seed로 결정된다.
 
 opt-in 방법:
 
@@ -519,9 +557,11 @@ dudect:
 ```
 
 PQClean common/randombytes.c가 sources에 그대로 박혀있으면 strong이 win
-하니까 우리 weak 정의는 무시됨 (= legacy OS entropy 동작). backward-
-compat 보장. GCC/Clang 기준 — Windows MSVC의 weak symbol 시맨틱은
-다르므로 현재 지원하지 않음 (§Windows MSVC caveat 참고).
+하므로 weak 정의는 무시된다. v2는 setup/measurement randombytes call count를
+stderr manifest로 측정해 이 경우를 숨기지 않고 `confounded` 처리한다.
+`randombytes_header` 기본값은 `randombytes.h`; 매크로 namespace가 없는
+deterministic toy만 `null`을 쓸 수 있다. GCC/Clang 기준이며 Windows MSVC의
+weak symbol 시맨틱은 현재 지원하지 않는다.
 
 ### `dudect_summary.csv` 컬럼 reference
 
@@ -546,18 +586,23 @@ compat 보장. GCC/Clang 기준 — Windows MSVC의 weak symbol 시맨틱은
 | 31 | `upstream_revision` | pinned upstream commit |
 | 32 | `calibration_raw_n_total` | 별도 calibration trace의 raw sample 수 |
 | 33-34 | `analysis_seed`, `calibration_seed` | 두 trace의 domain-separated PRNG seed |
+| 35-37 | `dropped_migration_n0`, `dropped_migration_n1`, `malformed_count` | AUX migration 및 parse drop bookkeeping |
+| 38-42 | `harness_protocol`, `process_repeats`, `aa_failures`, `positive_power_passed`, `minimum_detectable_effect_max` | timing-harness-v2 control/power 요약 |
 
 컬럼 1-14는 backward compatibility 보장 (외부 awk 스크립트 호환). 15-17은
 Bundle B diagnostic 컬럼, 18-20은 Bundle F (S1) raw-count 컬럼, 21은
-Bundle G (S3) 효과 크기, 22-34는 timing-backend-v2 컬럼이다. 모두 끝에
+Bundle G (S3) 효과 크기, 22-34는 timing-backend-v2, 35-42는
+timing-harness-v2 컬럼이다. 모두 끝에
 append됐으므로 기존 awk-by-position 파서는 안 깨진다.
 
 추가 timing artifact:
 
 - `dudect_raw_timings.csv` — analysis trace
 - `dudect_calibration_timings.csv` — official crop threshold 전용으로 버린 첫 trace
+- `dudect_protocol_timings.csv` — 모든 target repeat/calibration/A/A/placebo/effect
+  raw row, process index, seed, effect, AUX, drop reason
 - `dudect_backend_report.json` — 102개 test 전체, host manifest, validity 사유,
-  raw/calibration trace SHA-256
+  control/power/MDE manifest와 세 raw artifact SHA-256
 
 ### `ctkat_verdict.csv` 컬럼 reference (legacy `run` compatibility)
 
@@ -617,9 +662,9 @@ fo`는 timing 비교 축이다. 둘은 서로 대체가 아니라 보완 관계�
 
 | `leak_target` | 측정 path | 고정 | 변화 | 잡는 leak |
 |---|---|---|---|---|
-| `sk` (기본) | **정상 dec** (양 class 모두 valid ct를 `enc()`로 생성) | ct는 각 class의 sk에 매칭된 valid ct | class 0 sk_fixed vs class 1 fresh sk_random | 정상 dec 경로에서 sk-content dependent timing (sk-indexed branch/lookup) |
-| `ct` | **정상 dec** (valid ct만 사용) | sk fixed 양 class | class 0 fixed ct vs class 1 fresh ct via `enc()` | 정상 dec 경로에서 ct-content dependent timing |
-| `fo` | **정상 ↔ FO** 비교 | sk fixed 양 class | class 0 valid ct (`enc()`) vs class 1 random/invalid ct | 정상 path와 FO fallback path 사이의 timing 차이 (rejection-side leak) |
+| `sk` (기본) | **정상 dec** | 각 pool entry의 ct는 해당 sk에 매칭된 valid ct | class-0 fixed tuple pool vs class-1 random valid tuple pool | 정상 dec 경로의 sk-content dependent timing |
+| `ct` | **정상 dec** | sk fixed 양 class | class-0 fixed valid-ct pool vs class-1 random valid-ct pool | 정상 dec 경로의 ct-content dependent timing |
+| `fo` | **정상 ↔ FO** 비교 | sk fixed 양 class | paired valid-ct pool vs byte-corrupted invalid-ct pool | 정상 path와 FO fallback/implicit-rejection timing 차이 |
 
 **Bundle M (F13/F14 audit fix)**: 이전 버전의 sk-leak은 양 class 모두
 `rand_bytes(ct, ...)`로 ct를 random bytes로 채워 dec()가 매번 FO
@@ -631,10 +676,11 @@ valid ct를 `enc()`로 생성하도록 수정 → sk-leak이 진짜 정상 path�
 Bundle M 이전 결과 (`dudect_summary.csv`의 |t| 값) 와 비교하려면 측정
 경로 자체가 달라졌음을 감안할 것.
 
-매크로의 cache-balance warm step도 같은 family로 수정 (F14): 이전엔
-warm dec가 항상 random ct로 호출되어 FO path로 burn-in 됐는데, 측정 dec
-와 동일 (ct, sk) pair로 warm해서 cache state가 실제로 "just-ran-the-
-measured-path"가 되도록 정정.
+`0.5.0a1`의 timing-harness-v2는 여기서 한 번 더 갈아엎었다. 양 class pool을
+측정 전에 만들고, measurement loop는 같은 `sk_work`/`ct_work` 주소로 같은
+길이 복사만 한 뒤 dec를 딱 한 번 잰다. class-1-only keygen/enc와
+per-iteration warm dec는 없다. setup 잔류 효과는 fixed target을 재는 별도
+setup-placebo trace가 검증한다.
 
 ### ⚠️ ct-leak 모드의 본질적 한계
 
@@ -668,13 +714,13 @@ PQClean ML-KEM의 reciprocal-multiply fix(`* 80635 >> 28`)를 되돌려
 즉 KyberSlash 판정은 Memcheck taint를 asm `div/idiv` operand에 연결한
 결과가 아니라, taint-free asm 후보에 source triage를 붙인 결과다.
 
-**❌ FO-fallback path 미커버 → `leak_target: fo` 사용 (Bundle K, U2 #1)**:
+**❌ FO-fallback path 미커버 → `leak_target: fo` 사용**:
 `leak_target: ct`는 `enc()`로 valid ct만 생성하므로 FO fallback / implicit
 rejection 경로는 안 들어감. 이 경로에 거주하는 leak (예: 정상 path 대비
 시간 차이로 ct invalidity가 누설)을 검출하려면 **`leak_target: fo`** 박을 것.
-class 0 = 매 iteration 새 valid ct (enc()로 생성), class 1 = random/invalid
-ct (FO fallback 강제). 같은 sk_fixed 위에서 dec timing 비교 → 정상 vs
-rejection 경로의 timing 차이가 검출됨.
+class 0/1의 paired valid/invalid ct pool을 측정 전에 만든다. 같은 sk와
+동일 work-buffer 주소에서 dec timing을 비교하므로 정상 vs rejection 경로의
+차이를 보되 per-iteration enc confound는 넣지 않는다.
 
 ```yaml
 dudect:
@@ -687,6 +733,22 @@ dudect:
 
 sk-leak / ct-leak / fo-leak 세 모드는 직교 axis — 한 KEM 구현을 더 넓게
 보려면 3개 하니스를 두되, 결과는 각 하니스/입력 분포 기준으로 읽을 것.
+
+### Signature timing axes — `sk` / `msg`
+
+`template: sign`도 v2 pool/common-buffer/control 프로토콜을 쓴다.
+
+| `sign_leak_target` | 고정 | 변화 |
+|---|---|---|
+| `sk` (기본) | message | fixed-key pool vs random valid-key pool |
+| `msg` | secret key | fixed-message pool vs random-message pool |
+
+portable template가 재는 경계는 full `crypto_sign_signature` API다. Falcon처럼
+signature 길이/압축 cost가 변할 수 있으므로 모든 sample의 `output_length`를
+기록하고 JSON manifest에 min/max/unique/variable을 남긴다. sampler core,
+acceptance loop, encoding을 분리하려면 구현마다 ABI가 다르므로 각각
+`template: generic`의 별도 function boundary와 별도 evidence row를 만든다.
+full API 결과를 멋대로 “core signing cost”라고 부르는 건 금지다.
 
 ---
 

@@ -19,10 +19,17 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cli_version_matches_package_version():
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == __version__ == "0.4.0a1"
+    assert result.stdout.strip() == __version__ == "0.5.0a1"
 
 
-def test_all_six_templates_are_package_resources():
+def test_citation_release_version_matches_package_version():
+    import yaml
+
+    citation = yaml.safe_load((ROOT / "CITATION.cff").read_text(encoding="utf-8"))
+    assert citation["version"] == __version__.replace("a", "-alpha.")
+
+
+def test_all_templates_and_v2_support_are_package_resources():
     template_root = resources.files("ctkat").joinpath("templates")
     expected = {
         "harness_generic.c.j2",
@@ -31,6 +38,7 @@ def test_all_six_templates_are_package_resources():
         "timing_generic.c.j2",
         "timing_kem.c.j2",
         "timing_sign.c.j2",
+        "timing_v2_common.c.j2",
     }
     assert {
         entry.name for entry in template_root.iterdir() if entry.name.endswith(".j2")

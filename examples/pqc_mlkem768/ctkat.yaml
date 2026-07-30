@@ -128,8 +128,8 @@ dudect:
         # The ct/Valgrind harness above keeps it on purpose: that template has
         # no override and Valgrind is deterministic regardless.
 
-    # ct-leak axis (Bundle D): class 0 fixed ct vs class 1 fresh ct, sk
-    # held constant. Detects ct-content leaks (e.g. ct-indexed branches).
+    # ct-leak axis: pre-generated fixed-valid vs random-valid ct pools, sk held
+    # constant, then copied into one work address. Detects ct-content leaks.
     # Pairs with no ct.harness — Valgrind has no sk/ct axis distinction.
     # NOTE: this catches common ct-leaks but NOT rare/adversarial ct triggers
     # or KyberSlash-style operand-latency leaks — see README "ct-leak 모드의

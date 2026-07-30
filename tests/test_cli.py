@@ -1039,6 +1039,110 @@ def test_timing_validity_checks_discarded_calibration_trace_quality():
     assert result.environment["rejected"] is True
 
 
+def _v2_validity_fixture():
+    from ctkat.config import DudectHarnessConfig
+    from ctkat.statistics import WelchResult
+
+    samples = TimingSamples(
+        classes=[0, 1] * 50,
+        cycles=[100.0, 101.0] * 50,
+        raw_n_total=100,
+        protocol_version="timing-harness-v2",
+    )
+    result = WelchResult(
+        n0=50,
+        n1=50,
+        mean0=100.0,
+        mean1=101.0,
+        var0=1.0,
+        var1=1.0,
+        t_score=-1.0,
+        abs_t_score=1.0,
+        status="PASS",
+        backend="official-dudect-dc269651",
+        enough_measurements=True,
+        harness_protocol={
+            "protocol": "timing-harness-v2",
+            "process_repeats_observed": 3,
+            "process_repeats_required": 3,
+            "aa_budget_passed": True,
+            "setup_placebo_passed": True,
+            "positive_power_passed": True,
+            "target_status_consistent": True,
+            "target_repeats": [
+                {"enough_measurements": True},
+                {"enough_measurements": True},
+                {"enough_measurements": True},
+            ],
+            "randomness_policies_observed": ["seeded-interpose"],
+        },
+    )
+    harness = DudectHarnessConfig(name="kem", template="kem", header="api.h")
+    return samples, result, harness
+
+
+def test_timing_v2_role_repeat_effect_seeds_are_unique_and_deterministic():
+    import ctkat.cli as cli_module
+
+    first = {
+        (role, repeat, effect): cli_module._timing_domain_seed(0xC0FFEE, role, repeat, effect)
+        for role in ("target", "calibration", "aa", "placebo", "positive")
+        for repeat in range(3)
+        for effect in (range(3) if role == "positive" else (0,))
+    }
+    second = {key: cli_module._timing_domain_seed(0xC0FFEE, *key) for key in first}
+    assert first == second
+    assert len(set(first.values())) == len(first)
+    assert all(seed != 0 for seed in first.values())
+
+
+def test_timing_harness_v2_controls_can_reach_valid():
+    import ctkat.cli as cli_module
+
+    samples, result, harness = _v2_validity_fixture()
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "valid"
+    assert result.validity_reasons == ()
+
+
+def test_timing_harness_v2_aa_failure_is_confounded():
+    import ctkat.cli as cli_module
+
+    samples, result, harness = _v2_validity_fixture()
+    result.harness_protocol["aa_budget_passed"] = False
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "confounded"
+    assert any("A/A" in reason for reason in result.validity_reasons)
+
+
+def test_timing_harness_v2_positive_control_failure_is_insufficient_power():
+    import ctkat.cli as cli_module
+
+    samples, result, harness = _v2_validity_fixture()
+    result.harness_protocol["positive_power_passed"] = False
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "insufficient-power"
+    assert any("positive-control" in reason for reason in result.validity_reasons)
+
+
 # --- Bundle E-2: F2 (valgrind ERROR) + F5 (sentinel) ----------------------
 
 
@@ -1233,7 +1337,10 @@ def test_dudect_summary_csv_header_snapshot(tmp_path):
         "raw_n_total,dropped_zero_n0,dropped_zero_n1,cohens_d,"
         "backend,timing_validity,validity_reasons,test_kind,test_index,"
         "protocol_test_count,max_tau,detection_estimate,enough_measurements,"
-        "upstream_revision,calibration_raw_n_total,analysis_seed,calibration_seed"
+        "upstream_revision,calibration_raw_n_total,analysis_seed,calibration_seed,"
+        "dropped_migration_n0,dropped_migration_n1,malformed_count,"
+        "harness_protocol,process_repeats,aa_failures,positive_power_passed,"
+        "minimum_detectable_effect_max"
     )
     assert header == expected
 
@@ -1291,6 +1398,59 @@ def test_dudect_backend_report_preserves_calibration_and_protocol(tmp_path):
     assert harness["analysis_seed"] == 123
     assert harness["calibration_seed"] == 456
     assert harness["tests"][0]["kind"] == "first-order-uncropped"
+
+
+def test_v2_report_preserves_dropped_rows_and_all_protocol_traces(tmp_path):
+    import json
+
+    from ctkat.cli import _emit_dudect_report
+    from ctkat.dudect_runner import (
+        TimingProtocolTrace,
+        parse_timing_csv,
+    )
+    from ctkat.statistics import WelchResult
+
+    trace = parse_timing_csv(
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n"
+        "0,0,100,7,7,,32\n"
+        "1,1,200,7,8,cpu-migration,33\n"
+        "2,1,110,7,7,,34\n"
+        "3,0,105,7,7,,32\n"
+    )
+    trace.protocol_traces = [
+        TimingProtocolTrace("aa", 0, 123, trace),
+    ]
+    result = WelchResult(
+        n0=2,
+        n1=1,
+        mean0=102.5,
+        mean1=110.0,
+        var0=12.5,
+        var1=0.0,
+        t_score=-1.0,
+        abs_t_score=1.0,
+        status="PASS",
+        harness_protocol={
+            "protocol": "timing-harness-v2",
+            "process_repeats_observed": 3,
+            "aa_failures": 0,
+            "positive_power_passed": True,
+            "minimum_detectable_effects": [1.25],
+        },
+    )
+    _emit_dudect_report("p", tmp_path, [("h", trace, result, [])])
+
+    raw = (tmp_path / "dudect_raw_timings.csv").read_text().splitlines()
+    assert raw[0].endswith("drop_reason,output_length,protocol")
+    assert any(",1,1,200.0,7,8,cpu-migration,33,timing-harness-v2" in row for row in raw)
+    protocol = (tmp_path / "dudect_protocol_timings.csv").read_text().splitlines()
+    assert len(protocol) == 5
+    assert any(",aa,0,123,0,1,1,200.0,7,8,cpu-migration,33," in row for row in protocol)
+    payload = json.loads((tmp_path / "dudect_backend_report.json").read_text())
+    assert payload["schema_version"] == "2.0"
+    assert payload["protocol_trace_sha256"]
+    assert payload["harnesses"][0]["drop_counts"]["cpu_migration_n1"] == 1
+    assert payload["harnesses"][0]["harness_protocol"]["protocol"] == "timing-harness-v2"
 
 
 def test_dudect_summary_csv_has_raw_count_columns(tmp_path):

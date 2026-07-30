@@ -6,6 +6,7 @@ import secrets
 import shutil
 import subprocess
 from pathlib import Path
+from statistics import NormalDist
 from typing import Dict, List, Optional, Tuple
 
 import typer
@@ -43,7 +44,7 @@ from .ct_matrix import (
     write_ct_matrix_json,
 )
 from .ct_runner import MAX_VALGRIND_LOG_BYTES, classify_valgrind_run
-from .dudect_runner import TimingSamples, run_timing_harness
+from .dudect_runner import TimingProtocolTrace, TimingSamples, run_timing_harness
 from .evidence import SCHEMA_VERSION, Overall
 from .harness_generator import (
     CompilerNotFoundError,
@@ -714,25 +715,37 @@ def _dudect_context(
         "warmup": dud.warmup,
         "seed": effective_seed,
         "clock": effective_clock,
+        "pool_size": dud.timing_protocol.pool_size,
     }
     if h.template == "kem":
+        # v2 accepts a runtime measurement count.  Allocate once for the
+        # larger of target/control traces; each process receives its exact
+        # requested count on argv.
+        base["measurements"] = max(
+            dud.measurements,
+            dud.timing_protocol.control_measurements or dud.measurements,
+        )
         base.update(
             {
                 "header": h.header,
                 "prefix": h.prefix,
                 "leak_target": h.leak_target,
+                "randombytes_header": h.randombytes_header,
             }
         )
     elif h.template == "sign":
-        # The sign timing template fixes the input axis as fixed-sk vs
-        # fresh-sk (analogous to the kem sk-leak mode), so there is no
-        # leak_target to thread through here. Message length is baked via a
-        # CTKAT_SIGN_MSG_LEN #ifndef default in the template (matching the
-        # structural harness_sign.c.j2), so it needs no context field either.
+        base["measurements"] = max(
+            dud.measurements,
+            dud.timing_protocol.control_measurements or dud.measurements,
+        )
+        # API-level signing axes are portable; implementation-specific sampler
+        # cores are deliberately separate generic harnesses.
         base.update(
             {
                 "header": h.header,
                 "prefix": h.prefix,
+                "sign_leak_target": h.sign_leak_target,
+                "randombytes_header": h.randombytes_header,
             }
         )
     else:  # generic
@@ -816,6 +829,434 @@ def _official_to_welch(analysis: OfficialDudectAnalysis) -> WelchResult:
     )
 
 
+_TIMING_SEED_DOMAINS = {
+    "target": 0x5441524745545632,
+    "calibration": 0x43414C4942525632,
+    "aa": 0x41415F434E54525632,
+    "placebo": 0x504C414345425632,
+    "positive": 0x504F534954495632,
+}
+
+
+def _timing_domain_seed(base: int, role: str, process_index: int, subindex: int = 0) -> int:
+    """Deterministic nonzero splitmix64 seed for one physical process."""
+
+    x = (
+        base
+        ^ _TIMING_SEED_DOMAINS[role]
+        ^ ((process_index + 1) * _CALIBRATION_SEED_DOMAIN)
+        ^ ((subindex + 1) * 0xD1B54A32D192ED03)
+    ) & _UINT64_MASK
+    x = (x + _CALIBRATION_SEED_DOMAIN) & _UINT64_MASK
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & _UINT64_MASK
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & _UINT64_MASK
+    x ^= x >> 31
+    return x or _TIMING_SEED_DOMAINS[role]
+
+
+def _trace_class_values(samples: TimingSamples) -> tuple[list[float], list[float]]:
+    return (
+        [cycle for clazz, cycle in zip(samples.classes, samples.cycles) if clazz == 0],
+        [cycle for clazz, cycle in zip(samples.classes, samples.cycles) if clazz == 1],
+    )
+
+
+def _physical_control_result(
+    samples: TimingSamples,
+    *,
+    warning_threshold: float,
+    fail_threshold: float,
+) -> WelchResult:
+    class0, class1 = _trace_class_values(samples)
+    if len(class0) < 2 or len(class1) < 2:
+        raise RuntimeError(
+            "physical control retained insufficient samples per class: "
+            f"n0={len(class0)} n1={len(class1)}"
+        )
+    return welch_t_test(
+        class0,
+        class1,
+        warning_threshold=warning_threshold,
+        fail_threshold=fail_threshold,
+    )
+
+
+def _minimum_detectable_effect(
+    result: WelchResult,
+    *,
+    alpha: float,
+    target_power: float,
+) -> float:
+    """Normal-approximation two-sided MDE in the harness clock domain."""
+
+    z_alpha = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    z_power = NormalDist().inv_cdf(target_power)
+    standard_error = math.sqrt(result.var0 / result.n0 + result.var1 / result.n1)
+    return (z_alpha + z_power) * standard_error
+
+
+def _control_result_payload(
+    role: str,
+    process_index: int,
+    seed: int,
+    samples: TimingSamples,
+    result: WelchResult,
+    *,
+    effect_ticks: int = 0,
+    alpha: Optional[float] = None,
+    target_power: Optional[float] = None,
+) -> dict:
+    payload = {
+        "role": role,
+        "process_index": process_index,
+        "seed": seed,
+        "effect_ticks": effect_ticks,
+        "raw_n_total": samples.raw_n_total,
+        "n0": result.n0,
+        "n1": result.n1,
+        "mean0": result.mean0,
+        "mean1": result.mean1,
+        "mean_delta": result.mean1 - result.mean0,
+        "t_score": result.t_score,
+        "abs_t_score": result.abs_t_score,
+        "status": result.status,
+        "dropped_clock_n0": samples.dropped_zero_n0,
+        "dropped_clock_n1": samples.dropped_zero_n1,
+        "dropped_migration_n0": samples.dropped_migration_n0,
+        "dropped_migration_n1": samples.dropped_migration_n1,
+        "malformed_count": samples.malformed_count,
+        "runtime_metadata": dict(samples.runtime_metadata),
+    }
+    if alpha is not None and target_power is not None:
+        payload["minimum_detectable_effect"] = _minimum_detectable_effect(
+            result,
+            alpha=alpha,
+            target_power=target_power,
+        )
+    return payload
+
+
+def _run_v2_harness_protocol(
+    *,
+    binary: Path,
+    workdir: Path,
+    dud: DudectConfig,
+    harness: DudectHarnessConfig,
+    effective_seed: int,
+    official_adapter: Optional[Path],
+    crop: bool,
+    crop_warn_t: float,
+    crop_fail_t: float,
+    warn_t: float,
+    fail_t: float,
+) -> tuple[TimingSamples, WelchResult, list[WelchResult]]:
+    """Run target repetitions plus physical A/A/placebo/effect controls."""
+
+    protocol = dud.timing_protocol
+    control_measurements = protocol.control_measurements or dud.measurements
+    traces: list[TimingProtocolTrace] = []
+    target_runs: list[tuple[TimingSamples, WelchResult, list[WelchResult]]] = []
+    target_payloads: list[dict] = []
+    aa_payloads: list[dict] = []
+    placebo_payloads: list[dict] = []
+    positive_payloads: list[dict] = []
+
+    for process_index in range(protocol.process_repeats):
+        target_seed = (
+            effective_seed
+            if process_index == 0
+            else _timing_domain_seed(effective_seed, "target", process_index)
+        )
+        calibration: Optional[TimingSamples] = None
+        calibration_seed: Optional[int] = None
+        if dud.backend == "official-dudect":
+            if official_adapter is None:
+                raise RuntimeError("official dudect adapter missing for timing-harness-v2")
+            calibration_seed = _timing_domain_seed(effective_seed, "calibration", process_index)
+            calibration = run_timing_harness(
+                binary,
+                workdir,
+                timeout=dud.timeout,
+                seed_override=calibration_seed,
+                mode="target",
+                measurements_override=dud.measurements,
+            )
+            traces.append(
+                TimingProtocolTrace(
+                    "target-calibration",
+                    process_index,
+                    calibration_seed,
+                    calibration,
+                )
+            )
+
+        samples = run_timing_harness(
+            binary,
+            workdir,
+            timeout=dud.timeout,
+            seed_override=target_seed,
+            mode="target",
+            measurements_override=dud.measurements,
+        )
+        samples.calibration = calibration
+        traces.append(TimingProtocolTrace("target", process_index, target_seed, samples))
+        class0, class1 = _trace_class_values(samples)
+        if len(class0) < 2 or len(class1) < 2:
+            raise RuntimeError(
+                "target trace retained insufficient samples per class: "
+                f"process={process_index} n0={len(class0)} n1={len(class1)}"
+            )
+
+        if dud.backend == "official-dudect":
+            assert official_adapter is not None and calibration is not None
+            analysis = analyze_with_official_dudect(
+                calibration,
+                samples,
+                adapter_binary=official_adapter,
+                workdir=workdir,
+                timeout=dud.backend_timeout,
+            )
+            target_result = _official_to_welch(analysis)
+        elif crop:
+            target_result = welch_with_cropping(
+                class0,
+                class1,
+                warning_threshold=crop_warn_t,
+                fail_threshold=crop_fail_t,
+            )
+            target_result.backend = EXPERIMENTAL_FIRST_ORDER_BACKEND
+            target_result.test_kind = "experimental-first-order-cropped"
+            target_result.test_index = (
+                CROP_PERCENTILES.index(target_result.cropped_at)
+                if target_result.cropped_at in CROP_PERCENTILES
+                else None
+            )
+            target_result.protocol_test_count = len(CROP_PERCENTILES)
+        else:
+            target_result = welch_t_test(class0, class1, warn_t, fail_t)
+            target_result.backend = EXPERIMENTAL_FIRST_ORDER_BACKEND
+            target_result.test_kind = "experimental-first-order-uncropped"
+            target_result.test_index = 0
+            target_result.protocol_test_count = 1
+
+        target_result.analysis_seed = target_seed
+        target_result.calibration_seed = calibration_seed
+        batches = batch_t_scores(
+            samples.classes,
+            samples.cycles,
+            batches=dud.batches,
+            warning_threshold=warn_t,
+            fail_threshold=fail_t,
+        )
+        target_runs.append((samples, target_result, batches))
+        target_payloads.append(
+            {
+                "process_index": process_index,
+                "analysis_seed": target_seed,
+                "calibration_seed": calibration_seed,
+                "status": target_result.status,
+                "abs_t_score": target_result.abs_t_score,
+                "test_kind": target_result.test_kind,
+                "test_index": target_result.test_index,
+                "n0": target_result.n0,
+                "n1": target_result.n1,
+                "enough_measurements": target_result.enough_measurements,
+                "runtime_metadata": dict(samples.runtime_metadata),
+            }
+        )
+
+        aa_seed = _timing_domain_seed(effective_seed, "aa", process_index)
+        aa_samples = run_timing_harness(
+            binary,
+            workdir,
+            timeout=dud.timeout,
+            seed_override=aa_seed,
+            mode="aa",
+            measurements_override=control_measurements,
+        )
+        traces.append(TimingProtocolTrace("aa", process_index, aa_seed, aa_samples))
+        aa_result = _physical_control_result(
+            aa_samples,
+            warning_threshold=protocol.aa_abs_t_limit,
+            fail_threshold=protocol.positive_abs_t_threshold,
+        )
+        aa_payloads.append(
+            _control_result_payload(
+                "aa",
+                process_index,
+                aa_seed,
+                aa_samples,
+                aa_result,
+                alpha=protocol.power_alpha,
+                target_power=protocol.target_power,
+            )
+        )
+
+        placebo_seed = _timing_domain_seed(effective_seed, "placebo", process_index)
+        placebo_samples = run_timing_harness(
+            binary,
+            workdir,
+            timeout=dud.timeout,
+            seed_override=placebo_seed,
+            mode="placebo",
+            measurements_override=control_measurements,
+        )
+        traces.append(
+            TimingProtocolTrace("setup-placebo", process_index, placebo_seed, placebo_samples)
+        )
+        placebo_result = _physical_control_result(
+            placebo_samples,
+            warning_threshold=protocol.aa_abs_t_limit,
+            fail_threshold=protocol.positive_abs_t_threshold,
+        )
+        placebo_payloads.append(
+            _control_result_payload(
+                "setup-placebo",
+                process_index,
+                placebo_seed,
+                placebo_samples,
+                placebo_result,
+            )
+        )
+
+        for effect_index, effect_ticks in enumerate(protocol.positive_control_effects):
+            effect_seed = _timing_domain_seed(
+                effective_seed, "positive", process_index, effect_index
+            )
+            positive_samples = run_timing_harness(
+                binary,
+                workdir,
+                timeout=dud.timeout,
+                seed_override=effect_seed,
+                mode="positive",
+                effect_ticks=effect_ticks,
+                measurements_override=control_measurements,
+            )
+            traces.append(
+                TimingProtocolTrace(
+                    "positive",
+                    process_index,
+                    effect_seed,
+                    positive_samples,
+                    effect_ticks,
+                )
+            )
+            positive_result = _physical_control_result(
+                positive_samples,
+                warning_threshold=protocol.aa_abs_t_limit,
+                fail_threshold=protocol.positive_abs_t_threshold,
+            )
+            positive_payloads.append(
+                _control_result_payload(
+                    "positive",
+                    process_index,
+                    effect_seed,
+                    positive_samples,
+                    positive_result,
+                    effect_ticks=effect_ticks,
+                )
+            )
+
+    # Report the most conservative target run while retaining every process.
+    winning_index = max(
+        range(len(target_runs)),
+        key=lambda index: target_runs[index][1].abs_t_score,
+    )
+    samples, overall, batches = target_runs[winning_index]
+    samples.protocol_traces = traces
+
+    target_statuses = [payload["status"] for payload in target_payloads]
+    aa_failures = sum(payload["abs_t_score"] >= protocol.aa_abs_t_limit for payload in aa_payloads)
+    placebo_failures = sum(
+        payload["abs_t_score"] >= protocol.aa_abs_t_limit for payload in placebo_payloads
+    )
+    power_curve: list[dict] = []
+    for effect_ticks in protocol.positive_control_effects:
+        effect_runs = [
+            payload for payload in positive_payloads if payload["effect_ticks"] == effect_ticks
+        ]
+        detections = sum(
+            payload["abs_t_score"] >= protocol.positive_abs_t_threshold for payload in effect_runs
+        )
+        power_curve.append(
+            {
+                "effect_ticks": effect_ticks,
+                "detections": detections,
+                "runs": len(effect_runs),
+                "detection_rate": detections / len(effect_runs),
+                "mean_observed_delta": (
+                    sum(payload["mean_delta"] for payload in effect_runs) / len(effect_runs)
+                ),
+            }
+        )
+    largest_effect = power_curve[-1]
+    required_detections = math.ceil(protocol.target_power * protocol.process_repeats)
+
+    output_lengths = [
+        length
+        for trace in traces
+        if trace.role == "target"
+        for length in trace.samples.output_lengths
+        if length is not None
+    ]
+    randomness = sorted(
+        {
+            trace.samples.runtime_metadata.get("randomness", "unreported")
+            for trace in traces
+            if trace.role == "target"
+        }
+    )
+    overall.harness_protocol = {
+        "schema_version": "1.0",
+        "protocol": "timing-harness-v2",
+        "template": harness.template,
+        "axis": (harness.leak_target if harness.template == "kem" else harness.sign_leak_target),
+        "measurement_scope": (
+            "kem-decapsulation"
+            if harness.template == "kem"
+            else "full-signature-api-including-encoding"
+        ),
+        "pool_size": protocol.pool_size,
+        "target_measurements": dud.measurements,
+        "control_measurements": control_measurements,
+        "common_work_buffer": True,
+        "symmetric_setup": True,
+        "timed_region_target_only": True,
+        "rdtscp_aux_migration_filter": True,
+        "process_repeats_required": 3,
+        "process_repeats_observed": protocol.process_repeats,
+        "target_repeats": target_payloads,
+        "target_status_consistent": len(set(target_statuses)) == 1,
+        "aa_controls": aa_payloads,
+        "aa_abs_t_limit": protocol.aa_abs_t_limit,
+        "aa_max_failures": protocol.aa_max_failures,
+        "aa_failures": aa_failures,
+        "aa_budget_passed": aa_failures <= protocol.aa_max_failures,
+        "setup_placebo_controls": placebo_payloads,
+        "setup_placebo_failures": placebo_failures,
+        "setup_placebo_passed": placebo_failures == 0,
+        "positive_controls": positive_payloads,
+        "positive_abs_t_threshold": protocol.positive_abs_t_threshold,
+        "positive_power_curve": power_curve,
+        "target_power": protocol.target_power,
+        "required_positive_detections": required_detections,
+        "positive_power_passed": largest_effect["detections"] >= required_detections,
+        "power_alpha": protocol.power_alpha,
+        "minimum_detectable_effects": [
+            payload["minimum_detectable_effect"] for payload in aa_payloads
+        ],
+        "randomness_policies_observed": randomness,
+        "output_length": {
+            "observed": bool(output_lengths),
+            "min": min(output_lengths) if output_lengths else None,
+            "max": max(output_lengths) if output_lengths else None,
+            "unique_count": len(set(output_lengths)),
+            "variable": len(set(output_lengths)) > 1,
+        },
+    }
+    return samples, overall, batches
+
+
 def _set_timing_validity(
     result: WelchResult,
     samples: TimingSamples,
@@ -824,14 +1265,7 @@ def _set_timing_validity(
     *,
     expected_measurements: Optional[int] = None,
 ) -> None:
-    """Attach fail-closed validity without laundering legacy harnesses.
-
-    STAT-001 validates the backend contract, not the KEM/sign measurement
-    design.  Those v1 templates remain confounded until TIME-001 replaces
-    fixed-vs-fresh setup with pools/common buffers and executes physical A/A
-    controls. Generic templates likewise remain insufficient-power until
-    target-level positive-control calibration exists.
-    """
+    """Attach fail-closed target-level timing validity."""
 
     result.environment = dict(environment)
     environment_reasons = list(environment.get("rejection_reasons", []))
@@ -841,36 +1275,57 @@ def _set_timing_validity(
     def inspect_trace(trace: TimingSamples, label: str) -> None:
         raw_total = trace.raw_n_total
         dropped_zero = trace.dropped_zero_n0 + trace.dropped_zero_n1
-        malformed = raw_total - len(trace.classes) - dropped_zero
-        if expected_measurements is not None and raw_total != expected_measurements:
+        dropped_migration = trace.dropped_migration_n0 + trace.dropped_migration_n1
+        malformed = trace.malformed_count
+        accounted = len(trace.classes) + dropped_zero + dropped_migration + malformed
+        trace_expected = expected_measurements
+        metadata_expected = trace.runtime_metadata.get("measurements")
+        if metadata_expected and metadata_expected.isdigit():
+            trace_expected = int(metadata_expected)
+        if trace_expected is not None and raw_total != trace_expected:
             corruption_reasons.append(
-                f"{label} trace emitted {raw_total}/{expected_measurements} expected rows"
+                f"{label} trace emitted {raw_total}/{trace_expected} expected rows"
             )
         if malformed != 0:
+            corruption_reasons.append(f"{label} trace parser dropped {malformed} malformed rows")
+        if raw_total != accounted:
             corruption_reasons.append(
-                f"{label} trace bookkeeping found {malformed} malformed/unaccounted rows"
+                f"{label} trace bookkeeping found "
+                f"{raw_total - accounted} malformed/unaccounted rows"
             )
-        if raw_total and dropped_zero / raw_total > 0.01:
+        dropped_total = dropped_zero + dropped_migration
+        if raw_total and dropped_total / raw_total > 0.01:
+            drop_label = "zero-cycle" if dropped_migration == 0 else "clock/migration"
             environment_reasons.append(
-                f"{label} zero-cycle drop rate {dropped_zero / raw_total:.2%} "
+                f"{label} {drop_label} drop rate {dropped_total / raw_total:.2%} "
                 "exceeds 1% environment limit"
             )
 
         surviving_n0 = sum(clazz == 0 for clazz in trace.classes)
         surviving_n1 = sum(clazz == 1 for clazz in trace.classes)
-        raw_n0 = surviving_n0 + trace.dropped_zero_n0
-        raw_n1 = surviving_n1 + trace.dropped_zero_n1
+        dropped_n0 = trace.dropped_zero_n0 + trace.dropped_migration_n0
+        dropped_n1 = trace.dropped_zero_n1 + trace.dropped_migration_n1
+        raw_n0 = surviving_n0 + dropped_n0
+        raw_n1 = surviving_n1 + dropped_n1
         if raw_n0 and raw_n1:
-            zero_rate0 = trace.dropped_zero_n0 / raw_n0
-            zero_rate1 = trace.dropped_zero_n1 / raw_n1
-            if max(zero_rate0, zero_rate1) > 0.05 and abs(zero_rate0 - zero_rate1) > 0.05:
+            drop_rate0 = dropped_n0 / raw_n0
+            drop_rate1 = dropped_n1 / raw_n1
+            if max(drop_rate0, drop_rate1) > 0.05 and abs(drop_rate0 - drop_rate1) > 0.05:
                 environment_reasons.append(
-                    f"{label} class-asymmetric zero-cycle filtering exceeds 5% environment limit"
+                    f"{label} class-asymmetric sample filtering exceeds 5% environment limit"
                 )
 
-    inspect_trace(samples, "analysis")
-    if samples.calibration is not None:
-        inspect_trace(samples.calibration, "calibration")
+    if samples.protocol_traces:
+        for trace in samples.protocol_traces:
+            suffix = f"-effect-{trace.effect_ticks}" if trace.effect_ticks else ""
+            inspect_trace(
+                trace.samples,
+                f"{trace.role}[{trace.process_index}]{suffix}",
+            )
+    else:
+        inspect_trace(samples, "analysis")
+        if samples.calibration is not None:
+            inspect_trace(samples.calibration, "calibration")
     environment_reasons = list(dict.fromkeys(environment_reasons))
     result.environment["rejected"] = bool(environment_reasons)
     result.environment["rejection_reasons"] = environment_reasons
@@ -887,17 +1342,66 @@ def _set_timing_validity(
             "official dudect minimum was not met "
             "(more than 10,000 retained class-0 samples required)"
         )
-    elif harness.template in {"kem", "sign"}:
-        result.timing_validity = "confounded"
+    elif result.backend != OFFICIAL_DUDECT_BACKEND:
+        result.timing_validity = "insufficient-power"
         interpretation_reasons.append(
-            f"legacy {harness.template} timing template lacks pool/common-buffer "
-            "symmetry and physical A/A control (TIME-001 pending)"
+            "experimental timing backend is non-decisional; "
+            "target validity requires the pinned official dudect backend"
         )
+    elif harness.template in {"kem", "sign"}:
+        protocol = result.harness_protocol
+        if protocol.get("protocol") != "timing-harness-v2":
+            result.timing_validity = "confounded"
+            interpretation_reasons.append(
+                f"{harness.template} trace lacks timing-harness-v2 protocol evidence"
+            )
+        elif protocol.get("process_repeats_observed", 0) < protocol.get(
+            "process_repeats_required", 3
+        ):
+            result.timing_validity = "insufficient-power"
+            interpretation_reasons.append(
+                "fewer than three independent target/control process seeds were measured"
+            )
+        elif not protocol.get("aa_budget_passed", False):
+            result.timing_validity = "confounded"
+            interpretation_reasons.append(
+                "physical A/A false-alarm budget failed; class labels alone changed timing"
+            )
+        elif not protocol.get("setup_placebo_passed", False):
+            result.timing_validity = "confounded"
+            interpretation_reasons.append(
+                "setup-only placebo detected residual class-dependent setup/cache effects"
+            )
+        elif not protocol.get("positive_power_passed", False):
+            result.timing_validity = "insufficient-power"
+            interpretation_reasons.append(
+                "largest seeded positive-control effect did not reach the target detection power"
+            )
+        elif not protocol.get("target_status_consistent", False):
+            result.timing_validity = "insufficient-power"
+            interpretation_reasons.append(
+                "target raw status was inconsistent across independent process/seed repeats"
+            )
+        elif any(
+            item.get("enough_measurements") is False for item in protocol.get("target_repeats", [])
+        ):
+            result.timing_validity = "insufficient-power"
+            interpretation_reasons.append(
+                "at least one target repeat did not meet the backend measurement minimum"
+            )
+        elif protocol.get("randomness_policies_observed") != ["seeded-interpose"]:
+            result.timing_validity = "confounded"
+            interpretation_reasons.append(
+                "target key/sign randomness was not confirmed to use the seeded interpose; "
+                "the runtime manifest is not reproducible from the recorded seed"
+            )
+        else:
+            result.timing_validity = "valid"
     else:
         result.timing_validity = "insufficient-power"
         interpretation_reasons.append(
             "target-level physical A/A and seeded positive-control power "
-            "calibration are not yet attached (TIME-001/POWER-001 pending)"
+            "calibration are not attached to caller-defined generic setup"
         )
     result.validity_reasons = tuple(
         dict.fromkeys([*corruption_reasons, *environment_reasons, *interpretation_reasons])
@@ -921,26 +1425,121 @@ def _emit_dudect_report(
     out_dir.mkdir(parents=True, exist_ok=True)
     raw_path = out_dir / "dudect_raw_timings.csv"
     calibration_path = out_dir / "dudect_calibration_timings.csv"
+    protocol_path = out_dir / "dudect_protocol_timings.csv"
     summary_path = out_dir / "dudect_summary.csv"
     backend_path = out_dir / "dudect_backend_report.json"
 
+    def trace_rows(trace: TimingSamples):
+        retained = []
+        for index, (clazz, cycles) in enumerate(zip(trace.classes, trace.cycles)):
+            sample_id = trace.sample_ids[index] if index < len(trace.sample_ids) else index
+            aux_start = trace.aux_start[index] if index < len(trace.aux_start) else None
+            aux_end = trace.aux_end[index] if index < len(trace.aux_end) else None
+            output_length = (
+                trace.output_lengths[index] if index < len(trace.output_lengths) else None
+            )
+            retained.append(
+                (
+                    sample_id,
+                    clazz,
+                    cycles,
+                    aux_start,
+                    aux_end,
+                    "",
+                    output_length,
+                )
+            )
+        dropped = [
+            (
+                item.sample_id,
+                item.clazz,
+                item.cycles,
+                item.aux_start,
+                item.aux_end,
+                item.reason,
+                item.output_length,
+            )
+            for item in trace.dropped_samples
+        ]
+        return sorted([*retained, *dropped], key=lambda row: row[0])
+
+    raw_header = [
+        "project",
+        "harness",
+        "sample_id",
+        "class",
+        "cycles",
+        "aux_start",
+        "aux_end",
+        "drop_reason",
+        "output_length",
+        "protocol",
+    ]
     with open(raw_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["project", "harness", "sample_id", "class", "cycles"])
+        w.writerow(raw_header)
         for harness_name, samples, _, _ in results:
-            for i, (cls, cyc) in enumerate(zip(samples.classes, samples.cycles)):
-                w.writerow([project, harness_name, i, cls, cyc])
+            for row in trace_rows(samples):
+                w.writerow(
+                    [
+                        project,
+                        harness_name,
+                        *row,
+                        samples.protocol_version,
+                    ]
+                )
 
     with open(calibration_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["project", "harness", "sample_id", "class", "cycles"])
+        w.writerow(raw_header)
         for harness_name, samples, _, _ in results:
             if samples.calibration is None:
                 continue
-            for i, (cls, cyc) in enumerate(
-                zip(samples.calibration.classes, samples.calibration.cycles)
-            ):
-                w.writerow([project, harness_name, i, cls, cyc])
+            for row in trace_rows(samples.calibration):
+                w.writerow(
+                    [
+                        project,
+                        harness_name,
+                        *row,
+                        samples.calibration.protocol_version,
+                    ]
+                )
+
+    with open(protocol_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(
+            [
+                "project",
+                "harness",
+                "role",
+                "process_index",
+                "seed",
+                "effect_ticks",
+                "sample_id",
+                "class",
+                "cycles",
+                "aux_start",
+                "aux_end",
+                "drop_reason",
+                "output_length",
+                "protocol",
+            ]
+        )
+        for harness_name, samples, _, _ in results:
+            for trace in samples.protocol_traces:
+                for row in trace_rows(trace.samples):
+                    w.writerow(
+                        [
+                            project,
+                            harness_name,
+                            trace.role,
+                            trace.process_index,
+                            trace.seed,
+                            trace.effect_ticks,
+                            *row,
+                            trace.samples.protocol_version,
+                        ]
+                    )
 
     with open(summary_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
@@ -986,6 +1585,14 @@ def _emit_dudect_report(
                 "calibration_raw_n_total",
                 "analysis_seed",
                 "calibration_seed",
+                "dropped_migration_n0",
+                "dropped_migration_n1",
+                "malformed_count",
+                "harness_protocol",
+                "process_repeats",
+                "aa_failures",
+                "positive_power_passed",
+                "minimum_detectable_effect_max",
             ]
         )
         for harness_name, samples, r, batches in results:
@@ -1041,6 +1648,22 @@ def _emit_dudect_report(
                     (samples.calibration.raw_n_total if samples.calibration is not None else 0),
                     "" if r.analysis_seed is None else r.analysis_seed,
                     "" if r.calibration_seed is None else r.calibration_seed,
+                    samples.dropped_migration_n0,
+                    samples.dropped_migration_n1,
+                    samples.malformed_count,
+                    r.harness_protocol.get("protocol", ""),
+                    r.harness_protocol.get("process_repeats_observed", ""),
+                    r.harness_protocol.get("aa_failures", ""),
+                    (
+                        ""
+                        if "positive_power_passed" not in r.harness_protocol
+                        else str(r.harness_protocol["positive_power_passed"]).lower()
+                    ),
+                    _fmt(
+                        max(r.harness_protocol.get("minimum_detectable_effects", [None]))
+                        if r.harness_protocol.get("minimum_detectable_effects")
+                        else None
+                    ),
                 ]
             )
 
@@ -1078,19 +1701,39 @@ def _emit_dudect_report(
                 "batch_t_scores": [json_number(batch.t_score) for batch in batches],
                 "environment": result.environment,
                 "tests": result.protocol_results,
+                "harness_protocol": result.harness_protocol,
+                "analysis_runtime_metadata": dict(samples.runtime_metadata),
+                "drop_counts": {
+                    "clock_n0": samples.dropped_zero_n0,
+                    "clock_n1": samples.dropped_zero_n1,
+                    "cpu_migration_n0": samples.dropped_migration_n0,
+                    "cpu_migration_n1": samples.dropped_migration_n1,
+                    "malformed": samples.malformed_count,
+                },
             }
         )
+
+    def json_safe(value):
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
+        if isinstance(value, dict):
+            return {key: json_safe(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [json_safe(item) for item in value]
+        return value
+
     backend_payload = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "kind": "timing-backend-report",
         "project": project,
         "official_dudect_revision": OFFICIAL_DUDECT_REVISION,
         "raw_trace_sha256": _hashlib.sha256(raw_path.read_bytes()).hexdigest(),
         "calibration_trace_sha256": _hashlib.sha256(calibration_path.read_bytes()).hexdigest(),
+        "protocol_trace_sha256": _hashlib.sha256(protocol_path.read_bytes()).hexdigest(),
         "harnesses": harness_reports,
     }
     with backend_path.open("w", encoding="utf-8") as f:
-        _json.dump(backend_payload, f, indent=2, sort_keys=True, allow_nan=False)
+        _json.dump(json_safe(backend_payload), f, indent=2, sort_keys=True, allow_nan=False)
         f.write("\n")
     return raw_path, summary_path
 
@@ -1251,6 +1894,86 @@ def _do_dudect(
             if dud.backend == "official-dudect"
             else EXPERIMENTAL_FIRST_ORDER_BACKEND
         )
+        if h.template in {"kem", "sign"}:
+            protocol = dud.timing_protocol
+            console.print(
+                "   [dim]timing-harness-v2: "
+                f"pool={protocol.pool_size}, processes={protocol.process_repeats}, "
+                f"control_measurements={protocol.control_measurements or dud.measurements}, "
+                "modes=target/A-A/setup-placebo/positive"
+                f"{protocol.positive_control_effects}[/]"
+            )
+            try:
+                samples, overall, batches = _run_v2_harness_protocol(
+                    binary=gen.binary_path,
+                    workdir=workdir,
+                    dud=dud,
+                    harness=h,
+                    effective_seed=effective_seed,
+                    official_adapter=official_adapter,
+                    crop=crop,
+                    crop_warn_t=crop_warn_t,
+                    crop_fail_t=crop_fail_t,
+                    warn_t=warn_t,
+                    fail_t=fail_t,
+                )
+            except subprocess.TimeoutExpired:
+                console.print(
+                    f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                    f"[bold]{h.name}[/] timing-harness-v2 process exceeded "
+                    f"timeout={dud.timeout}s"
+                )
+                results.append(
+                    (
+                        h.name,
+                        TimingSamples(),
+                        _error_welch(
+                            backend=backend_id,
+                            reason=f"timing-harness-v2 process timed out after {dud.timeout}s",
+                            analysis_seed=effective_seed,
+                        ),
+                        [],
+                    )
+                )
+                continue
+            except (RuntimeError, ValueError, OfficialDudectError) as e:
+                console.print(
+                    f"[bold red][CTKAT] dudect: ERROR[/] — harness "
+                    f"[bold]{h.name}[/] timing-harness-v2 failed: {e}"
+                )
+                results.append(
+                    (
+                        h.name,
+                        TimingSamples(),
+                        _error_welch(
+                            backend=backend_id,
+                            reason=f"timing-harness-v2 failed: {e}",
+                            analysis_seed=effective_seed,
+                        ),
+                        [],
+                    )
+                )
+                continue
+
+            _set_timing_validity(
+                overall,
+                samples,
+                h,
+                environment,
+                expected_measurements=dud.measurements,
+            )
+            results.append((h.name, samples, overall, batches))
+            console.print(
+                f"   n0={overall.n0} n1={overall.n1} "
+                f"mean0={overall.mean0:.1f} mean1={overall.mean1:.1f} "
+                f"t={overall.t_score:+.2f} [bold]{overall.status}[/] "
+                f"validity={overall.timing_validity}; "
+                f"A/A failures={overall.harness_protocol['aa_failures']}, "
+                "positive power="
+                f"{overall.harness_protocol['positive_power_passed']}"
+            )
+            continue
+
         calibration: Optional[TimingSamples] = None
         phase = "analysis"
         try:

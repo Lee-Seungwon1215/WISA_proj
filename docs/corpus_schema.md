@@ -98,11 +98,11 @@ Its committed synthetic calibration covers backend A/A, an injected-effect
 power curve, and uncropped same-trace parity. That artifact validates the
 statistical adapter only.
 
-Target runs may emit `valid` only after TIME-001/POWER-001 adds physical A/A,
-target positive controls, pool/common-buffer symmetry, and repeated-process
-policy. Until then, legacy KEM/sign templates are `confounded` and generic
-targets are `insufficient-power`; an official raw PASS or FAIL remains
-non-decisional for the v2 headline.
+Timing-harness-v2 KEM/sign runs may emit `valid` only after their physical A/A,
+target positive controls, pool/common-buffer symmetry, repeated-process, and
+native-host gates all pass. Legacy KEM/sign artifacts remain `confounded` and
+generic targets remain `insufficient-power`; an official raw PASS or FAIL is
+non-decisional for the v2 headline unless those target-level gates pass.
 
 ## Review artifacts
 

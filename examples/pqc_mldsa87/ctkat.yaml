@@ -44,7 +44,7 @@ ct:
 dudect:
   enabled: true
   backend: official-dudect
-  # ML-DSA-87 signing axis: class 0 fixed sk, class 1 fresh sk, message fixed.
+  # ML-DSA-87 signing axis: pre-generated fixed-vs-random sk pools, message fixed.
   # Modest committed default — NOT paper-grade (see pqc_mldsa44 note).
   measurements: 2000
   warmup: 100

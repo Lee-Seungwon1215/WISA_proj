@@ -513,6 +513,49 @@ def test_dudect_kem_leak_target_fo_accepted(tmp_path: Path):
     assert cfg.dudect.harnesses[0].leak_target == "fo"
 
 
+def test_timing_harness_v2_protocol_defaults_are_fail_closed():
+    from ctkat.config import DudectConfig
+
+    protocol = DudectConfig().timing_protocol
+    assert protocol.process_repeats == 3
+    assert protocol.pool_size == 64
+    assert protocol.control_measurements is None
+    assert protocol.positive_control_effects == [32, 128, 512]
+    assert protocol.aa_max_failures == 0
+    assert protocol.target_power == 0.80
+
+
+def test_timing_harness_v2_rejects_unordered_effect_curve():
+    from ctkat.config import TimingHarnessProtocolConfig
+
+    with pytest.raises(ValidationError, match="strictly increasing"):
+        TimingHarnessProtocolConfig(positive_control_effects=[128, 32, 512])
+
+
+def test_sign_timing_harness_accepts_message_axis():
+    from ctkat.config import DudectHarnessConfig
+
+    harness = DudectHarnessConfig(
+        name="sign-msg",
+        template="sign",
+        header="api.h",
+        sign_leak_target="msg",
+    )
+    assert harness.sign_leak_target == "msg"
+
+
+def test_non_sign_timing_harness_rejects_message_axis():
+    from ctkat.config import DudectHarnessConfig
+
+    with pytest.raises(ValidationError, match="only valid for template=sign"):
+        DudectHarnessConfig(
+            name="kem-msg",
+            template="kem",
+            header="api.h",
+            sign_leak_target="msg",
+        )
+
+
 def test_dudect_leak_target_fo_rejected_on_generic(tmp_path: Path):
     # Same rule as ct: only valid for kem template.
     body = (

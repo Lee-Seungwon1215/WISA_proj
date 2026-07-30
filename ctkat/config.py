@@ -725,20 +725,37 @@ class DudectHarnessConfig(BaseModel):
     args: List[str] = Field(default_factory=list)
     buffers: List[BufferSpec] = Field(default_factory=list)
 
-    # kem-only
+    # kem/sign common
     header: Optional[str] = None
+    # PQClean headers macro-map `randombytes` to a namespaced symbol.  Include
+    # that header before the weak seeded interpose so the definition receives
+    # the same mapping.  Set null only for a self-contained deterministic toy
+    # API that has no randombytes header/symbol.
+    randombytes_header: Optional[str] = "randombytes.h"
     prefix: str = ""
+    # kem-only
     # Which axis of the KEM API is varied between class 0 and class 1.
-    #   "sk" — class 0 fixed sk vs class 1 fresh sk (default; detects sk leaks)
-    #   "ct" — class 0 fixed ct vs class 1 fresh ct (sk held constant;
+    #   "sk" — fixed valid tuple pool vs random valid tuple pool (default)
+    #   "ct" — fixed valid-ct pool vs random valid-ct pool (sk held constant;
     #          detects ct-content leaks, e.g. branches/lookups indexed by ct)
-    #   "fo" — class 0 valid ct (via enc) vs class 1 random/invalid ct
+    #   "fo" — paired valid vs byte-corrupted invalid ct pools
     #          (sk held constant; detects timing leaks in FO fallback /
     #           implicit rejection path — Bundle K, U2 #1)
     # Pick one per harness; define multiple harnesses for multiple modes.
     # Only meaningful for template=kem; rejected at load time if combined
     # with template=generic.
     leak_target: Literal["sk", "ct", "fo"] = "sk"
+    # Signature timing-harness-v2 supports the two API-level axes that can be
+    # expressed portably across PQClean-style signers:
+    #   "sk"  — fixed-vs-random secret key, fixed message
+    #   "msg" — fixed secret key, fixed-vs-random message
+    # The full signature API is intentionally reported as such: variable
+    # length encoding (Falcon, SPHINCS+, ...) is included in this scope and
+    # output lengths are captured per sample.  Core-sampler measurements use
+    # a separate generic harness with an implementation-specific function
+    # boundary; pretending there is one portable "sign core" ABI would be a
+    # worse methodology bug than leaving that split explicit.
+    sign_leak_target: Literal["sk", "msg"] = "sk"
 
     @model_validator(mode="after")
     def _check_mode(self) -> "DudectHarnessConfig":
@@ -764,6 +781,11 @@ class DudectHarnessConfig(BaseModel):
                 f"dudect harness {self.name!r}: leak_target={self.leak_target!r} "
                 "only valid for template=kem"
             )
+        if self.template != "sign" and self.sign_leak_target != "sk":
+            raise ValueError(
+                f"dudect harness {self.name!r}: "
+                f"sign_leak_target={self.sign_leak_target!r} only valid for template=sign"
+            )
         _check_yaml_identifiers(
             f"dudect harness {self.name!r}",
             prefix=self.prefix,
@@ -772,6 +794,12 @@ class DudectHarnessConfig(BaseModel):
             function=self.function,
             return_type=self.return_type,
         )
+        if self.randombytes_header is not None:
+            _check_header(
+                f"dudect harness {self.name!r}",
+                "randombytes_header",
+                self.randombytes_header,
+            )
         for i, p in enumerate(self.sources):
             _check_project_relative_path(f"dudect harness {self.name!r}", f"sources[{i}]", p)
         for i, p in enumerate(self.include_dirs):
@@ -779,6 +807,69 @@ class DudectHarnessConfig(BaseModel):
         # T23: args are emitted verbatim into `{{ function }}({{ args }})`.
         for i, a in enumerate(self.args):
             _check_c_expr(f"dudect harness {self.name!r}", f"args[{i}]", a)
+        return self
+
+
+def _default_positive_control_effects() -> List[int]:
+    # Clock-domain ticks: cycles with RDTSCP, nanoseconds with monotonic.
+    # These are deliberately a curve, not a single magic "known leak".
+    return [32, 128, 512]
+
+
+class TimingHarnessProtocolConfig(BaseModel):
+    """Physical target-harness controls for TIME-001 / POWER-001.
+
+    Controls use the same generated binary, target call, work buffers, clock,
+    parser, and process boundary as the target trace.  Only the requested mode
+    changes (A/A, setup-only placebo, or class-1 injected delay).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Three independent process/seed runs is the minimum at which a result can
+    # be called repeat-consistent.  Raising this improves the empirical control
+    # budget but increases runtime linearly.
+    process_repeats: int = Field(default=3, ge=1, le=20)
+    # Pools are built before warmup/measurement.  64 keeps multi-kilobyte PQC
+    # keys affordable while avoiding a fixed-vs-one-fresh setup pattern.
+    pool_size: int = Field(default=64, ge=2, le=4096)
+    # Controls do not feed official dudect's >10k class-0 minimum, so they can
+    # be shorter than the target trace while still measuring the physical
+    # harness.  The power artifact reports the resulting MDE instead of
+    # silently treating a short control as proof.
+    # null/default reuses dudect.measurements.  Paper runs can raise this
+    # independently; modest example configs do not unexpectedly multiply a
+    # 1,000-sample target into 20,000 expensive signature controls.
+    control_measurements: Optional[int] = Field(default=None, ge=1_000, le=10_000_000)
+    positive_control_effects: List[int] = Field(
+        default_factory=_default_positive_control_effects,
+        min_length=3,
+        max_length=3,
+    )
+    # Predeclared raw first-order thresholds for physical controls.  They are
+    # not presented as the official 102-test target analysis.
+    aa_abs_t_limit: float = Field(default=4.5, gt=0)
+    positive_abs_t_threshold: float = Field(default=10.0, gt=0)
+    aa_max_failures: int = Field(default=0, ge=0)
+    target_power: float = Field(default=0.80, gt=0.5, lt=1)
+    power_alpha: float = Field(default=0.01, gt=0, lt=0.5)
+
+    @model_validator(mode="after")
+    def _check_protocol_controls(self) -> "TimingHarnessProtocolConfig":
+        effects = self.positive_control_effects
+        if any(effect <= 0 for effect in effects):
+            raise ValueError("positive_control_effects must contain three positive clock ticks")
+        if effects != sorted(set(effects)):
+            raise ValueError(
+                "positive_control_effects must be three unique, strictly increasing clock ticks"
+            )
+        if self.positive_abs_t_threshold <= self.aa_abs_t_limit:
+            raise ValueError("positive_abs_t_threshold must be greater than aa_abs_t_limit")
+        if self.aa_max_failures >= self.process_repeats:
+            raise ValueError(
+                "aa_max_failures must be smaller than process_repeats; "
+                "otherwise every A/A run could fail while the control still passes"
+            )
         return self
 
 
@@ -828,6 +919,12 @@ class DudectConfig(BaseModel):
     workdir: Path = Path(".")
     generated_dir: Path = Path("./_generated_dudect")
     harnesses: List[DudectHarnessConfig] = Field(default_factory=list)
+    # TIME-001 timing-harness-v2 is mandatory for KEM/sign templates.  Generic
+    # templates keep their caller-defined setup semantics and therefore remain
+    # fail-closed until a target-specific control protocol is attached.
+    timing_protocol: TimingHarnessProtocolConfig = Field(
+        default_factory=TimingHarnessProtocolConfig
+    )
     # Per-harness wall-clock ceiling for the timing binary (Bundle E-1, T6).
     # Reaching this raises a TimeoutExpired which `_do_dudect` catches and
     # turns into status=ERROR / verdict=INCONCLUSIVE rather than letting a

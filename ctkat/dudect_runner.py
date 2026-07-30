@@ -1,9 +1,10 @@
 import math
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from rich.console import Console
 
@@ -38,6 +39,28 @@ MAX_TIMING_STDERR_BYTES = 1024 * 1024
 _console = Console(stderr=True)
 
 
+@dataclass(frozen=True)
+class DroppedTimingSample:
+    sample_id: int
+    clazz: int
+    cycles: float
+    aux_start: Optional[int]
+    aux_end: Optional[int]
+    reason: str
+    output_length: Optional[int] = None
+
+
+@dataclass
+class TimingProtocolTrace:
+    """One physical process trace attached to a timing-harness-v2 run."""
+
+    role: str
+    process_index: int
+    seed: int
+    samples: "TimingSamples"
+    effect_ticks: int = 0
+
+
 @dataclass
 class TimingSamples:
     classes: List[int] = field(default_factory=list)
@@ -47,6 +70,13 @@ class TimingSamples:
     # floats lets the variance math (and downstream type checkers) flow
     # without `int → float` covariance gymnastics.
     cycles: List[float] = field(default_factory=list)
+    # v2 retains the emitted identifiers and RDTSCP AUX values so the raw
+    # artifact can show exactly which rows survived.  v1 inputs populate
+    # sample_ids but leave AUX/output metadata as None.
+    sample_ids: List[int] = field(default_factory=list)
+    aux_start: List[Optional[int]] = field(default_factory=list)
+    aux_end: List[Optional[int]] = field(default_factory=list)
+    output_lengths: List[Optional[int]] = field(default_factory=list)
     # Bundle F (S1): expose raw-measurement bookkeeping so the user can
     # audit the filter pipeline from the CSV alone. Without these, "n0=10924,
     # n1=18705 from measurements=50000" gives no clue where the missing
@@ -54,11 +84,20 @@ class TimingSamples:
     raw_n_total: int = 0  # rows emitted by the C harness (pre-filter)
     dropped_zero_n0: int = 0  # class-0 rows dropped by the zero-cycle filter
     dropped_zero_n1: int = 0  # class-1 rows dropped by the zero-cycle filter
+    dropped_migration_n0: int = 0
+    dropped_migration_n1: int = 0
+    malformed_count: int = 0
+    dropped_samples: List[DroppedTimingSample] = field(default_factory=list)
+    protocol_version: str = "timing-harness-v1"
+    runtime_metadata: Dict[str, str] = field(default_factory=dict)
     # The official backend follows upstream's two-batch lifecycle: the first
     # run establishes crop thresholds and is discarded, while this object's
     # primary classes/cycles are the independently measured analysis batch.
     # Legacy/experimental runs leave this as None.
     calibration: Optional["TimingSamples"] = None
+    # Root analysis trace only: all independent target/control process traces.
+    # Child traces leave this empty, avoiding recursive payloads.
+    protocol_traces: List[TimingProtocolTrace] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.cycles)
@@ -68,10 +107,16 @@ def parse_timing_csv(text: str) -> TimingSamples:
     lines = text.strip().splitlines()
     if not lines:
         raise ValueError("empty timing harness output")
-    if lines[0].strip() != "sample_id,class,cycles":
+    header = lines[0].strip()
+    v1_header = "sample_id,class,cycles"
+    v2_header = "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length"
+    if header not in {v1_header, v2_header}:
         raise ValueError(f"unexpected CSV header: {lines[0]!r}")
 
-    samples = TimingSamples()
+    is_v2 = header == v2_header
+    samples = TimingSamples(
+        protocol_version=("timing-harness-v2" if is_v2 else "timing-harness-v1")
+    )
     total = 0
     skipped_malformed = 0
     skipped_zero = 0
@@ -81,13 +126,21 @@ def parse_timing_csv(text: str) -> TimingSamples:
     for line in lines[1:]:
         total += 1
         parts = line.strip().split(",")
-        if len(parts) != 3:
+        if len(parts) != (7 if is_v2 else 3):
             skipped_malformed += 1
             continue
         try:
+            sample_id = int(parts[0])
             cls = int(parts[1])
             cyc = float(parts[2])  # see TimingSamples.cycles type comment
+            aux_start = int(parts[3]) if is_v2 else None
+            aux_end = int(parts[4]) if is_v2 else None
+            drop_reason = parts[5] if is_v2 else ""
+            output_length = int(parts[6]) if is_v2 else None
         except ValueError:
+            skipped_malformed += 1
+            continue
+        if sample_id < 0 or (output_length is not None and output_length < 0):
             skipped_malformed += 1
             continue
         if not math.isfinite(cyc):
@@ -115,7 +168,35 @@ def parse_timing_csv(text: str) -> TimingSamples:
             raw_n0 += 1
         elif cls == 1:
             raw_n1 += 1
-        if cyc == 0.0:
+        if is_v2:
+            if drop_reason not in {"", "clock-anomaly", "cpu-migration"}:
+                skipped_malformed += 1
+                continue
+            # Fail closed if a buggy/custom v2 harness forgot to label a
+            # detectable migration or clock anomaly.
+            if not drop_reason and aux_start != aux_end:
+                drop_reason = "cpu-migration"
+            if not drop_reason and cyc == 0.0:
+                drop_reason = "clock-anomaly"
+
+        if drop_reason == "cpu-migration":
+            if cls == 0:
+                samples.dropped_migration_n0 += 1
+            else:
+                samples.dropped_migration_n1 += 1
+            samples.dropped_samples.append(
+                DroppedTimingSample(
+                    sample_id,
+                    cls,
+                    cyc,
+                    aux_start,
+                    aux_end,
+                    drop_reason,
+                    output_length,
+                )
+            )
+            continue
+        if drop_reason == "clock-anomaly" or cyc == 0.0:
             # Underflow sentinel from the C harness — drop, don't let it
             # drag the mean down or count as a real measurement.
             skipped_zero += 1
@@ -123,11 +204,27 @@ def parse_timing_csv(text: str) -> TimingSamples:
                 samples.dropped_zero_n0 += 1
             elif cls == 1:
                 samples.dropped_zero_n1 += 1
+            samples.dropped_samples.append(
+                DroppedTimingSample(
+                    sample_id,
+                    cls,
+                    cyc,
+                    aux_start,
+                    aux_end,
+                    "clock-anomaly",
+                    output_length,
+                )
+            )
             continue
         samples.classes.append(cls)
         samples.cycles.append(cyc)
+        samples.sample_ids.append(sample_id)
+        samples.aux_start.append(aux_start)
+        samples.aux_end.append(aux_end)
+        samples.output_lengths.append(output_length)
 
     samples.raw_n_total = total
+    samples.malformed_count = skipped_malformed
 
     if total > 0 and (skipped_malformed / total) > _MALFORMED_WARN_THRESHOLD:
         _console.print(
@@ -163,6 +260,13 @@ def parse_timing_csv(text: str) -> TimingSamples:
                 f"subset (the slow tail of one class), so the t-score should "
                 f"be treated skeptically. (F4/S2)"
             )
+    skipped_migration = samples.dropped_migration_n0 + samples.dropped_migration_n1
+    if skipped_migration:
+        _console.print(
+            f"[bold yellow][CTKAT] warning:[/] discarded {skipped_migration}/{total} "
+            "timing samples because RDTSCP AUX changed across the target call "
+            "(CPU migration). Pin the process to one logical CPU."
+        )
     return samples
 
 
@@ -171,6 +275,9 @@ def run_timing_harness(
     workdir: Path,
     timeout: int = 600,
     seed_override: Optional[int] = None,
+    mode: Optional[str] = None,
+    effect_ticks: int = 0,
+    measurements_override: Optional[int] = None,
 ) -> TimingSamples:
     # The dudect harness emits one CSV row per measurement. Capturing that with
     # subprocess.PIPE makes the parent allocate the entire raw timing corpus in
@@ -185,9 +292,27 @@ def run_timing_harness(
     # failure mode -> ERROR"; this closes the executable-missing gap it left.
     if seed_override is not None and not 0 < seed_override <= 0xFFFFFFFFFFFFFFFF:
         raise ValueError("timing harness seed override must be a nonzero uint64")
+    if mode is not None and mode not in {"target", "aa", "placebo", "positive"}:
+        raise ValueError(f"unsupported timing harness mode: {mode!r}")
+    if mode is not None and seed_override is None:
+        raise ValueError("timing harness v2 mode requires an explicit seed")
+    if effect_ticks < 0 or effect_ticks > 0xFFFFFFFFFFFFFFFF:
+        raise ValueError("effect_ticks must be a uint64")
+    if mode != "positive" and effect_ticks:
+        raise ValueError("effect_ticks is only valid for mode='positive'")
+    if measurements_override is not None and measurements_override < 1:
+        raise ValueError("measurements_override must be positive")
     command = [str(binary)]
     if seed_override is not None:
         command.append(str(seed_override))
+    if mode is not None:
+        command.extend(
+            [
+                mode,
+                str(effect_ticks),
+                str(measurements_override or 0),
+            ]
+        )
     try:
         with tempfile.TemporaryFile() as stdout_f, tempfile.TemporaryFile() as stderr_f:
             proc = subprocess.run(
@@ -219,4 +344,15 @@ def run_timing_harness(
             text = stdout_f.read().decode("utf-8", errors="replace")
     except OSError as e:
         raise RuntimeError(f"timing harness {binary} could not be executed: {e}") from e
-    return parse_timing_csv(text)
+    samples = parse_timing_csv(text)
+    # Metadata is deliberately emitted on stderr so stdout remains a strict
+    # machine-readable trace.  Unknown keys are retained for forward-compatible
+    # manifests; malformed metadata is ignored rather than corrupting samples.
+    metadata: Dict[str, str] = {}
+    for line in stderr_text.splitlines():
+        if not line.startswith("CTKAT-HARNESS-META "):
+            continue
+        for key, value in re.findall(r"([A-Za-z0-9_-]+)=([^ ]+)", line):
+            metadata[key] = value
+    samples.runtime_metadata = metadata
+    return samples

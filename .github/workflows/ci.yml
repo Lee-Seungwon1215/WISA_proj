@@ -77,6 +77,10 @@ jobs:
           "$RUNNER_TEMP/wheel-venv/bin/python" \
             "$GITHUB_WORKSPACE/scripts/smoke_installed_official_backend.py" \
             --workdir "$RUNNER_TEMP/official-backend-smoke"
+          "$RUNNER_TEMP/wheel-venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/smoke_timing_harness_v2.py" \
+            --repo "$GITHUB_WORKSPACE" \
+            --workdir "$RUNNER_TEMP/timing-harness-v2-smoke"
       - name: Clean sdist install outside checkout
         run: |
           python -m venv "$RUNNER_TEMP/sdist-venv"

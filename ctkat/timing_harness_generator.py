@@ -29,6 +29,7 @@ TIMING_TEMPLATE_FILES = {
     "kem": "timing_kem.c.j2",
     "sign": "timing_sign.c.j2",
 }
+TIMING_SUPPORT_FILES = {"timing_v2_common.c.j2"}
 
 
 @dataclass
@@ -39,7 +40,7 @@ class GeneratedTimingHarness:
 
 
 def _make_env() -> Environment:
-    return make_environment(TIMING_TEMPLATE_FILES.values())
+    return make_environment([*TIMING_TEMPLATE_FILES.values(), *TIMING_SUPPORT_FILES])
 
 
 def render_timing_harness(template: str, context: Dict[str, Any]) -> str:

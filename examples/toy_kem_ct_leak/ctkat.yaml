@@ -30,6 +30,7 @@ dudect:
       include_dirs: [include]
       sources: [src/toy_kem.c]
       header: toy_kem.h
+      randombytes_header: null
       prefix: "LEAKY_"
 
     # safe: same loop count for every ct in SAFE_crypto_kem_dec().
@@ -40,6 +41,7 @@ dudect:
       include_dirs: [include]
       sources: [src/toy_kem.c]
       header: toy_kem.h
+      randombytes_header: null
       prefix: "SAFE_"
 
 report:

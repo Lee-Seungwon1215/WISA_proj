@@ -17,16 +17,22 @@
 - **M2 / `STAT-001` 완료 (2026-07-30, `0.4.0a1`)** — exact-pinned official
   dudect 102-test backend, two-trace protocol, synthetic A/A·effect curve,
   same-trace parity, host manifest와 fail-closed timing validity를 구현했다.
-- clean wheel/sdist 설치와 6개 template render hash 일치를 확인했다.
+- **M2 / `TIME-001` 구현 완료 (2026-07-30, `0.5.0a1`)** — KEM/sign 양 class
+  pool, common work buffer, setup 대칭화, RDTSCP AUX migration filter,
+  3-process target 반복, physical A/A·setup-placebo·3-point positive control,
+  run별 MDE/power artifact를 구현했다. 실제 target의 native control 통과는
+  아직 실행하지 않았고 다음 corpus v2 refresh에서만 승격한다.
+- clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
+  resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
   `ctkat screen` toy end-to-end를 통과했다.
 - 기존 ML-KEM timing `FAIL + robust` 행은
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- 다음 작업은 **M2 / `TIME-001` timing-harness-pools**다. backend 자체는
-  검증됐지만 target-level physical A/A·power는 pool/common-buffer 하니스가
-  먼저라서 아직 timing result를 `valid`로 승격하지 않는다.
+- 다음 작업은 **기존 corpus의 timing-harness-v2 native 재실행/재분류**다.
+  코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
+  target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
 
 ## 0. 결론부터
 
@@ -85,17 +91,19 @@ CT-KAT은 갈아엎을 프로젝트가 아니다. 검사기를 새로 발명한 
 
 ### 1.3 리뷰 작성 뒤 이미 들어간 수정과 그 한계
 
-현재 HEAD에는 `Refresh dudect evidence to native measurement; fix KEM timing
-template` 커밋이 있다. 이 수정은 invalid ciphertext 일변도였던 KEM `sk` 축을
-valid ciphertext normal path로 바꾸고 warm call을 추가했다. 이건 필요한 수정이다.
+리뷰 작성 당시 HEAD에는 `Refresh dudect evidence to native measurement; fix
+KEM timing template` 커밋이 있었다. 이 수정은 invalid ciphertext 일변도였던
+KEM `sk` 축을 valid ciphertext normal path로 바꾸고 warm call을 추가했다.
+이건 필요한 수정이었다.
 
 하지만 class 0은 기존 key를 쓰고 class 1만 매 iteration keypair를 생성한다.
 주소도 `sk_fixed`와 `sk_random`으로 다르다. 즉 keygen이 timer 밖에 있다는 이유만으로
 cache, predictor, frequency, 주소 효과가 사라지지 않는다. 실제 `|t|=145.316`이 그
 confound를 그대로 보여준다.
 
-따라서 `TIME-001`은 **해결이 아니라 부분 수정**이다. signature timing template도
-같은 fixed-vs-fresh setup을 쓰므로 A/A control과 pool 방식으로 같이 재검증해야 한다.
+따라서 당시 `TIME-001`은 **해결이 아니라 부분 수정**이었다. signature timing
+template도 같은 fixed-vs-fresh setup을 썼으므로 A/A control과 pool 방식으로
+같이 재검증해야 했다. 현재 구현 상태는 아래 M2 절에 따로 기록한다.
 
 ---
 
@@ -326,9 +334,11 @@ overall: no-finding-observed | risk-detected | needs-review | inconclusive | too
 - QEMU와 Linux multi-CPU affinity, 과도/비대칭 zero drop을
   `environment-rejected`로 보존
 
-경계도 같이 고정했다. 이 calibration은 statistical adapter 검증이지 target
-하니스 검증이 아니다. 현재 KEM/sign은 `confounded`, generic은
-`insufficient-power`이며 `TIME-001`/`POWER-001` 뒤에만 `valid` 후보가 된다.
+당시 경계도 같이 고정했다. 이 calibration은 statistical adapter 검증이지
+target 하니스 검증이 아니므로 `0.4.0a1`의 KEM/sign은 `confounded`,
+generic은 `insufficient-power`였다. `0.5.0a1`부터 KEM/sign은 TIME-001
+physical control을 실제로 통과한 run만 `valid` 후보가 되고, generic은
+계속 target-specific control 전까지 `insufficient-power`다.
 
 official dudect와 맞출 항목:
 
@@ -346,6 +356,14 @@ official dudect와 맞출 항목:
   adjusted p를 별도 구현·simulation 검증
 
 ### `TIME-001` KEM/sign timing harness v2
+
+**상태: 구현 완료 (2026-07-30, `0.5.0a1`)**
+
+아래 1–9는 생성 C, process runner, raw protocol CSV와 backend report schema
+v2에 구현됐다. 단, target별 physical acceptance artifact는 다음 corpus
+refresh에서 생성한다. control 코드 unit test를 실제 native ML-KEM A/A
+통과로 둔갑시키지 않는다. 상세 계약은
+[`TIMING_HARNESS_V2.md`](TIMING_HARNESS_V2.md)에 고정했다.
 
 공통 설계:
 
@@ -391,8 +409,10 @@ M2 종료 조건:
 - [x] backend-only synthetic A/A false-alarm budget과 injected-effect curve 존재
 - [x] official/custom uncropped same-trace parity report 존재
 
-앞의 미완료 두 항목은 실제 target/physical host 기준이다. backend synthetic
-결과로 슬쩍 체크 처리하지 않는다.
+앞의 미완료 두 항목은 실제 target/physical host 기준이다.
+`timing-harness-v2` 구현 완료만으로 슬쩍 체크 처리하지 않는다. 다음 단계에서
+native single-CPU로 corpus를 재실행하고 A/A false alarm, setup-placebo,
+positive power curve, MDE를 target별로 커밋한 뒤에만 체크한다.
 
 ---
 
@@ -803,8 +823,8 @@ M5 종료 조건:
 1. ~~`PKG-001`, `DOC-001`, `LIC-001`, `CI-001`~~ — 완료
 2. ~~schema v2와 legacy migration~~ — 완료
 3. ~~official dudect backend와 timing validity~~ — 완료
-4. **KEM/sign pool 하니스 + physical A/A calibration** — 다음
-5. 기존 corpus를 v2로 재분류
+4. ~~KEM/sign pool 하니스 + physical control/power 프로토콜 구현~~ — 완료
+5. **기존 corpus를 native v2로 재실행·재분류** — 다음
 6. 그 다음에 KyberSlash/Falcon 실험 확장
 
 첫 구현 batch의 완료 기준:

@@ -62,8 +62,9 @@ dudect:
   으로 채워짐. `public`은 매 호출 같은 값. `output`은 출력 버퍼 (호출 후
   Valgrind 관점에서 결과 보호용).
 - `dudect.timeout` 미설정 시 600s default. 한 함수 호출이 비싼 경우 늘릴 것.
-- official backend는 calibration trace와 analysis trace를 따로 만들므로 timing
-  harness가 두 번 실행된다. `measurements`는 각 trace의 row 수다.
+- generic official backend는 calibration/analysis 두 trace를 만든다.
+  KEM/sign v2는 이 target pair를 기본 3 process/seed로 반복하고 physical
+  control trace도 실행한다.
 - upstream minimum은 zero filter 뒤 class 0 sample 10,000개 초과다.
 
 ## 2. 실행
@@ -82,7 +83,8 @@ $ python -m ctkat dudect --config ctkat.yaml
    validity=insufficient-power
 ```
 
-- `n0`/`n1`: zero-filter 후 클래스별 sample 수. raw count는 CSV col 18-20.
+- `n0`/`n1`: clock/AUX filter 후 클래스별 sample 수. raw/drop count는
+  summary와 protocol CSV에서 확인한다.
 - official backend는 uncropped first-order 1개, crop 100개, second-order 1개
   중 max `|t|`를 고르고 `|t| > 10`이면 raw FAIL이다.
 - `validity`는 raw signal과 별개다. generic target의 physical A/A와
@@ -90,11 +92,13 @@ $ python -m ctkat dudect --config ctkat.yaml
 
 ## 3. 결과 파일
 
-- `reports/dudect_summary.csv` — 통계·validity 요약 (34개 컬럼)
+- `reports/dudect_summary.csv` — 통계·validity 요약 (42개 컬럼)
 - `reports/dudect_raw_timings.csv` — analysis raw trace
 - `reports/dudect_calibration_timings.csv` — crop threshold용 discarded trace
+- `reports/dudect_protocol_timings.csv` — KEM/sign 모든 target/control process,
+  seed/effect/AUX/drop reason
 - `reports/dudect_backend_report.json` — 102개 검정 전체, host manifest,
-  validity 사유, 두 trace hash/seed
+  validity 사유, A/A budget, power curve, MDE, trace hash/seed
 
 여기서 PASS는 **raw timing threshold 결과**일 뿐 evidence-v2의
 `timing_validity=valid`를 뜻하지 않는다. backend 자체의 synthetic A/A와
@@ -109,8 +113,8 @@ effect curve는 `docs/calibration/timing_backend_v2.json`에 있지만 target
 `validity_reasons`에 적힌 affinity/QEMU/drop/harness control 문제를 먼저
 해결한다.
 
-**b) per-class drop 비대칭 경고 확인** (F4/S2): console에 
-"zero-cycle filter asymmetric" 메시지가 떴다면 한 클래스의 slow tail로
+**b) per-class drop 비대칭 경고 확인** (F4/S2): console에
+"zero-cycle filter asymmetric" 또는 AUX migration 경고가 떴다면 한 클래스의 slow tail로
 편향된 표본. 호스트가 너무 느리거나 함수가 너무 빠를 가능성.
 
 **c) 102개 test와 tau 보기**: summary의 max row만 보지 말고
@@ -124,6 +128,12 @@ reject된다.
 **e) experimental backend 비교가 필요하면 명시적 opt-in**:
 `backend: experimental-first-order`에서만 Cohen's d와 `--no-crop`을 쓸 수
 있다. 이 결과는 official protocol 결과로 부르면 안 된다.
+
+**f) KEM/sign control manifest 보기**:
+`harness_protocol.aa_controls`, `setup_placebo_controls`,
+`positive_power_curve`, `minimum_detectable_effects` 중 어디서 gate가
+깨졌는지 확인한다. A/A/placebo 실패는 setup confound, positive power 실패는
+검출력 부족이다. 둘을 같은 “타이밍 애매함”으로 뭉개지 않는다.
 
 ## 5. 다음 단계 — legacy 결합 verdict
 
@@ -149,9 +159,10 @@ asm-scan 후보가 public인지 secret-risk인지 등 **사람 판단**은 파�
 config(ctkat.yaml)와 분리된 `triage.yaml`에 적는다(README §screen 참고).
 최종 review에는 `review`와 `review_id`가 필요하며 note만으로는 clear되지
 않는다. default-deny: `overall=no-finding-observed`만 exit 0, 나머지는 exit
-2다. TIME-001/POWER-001 target control이 아직 없으므로 generic timing은
-`insufficient-power`, legacy KEM/sign timing은 `confounded`로 exit 2다.
-Valgrind 필요 → Linux/Docker.
+2다. generic timing은 caller-defined setup을 자동 대칭화할 수 없어
+`insufficient-power`다. KEM/sign v2도 native single-CPU 환경, 3-repeat
+일관성, A/A/placebo, positive power, seeded randomness를 모두 통과하기
+전에는 exit 2다. Valgrind 필요 → Linux/Docker.
 
 ## 자주 빠지는 함정
 
@@ -159,9 +170,10 @@ Valgrind 필요 → Linux/Docker.
   바이트지만 `length: 32`로 적으면 32바이트만 taint됨. Bundle F의 F6
   coverage probe가 <50% 발견 시 yellow warning, fix하지 않으면 결과가
   부정확.
-- **PQClean KEM 하니스의 reproducibility**: yaml `seed`는 자동 생성
-  하니스 PRNG만 제어한다. PQClean `crypto_kem_keypair/enc`는 OS entropy
-  (`getrandom`)를 쓰기 때문에 시드로 재현되지 않음 (R1 Option A docs caveat).
+- **PQClean randombytes strong symbol을 같이 link**: v2의 weak seeded
+  interpose가 가려져 runtime manifest가 `external-or-none`이 되고
+  `confounded`다. dudect harness sources에서는 `common/randombytes.c`를 빼고,
+  구조/Valgrind harness에는 그대로 둔다.
 - **manual binary mode 사용 시**: `ct.require_sentinel: true` + binary
   stdout에 `CTKAT-HARNESS-RAN: <name>` 박는 것 권장 (F5). /bin/true도
   silent PASS되는 fail-open 회피.

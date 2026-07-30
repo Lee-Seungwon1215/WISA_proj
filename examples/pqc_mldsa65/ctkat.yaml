@@ -50,7 +50,7 @@ ct:
 dudect:
   enabled: true
   backend: official-dudect
-  # ML-DSA-65 signing axis: class 0 fixed sk, class 1 fresh sk, message fixed.
+  # ML-DSA-65 signing axis: pre-generated fixed-vs-random sk pools, message fixed.
   # Modest committed default — NOT paper-grade (see pqc_mldsa44 for the note on
   # native-x86_64 measurement). api.h alone gives CRYPTO_*BYTES (no params.h).
   measurements: 2000

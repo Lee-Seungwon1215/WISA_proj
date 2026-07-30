@@ -44,7 +44,7 @@ ct:
 dudect:
   enabled: true
   backend: official-dudect
-  # ML-DSA-44 signing axis: class 0 fixed sk, class 1 fresh sk, message fixed.
+  # ML-DSA-44 signing axis: pre-generated fixed-vs-random sk pools, message fixed.
   # `measurements` is a modest committed default — NOT paper-grade. Real CT
   # numbers need a stable native x86_64 box (pinned core, perf governor);
   # override with `--measurements` there. A VM/WSL2 run is engineering-only.

@@ -66,6 +66,10 @@ class WelchResult:
     calibration_seed: Optional[int] = None
     protocol_results: List[Dict[str, Any]] = field(default_factory=list)
     environment: Dict[str, Any] = field(default_factory=dict)
+    # TIME-001 target/process repetitions and physical controls.  Kept as a
+    # lossless mapping because the positive-control effect curve is naturally
+    # nested and is serialized verbatim into dudect_backend_report.json.
+    harness_protocol: Dict[str, Any] = field(default_factory=dict)
 
 
 def _cohens_d(n0: int, n1: int, m0: float, m1: float, v0: float, v1: float) -> float:
