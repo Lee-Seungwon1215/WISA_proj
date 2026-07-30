@@ -58,6 +58,7 @@ def test_kyberslash_ct_matrix_stays_structurally_clean():
     assert {row["ct_findings"] for row in rows} == {"0"}
     assert all(row["ct_finding_funcs"] == "" for row in rows)
     assert all(row["ct_error"] == "" for row in rows)
+    assert {row["asm_status"] for row in rows} == {"PASS"}
 
 
 def test_kyberslash_varlat_report_keeps_secret_and_public_triage_separate():
@@ -95,9 +96,16 @@ def test_kyberslash_varlat_report_keeps_secret_and_public_triage_separate():
     stock_summary = _summary_row("pqclean_mlkem768", "kem_dec")
     vulnerable_summary = _summary_row("pqclean_mlkem768_kyberslash", "kem_dec")
     assert stock_summary["varlat_triage"] == "public"
-    assert stock_summary["verdict_class"] == "robust"
+    assert stock_summary["legacy_verdict_class"] == "robust"
+    # The raw timing FAIL is explicitly confounded, so it cannot coexist with a
+    # clean v2 headline even though the structural/asm attribution is public.
+    assert stock_summary["timing_validity"] == "confounded"
+    assert stock_summary["timing_signal"] == "signal"
+    assert stock_summary["overall"] == "inconclusive"
     assert vulnerable_summary["varlat_triage"] == "secret-risk"
-    assert vulnerable_summary["verdict_class"] == "varlat-secret-risk"
+    assert vulnerable_summary["legacy_verdict_class"] == "varlat-secret-risk"
+    assert vulnerable_summary["asm_attribution"] == "secret-risk"
+    assert vulnerable_summary["overall"] == "risk-detected"
 
 
 def test_kyberslash_source_restores_division_while_stock_source_uses_reciprocal_multiply():

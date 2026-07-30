@@ -1,0 +1,32 @@
+schema_version: "1.0"
+review_id: rvw-mlkem-evidence-v1
+status: reviewed
+title: ML-KEM public Keccak candidates and legacy timing interpretation
+reviewed_at: "2026-07-30"
+reviewers:
+  - id: project-maintainer
+    role: source-and-artifact-review
+scope:
+  - {target: pqclean_mlkem512, harness: kem_dec}
+  - {target: pqclean_mlkem512, harness: kem_dec_fo}
+  - {target: pqclean_mlkem768, harness: kem_dec}
+  - {target: pqclean_mlkem768, harness: kem_dec_ct}
+  - {target: pqclean_mlkem768, harness: kem_dec_fo}
+  - {target: pqclean_mlkem1024, harness: kem_dec}
+  - {target: pqclean_mlkem1024, harness: kem_dec_fo}
+decision:
+  - The emitted shake128/shake256 division candidates operate on public Keccak rates.
+  - The ML-KEM-768 sk-axis raw timing FAIL is confounded by asymmetric key generation,
+    cache/predictor state, and distinct fixed/random key addresses.
+  - Other legacy timing PASS rows have no A/A or positive-control power calibration
+    and therefore remain insufficient-power rather than clean timing evidence.
+  - The kem_dec_ct v1 summary has no matching cell artifact; evidence v2 therefore
+    records its structural and assembly layers as not-run.
+evidence:
+  - docs/corpus/archive/v1.2/corpus_summary.csv
+  - examples/pqc_mlkem768/ctkat.yaml
+  - ctkat/templates/timing_kem.c.j2
+limitations:
+  - One maintainer review only; independent review remains a paper-submission gate.
+  - No claim of official dudect parity.
+  - No structural or assembly claim is made for the summary-only kem_dec_ct axis.

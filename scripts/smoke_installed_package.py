@@ -57,7 +57,7 @@ def render_hashes() -> dict[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--expect-version", default="0.2.0a1")
+    parser.add_argument("--expect-version", default=__version__)
     args = parser.parse_args()
     if __version__ != args.expect_version:
         raise SystemExit(f"installed version mismatch: {__version__!r} != {args.expect_version!r}")

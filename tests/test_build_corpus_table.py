@@ -6,6 +6,7 @@ gitignored real reports."""
 
 import csv
 import importlib.util
+import json
 from pathlib import Path
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "build_corpus_table.py"
@@ -14,7 +15,7 @@ bct = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bct)
 
 
-def _write_reports(tmp_path, ctm, varlat, dud):
+def _write_reports(tmp_path, ctm, varlat, dud, *, asm_manifest=True):
     rep = tmp_path / "reports"
     rep.mkdir(parents=True, exist_ok=True)
 
@@ -56,6 +57,23 @@ def _write_reports(tmp_path, ctm, varlat, dud):
         varlat,
     )
     w("dudect_summary.csv", ["project", "harness", "n0", "n1", "abs_t_score", "status"], dud)
+    if asm_manifest:
+        (rep / "ctkat_varlat_candidates.json").write_text(
+            json.dumps(
+                {
+                    "project": "p",
+                    "kind": "varlat_candidates",
+                    "warn_only": True,
+                    "scanned_opt_levels": sorted(
+                        {bct.opt_of(row.get("cflags", "")) for row in ctm}
+                    ),
+                    "scanned_compilers": sorted({row["cc"] for row in ctm}),
+                    "errors": [],
+                    "candidates": [],
+                    "matrix": [],
+                }
+            )
+        )
 
 
 def _ctm(harness, combo, cc, cflags, status, findings="0"):
@@ -123,10 +141,18 @@ def test_build_robust_with_public_varlat(tmp_path):
     assert by_combo["gcc_size"]["cc_version"] == "13.3.0"
 
     s = summary[0]
-    assert s["verdict_class"] == "robust"
-    assert s["basis"] == "review"
+    assert s["legacy_verdict_class"] == "robust"
+    assert s["legacy_basis"] == "review"
+    assert s["structural"] == "no-finding"
+    assert s["asm"] == "candidate"
+    assert s["asm_attribution"] == "public"
+    # A v1 timing WARNING has no A/A or power calibration, and the public
+    # attribution has no review artifact in this synthetic fixture.
+    assert s["timing_validity"] == "insufficient-power"
+    assert s["review"] == "pending"
+    assert s["overall"] == "inconclusive"
     assert s["ct_flips"] == "no"
-    assert s["dudect_status"] == "WARNING"
+    assert s["timing_raw_status"] == "WARNING"
     assert "WARNING" in s["notes"]  # surfaced, not hidden
 
 
@@ -142,8 +168,10 @@ def test_build_flip_is_build_sensitive(tmp_path):
     )
     _cells, summary = bct.build(tmp_path, "syn", "t", {}, "", "", {})
     assert summary[0]["ct_flips"] == "yes"
-    assert summary[0]["verdict_class"] == "build-sensitive-ct"
-    assert summary[0]["basis"] == "auto"
+    assert summary[0]["legacy_verdict_class"] == "build-sensitive-ct"
+    assert summary[0]["legacy_basis"] == "auto"
+    assert summary[0]["structural"] == "finding"
+    assert summary[0]["overall"] == "risk-detected"
 
 
 def test_build_untriaged_is_the_honest_default(tmp_path):
@@ -157,8 +185,50 @@ def test_build_untriaged_is_the_honest_default(tmp_path):
     )
     _cells, summary = bct.build(tmp_path, "f", "t", {}, "", "", {})  # no --triage
     assert summary[0]["varlat_triage"] == "untriaged"
-    assert summary[0]["verdict_class"] == "ct-clean-untriaged"
-    assert summary[0]["basis"] == "stop"
+    assert summary[0]["legacy_verdict_class"] == "ct-clean-untriaged"
+    assert summary[0]["legacy_basis"] == "stop"
+    assert summary[0]["asm_attribution"] == "unresolved"
+    assert summary[0]["review"] == "pending"
+    assert summary[0]["overall"] == "needs-review"
+
+
+def test_build_asm_candidates_are_scoped_by_harness(tmp_path):
+    _write_reports(
+        tmp_path,
+        [
+            _ctm("h1", "gcc_o2", "gcc", "-O2", "PASS"),
+            _ctm("h2", "gcc_o2", "gcc", "-O2", "PASS"),
+        ],
+        [_vl("h2", "gcc", "only_h2", "-O2")],
+        [],
+    )
+    cells, summary = bct.build(tmp_path, "f", "t", {}, "", "", {})
+    by_harness = {cell["harness"]: cell for cell in cells}
+    assert by_harness["h1"]["asm_div_count"] == "0"
+    assert by_harness["h2"]["asm_div_funcs"] == "only_h2"
+    by_summary = {row["harness"]: row for row in summary}
+    assert by_summary["h1"]["asm"] == "no-candidate"
+    assert by_summary["h2"]["asm"] == "candidate"
+
+
+def test_build_preserves_asm_only_optimization_cell(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("h", "gcc_o0", "gcc", "-O0", "PASS")],
+        [_vl("h", "gcc", "optimized_div", "-O2")],
+        [],
+    )
+    manifest = tmp_path / "reports" / "ctkat_varlat_candidates.json"
+    payload = json.loads(manifest.read_text())
+    payload["scanned_opt_levels"] = ["-O0", "-O2"]
+    manifest.write_text(json.dumps(payload))
+
+    cells, summary = bct.build(tmp_path, "f", "t", {}, "", "", {})
+    by_combo = {cell["combo"]: cell for cell in cells}
+    assert by_combo["asm_only_gcc_O2"]["ct_status"] == "NA"
+    assert by_combo["asm_only_gcc_O2"]["asm_div_funcs"] == "optimized_div"
+    assert summary[0]["structural"] == "no-finding"
+    assert summary[0]["asm"] == "candidate"
 
 
 def test_build_pass_no_candidates_is_robust(tmp_path):
@@ -166,8 +236,9 @@ def test_build_pass_no_candidates_is_robust(tmp_path):
     # without an explicit --triage (regression for the ct-clean-untriaged trap).
     _write_reports(tmp_path, [_ctm("safe", "gcc_debug", "gcc", "-O0", "PASS")], [], [])
     _c, s = bct.build(tmp_path, "syn", "t", {}, "", "", {})
-    assert s[0]["verdict_class"] == "robust"
-    assert s[0]["basis"] == "auto"
+    assert s[0]["legacy_verdict_class"] == "robust"
+    assert s[0]["legacy_basis"] == "auto"
+    assert s[0]["overall"] == "no-finding-observed"
 
 
 def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
@@ -191,16 +262,19 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
     # suffix-match against PFX_-prefixed names; all registered -> accepted
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint;PFX_pack_sig")], [], [])
     _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
-    assert s[0]["verdict_class"] == "accepted-variable-time"
-    assert s[0]["basis"] == "auto"
+    assert s[0]["legacy_verdict_class"] == "accepted-variable-time"
+    assert s[0]["legacy_basis"] == "auto"
+    assert s[0]["review"] == "pending"
+    assert s[0]["overall"] == "needs-review"
     assert "registry" in s[0]["notes"]
     assert "poly_chknorm" in s[0]["ct_finding_funcs"]
 
     # one unregistered function -> needs-analysis, named in the note (default-deny)
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_mystery_fn")], [], [])
     _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
-    assert s[0]["verdict_class"] == "needs-analysis"
-    assert s[0]["basis"] == "stop"
+    assert s[0]["legacy_verdict_class"] == "needs-analysis"
+    assert s[0]["legacy_basis"] == "stop"
+    assert s[0]["overall"] == "needs-review"
     assert "mystery_fn" in s[0]["notes"]
 
 
@@ -223,8 +297,6 @@ def test_asm_error_from_varlat_json_is_surfaced(tmp_path):
     # NOT show a clean "0 divisions" — its asm_error must be surfaced in the
     # corpus cell. Before the fix asm_error was hardcoded "", so a partial scan
     # looked identical to a complete clean one.
-    import json
-
     _write_reports(
         tmp_path,
         [
@@ -264,18 +336,16 @@ def test_asm_error_from_varlat_json_is_surfaced(tmp_path):
     # N2 (verdict layer, the row a human reads): must NOT be the strongest clean
     # class 'robust' when an asm-scan errored, and must carry a loud caveat note.
     s = summary[0]
-    assert s["verdict_class"] != "robust"
-    assert s["verdict_class"] == "ct-clean-asm-incomplete"
+    assert s["legacy_verdict_class"] != "robust"
+    assert s["legacy_verdict_class"] == "ct-clean-asm-incomplete"
+    assert s["asm"] == "incomplete"
+    assert s["overall"] == "inconclusive"
     assert "asm-scan incomplete" in s["notes"]
 
 
-def test_asm_error_not_flagged_for_uncovered_compiler(tmp_path):
-    # Review issue #4: a matrix compiler that simply wasn't in asm-scan's --cc
-    # set (the common matrix={gcc,clang} / asm-scan=gcc-only flow) is a COVERAGE
-    # choice, not an error — it must NOT be labeled asm_error nor downgrade the
-    # verdict. asm_error is reserved for genuine asm-scan errors (schema-locked).
-    import json
-
+def test_uncovered_asm_compiler_is_not_run_and_incomplete(tmp_path):
+    # A matrix compiler outside asm-scan's recorded coverage is not an ERROR,
+    # but it is also not a clean zero-candidate result.
     _write_reports(
         tmp_path,
         [
@@ -302,10 +372,13 @@ def test_asm_error_not_flagged_for_uncovered_compiler(tmp_path):
     )
     cells, summary = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
     by_cc = {c["cc"]: c for c in cells}
-    assert by_cc["clang"]["asm_error"] == ""  # not an error — just not requested
-    # a not-requested compiler must NOT downgrade the verdict: no genuine asm
-    # error -> the ct-PASS / no-candidate harness stays 'robust'.
-    assert summary[0]["verdict_class"] == "robust"
+    assert by_cc["gcc"]["asm_status"] == "PASS"
+    assert by_cc["clang"]["asm_status"] == "NOT_RUN"
+    assert by_cc["clang"]["asm_error"] == ""
+    assert summary[0]["legacy_verdict_class"] == "ct-clean-asm-incomplete"
+    assert summary[0]["asm"] == "incomplete"
+    assert summary[0]["overall"] == "inconclusive"
+    assert "not run" in summary[0]["notes"]
 
 
 def test_asm_error_blank_when_no_asm_json(tmp_path):
@@ -316,6 +389,41 @@ def test_asm_error_blank_when_no_asm_json(tmp_path):
         [_ctm("kem_dec", "gcc_o2", "gcc", "-O2 -g", "PASS")],
         [_vl("kem_dec", "gcc", "shake128", "-O2")],
         [],
+        asm_manifest=False,
     )
     cells, _ = bct.build(tmp_path, "ML-KEM", "t", {}, "x86_64", "abc", {})
     assert cells[0]["asm_error"] == ""
+    assert cells[0]["asm_status"] == "PASS"  # the candidate row proves this cell ran
+
+
+def test_missing_asm_coverage_manifest_cannot_claim_no_candidate(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("safe", "gcc_o2", "gcc", "-O2", "PASS")],
+        [],
+        [],
+        asm_manifest=False,
+    )
+    cells, summary = bct.build(tmp_path, "syn", "t", {}, "x86_64", "abc", {})
+    assert cells[0]["asm_status"] == "NOT_RUN"
+    assert summary[0]["asm"] == "not-run"
+    assert summary[0]["overall"] == "needs-review"
+
+
+def test_stale_asm_coverage_manifest_is_rejected(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("safe", "gcc_o2", "gcc", "-O2", "PASS")],
+        [],
+        [],
+    )
+    manifest = tmp_path / "reports" / "ctkat_varlat_candidates.json"
+    payload = json.loads(manifest.read_text())
+    payload["project"] = "different-project"
+    manifest.write_text(json.dumps(payload))
+    try:
+        bct.build(tmp_path, "syn", "t", {}, "x86_64", "abc", {})
+    except ValueError as exc:
+        assert "does not match" in str(exc)
+    else:
+        raise AssertionError("stale asm coverage manifest was accepted")

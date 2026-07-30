@@ -7,3 +7,4 @@ include SECURITY.md
 include THIRD_PARTY_NOTICES.md
 include third_party.toml
 recursive-include ctkat/templates *.j2
+recursive-include ctkat/schemas *.json

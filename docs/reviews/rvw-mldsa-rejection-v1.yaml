@@ -1,0 +1,25 @@
+schema_version: "1.0"
+review_id: rvw-mldsa-rejection-v1
+status: reviewed
+title: ML-DSA rejection and public-output attribution
+reviewed_at: "2026-07-30"
+reviewers:
+  - id: project-maintainer
+    role: source-and-taint-review
+scope:
+  - {target: pqclean_mldsa44, harness: sign}
+  - {target: pqclean_mldsa65, harness: sign}
+  - {target: pqclean_mldsa87, harness: sign}
+decision:
+  - Registered rejection-sampling and public-signature packing findings are accepted
+    only at their reviewed source locations.
+  - crypto_sign_signature_ctx is a coarse optimized parent frame and is not accepted
+    as a function-wide registry entry.
+  - Legacy timing PASS rows remain insufficient-power until calibrated controls exist.
+evidence:
+  - docs/accepted_variable_time.md
+  - examples/pqc_mldsa65/triage.yaml
+  - docs/corpus/archive/v1.2/corpus_summary.csv
+limitations:
+  - The review is narrow to these clean PQClean harnesses and build cells.
+  - One maintainer review only.

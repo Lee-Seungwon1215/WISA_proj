@@ -1,0 +1,3 @@
+# Preserve the rejected-paper v1.2 CSV inputs byte-for-byte (including their
+# historical CRLF record separators); migration reads them with universal newlines.
+docs/corpus/archive/v1.2/*.csv binary

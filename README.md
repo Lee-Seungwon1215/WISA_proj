@@ -12,14 +12,16 @@ C 암호 구현을 던지면 설정된 하니스에 대해:
 4. **ct-matrix** — compiler × cflags별로 구조적 CT 결과가 바뀌는지 확인
 5. **asm-scan** — emitted assembly에서 `div/idiv` 같은 variable-latency 후보 수집
 6. **timing screen (`dudect` 명령)** — fixed-vs-random class의 실행 시간 분포를 자체 Welch t-test 구현으로 비교
-7. CSV/JSON/Markdown 리포트 + triage 기반 verdict 출력
+7. CSV/JSON/Markdown 리포트 + triage가 연결된 evidence schema v2 출력
 
-`screen`의 `verdict_class`가 현재 논문/코퍼스의 기준이다. 예전 `run` 명령은
+`screen`의 5상태 `overall`이 현재 도구/코퍼스의 기준이다. raw layer,
+timing validity, review 상태를 따로 보존하므로 raw timing `FAIL`과 clean
+headline이 공존할 수 없다. 예전 `run` 명령은
 Valgrind+dudect 결합 verdict(`CLEAN`, `STRUCTURAL_LEAK`, `SUSPECT`, `RISKY`,
 `CRITICAL`)를 계속 제공하지만, asm-scan/ct-matrix/triage까지 포함한 최종
-판정은 아니다.
+판정은 아닌 legacy compatibility artifact다.
 
-> **⚠ PASS/CLEAN/robust는 "constant-time 증명"이 아니다.** 이 도구가
+> **⚠ PASS/CLEAN/no-finding-observed는 "constant-time 증명"이 아니다.** 이 도구가
 > 실행한 하니스, 입력 분포, 컴파일러/cflags, checker 범위 안에서 새 finding을
 > 못 봤다는 뜻이다. 보지 않는 것: power/EM/fault side-channel, formal absence
 > proof, 희귀/adversarial input trigger, asm-scan 후보의 자동 secret-taint 판정.
@@ -152,9 +154,12 @@ blind spot을 가진다:
     fixed-vs-random secret + Welch t-test + percentile cropping (max |t|)
     "설정한 두 class의 실행 시간 분포가 통계적으로 다른가?"
          ↓
-[triage] public / secret-risk / accepted-variable-time / needs-analysis
+[triage] asm attribution + review state / artifact ID
          ↓
-[verdict_class] robust / varlat-secret-risk / build-sensitive-ct / ...
+[evidence v2] layer states + review artifact
+         ↓
+[overall] no-finding-observed / risk-detected / needs-review /
+          inconclusive / tool-error
 ```
 
 각 층의 역할:
@@ -482,9 +487,11 @@ Bundle B diagnostic 컬럼, 18-20은 Bundle F (S1) raw-count 컬럼, 21은
 Bundle G (S3) 효과 크기. 모두 항상 끝에 append되므로 awk-by-position
 파서는 안 깨짐.
 
-### `ctkat_verdict.csv` 컬럼 reference (Bundle E-1 갱신)
+### `ctkat_verdict.csv` 컬럼 reference (legacy `run` compatibility)
 
-`run` 명령이 emit하는 통합 verdict CSV — CI의 canonical gate.
+`run` 명령이 emit하는 Valgrind×timing 호환 CSV다. asm/matrix/review와 timing
+validity가 없으므로 신규 CI의 canonical gate가 아니다. 신규 게이트는
+`ctkat screen`의 evidence-v2 `screen_summary.*`와 `overall`을 사용한다.
 
 | col | 이름 | 의미 |
 |---|---|---|
@@ -616,7 +623,7 @@ sk-leak / ct-leak / fo-leak 세 모드는 직교 axis — 한 KEM 구현을 더 
 # 전체 파이프라인 (build → kat → ct → dudect → report → verdict)
 python -m ctkat run --config <ctkat.yaml> [--continue-on-kat-fail] [--no-crop]
 
-# 통합 스크리닝 한 방 (build→kat→ct→ct-matrix→asm-scan→dudect→triage→verdict_class)
+# 통합 스크리닝 한 방 (build→kat→ct→ct-matrix→asm-scan→timing→triage→evidence v2)
 python -m ctkat screen --config <ctkat.yaml> [--triage triage.yaml] [--family ML-DSA] [--asm-cc gcc --asm-cc clang]
 
 # 각 단계 단독 실행
@@ -632,7 +639,7 @@ python -m ctkat infer --header api.h --function crypto_kem_dec
 # Valgrind 로그 단일 파일 파싱 (디버깅용)
 python -m ctkat parse path/to/valgrind.log
 
-# 가변시간 명령(정수 나눗셈 등) 후보 스캔 — warn-only, verdict 무관
+# 가변시간 명령 후보 스캔 — 단독 실행은 warn-only, screen은 evidence로 소비
 python -m ctkat asm-scan --config <ctkat.yaml> [--opt -O0 --opt -Os ...] [--cc gcc --cc clang ...]
 ```
 
@@ -647,7 +654,9 @@ positive control은 `gcc -Os`와 `clang -O0`에서 `poly_compress` /
 힌트로 남는다. 반대로 FIPS202/Keccak `shake128`/`shake256` 후보는
 `keccak-rate-review-likely-public` 힌트로 남아 public triage 후보임을 빠르게
 보여준다. 단일 컴파일러·단일 빌드만 보면 놓칠 수 있다. **taint 분석이 아니라**
-소스 안 모든 나눗셈을 후보로 내므로(공개 나눗셈도 포함) verdict엔 절대 섞지 않는다.
+소스 안 모든 나눗셈을 후보로 내므로(공개 나눗셈도 포함) 후보만으로 risk를
+확정하지 않는다. 다만 `screen`은 미귀속 후보를 `needs-review`, 누락된 빌드
+coverage를 `inconclusive`로 보존한다.
 note의 "ct 스테이지가 놓침" 판정은 ct 빌드가 **같은 컴파일러**를 쓸 때만 성립하도록 조건부로 적는다
 (asm-scan은 ct 빌드의 컴파일러를 모름). **exit 코드**: candidate 유무와 무관하게
 `0`(warn-only). 요청한 컴파일러 중 **일부**가 PATH에 없으면 그 컴파일러만 건너뛰고
@@ -659,17 +668,18 @@ ERROR로 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단 `ob
 `asm-scan` 후보 보고에 머문다.
 
 ```bash
-# 컴파일러 × cflags Valgrind 매트릭스 — 관찰 전용, verdict 무관 (Phase C)
+# 컴파일러 × cflags Valgrind 매트릭스 — 단독 실행은 관찰용, screen evidence 입력
 python -m ctkat ct-matrix --config <ctkat.yaml>
 ```
 
 `ct-matrix`: 각 template 하니스를 `matrix:` 의 모든 빌드 설정(compilers × 이름붙은
 cflags 조합; 기본 `gcc × debug/opt1/release/opt3/size`)으로 **재컴파일**해서 *같은* 구조적
 CT(Valgrind/Memcheck) 검사를 돌리고, cell별 PASS/FAIL/ERROR를
-`reports/ctkat_ct_matrix.csv`/`.json`에 적는다. **이건 별도 산출물이고
-`ctkat_verdict.csv`나 `run` 게이트를 절대 건드리지 않는다(관찰 전용).** 목적은 "같은
-소스인데 빌드 설정을 바꾸면 CT 판정이 달라지는가"를 보이는 것. 한 하니스가 빌드별로
-다른 status를 내면 그걸 loud하게 표시한다. **exit 코드**: PASS/FAIL 분포와 무관하게
+`reports/ctkat_ct_matrix.csv`/`.json`에 적는다. 단독 `ct-matrix`는
+`ctkat_verdict.csv`나 legacy `run` 게이트를 건드리지 않지만, `screen`은 이
+artifact를 structural evidence로 소비한다. 목적은 "같은 소스인데 빌드 설정을
+바꾸면 CT 판정이 달라지는가"를 보이는 것. 한 하니스가 빌드별로 다른 status를 내면
+그걸 loud하게 표시한다. **exit 코드**: PASS/FAIL 분포와 무관하게
 `0`(관찰 전용 — 어떤 빌드의 FAIL은 *데이터 포인트*지 도구 실패가 아님). 단 `ct` 하니스
 없음 / 재컴파일할 template 하니스 없음 / combo 0개 / 컴파일러·`valgrind` 누락 / 모든
 cell ERROR 면 **config·toolchain 에러로 exit 2**(fail-closed). Valgrind 필요 →
@@ -693,18 +703,18 @@ matrix:
 위 예시 = `compilers(2) × ct_cflags(5)` = harness당 10 combo. CSV의 `cflags`
 컬럼엔 실제 플래그가 그대로 들어간다.
 
-`screen`: 위 단계들(build → KAT → ct → ct-matrix → asm-scan → dudect)을 **한
-프로세스에서** 돌린 뒤, triage를 적용해 harness별 `verdict_class`를 산출하고
+`screen`: 위 단계들(build → KAT → ct → ct-matrix → asm-scan → timing)을 **한
+프로세스에서** 돌린 뒤, triage를 적용해 harness별 evidence v2를 산출하고
 `reports/screen_summary.{csv,json,md}` + `screen_cells.csv`로 emit한다.
-**`verdict_class`는 코퍼스 빌더(`scripts/build_corpus_table.py`)와 동일한
-classifier(`ctkat/verdict_class.py`)로 계산** — 도구 출력과 논문 코퍼스가 어긋날
-수 없다. taxonomy: `robust` / `ct-clean-untriaged` / `ct-clean-asm-incomplete` /
-`varlat-secret-risk` / `build-sensitive-ct` / `accepted-variable-time` /
-`needs-analysis` / `ct-leak` / `tool-problem` (정의는 `docs/corpus_schema.md`).
-**exit 코드는 default-deny**: `verdict_class`가 `robust` 또는
-`accepted-variable-time`이고, dudect가 WARNING/FAIL/ERROR가 아니며, ct/KAT가
-완료된 경우에만 `0`이다. 미triage·불완전 스캔·timing warning·toolchain
-문제는 `2` — 즉 `screen && deploy`는 사람이 triage하기 전 새 타깃을
+**`overall`은 코퍼스 빌더·마이그레이션·검증기가 모두 동일한
+`ctkat/evidence.py` fold로 계산**한다. 상태는 `no-finding-observed` /
+`risk-detected` / `needs-review` / `inconclusive` / `tool-error`다. 예전
+9개 `verdict_class`는 `legacy_verdict_class`로만 남아 migration provenance에
+쓰인다(정의는 `docs/corpus_schema.md`).
+**exit 코드는 default-deny**: 모든 harness의 `overall`이
+`no-finding-observed`인 경우에만 `0`이다. 미triage·review artifact 누락·불완전
+스캔·검증되지 않은 timing·toolchain 문제는 `2` — 즉 `screen && deploy`는
+사람이 triage하기 전 새 타깃을
 통과시키지 않는다. `ct` 섹션 필수, `valgrind`/컴파일러/`objdump` 누락 시
 toolchain 에러로 `2`. Valgrind 필요 → Linux/Docker 전용, 단일 서브커맨드보다
 무겁다.
@@ -717,10 +727,13 @@ triage는 **파이프라인 config(ctkat.yaml)와 분리된** `triage.yaml`(사�
 registry: docs/accepted_variable_time.md   # 선택; accepted-variable-time 레지스트리 경로 override
 harnesses:
   kem_dec:
-    varlat: public          # public | secret-risk | none | untriaged
+    varlat: public          # public | secret-risk | mixed | none | untriaged
+    review: reviewed
+    review_id: rvw-mlkem-evidence-v1
     note: "fips202 shake 나눗셈은 공개"
   sign:
-    verdict: accepted-variable-time   # 선택; verdict_class 수동 override (도메인 triage)
+    verdict: accepted-variable-time   # legacy 분류 bridge; headline 직접 override 아님
+    review: pending                    # artifact 없이는 clean 승격 불가
 ```
 
 수동 `accepted-variable-time` override는 “화이트리스트에 대충 추가”가 아니라,
@@ -730,13 +743,18 @@ registry에 넣으면 과허용되는 케이스를 노트와 함께 명시적으
 않고, `examples/pqc_sphincs_sha2_128f_simple/triage.yaml`의 `sign` harness
 data-flow note로만 받아들인다.
 
+`reviewed`/`disputed`/`expired`는 `review_id`가 필수다. 코퍼스에서는 이 ID가
+`docs/reviews/<review_id>.yaml`에 실제로 존재하고 정확한 target/harness를
+scope에 포함하는지 CI가 확인한다. note 한 줄만 써놓고 reviewed라 우기는
+경로는 막혀 있다.
+
 `--no-crop`: dudect percentile cropping (기본 ON) 끄고 raw uncropped t-score만
 사용. 외부 dudect 구현과 수치 비교 / cropping 부작용 디버깅용. 평상시엔 그대로 둠.
 
-종료 코드:
+`screen` 종료 코드:
 
-- `0` — 모든 검사 PASS
-- `2` — finding 발견, dudect FAIL/WARNING, 또는 verdict=INCONCLUSIVE (E-1)
+- `0` — 모든 harness가 `overall=no-finding-observed`
+- `2` — `risk-detected|needs-review|inconclusive|tool-error`
 - `1` — 빌드/KAT 실패 등 파이프라인 자체 에러
 
 `ctkat ct`, `ctkat kat`, `ctkat dudect` 단일 stage 서브커맨드는 yaml에
@@ -751,36 +769,39 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 ### Committed corpus snapshot
 
 <!-- BEGIN CTKAT CORPUS SNAPSHOT -->
-<!-- source: docs/corpus/corpus_summary.csv sha256=99c124b57be922731e4fafe920428bd22aa69d5f803081b66ed62fd6fbefaac2; regenerate: python scripts/render_readme_corpus.py --write -->
+<!-- source: docs/corpus/corpus_summary.csv sha256=98bde62aae9b52644dd41a696465d250c93bbae7c38540324ddb7e5bcab87365; regenerate: python scripts/render_readme_corpus.py --write -->
 
-`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:99c124b57be9`).
+`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:98bde62aae9b`).
 
-| family | target / harness | structural CT | timing screen | verdict | basis |
-|---|---|---|---|---|---|
-| ML-KEM | pqclean_mlkem512 / kem_dec | {PASS} | — | robust | review |
-| ML-KEM | pqclean_mlkem512 / kem_dec_fo | {PASS} | — | robust | review |
-| ML-KEM | pqclean_mlkem768 / kem_dec | {PASS} | FAIL (\|t\|=145.316) | robust | review |
-| ML-KEM | pqclean_mlkem768 / kem_dec_ct | {PASS} | PASS (\|t\|=2.304) | robust | review |
-| ML-KEM | pqclean_mlkem768 / kem_dec_fo | {PASS} | PASS (\|t\|=2.103) | robust | review |
-| ML-KEM | pqclean_mlkem1024 / kem_dec | {PASS} | — | robust | review |
-| ML-KEM | pqclean_mlkem1024 / kem_dec_fo | {PASS} | — | robust | review |
-| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | {PASS} | — | varlat-secret-risk | review |
-| ML-DSA | pqclean_mldsa44 / sign | {FAIL} | PASS (\|t\|=1.153) | accepted-variable-time | review |
-| ML-DSA | pqclean_mldsa65 / sign | {FAIL} | PASS (\|t\|=1.661) | accepted-variable-time | review |
-| ML-DSA | pqclean_mldsa87 / sign | {FAIL} | PASS (\|t\|=1.748) | accepted-variable-time | review |
-| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | {FAIL} | PASS (\|t\|=1.523) | accepted-variable-time | review |
-| Falcon | pqclean_falcon512 / sign | {FAIL} | PASS (\|t\|=1.590) | needs-analysis | stop |
-| synthetic | toy_lookup / leaky | {FAIL} | — | ct-leak | review |
-| synthetic | toy_lookup / safe | {PASS} | — | robust | auto |
-| synthetic | ct_matrix_flip / leaky | {FAIL,PASS} | — | build-sensitive-ct | auto |
-| synthetic | ct_matrix_flip / safe | {PASS} | — | robust | auto |
+| family | target / harness | structural | asm / attribution | timing validity / signal | review | overall |
+|---|---|---|---|---|---|---|
+| ML-KEM | pqclean_mlkem512 / kem_dec | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem512 / kem_dec_fo | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem768 / kem_dec | no-finding | candidate / public | confounded / signal (raw FAIL, \|t\|=145.316) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
+| ML-KEM | pqclean_mlkem768 / kem_dec_ct | not-run | not-run / not-applicable | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.304) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
+| ML-KEM | pqclean_mlkem768 / kem_dec_fo | no-finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.103) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
+| ML-KEM | pqclean_mlkem1024 / kem_dec | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem1024 / kem_dec_fo | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-seeded-v1) | risk-detected |
+| ML-DSA | pqclean_mldsa44 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.153) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
+| ML-DSA | pqclean_mldsa65 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
+| ML-DSA | pqclean_mldsa87 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
+| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.523) | reviewed (rvw-sphincs-public-state-v1) | inconclusive |
+| Falcon | pqclean_falcon512 / sign | finding | candidate / unresolved | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.590) | pending | inconclusive |
+| synthetic | toy_lookup / leaky | finding | no-candidate / not-applicable | not-run / not-run | reviewed (rvw-toy-lookup-ground-truth-v1) | risk-detected |
+| synthetic | toy_lookup / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
+| synthetic | ct_matrix_flip / leaky | finding | no-candidate / not-applicable | not-run / not-run | not-needed | risk-detected |
+| synthetic | ct_matrix_flip / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
 
 재생성: `python scripts/render_readme_corpus.py --write`
 <!-- END CTKAT CORPUS SNAPSHOT -->
 
-이 표는 현재 committed v1 결과를 숨김없이 보여준다. 특히 `timing
-FAIL + robust` 모순은 문서에서 지워버릴 문제가 아니라 M2 evidence schema가
-해결할 차단 결함이다.
+이 표는 committed evidence schema v2 결과다. 과거 `timing FAIL + robust`
+행은 이제 `confounded / signal / inconclusive`이고, power calibration이 없는
+raw timing PASS도 `insufficient-power`라서 clean 근거로 쓰이지 않는다.
+v1.2 원본과 결정론적 v2 migration snapshot은
+`docs/corpus/archive/{v1.2,v2.0-from-v1.2}/` 및
+`scripts/migrate_evidence_v1_to_v2.py`에 보존했다.
 
 ### 1. `toy_password` — secret-dependent early return
 
@@ -820,13 +841,13 @@ int leaky_function(const uint8_t *secret, size_t len) {
 }
 ```
 
-현재 committed timing appendix 기준(QEMU/Docker 환경):
+현재 committed **legacy raw timing appendix** 기준(QEMU/Docker 환경):
 - `leaky`: `|t| = 181.5`, **FAIL**
 - `safe`: `|t| = 1.65`, **PASS**
 
 `leaky` run은 zero-cycle sample drop이 커서 논문/리포트가 caveat를 같이
-남긴다. 큰 toy 신호를 보여주는 positive control로는 충분하지만, 실제 PQC
-timing 결론은 native x86_64에서 재확인해야 한다.
+남긴다. raw positive-control 관찰값일 뿐 evidence-v2 `valid` 판정은 아니며,
+실제 PQC timing 결론은 native x86_64의 A/A·power calibration 뒤에만 낸다.
 
 ### 4. `pqc_mlkem{512,768,1024}` — 실전 PQClean ML-KEM parameter sets
 
@@ -851,8 +872,9 @@ harness data flow에 한정해 `accepted-variable-time` override를 둔다.
 
 ### 5. `pqc_falcon512` — Falcon/FN-DSA feasibility target
 
-Falcon-512 is present as a first-pass PQClean clean signing target and corpus
-`needs-analysis` boundary row, not as an accepted-variable-time row. The harness
+Falcon-512 is present as a first-pass PQClean clean signing target. Its legacy
+classification is `needs-analysis`; evidence v2 records `review=pending` and
+`overall=inconclusive`, not an accepted-variable-time or clean row. The harness
 taints `sk[1..]` because `sk[0]` is the public
 format header and full-sk taint would create an immediate false branch finding.
 Current Docker structural screening fails across gcc/clang debug/release cells,
@@ -928,7 +950,7 @@ PQClean ML-KEM-768은 현재 configured ct-matrix cells에서 Valgrind PASS다.
 
 - **Valgrind / dudect 둘 다 dynamic analysis** — 하네스가 실제로 실행한 경로만 검사. 실행 안 된 분기는 미검출.
 - **KAT/CT 분리 권장** — 정확성과 부채널 안전성은 독립. 두 binary 따로 만들어서 각자 검증.
-- **division/multiplication latency — Memcheck verdict로는 미검출 (부분 완화: `ctkat asm-scan`)** — Memcheck는 분기와 메모리 주소 의존만 잡고 KyberSlash류 secret-dependent division latency는 verdict에 안 나타남. 보조 수단으로 `ctkat asm-scan`이 소스를 여러 `-O`로 컴파일해 나눗셈 명령이 어느 빌드에서 살아남나 **warn-only 후보**로 보고한다(주의: taint 증명이 아니라 소스 내 모든 나눗셈을 후보로 냄, verdict 무관). 정밀한 secret-taint 판정은 여전히 패치드 Valgrind나 별도 정적/알고리즘 분석 필요.
+- **division/multiplication latency — Memcheck만으로는 미검출 (부분 완화: `ctkat asm-scan`)** — Memcheck는 분기와 메모리 주소 의존만 잡고 KyberSlash류 secret-dependent division latency는 잡지 못한다. 보조 수단으로 `ctkat asm-scan`이 소스를 여러 `-O`로 컴파일해 나눗셈 명령이 어느 빌드에서 살아남나 후보로 보고한다. 단독 명령은 warn-only지만 `screen`은 review 전까지 후보를 gating evidence로 보존한다(주의: taint 증명이 아니라 소스 내 모든 나눗셈을 후보로 냄). 정밀한 secret-taint 판정은 여전히 패치드 Valgrind나 별도 정적/알고리즘 분석 필요.
 - **하네스가 cover하는 입력 분포 한계** — `rej_uniform` 같은 데이터 의존 분기는 통계적으로만 노출됨.
 
 ### 측정 환경 권장
@@ -975,8 +997,8 @@ WARNING/FAIL 같은 status는 toy 케이스에선 안정적이지만 borderline 
 `build.argv`와 `kat.argv`는 shell 없이 실행되는 기본 경로다.
 `build.command`/`kat.command`는 shell 문법이 꼭 필요한 trusted workflow용
 escape hatch이며 `allow_shell: true`로 명시적으로 opt-in해야 한다. 0.1.x
-legacy config는 0.2 alpha에서 loud warning과 함께 한 번 더 허용하지만 0.3에서
-거부할 예정이다.
+legacy config는 현재 alpha에서 loud warning과 함께 한 번 더 허용하지만
+stable 전 후속 minor에서 거부할 예정이다.
 
 다운로드/외부 PR config에는 `execution_profile: untrusted`를 사용한다. 이
 profile은 `allow_shell: true`가 있어도 shell-backed step을 거부한다. 다만
@@ -992,9 +1014,11 @@ container/VM 안에서 실행할 것.
 
 ---
 
-## Three-layer verdict matrix
+## Legacy `run` verdict matrix
 
-`run` 명령은 ct + dudect 결과를 결합해 harness당 verdict 1개 산출:
+`run` 명령은 ct + raw timing 결과를 결합해 harness당 호환 verdict 1개를
+산출한다. 이 표에는 timing validity, asm attribution, review artifact가 없으므로
+evidence-v2 `overall` 대신 신규 배포 게이트로 사용하지 않는다.
 
 | Valgrind | dudect | Verdict | 의미 |
 |---|---|---|---|

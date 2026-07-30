@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Lee-Seungwon1215/WISA_proj/ctkat/schemas/evidence-v2.schema.json",
+  "title": "CT-KAT evidence schema v2 core",
+  "description": "Layer evidence, review maturity, and the computed five-state overall action.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "correctness",
+    "structural",
+    "asm",
+    "asm_attribution",
+    "timing_validity",
+    "timing_signal",
+    "review",
+    "review_id",
+    "overall",
+    "legacy_verdict_class"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "correctness": {
+      "enum": ["pass", "fail", "error", "not-run"]
+    },
+    "structural": {
+      "enum": ["no-finding", "finding", "incomplete", "error", "not-run"]
+    },
+    "asm": {
+      "enum": ["no-candidate", "candidate", "incomplete", "error", "not-run"]
+    },
+    "asm_attribution": {
+      "enum": ["public", "secret-risk", "mixed", "unresolved", "not-applicable"]
+    },
+    "timing_validity": {
+      "enum": [
+        "valid",
+        "confounded",
+        "insufficient-power",
+        "environment-rejected",
+        "error",
+        "not-run"
+      ]
+    },
+    "timing_signal": {
+      "enum": [
+        "no-signal-observed",
+        "warning",
+        "signal",
+        "not-interpretable",
+        "not-run"
+      ]
+    },
+    "review": {
+      "enum": ["not-needed", "pending", "reviewed", "disputed", "expired"]
+    },
+    "review_id": {
+      "type": "string",
+      "pattern": "^$|^[a-z0-9][a-z0-9._-]{2,127}$"
+    },
+    "overall": {
+      "enum": [
+        "no-finding-observed",
+        "risk-detected",
+        "needs-review",
+        "inconclusive",
+        "tool-error"
+      ]
+    },
+    "legacy_verdict_class": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "review": {
+            "enum": ["reviewed", "disputed", "expired"]
+          }
+        },
+        "required": ["review"]
+      },
+      "then": {
+        "properties": {
+          "review_id": {
+            "minLength": 3
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "timing_validity": {
+            "const": "not-run"
+          }
+        },
+        "required": ["timing_validity"]
+      },
+      "then": {
+        "properties": {
+          "timing_signal": {
+            "const": "not-run"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "asm": {
+            "enum": ["no-candidate", "not-run"]
+          }
+        },
+        "required": ["asm"]
+      },
+      "then": {
+        "properties": {
+          "asm_attribution": {
+            "const": "not-applicable"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

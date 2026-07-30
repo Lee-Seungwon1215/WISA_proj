@@ -89,7 +89,7 @@ include = ["ctkat*"]
 exclude = ["tests*", "examples*", "scripts*"]
 
 [tool.setuptools.package-data]
-ctkat = ["templates/*.j2", "py.typed"]
+ctkat = ["templates/*.j2", "schemas/*.json", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

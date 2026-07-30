@@ -12,11 +12,16 @@
 
 - **M1 완료 (2026-07-29)** — `0.2.0a1` 패키징, release CI, 문서
   single-source, third-party provenance, shell opt-in 정책을 구현했다.
+- **M2 / `EVID-001` 완료 (2026-07-30, `0.3.0a1`)** — evidence schema v2, 5상태
+  `overall`, review artifact linkage, v1.2 결정론적 migration을 구현했다.
 - clean wheel/sdist 설치와 6개 template render hash 일치를 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
   `ctkat screen` toy end-to-end를 통과했다.
-- 다음 작업은 **M2 evidence schema v2**다. 기존 timing `FAIL + robust` 모순은
-  아직 M2 부채이며 숨기지 않고 corpus gate에서 경고한다.
+- 기존 ML-KEM timing `FAIL + robust` 행은
+  `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
+- asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
+  summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
+- 다음 작업은 **M2 / `STAT-001` timing-backend-v2**다.
 
 ## 0. 결론부터
 
@@ -263,6 +268,8 @@ M2 전에 KyberSlash/Falcon paper-grade timing을 다시 따지 않는다.
 
 ### `EVID-001` schema v2
 
+**상태: 완료 (2026-07-30, schema `2.0`)**
+
 layer evidence와 최종 행동 상태를 분리한다.
 
 권장 구조:
@@ -347,11 +354,12 @@ signature 축:
 
 M2 종료 조건:
 
-- `FAIL + robust` 같은 모순 row가 schema상 생성 불가능
-- 기존 ML-KEM `|t|=145.316`은 `confounded`로 migration됨
-- A/A control이 사전 false-alarm budget을 만족
-- seeded effect가 목표 power로 반복 검출
-- official/custom backend parity report 존재
+- [x] `FAIL + robust` 같은 모순 row가 schema상 생성 불가능
+- [x] 기존 ML-KEM `|t|=145.316`은 `confounded`로 migration됨
+- [x] 미실행 asm cell과 근거 없는 summary-only layer가 clean으로 승격되지 않음
+- [ ] A/A control이 사전 false-alarm budget을 만족
+- [ ] seeded effect가 목표 power로 반복 검출
+- [ ] official/custom backend parity report 존재
 
 ---
 
@@ -729,11 +737,11 @@ M5 종료 조건:
 
 ### timing 결과 공개
 
-- [ ] timing validity가 별도 field
+- [x] timing validity가 별도 field
 - [ ] A/A control 통과
 - [ ] positive-control power curve
-- [ ] official dudect backend 또는 명시적 experimental 명칭
-- [ ] confounded/underpowered row가 clean 근거로 사용되지 않음
+- [x] official dudect backend 또는 명시적 experimental 명칭
+- [x] confounded/underpowered row가 clean 근거로 사용되지 않음
 - [ ] seed/process/host 반복 정책 충족
 
 ### 논문 제출
@@ -758,9 +766,9 @@ M5 종료 조건:
 
 바로 착수할 순서는 이것이다.
 
-1. `PKG-001`, `DOC-001`, `LIC-001`, `CI-001`
-2. schema v2와 legacy migration
-3. official dudect backend와 timing validity
+1. ~~`PKG-001`, `DOC-001`, `LIC-001`, `CI-001`~~ — 완료
+2. ~~schema v2와 legacy migration~~ — 완료
+3. **official dudect backend와 timing validity** — 다음
 4. KEM/sign pool 하니스 + A/A calibration
 5. 기존 corpus를 v2로 재분류
 6. 그 다음에 KyberSlash/Falcon 실험 확장

@@ -1,0 +1,93 @@
+schema_version = "2.0"
+source_schema_version = "1.2"
+default_correctness = "not-run"
+default_timing_validity = "insufficient-power"
+default_timing_backend = "experimental-first-order-v1"
+# V1 cells predate asm_status. The frozen refresh recipe requested gcc+clang
+# across the recorded opt matrix; an empty asm_error is therefore migrated as
+# PASS only for this archive. New v2 producers require an explicit coverage
+# manifest and emit NOT_RUN when a compiler/opt was not scanned.
+legacy_asm_cell_policy = "assume-scanned-unless-error"
+
+# v1 basis=review never migrates to review=reviewed by implication. Each final
+# state below names a checked, versioned artifact. Rows not listed here remain
+# pending (basis=review/stop) or not-needed (basis=auto).
+
+[[rows]]
+target = "pqclean_mlkem512"
+harness = "kem_dec"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem512"
+harness = "kem_dec_fo"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem768"
+harness = "kem_dec"
+timing_validity = "confounded"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem768"
+harness = "kem_dec_ct"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem768"
+harness = "kem_dec_fo"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem1024"
+harness = "kem_dec"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem1024"
+harness = "kem_dec_fo"
+review = "reviewed"
+review_id = "rvw-mlkem-evidence-v1"
+
+[[rows]]
+target = "pqclean_mlkem768_kyberslash"
+harness = "kem_dec"
+review = "reviewed"
+review_id = "rvw-kyberslash-seeded-v1"
+
+[[rows]]
+target = "pqclean_mldsa44"
+harness = "sign"
+review = "reviewed"
+review_id = "rvw-mldsa-rejection-v1"
+
+[[rows]]
+target = "pqclean_mldsa65"
+harness = "sign"
+review = "reviewed"
+review_id = "rvw-mldsa-rejection-v1"
+
+[[rows]]
+target = "pqclean_mldsa87"
+harness = "sign"
+review = "reviewed"
+review_id = "rvw-mldsa-rejection-v1"
+
+[[rows]]
+target = "pqclean_sphincs_sha2_128f_simple"
+harness = "sign"
+review = "reviewed"
+review_id = "rvw-sphincs-public-state-v1"
+
+[[rows]]
+target = "toy_lookup"
+harness = "leaky"
+review = "reviewed"
+review_id = "rvw-toy-lookup-ground-truth-v1"

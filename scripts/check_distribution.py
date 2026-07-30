@@ -10,7 +10,12 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-VERSION = "0.2.0a1"
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from ctkat import __version__  # noqa: E402
+
+VERSION = __version__
 TEMPLATES = {
     "harness_generic.c.j2",
     "harness_kem.c.j2",
@@ -27,6 +32,7 @@ def _wheel_checks(path: Path) -> list[str]:
         names = set(archive.namelist())
         expected = {f"ctkat/templates/{name}" for name in TEMPLATES}
         expected.add("ctkat/py.typed")
+        expected.add("ctkat/schemas/evidence-v2.schema.json")
         missing = expected - names
         if missing:
             errors.append(f"{path.name}: missing wheel resources {sorted(missing)}")
@@ -66,6 +72,7 @@ def _sdist_checks(path: Path) -> list[str]:
                 "LICENSE",
                 "pyproject.toml",
                 "ctkat/py.typed",
+                "ctkat/schemas/evidence-v2.schema.json",
                 "CHANGELOG.md",
                 "SECURITY.md",
                 "THIRD_PARTY_NOTICES.md",

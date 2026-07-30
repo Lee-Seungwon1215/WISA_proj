@@ -1694,6 +1694,7 @@ def _patch_screen(
     matrix_rows,
     candidates=(),
     cc_errors=(),
+    scanned_ccs=None,
     ct_results=(("h", "PASS", []),),
     which=True,
 ):
@@ -1710,8 +1711,13 @@ def _patch_screen(
     monkeypatch.setattr(cli_module, "_do_ct", lambda *a, **k: list(ct_results))
     monkeypatch.setattr(cli_module, "_emit_report", lambda *a, **k: None)
     monkeypatch.setattr(cli_module, "_run_screen_matrix", lambda *a, **k: list(matrix_rows))
+    if scanned_ccs is None:
+        errored = {item["compiler"] for item in cc_errors}
+        scanned_ccs = sorted({row.cc for row in matrix_rows} - errored)
     monkeypatch.setattr(
-        cli_module, "_run_screen_asmscan", lambda *a, **k: (list(candidates), list(cc_errors))
+        cli_module,
+        "_run_screen_asmscan",
+        lambda *a, **k: (list(candidates), list(cc_errors), list(scanned_ccs)),
     )
 
 
@@ -1727,12 +1733,12 @@ def _mrow(status, cc="gcc", cflags=("-O0",), funcs="", harness="h"):
     )
 
 
-def test_screen_clean_is_robust_exit0(monkeypatch, tmp_path):
+def test_screen_clean_is_no_finding_exit0(monkeypatch, tmp_path):
     _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[])
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 0
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
-    assert "robust" in out
+    assert "no-finding-observed" in out
     assert "all harnesses cleared" in result.stdout.lower()
 
 
@@ -1750,6 +1756,7 @@ def test_screen_untriaged_candidate_gates_exit2(monkeypatch, tmp_path):
     assert result.exit_code == 2
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
     assert "ct-clean-untriaged" in out
+    assert "needs-review" in out
     assert "not cleared" in result.stdout.lower()
 
 
@@ -1773,11 +1780,40 @@ def test_screen_asm_candidates_are_scoped_by_harness(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 2
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
-    assert "h1,no,{PASS},,none,untriaged" in out
-    assert "h2,no,{PASS},,gcc:-O0,untriaged" in out
+    assert "2.0,h1,not-run,no-finding,no-candidate,not-applicable" in out
+    assert "2.0,h2,not-run,no-finding,candidate,unresolved" in out
 
 
-def test_screen_triage_public_clears_to_robust(monkeypatch, tmp_path):
+def test_screen_unscanned_matrix_compiler_is_incomplete(monkeypatch, tmp_path):
+    _patch_screen(
+        monkeypatch,
+        matrix_rows=[
+            _mrow("PASS", cc="gcc"),
+            _mrow("PASS", cc="clang"),
+        ],
+        scanned_ccs=["gcc"],
+    )
+    cfg = _screen_yaml(tmp_path)
+    cfg.write_text(
+        cfg.read_text()
+        + "\nmatrix:\n"
+        + "  compilers: [gcc, clang]\n"
+        + "  ct_cflags:\n"
+        + "    O0: [-O0]\n"
+    )
+    result = CliRunner().invoke(
+        app,
+        ["screen", "--config", str(cfg), "--asm-cc", "gcc"],
+    )
+    assert result.exit_code == 2
+    summary = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    cells = (tmp_path / "reports" / "screen_cells.csv").read_text()
+    assert ",incomplete," in summary
+    assert "inconclusive" in summary
+    assert "clang_O0,clang,-O0,-O0,PASS,0,,,NOT_RUN," in cells
+
+
+def test_screen_triage_public_requires_review_artifact(monkeypatch, tmp_path):
     cand = VarLatCandidate(
         harness="h",
         source_file="x.c",
@@ -1792,8 +1828,23 @@ def test_screen_triage_public_clears_to_robust(monkeypatch, tmp_path):
     result = CliRunner().invoke(
         app, ["screen", "--config", str(_screen_yaml(tmp_path)), "--triage", str(tri)]
     )
+    assert result.exit_code == 2
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "pending,,needs-review" in out
+
+    tri.write_text(
+        "harnesses:\n"
+        "  h:\n"
+        "    varlat: public\n"
+        "    review: reviewed\n"
+        "    review_id: rvw-test-public-v1\n"
+    )
+    result = CliRunner().invoke(
+        app, ["screen", "--config", str(_screen_yaml(tmp_path)), "--triage", str(tri)]
+    )
     assert result.exit_code == 0
-    assert "robust" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "reviewed,rvw-test-public-v1,no-finding-observed" in out
 
 
 def test_screen_ct_matrix_flip_is_build_sensitive_exit2(monkeypatch, tmp_path):
@@ -1802,7 +1853,9 @@ def test_screen_ct_matrix_flip_is_build_sensitive_exit2(monkeypatch, tmp_path):
     )
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 2
-    assert "build-sensitive-ct" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "build-sensitive-ct" in out
+    assert "risk-detected" in out
 
 
 def test_screen_missing_valgrind_exits2_cleanly(monkeypatch, tmp_path):
@@ -1828,8 +1881,9 @@ def test_screen_requires_ct_section_exit2(tmp_path):
 
 
 def test_screen_dudect_fail_gates_exit2(monkeypatch, tmp_path):
-    # HIGH (review): a confirmed timing leak (dudect FAIL) must gate screen even
-    # when the structural verdict_class is robust — else a leak reads as exit 0.
+    # A raw timing FAIL must gate screen even when structural evidence is clean.
+    # The legacy backend lacks power controls, so v2 calls it inconclusive rather
+    # than laundering it as either a confirmed risk or a clean result.
     from ctkat import cli as cli_module
 
     _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")])
@@ -1857,7 +1911,10 @@ def test_screen_dudect_fail_gates_exit2(monkeypatch, tmp_path):
     assert result.exit_code == 2
     assert "dudect" in result.stdout.lower()
     # the gating reason is surfaced in the emitted artifact too
-    assert "dudect FAIL" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "dudect FAIL" in out
+    assert "insufficient-power,signal" in out
+    assert "inconclusive" in out
 
 
 def test_screen_manual_harness_is_asm_incomplete_exit2(monkeypatch, tmp_path):
@@ -1867,7 +1924,10 @@ def test_screen_manual_harness_is_asm_incomplete_exit2(monkeypatch, tmp_path):
     cfg = _ctkat_yaml_path(tmp_path, harness_block="    - {name: h, binary: ./x}")
     result = CliRunner().invoke(app, ["screen", "--config", str(cfg)])
     assert result.exit_code == 2
-    assert "ct-clean-asm-incomplete" in (tmp_path / "reports" / "screen_summary.csv").read_text()
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "ct-clean-asm-incomplete" in out
+    assert ",not-run,not-applicable," in out
+    assert "needs-review" in out
 
 
 def test_screen_primary_ct_error_gates_exit2(monkeypatch, tmp_path):
@@ -1876,6 +1936,18 @@ def test_screen_primary_ct_error_gates_exit2(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 2
     assert "ct error" in result.stdout.lower()
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "incomplete" in out
+    assert "tool-error" not in out  # partial matrix coverage is inconclusive, not total error
+
+
+def test_screen_primary_ct_fail_cannot_hide_behind_clean_matrix(monkeypatch, tmp_path):
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], ct_results=(("h", "FAIL", []),))
+    result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
+    assert result.exit_code == 2
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert "build-sensitive-ct" in out
+    assert "risk-detected" in out
 
 
 def test_screen_kat_fail_with_continue_gates_exit2(monkeypatch, tmp_path):

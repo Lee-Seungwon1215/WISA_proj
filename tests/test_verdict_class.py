@@ -189,8 +189,35 @@ def test_summarize_groups_and_orders_by_harness():
     rows = summarize(cells, family="X", triage={}, dud_by={}, dcfg={})
     by = {r["harness"]: r for r in rows}
     assert [r["harness"] for r in rows] == ["a", "b"]  # first-seen order
-    assert by["a"]["verdict_class"] == "build-sensitive-ct"
-    assert by["a"]["basis"] == "auto"
-    assert by["b"]["verdict_class"] == "needs-analysis"
-    assert by["b"]["basis"] == "stop"
+    assert by["a"]["legacy_verdict_class"] == "build-sensitive-ct"
+    assert by["a"]["legacy_basis"] == "auto"
+    assert by["a"]["overall"] == "risk-detected"
+    assert by["b"]["legacy_verdict_class"] == "needs-analysis"
+    assert by["b"]["legacy_basis"] == "stop"
+    assert by["b"]["overall"] == "needs-review"
     assert by["a"]["target"] == "t"
+
+
+def test_summarize_keeps_timing_only_harness():
+    rows = summarize(
+        [],
+        family="X",
+        target="timing-target",
+        triage={},
+        dud_by={
+            "timing_only": {
+                "status": "PASS",
+                "abs_t_score": "1.2",
+                "n0": "50",
+                "n1": "50",
+            }
+        },
+        dcfg={"timing_only": {"measurements": "100"}},
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["target"] == "timing-target"
+    assert row["structural"] == "not-run"
+    assert row["asm"] == "not-run"
+    assert row["timing_validity"] == "insufficient-power"
+    assert row["overall"] == "inconclusive"

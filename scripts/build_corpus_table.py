@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge one ctkat project's per-tool reports into the LOCKED corpus schema
+"""Merge one ctkat project's per-tool reports into evidence schema v2
 (docs/corpus_schema.md): `corpus_cells.csv` (per build cell) and
 `corpus_summary.csv` (per harness). Idempotent per target — re-running replaces
 that target's rows, so the corpus tables grow as targets are added.
@@ -37,9 +37,11 @@ from pathlib import Path
 # import the shared classifier (the single source of truth for verdict_class,
 # also used by `ctkat screen`). Mirrors the lazy path-insert in _dudect_cfg.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from ctkat.evidence import SCHEMA_VERSION  # noqa: E402
 from ctkat.verdict_class import load_registry, opt_of, summarize  # noqa: E402
 
 CELLS_FIELDS = [
+    "schema_version",
     "family",
     "target",
     "harness",
@@ -54,27 +56,39 @@ CELLS_FIELDS = [
     "ct_findings",
     "ct_finding_funcs",
     "ct_error",
+    "asm_status",
     "asm_div_count",
     "asm_div_funcs",
     "asm_error",
 ]
 SUMMARY_FIELDS = [
+    "schema_version",
     "family",
     "target",
     "harness",
+    "correctness",
+    "structural",
+    "asm",
+    "asm_attribution",
+    "timing_validity",
+    "timing_signal",
+    "review",
+    "review_id",
+    "overall",
     "ct_flips",
     "ct_status_set",
     "ct_finding_funcs",
     "varlat_candidates",
     "varlat_triage",
-    "dudect_status",
-    "dudect_abs_t",
-    "dudect_measurements",
-    "dudect_leak_target",
-    "dudect_seed",
-    "dudect_threshold",
-    "verdict_class",
-    "basis",
+    "timing_backend",
+    "timing_raw_status",
+    "timing_abs_t",
+    "timing_measurements",
+    "timing_leak_target",
+    "timing_seed",
+    "timing_threshold",
+    "legacy_verdict_class",
+    "legacy_basis",
     "notes",
 ]
 
@@ -143,6 +157,10 @@ def build(
     verdict_override=None,
     note_override=None,
     registry=None,
+    correctness="not-run",
+    timing_validity=None,
+    review_status=None,
+    review_id=None,
 ):
     if registry is None:
         registry = load_registry()
@@ -153,37 +171,63 @@ def build(
     dud = _read_csv(reports / "dudect_summary.csv")
     dcfg = _dudect_cfg(project_dir)
 
-    # N2: surface asm-scan compiler ERRORS so a cell whose asm scan was
-    # incomplete is NOT printed as a clean "0 divisions". The varlat JSON records
-    # per-compiler errors (missing/non-exec cc, disasm failure, or a source that
-    # never compiled); the CSV (candidates only) has no error column, which is
-    # why asm_error was previously hardcoded "". Per corpus_schema.md, asm_error
-    # means an asm-scan ERROR — NOT a compiler that simply wasn't in asm-scan's
-    # --cc set (the common matrix={gcc,clang} / asm-scan=gcc-only flow), which is
-    # a coverage choice, not an error; conflating them would false-flag and (via
-    # the verdict fold below) false-downgrade those builds.
+    ctm_projects = {row.get("project", "") for row in ctm if row.get("project")}
+    if varlat_json:
+        if varlat_json.get("kind") != "varlat_candidates":
+            raise ValueError("asm coverage JSON kind must be 'varlat_candidates'")
+        manifest_project = str(varlat_json.get("project", ""))
+        if ctm_projects and manifest_project not in ctm_projects:
+            raise ValueError(
+                "asm coverage JSON project does not match ct-matrix report: "
+                f"{manifest_project!r} not in {sorted(ctm_projects)!r}"
+            )
+
+    # Surface both asm-scan errors and explicit coverage. A compiler/opt absent
+    # from the JSON coverage manifest is NOT_RUN, never a clean zero-candidate
+    # cell. Candidate CSV rows alone can prove that their own legacy cell ran,
+    # but cannot prove coverage for candidate-free cells.
     asm_err_by_cc = {
         e.get("compiler", ""): e.get("error", "") for e in (varlat_json.get("errors") or [])
     }
+    scanned_ccs = {str(value) for value in (varlat_json.get("scanned_compilers") or [])}
+    scanned_opts = {str(value) for value in (varlat_json.get("scanned_opt_levels") or [])}
 
-    def _asm_error_for(cc: str) -> str:
-        return asm_err_by_cc.get(cc, "")
-
-    # asm-scan candidates indexed by (compiler, opt) -> [(function, count), ...]
+    # asm-scan candidates indexed by (harness, compiler, opt). Dropping the
+    # harness key would copy one target path's candidates into sibling harnesses.
     vindex: dict = {}
     for r in varlat:
         for opt in r.get("opt_levels", "").split(";"):
             if opt:
-                vindex.setdefault((r["compiler"], opt), []).append(
+                vindex.setdefault((r["harness"], r["compiler"], opt), []).append(
                     (r["function"], int(r.get("count", "1") or 1))
                 )
+
+    observed_candidate_cells = {(compiler, opt) for _harness, compiler, opt in vindex}
+    if varlat_json:
+        declared_coverage = {(cc, opt) for cc in scanned_ccs for opt in scanned_opts}
+        undeclared_candidates = sorted(observed_candidate_cells - declared_coverage)
+        if undeclared_candidates:
+            raise ValueError(
+                "candidate CSV contains compiler/opt cells absent from asm coverage JSON: "
+                f"{undeclared_candidates}"
+            )
+
+    def _asm_status_for(cc: str, opt: str) -> str:
+        if cc in asm_err_by_cc:
+            return "ERROR"
+        if (cc in scanned_ccs and opt in scanned_opts) or (
+            not varlat_json and (cc, opt) in observed_candidate_cells
+        ):
+            return "PASS"
+        return "NOT_RUN"
 
     cells = []
     for r in ctm:
         opt = opt_of(r.get("cflags", ""))
-        hits = vindex.get((r["cc"], opt), [])
+        hits = vindex.get((r["harness"], r["cc"], opt), [])
         cells.append(
             {
+                "schema_version": SCHEMA_VERSION,
                 "family": family,
                 "target": target,
                 "harness": r["harness"],
@@ -198,11 +242,53 @@ def build(
                 "ct_findings": r.get("findings", ""),
                 "ct_finding_funcs": r.get("finding_funcs", ""),
                 "ct_error": r.get("error", ""),
+                "asm_status": _asm_status_for(r["cc"], opt),
                 "asm_div_count": str(sum(c for _f, c in hits)),
                 "asm_div_funcs": ";".join(sorted({f for f, _c in hits})),
-                "asm_error": _asm_error_for(r["cc"]),
+                "asm_error": asm_err_by_cc.get(r["cc"], ""),
             }
         )
+
+    # Preserve asm-only coverage outside the structural compiler/opt matrix.
+    # These cells use ct_status=NA so candidates or errors from an explicitly
+    # wider asm scan still reach evidence v2 without inventing structural data.
+    represented_asm = {(cell["harness"], cell["cc"], cell["opt"]) for cell in cells}
+    harnesses = list(dict.fromkeys(row["harness"] for row in ctm))
+    coverage_pairs = {(cc, opt) for cc in scanned_ccs for opt in scanned_opts}
+    if not varlat_json:
+        coverage_pairs.update(observed_candidate_cells)
+    for cc in asm_err_by_cc:
+        coverage_pairs.update((cc, opt) for opt in scanned_opts)
+    for harness in harnesses:
+        for cc, opt in sorted(coverage_pairs):
+            key = (harness, cc, opt)
+            if key in represented_asm:
+                continue
+            hits = vindex.get((harness, cc, opt), [])
+            cells.append(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "family": family,
+                    "target": target,
+                    "harness": harness,
+                    "combo": f"asm_only_{cc}_{opt.lstrip('-')}",
+                    "cc": cc,
+                    "cc_version": cc_versions.get(cc, ""),
+                    "opt": opt,
+                    "cflags": opt,
+                    "arch": arch,
+                    "ctkat_commit": commit,
+                    "ct_status": "NA",
+                    "ct_findings": "0",
+                    "ct_finding_funcs": "",
+                    "ct_error": "",
+                    "asm_status": _asm_status_for(cc, opt),
+                    "asm_div_count": str(sum(count for _function, count in hits)),
+                    "asm_div_funcs": ";".join(sorted({function for function, _count in hits})),
+                    "asm_error": asm_err_by_cc.get(cc, ""),
+                }
+            )
+            represented_asm.add(key)
 
     # The per-harness classification + summary rows are produced by the shared
     # classifier (ctkat/verdict_class.py) so this script and `ctkat screen` can't
@@ -218,6 +304,11 @@ def build(
         registry=registry,
         verdict_override=verdict_override,
         note_override=note_override,
+        correctness=correctness,
+        timing_validity=timing_validity,
+        review_status=review_status,
+        review_id=review_id,
+        target=target,
     )
     return cells, summary
 
@@ -245,7 +336,10 @@ def main() -> None:
     ap.add_argument("--ctkat-commit", default="")
     ap.add_argument("--cc-version", action="append", default=[], metavar="cc=version")
     ap.add_argument(
-        "--triage", action="append", default=[], metavar="harness=public|secret-risk|none"
+        "--triage",
+        action="append",
+        default=[],
+        metavar="harness=public|secret-risk|mixed|none|untriaged",
     )
     ap.add_argument(
         "--verdict",
@@ -261,6 +355,30 @@ def main() -> None:
         metavar="harness=text",
         help="append a manual note to a harness row",
     )
+    ap.add_argument(
+        "--correctness",
+        choices=["pass", "fail", "error", "not-run"],
+        default="not-run",
+        help="KAT/correctness state attached to every emitted harness row",
+    )
+    ap.add_argument(
+        "--timing-validity",
+        action="append",
+        default=[],
+        metavar="harness=valid|confounded|insufficient-power|environment-rejected|error|not-run",
+    )
+    ap.add_argument(
+        "--review",
+        action="append",
+        default=[],
+        metavar="harness=not-needed|pending|reviewed|disputed|expired",
+    )
+    ap.add_argument(
+        "--review-id",
+        action="append",
+        default=[],
+        metavar="harness=artifact-id",
+    )
     ap.add_argument("--out-dir", type=Path, default=Path("docs/corpus"))
     a = ap.parse_args()
 
@@ -268,6 +386,9 @@ def main() -> None:
     triage = dict(x.split("=", 1) for x in a.triage)
     verdict_override = dict(x.split("=", 1) for x in a.verdict)
     note_override = dict(x.split("=", 1) for x in a.note)
+    timing_validity = dict(x.split("=", 1) for x in a.timing_validity)
+    review_status = dict(x.split("=", 1) for x in a.review)
+    review_id = dict(x.split("=", 1) for x in a.review_id)
 
     # Validate --verdict against the known taxonomy, symmetric with triage.yaml's
     # verdict field (ctkat/triage.py). A typo'd override would otherwise write a
@@ -290,6 +411,10 @@ def main() -> None:
         triage,
         verdict_override,
         note_override,
+        correctness=a.correctness,
+        timing_validity=timing_validity,
+        review_status=review_status,
+        review_id=review_id,
     )
     cp = merge_write(a.out_dir, a.target, cells, CELLS_FIELDS, "corpus_cells.csv")
     sp = merge_write(a.out_dir, a.target, summary, SUMMARY_FIELDS, "corpus_summary.csv")
@@ -297,8 +422,8 @@ def main() -> None:
     print(f"[corpus] {a.target}: {len(summary)} summary rows -> {sp}")
     for s in summary:
         print(
-            f"    {s['harness']:12} verdict={s['verdict_class']:20} "
-            f"ct={s['ct_status_set']} dudect={s['dudect_status'] or '-'} "
+            f"    {s['harness']:12} overall={s['overall']:20} "
+            f"ct={s['structural']} timing={s['timing_validity']}/{s['timing_signal']} "
             f"varlat={s['varlat_candidates']} triage={s['varlat_triage']}"
         )
 

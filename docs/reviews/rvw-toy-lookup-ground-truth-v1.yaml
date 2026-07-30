@@ -1,0 +1,17 @@
+schema_version: "1.0"
+review_id: rvw-toy-lookup-ground-truth-v1
+status: reviewed
+title: Synthetic lookup-table leak ground truth
+reviewed_at: "2026-07-30"
+reviewers:
+  - id: project-maintainer
+    role: synthetic-ground-truth-review
+scope:
+  - {target: toy_lookup, harness: leaky}
+decision:
+  - leaky_lookup indexes memory with secret data and is the intended positive control.
+evidence:
+  - examples/toy_lookup
+  - docs/corpus/archive/v1.2/corpus_cells.csv
+limitations:
+  - Synthetic control only; it is not evidence of real-code prevalence.

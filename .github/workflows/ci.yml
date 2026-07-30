@@ -44,6 +44,7 @@ jobs:
       - run: ruff format --check ctkat scripts tests
       - run: mypy ctkat
       - run: python scripts/check_corpus.py
+      - run: python scripts/migrate_evidence_v1_to_v2.py --check
       - run: python scripts/render_readme_corpus.py --check
       - run: python scripts/check_third_party.py
       - run: python scripts/check_example_configs.py
@@ -104,7 +105,7 @@ jobs:
           ctkat screen \
             --config "$GITHUB_WORKSPACE/examples/toy_release_smoke/ctkat.yaml" \
             --asm-cc gcc --asm-cc clang
-          grep -q robust \
+          grep -q ',no-finding-observed,' \
             "$GITHUB_WORKSPACE/examples/toy_release_smoke/reports/screen_summary.csv"
 
   docker:

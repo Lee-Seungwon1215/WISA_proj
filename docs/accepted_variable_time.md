@@ -12,8 +12,10 @@ the **automatic** ct-FAIL classification path:
 
 A reviewer may still use a manual `verdict` override for a documented
 attribution artifact (for example, an optimized parent frame that should not be
-registered wholesale). That override must carry a note explaining the source/line
-basis.
+registered wholesale). In evidence v2, the override only supplies the
+`legacy_verdict_class`; it must also carry `review: reviewed` plus a stable
+`review_id`. A note explaining the source/line basis is useful but cannot clear
+the result by itself.
 
 **Guardrails** (the whole point — "accepted" is not a free pass):
 
@@ -39,8 +41,9 @@ matches the `poly_chknorm` entry.
 | ML-DSA | pack_sig | bit-packs the public signature `(c,z,h)`; the flagged branch serializes nonzero positions of the public hint vector `h` into the signature | FIPS 204 (signature components are public); source review: `packing.c:160-200` | timing-only |
 
 > Adding an entry is a deliberate, reviewed act: it moves a finding from "flag"
-> to "accepted", so it must carry a basis a reviewer can check. When unsure,
-> leave it out → the harness stays `needs-analysis`.
+> to legacy "accepted", so a final v2 corpus row must still link a scoped review
+> artifact. When unsure, leave it out → `review=pending` and
+> `overall=needs-review`.
 
 ## Limitation: inlining blurs finding attribution (build-dependent)
 

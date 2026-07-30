@@ -1,11 +1,9 @@
-"""verdict_class taxonomy — the single source of truth shared by the `ctkat
-screen` command and the post-hoc corpus builder (`scripts/build_corpus_table.py`).
+"""Legacy verdict-class adapter shared by screen and the corpus migration.
 
-Phase 1 (Bundle R): this logic used to live ONLY inside build_corpus_table.py, so
-the headline artifact (`verdict_class`) was "an experiment post-processing script"
-rather than something the tool emits. Extracting it here lets `ctkat screen`
-compute the SAME classification in-process — the script and the command can no
-longer drift.
+Evidence schema v2 no longer exposes this nine-class taxonomy as the headline
+result.  It is retained as ``legacy_verdict_class`` so old artifacts can be
+migrated reproducibly and reviewed acceptance rules keep working while the
+individual evidence layers feed :mod:`ctkat.evidence`.
 
 Everything here is PURE (no file/console I/O) except `load_registry`, which reads
 the accepted-variable-time markdown table. The classification is a faithful port
@@ -19,6 +17,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
+
+from .evidence import LEGACY_TIMING_BACKEND, build_evidence
 
 # The full taxonomy. Exposed so tests/docs/CLI can assert against it and so the
 # screen command can derive its default-deny gating set.
@@ -89,7 +89,16 @@ class _Agg:
     vcells: List[str]  # ["gcc:-Os", ...] where asm_div_count > 0
     asm_err_ccs: List[str]  # compilers whose asm-scan ERRORED for this harness
     asm_errors: List[str]  # distinct asm error strings (for the note)
+    asm_not_run_cells: List[str]  # build cells outside the recorded asm coverage
     ct_funcs: List[str]  # union of ct leak-site functions (sorted)
+
+
+def _asm_cell_status(cell: dict) -> str:
+    """Read v2 coverage, with a narrow adapter for pre-v2 in-memory fixtures."""
+    status = cell.get("asm_status", "")
+    if status:
+        return status.upper()
+    return "ERROR" if cell.get("asm_error") else "PASS"
 
 
 def _aggregate(harness_cells: List[dict]) -> _Agg:
@@ -99,12 +108,15 @@ def _aggregate(harness_cells: List[dict]) -> _Agg:
     return _Agg(
         statuses=statuses,
         ct_flips="yes" if len(verdicts) > 1 else "no",
-        only=statuses - {"ERROR"},
+        only=statuses - {"ERROR", "NA", "NONE", ""},
         vcells=sorted(
             {f"{c['cc']}:{c['opt']}" for c in hc if int(c.get("asm_div_count") or 0) > 0}
         ),
         asm_err_ccs=sorted({c["cc"] for c in hc if c.get("asm_error")}),
         asm_errors=sorted({c["asm_error"] for c in hc if c.get("asm_error")}),
+        asm_not_run_cells=sorted(
+            {f"{c['cc']}:{c['opt']}" for c in hc if _asm_cell_status(c) == "NOT_RUN"}
+        ),
         ct_funcs=sorted({ff for c in hc for ff in c.get("ct_finding_funcs", "").split(";") if ff}),
     )
 
@@ -113,7 +125,7 @@ def classify_harness(
     harness_cells: List[dict],
     *,
     family: str,
-    triage: str = "untriaged",  # public | secret-risk | none | untriaged
+    triage: str = "untriaged",  # public | secret-risk | mixed | none | untriaged
     dudect_status: str = "",  # "" | PASS | WARNING | FAIL | ERROR
     registry: Optional[Dict[str, Set[str]]] = None,
     verdict_override: Optional[str] = None,
@@ -151,8 +163,9 @@ def classify_harness(
         # that is a false-green because the clean claim does not cover every
         # configured build.
         vclass = "tool-problem"
-    elif agg.only == {"PASS"} and agg.asm_err_ccs:
-        # N2: ct PASS but asm-scan ERRORED for some build(s) — blind spot, NOT robust.
+    elif agg.only == {"PASS"} and (agg.asm_err_ccs or agg.asm_not_run_cells):
+        # ct PASS but asm coverage is missing/errored for some build(s) — blind
+        # spot, NOT robust.
         vclass = "ct-clean-asm-incomplete"
     elif agg.only == {"PASS"} and (not agg.vcells or tri in ("none", "public")):
         vclass = "robust"
@@ -195,6 +208,12 @@ def classify_harness(
             + ",".join(agg.asm_err_ccs)
             + " — division-free claim does NOT cover those build(s): "
             + "; ".join(agg.asm_errors)
+        )
+    if agg.asm_not_run_cells:
+        notes.append(
+            "asm-scan not run for build cell(s): "
+            + ",".join(agg.asm_not_run_cells)
+            + " — no-candidate claim does NOT cover those build(s)"
         )
     if "ERROR" in agg.statuses and agg.only == {"PASS"}:
         notes.append("ct-matrix ERROR cell(s) present — clean claim does NOT cover every build")
@@ -243,22 +262,33 @@ def summarize(
     registry: Optional[Dict[str, Set[str]]] = None,
     verdict_override: Optional[Dict[str, str]] = None,
     note_override: Optional[Dict[str, str]] = None,
+    correctness: str = "not-run",
+    timing_validity: Optional[Dict[str, str]] = None,
+    review_status: Optional[Dict[str, str]] = None,
+    review_id: Optional[Dict[str, str]] = None,
+    target: str = "",
 ) -> List[dict]:
-    """Per-harness summary rows (SUMMARY_FIELDS shape) from the per-cell `cells`.
+    """Per-harness evidence-v2 rows from per-build cells.
 
-    Faithful port of build_corpus_table.build()'s harness loop (minus the cell
-    construction and CSV writing). `dud_by` maps harness -> dudect summary row
-    dict (n0/n1/status/abs_t_score); `dcfg` maps harness -> dudect config dict
-    (leak_target/seed/threshold/measurements). Both consumers build these.
+    ``dud_by`` and ``dcfg`` retain their historical names because they read
+    legacy artifacts. Their values are emitted under neutral ``timing_*`` raw
+    provenance columns. Completed legacy timing defaults to
+    ``insufficient-power`` unless a validity map explicitly says otherwise.
     """
     registry = registry or {}
     verdict_override = verdict_override or {}
     note_override = note_override or {}
+    timing_validity = timing_validity or {}
+    review_status = review_status or {}
+    review_id = review_id or {}
 
     harnesses: List[str] = []
     for c in cells:
         if c["harness"] not in harnesses:
             harnesses.append(c["harness"])
+    for h in [*dud_by, *dcfg]:
+        if h not in harnesses:
+            harnesses.append(h)
 
     summary: List[dict] = []
     for h in harnesses:
@@ -284,6 +314,23 @@ def summarize(
             verdict_override=verdict_override.get(h),
             note_override=note_override.get(h),
         )
+        evidence = build_evidence(
+            correctness=correctness,
+            ct_statuses=agg.statuses,
+            asm_candidate_count=sum(int(c.get("asm_div_count") or 0) for c in hc),
+            asm_error_count=sum(_asm_cell_status(c) == "ERROR" for c in hc),
+            asm_cell_count=len(hc),
+            asm_not_run_count=sum(_asm_cell_status(c) == "NOT_RUN" for c in hc),
+            triage=tri,
+            raw_timing_status=d.get("status", ""),
+            timing_validity=timing_validity.get(
+                h, d.get("timing_validity", cf.get("timing_validity", ""))
+            ),
+            legacy_verdict_class=vclass,
+            legacy_basis=basis,
+            review_status=review_status.get(h, ""),
+            review_id=review_id.get(h, ""),
+        )
 
         meas = cf.get("measurements", "")
         if not meas and d:
@@ -292,24 +339,35 @@ def summarize(
             except (ValueError, TypeError):
                 meas = ""
 
+        if d.get("status") and evidence.timing_validity.value != "valid":
+            timing_note = (
+                f"timing validity={evidence.timing_validity.value}; raw "
+                f"{d.get('status')} is non-decisional"
+            )
+            notes = f"{notes}; {timing_note}" if notes else timing_note
+        if evidence.review.value == "pending" and basis in {"review", "stop"}:
+            review_note = "review artifact pending; note text alone cannot clear evidence v2"
+            notes = f"{notes}; {review_note}" if notes else review_note
+
         summary.append(
             {
+                **evidence.as_dict(),
                 "family": family,
-                "target": hc[0].get("target", "") if hc else "",
+                "target": hc[0].get("target", target) if hc else target,
                 "harness": h,
                 "ct_flips": agg.ct_flips,
                 "ct_status_set": "{" + ",".join(sorted(agg.statuses)) + "}",
                 "ct_finding_funcs": ";".join(agg.ct_funcs),
                 "varlat_candidates": ";".join(agg.vcells) or "none",
                 "varlat_triage": tri,
-                "dudect_status": d.get("status", ""),
-                "dudect_abs_t": d.get("abs_t_score", ""),
-                "dudect_measurements": meas,
-                "dudect_leak_target": cf.get("leak_target", ""),
-                "dudect_seed": cf.get("seed", ""),
-                "dudect_threshold": cf.get("threshold", ""),
-                "verdict_class": vclass,
-                "basis": basis,
+                "timing_backend": cf.get("backend", LEGACY_TIMING_BACKEND if d else ""),
+                "timing_raw_status": d.get("status", ""),
+                "timing_abs_t": d.get("abs_t_score", ""),
+                "timing_measurements": meas,
+                "timing_leak_target": cf.get("leak_target", ""),
+                "timing_seed": cf.get("seed", ""),
+                "timing_threshold": cf.get("threshold", ""),
+                "legacy_basis": basis,
                 "notes": notes,
             }
         )

@@ -3,4 +3,6 @@ harnesses:
   sign:
     varlat: public
     verdict: accepted-variable-time
+    review: reviewed
+    review_id: rvw-mldsa-rejection-v1
     note: "ML-DSA attribution review: debug/no-inline cells localize the ct findings to registered rejection/public-output functions; optimized crypto_sign_signature_ctx is a coarse parent-frame attribution at sign.c:187, not registered wholesale."

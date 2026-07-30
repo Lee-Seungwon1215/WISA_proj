@@ -6,10 +6,11 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
 ## Current source of truth
 
 - `../README.md` — user-facing overview, CLI usage, examples, limitations.
-- `accepted_variable_time.md` — reviewed registry used by verdict triage.
-- `corpus_schema.md` — committed corpus CSV schema.
+- `accepted_variable_time.md` — legacy-class bridge for reviewed CT findings.
+- `corpus_schema.md` — evidence schema v2, overall fold, and corpus CSV contract.
+- `reviews/` — stable human-review artifacts referenced by `review_id`.
 - `tutorial.md` — quick usage guide.
-- `corpus/` — committed regression/demo corpus artifacts.
+- `corpus/` — committed v2 corpus, migration manifest, and frozen v1.2 archive.
 - `ROADMAP_REJECTION_RECOVERY.md` — rejection-review adjudication and the
   dependency-ordered completion plan, including the KyberSlash and Falcon
   workstreams.

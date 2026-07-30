@@ -3,6 +3,37 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.3.0a1] - 2026-07-30
+
+### Added
+
+- Evidence schema v2 with typed correctness, structural, assembly, timing
+  validity/signal, review, and five-state overall fields.
+- Machine-readable JSON Schema and fail-closed overall recomputation.
+- Stable review artifacts linked by `review_id`.
+- Deterministic v1.2-to-v2.0 corpus migration with an immutable source archive.
+
+### Changed
+
+- `ctkat screen` and corpus summaries now gate on `overall`; the nine-class
+  taxonomy is retained only as `legacy_verdict_class`.
+- Completed legacy timing runs default to `insufficient-power` until A/A and
+  positive-control calibration exists.
+- The known ML-KEM-768 raw timing failure is migrated to
+  `confounded / signal / inconclusive`.
+- Public/manual attribution no longer clears a result without a completed
+  review artifact.
+
+### Fixed
+
+- A raw timing FAIL can no longer coexist with a clean machine-readable
+  headline.
+- Primary CT FAIL/ERROR results can no longer be hidden by clean matrix cells.
+- An unscanned assembly compiler/optimization cell can no longer masquerade as
+  a completed zero-candidate scan.
+- The legacy ML-KEM timing-only axis no longer inherits structural/assembly
+  claims that lack a matching cell artifact.
+
 ## [0.2.0a1] - 2026-07-29
 
 ### Added
@@ -33,5 +64,6 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.2.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b1ccd4d...main
+[0.3.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/619d73c...main
+[0.2.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b1ccd4d...619d73c
 [0.1.0]: https://github.com/Lee-Seungwon1215/WISA_proj/commits/20a20f72a65216bb2e4edafc0b054789281f3455

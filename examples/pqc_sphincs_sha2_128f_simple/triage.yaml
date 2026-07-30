@@ -2,6 +2,8 @@ harnesses:
   sign:
     varlat: public
     verdict: accepted-variable-time
+    review: reviewed
+    review_id: rvw-sphincs-public-state-v1
     note: >
       SPHINCS+ attribution review: treehashx1 (utilsx1.c:67 auth-path sibling
       check) and wots_gen_leafx1 (wotsx1.c:28 signing leaf selection,

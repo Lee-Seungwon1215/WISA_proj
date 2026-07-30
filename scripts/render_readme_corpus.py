@@ -33,14 +33,20 @@ def render_block(csv_path: Path = DEFAULT_CSV) -> str:
         rows = list(csv.DictReader(handle))
 
     required = {
+        "schema_version",
         "family",
         "target",
         "harness",
-        "ct_status_set",
-        "dudect_status",
-        "dudect_abs_t",
-        "verdict_class",
-        "basis",
+        "structural",
+        "asm",
+        "asm_attribution",
+        "timing_validity",
+        "timing_signal",
+        "timing_raw_status",
+        "timing_abs_t",
+        "review",
+        "review_id",
+        "overall",
     }
     missing = required.difference(rows[0] if rows else {})
     if missing:
@@ -58,23 +64,34 @@ def render_block(csv_path: Path = DEFAULT_CSV) -> str:
             f"snapshot (`sha256:{digest[:12]}`)."
         ),
         "",
-        "| family | target / harness | structural CT | timing screen | verdict | basis |",
-        "|---|---|---|---|---|---|",
+        (
+            "| family | target / harness | structural | asm / attribution "
+            "| timing validity / signal | review | overall |"
+        ),
+        "|---|---|---|---|---|---|---|",
     ]
     for row in rows:
-        timing = row["dudect_status"].strip()
-        if timing and row["dudect_abs_t"].strip():
-            timing = f"{timing} (|t|={row['dudect_abs_t'].strip()})"
+        timing = f"{row['timing_validity']} / {row['timing_signal']}"
+        raw = row["timing_raw_status"].strip()
+        if raw:
+            timing += f" (raw {raw}"
+            if row["timing_abs_t"].strip():
+                timing += f", |t|={row['timing_abs_t'].strip()}"
+            timing += ")"
+        review = row["review"]
+        if row["review_id"]:
+            review += f" ({row['review_id']})"
         lines.append(
             "| "
             + " | ".join(
                 [
                     _cell(row["family"]),
                     _cell(f"{row['target']} / {row['harness']}"),
-                    _cell(row["ct_status_set"]),
+                    _cell(row["structural"]),
+                    _cell(f"{row['asm']} / {row['asm_attribution']}"),
                     _cell(timing),
-                    _cell(row["verdict_class"]),
-                    _cell(row["basis"]),
+                    _cell(review),
+                    _cell(row["overall"]),
                 ]
             )
             + " |"

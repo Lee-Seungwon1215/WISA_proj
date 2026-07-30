@@ -1,0 +1,20 @@
+schema_version: "1.0"
+review_id: rvw-kyberslash-seeded-v1
+status: reviewed
+title: Reconstructed KyberSlash seeded-control attribution
+reviewed_at: "2026-07-30"
+reviewers:
+  - id: project-maintainer
+    role: source-and-assembly-review
+scope:
+  - {target: pqclean_mlkem768_kyberslash, harness: kem_dec}
+decision:
+  - Division candidates in the seeded poly helpers are secret-derived risk.
+  - This target is a reconstructed positive control, not a historical exploit reproduction.
+evidence:
+  - examples/pqc_mlkem768_kyberslash/README.md
+  - examples/pqc_mlkem768/clean_kyberslash
+  - docs/corpus/archive/v1.2/corpus_cells.csv
+limitations:
+  - Historical KS1-only, KS2-only, and vulnerable upstream targets remain future work.
+  - One maintainer review only.

@@ -85,7 +85,11 @@ $ python -m ctkat dudect --config ctkat.yaml
 - `reports/dudect_summary.csv` — 통계 요약 (21개 컬럼, README §"dudect_summary.csv 컬럼 reference" 참고)
 - `reports/dudect_raw_timings.csv` — 원시 cycle 측정 (재현성 디버깅용)
 
-PASS면 일단 통과. WARNING이면 다음 단계.
+여기서 PASS는 **raw timing threshold 결과**일 뿐 evidence-v2의
+`timing_validity=valid`를 뜻하지 않는다. 현재 backend에는 A/A 및
+positive-control power calibration이 없으므로 `screen`에서는 기본적으로
+`insufficient-power`가 되어 clean 근거로 쓰이지 않는다. WARNING이면 아래
+진단을 하되, PASS도 backend-v2 전에는 non-decisional이다.
 
 ## 4. WARNING 이 떴을 때
 
@@ -105,19 +109,21 @@ PASS면 일단 통과. WARNING이면 다음 단계.
 **e) 그래도 WARNING이면 실제 leak일 가능성**. ct 검사도 추가해서 구조적
 확인 (README §"yaml 전체 필드" ct 섹션 참고).
 
-## 5. 다음 단계 — 결합 verdict
+## 5. 다음 단계 — legacy 결합 verdict
 
 dudect만으로는 한쪽 측면 — Valgrind ct 검사도 yaml에 같이 넣으면
 combined verdict (CLEAN / STRUCTURAL_LEAK / SUSPECT / RISKY / CRITICAL /
-INCONCLUSIVE)가 나옴. CT 자동 모드의 보일러플레이트는 `examples/toy_dudect/
-ctkat_combined.yaml` 참고.
+INCONCLUSIVE)가 나옴. 이 `run` verdict는 호환용이고 timing validity,
+asm-scan, review를 포함하지 않는다. 신규 자동 게이트에는 다음 `screen`
+evidence v2를 쓴다. CT 자동 모드의 보일러플레이트는
+`examples/toy_dudect/ctkat_combined.yaml` 참고.
 
 ## 6. 한 방에 — `ctkat screen`
 
 ct + ct-matrix + asm-scan + dudect를 **한 명령**으로 돌리고 harness별
-`verdict_class`(robust / ct-clean-untriaged / varlat-secret-risk /
-build-sensitive-ct / needs-analysis / ... )를 `reports/screen_summary.{csv,json,md}`
-로 뽑는다:
+layer evidence와 `overall`(`no-finding-observed` / `risk-detected` /
+`needs-review` / `inconclusive` / `tool-error`)을
+`reports/screen_summary.{csv,json,md}`로 뽑는다:
 
 ```bash
 python -m ctkat screen --config examples/pqc_mlkem768/ctkat.yaml --triage triage.yaml
@@ -125,9 +131,10 @@ python -m ctkat screen --config examples/pqc_mlkem768/ctkat.yaml --triage triage
 
 asm-scan 후보가 public인지 secret-risk인지 등 **사람 판단**은 파이프라인
 config(ctkat.yaml)와 분리된 `triage.yaml`에 적는다(README §screen 참고).
-default-deny: `robust`/`accepted-variable-time` 만 exit 0, 나머지(미triage
-포함)는 exit 2 — triage 전 새 타깃이 CI를 통과하지 않음. Valgrind 필요 →
-Linux/Docker.
+최종 review에는 `review`와 `review_id`가 필요하며 note만으로는 clear되지
+않는다. default-deny: `overall=no-finding-observed`만 exit 0, 나머지는 exit
+2다. 현재 timing backend를 실행하면 validity가 기본
+`insufficient-power`이므로 역시 exit 2다. Valgrind 필요 → Linux/Docker.
 
 ## 자주 빠지는 함정
 
@@ -144,6 +151,7 @@ Linux/Docker.
 
 ## See also
 
-- `README.md` — 모든 yaml 필드 + verdict matrix
+- `README.md` — 모든 yaml 필드 + evidence v2 설명
+- `docs/corpus_schema.md` — layer enum, overall fold, migration contract
 - `examples/toy_dudect/ctkat_combined.yaml` — ct + dudect 같이 돌리는 예제
 - `examples/pqc_mlkem768/` — PQClean ML-KEM-768 실전 yaml
