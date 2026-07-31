@@ -64,9 +64,11 @@ python scripts/run_same_corpus_baselines.py \
   --output-root measurement_runs/same-corpus
 ```
 
-runner는 16개 ciphertext를 결정론적으로 만들고, wrapper와 target을 빌드하고,
-MAP을 생성한 뒤 exact digest의 official GHCR image로 PinTracer를 실행한다.
-`call-stacks.txt`의 leakage entry 수를 lossless artifact와 함께 정규화한다.
+runner는 16개 ciphertext를 결정론적으로 만들고 wrapper와 target을 빌드한다.
+그 뒤 `objdump` preflight로 네 `PinNotify*` marker의 직접 호출이 최적화 뒤에도
+남았는지 확인하고, MAP을 생성한 뒤 exact digest의 official GHCR image로
+PinTracer를 실행한다. `call-stacks.txt`의 leakage entry 수를 lossless
+artifact와 함께 정규화한다.
 
 선택한 baseline은 MicroWalk 전체를 대표하는 게 아니라 **PinTracer profile**이다.
 AArch64에서 이 profile은 `unsupported`다. 이를 crash나 no-finding으로 바꾸지

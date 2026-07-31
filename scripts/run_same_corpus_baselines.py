@@ -51,6 +51,12 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 IMAGE_RE = re.compile(r"^ghcr\.io/microwalk-project/microwalk@sha256:([0-9a-f]{64})$")
 MICROWALK_PEAK_RE = re.compile(r"Maximum private memory size: ([0-9]+) bytes")
+MICROWALK_MARKERS = (
+    "PinNotifyTestcaseStart",
+    "PinNotifyTestcaseEnd",
+    "PinNotifyStackPointer",
+    "PinNotifyAllocation",
+)
 
 
 class BaselineError(RuntimeError):
@@ -1280,6 +1286,15 @@ def _microwalk_candidates(path: Path) -> int:
     return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if "[L]" in line)
 
 
+def _microwalk_marker_calls(disassembly: str) -> dict[str, bool]:
+    call_lines = [
+        line for line in disassembly.splitlines() if re.search(r"\bcallq?\b", line) is not None
+    ]
+    return {
+        marker: any(f"<{marker}>" in line for line in call_lines) for marker in MICROWALK_MARKERS
+    }
+
+
 def run_microwalk(
     manifest: dict[str, Any],
     manifest_path: Path,
@@ -1381,6 +1396,48 @@ def run_microwalk(
         if build_timeout is not None:
             setup_logs.append(build_timeout)
 
+        marker_container = f"ctkat-mw-{run_token}-{harness}-markers"
+        marker_command = [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            marker_container,
+            "--platform=linux/amd64",
+            "-v",
+            mount_case,
+            image,
+            "objdump",
+            "-d",
+            f"/baseline/{target_name}",
+        ]
+        marker_result: subprocess.CompletedProcess[str] | None = None
+        marker_timeout: str | None = None
+        marker_calls = {marker: False for marker in MICROWALK_MARKERS}
+        if build_result is not None and build_result.returncode == 0:
+            marker_result, _, marker_timeout = _docker_run(
+                marker_command,
+                timeout=60,
+                cleanup_container=marker_container,
+            )
+            if marker_result is not None:
+                setup_logs.append(marker_result.stdout + marker_result.stderr)
+                if marker_result.returncode == 0:
+                    marker_calls = _microwalk_marker_calls(marker_result.stdout)
+            if marker_timeout is not None:
+                setup_logs.append(marker_timeout)
+        marker_streams = _write_process_streams(
+            case_dir,
+            "markers",
+            marker_result,
+            marker_timeout,
+        )
+        markers_ready = (
+            marker_result is not None
+            and marker_result.returncode == 0
+            and all(marker_calls.values())
+        )
+
         map_container = f"ctkat-mw-{run_token}-{harness}-map"
         map_command = [
             "docker",
@@ -1399,7 +1456,7 @@ def run_microwalk(
         ]
         map_result: subprocess.CompletedProcess[str] | None = None
         map_timeout: str | None = None
-        if build_result is not None and build_result.returncode == 0:
+        if markers_ready:
             map_result, _, map_timeout = _docker_run(
                 map_command,
                 timeout=300,
@@ -1423,22 +1480,31 @@ def run_microwalk(
         setup_failed = (
             build_result is None
             or build_result.returncode != 0
+            or not markers_ready
             or map_result is None
             or map_result.returncode != 0
         )
         if setup_failed:
             row["execution_status"] = (
-                "timeout" if build_timeout is not None or map_timeout is not None else "error"
+                "timeout"
+                if build_timeout is not None
+                or marker_timeout is not None
+                or map_timeout is not None
+                else "error"
             )
             row["outcome"] = "inconclusive"
             row["artifact_bytes"] = _tree_bytes(case_dir)
-            errors.append(f"{case_id}: MicroWalk build/MAP setup failed")
+            errors.append(f"{case_id}: MicroWalk build/marker/MAP setup failed")
             row["evidence"] = {
                 "build_argv": build_command,
+                "marker_argv": marker_command,
                 "map_argv": map_command,
                 "build_returncode": (None if build_result is None else build_result.returncode),
+                "marker_returncode": (None if marker_result is None else marker_result.returncode),
                 "map_returncode": None if map_result is None else map_result.returncode,
+                "marker_calls": marker_calls,
                 "build_streams": build_streams,
+                "marker_streams": marker_streams,
                 "map_streams": map_streams,
             }
             rows.append(row)
@@ -1516,11 +1582,14 @@ def run_microwalk(
         row["artifact_bytes"] = _tree_bytes(case_dir)
         row["evidence"] = {
             "build_argv": build_command,
+            "marker_argv": marker_command,
             "map_argv": map_command,
             "run_argv": run_command,
             "build_streams": build_streams,
+            "marker_streams": marker_streams,
             "map_streams": map_streams,
             "run_streams": run_streams,
+            "marker_calls": marker_calls,
             "returncode": None if run_result is None else run_result.returncode,
             "binary_sha256": _sha256(target_path),
             "map_sha256": _sha256(map_path),

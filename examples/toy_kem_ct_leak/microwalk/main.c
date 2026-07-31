@@ -21,11 +21,21 @@ extern void RunTarget(FILE *input);
 #error "The frozen MicroWalk Pin profile requires x86_64"
 #endif
 
+/*
+ * The return values alone are not enough to retain these calls under GCC -O2:
+ * interprocedural optimization can prove that the unused results have no
+ * observable effect.  Pin instruments the calls themselves, so every marker
+ * needs a compiler barrier in addition to being non-inline.
+ */
+#define CTKAT_PIN_NOTIFY_BARRIER() __asm__ __volatile__("" ::: "memory")
+
 __attribute__((noinline, used)) int PinNotifyTestcaseStart(int testcase_id) {
+    CTKAT_PIN_NOTIFY_BARRIER();
     return testcase_id + 42;
 }
 
 __attribute__((noinline, used)) int PinNotifyTestcaseEnd(void) {
+    CTKAT_PIN_NOTIFY_BARRIER();
     return 42;
 }
 
@@ -33,6 +43,7 @@ __attribute__((noinline, used)) int PinNotifyStackPointer(
     uint64_t minimum,
     uint64_t maximum
 ) {
+    CTKAT_PIN_NOTIFY_BARRIER();
     return (int)(minimum + maximum + 42);
 }
 
@@ -40,6 +51,7 @@ __attribute__((noinline, used)) int PinNotifyAllocation(
     uint64_t address,
     uint64_t size
 ) {
+    CTKAT_PIN_NOTIFY_BARRIER();
     return (int)(address + 23 * size);
 }
 

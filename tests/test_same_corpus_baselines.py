@@ -111,6 +111,31 @@ def test_microwalk_candidate_parser_counts_only_leakage_entries(tmp_path: Path):
     assert baseline._microwalk_candidates(report) == 2
 
 
+def test_microwalk_pin_notifications_survive_optimized_builds():
+    wrapper = (baseline.ROOT / "examples/toy_kem_ct_leak/microwalk/main.c").read_text(
+        encoding="utf-8"
+    )
+    assert '#define CTKAT_PIN_NOTIFY_BARRIER() __asm__ __volatile__("" ::: "memory")' in wrapper
+    assert wrapper.count("CTKAT_PIN_NOTIFY_BARRIER();") == 4
+    assert wrapper.count("__attribute__((noinline, used)) int PinNotify") == 4
+
+
+def test_microwalk_marker_preflight_requires_direct_calls():
+    disassembly = """
+      1200: e8 00 00 00 00 call 1300 <PinNotifyTestcaseStart>
+      1210: e8 00 00 00 00 callq 1400 <PinNotifyTestcaseEnd>
+      1300 <PinNotifyStackPointer>:
+      1410: e8 00 00 00 00 call 1500 <PinNotifyAllocation>
+    """
+    calls = baseline._microwalk_marker_calls(disassembly)
+    assert calls == {
+        "PinNotifyTestcaseStart": True,
+        "PinNotifyTestcaseEnd": True,
+        "PinNotifyStackPointer": False,
+        "PinNotifyAllocation": True,
+    }
+
+
 def test_process_streams_are_retained_separately(tmp_path: Path):
     result = subprocess.CompletedProcess(["tool"], 0, stdout="out\n", stderr="err\n")
     hashes = baseline._write_process_streams(tmp_path, "tool", result, None)

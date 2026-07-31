@@ -128,7 +128,7 @@ tools:
         examples/toy_kem_ct_leak/microwalk/config.yml:
           901de902643c1c5661a5e132dd867c39fd23f1c93c2b27c07cc907eedf9083c0
         examples/toy_kem_ct_leak/microwalk/main.c:
-          2ca8e737004f9cb7c9f084ffcb4bd37387891a1a49b2ffc713099c929f83a459
+          890e256cc5cd10593275acb6f1c6dfbc633b482b832e48bcb270300e2c2dfbe6
         examples/toy_kem_ct_leak/microwalk/target.c:
           6533eb41c1e4a4929e3767d91e53dcf89e818811ff84d081081864c5d540b7a5
 
