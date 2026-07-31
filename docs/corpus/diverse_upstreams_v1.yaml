@@ -1,0 +1,213 @@
+schema_version: 1
+corpus_id: ctkat-diverse-upstreams-v1
+status: imported-build-gated-needs-review
+frozen_at: "2026-07-31"
+
+claim_scope:
+  source_provenance: complete
+  deterministic_correctness: ci-generated-artifact
+  architecture_build_evidence: ci-generated-artifact
+  structural_asm_evidence: ci-generated-artifact
+  timing_evidence: none
+  conformance_claim: none
+  declassification: forbidden-until-two-person-review
+
+counting:
+  unit: separately-maintained-primary-upstream-lineage
+  prior_lineages: [pqclean, c-fn-dsa]
+  newly_imported_lineages: [mlkem-native, mldsa-native]
+  total_primary_upstream_lineages: 4
+  integration_cases: [openssl-3.5-pqc-api]
+  parameters_count_as_lineages: false
+  profiles_count_as_lineages: false
+  compilers_count_as_lineages: false
+  integrations_count_as_lineages: false
+  ancestry_limit: >-
+    Both native packages record ancestry from public-domain reference code.
+    They are counted as separately maintained upstream lineages, not as
+    from-scratch algorithm implementations; shared-code fractions are
+    unmeasured and must not be represented as zero.
+
+lineages:
+  mlkem-native:
+    algorithm: ML-KEM
+    role: separately-maintained-native-package
+    upstream: https://github.com/pq-code-package/mlkem-native
+    release: v1.2.0
+    release_status: stable
+    revision: 0ba906cb14b1c241476134d7403a811b382ca498
+    import_path: examples/mlkem_native/upstream
+    upstream_paths:
+      - LICENSE
+      - README.md
+      - META.yml
+      - mlkem
+      - test/src/gen_KAT.c
+      - test/notrandombytes
+    tree_sha256: 7f4d1da13cd51f8cca65fcb6bb8e4eb0b697e8097488f3058beab26b21c1334d
+    license: Apache-2.0 OR ISC OR MIT; test RNG has a broader permissive OR expression
+    license_file: examples/mlkem_native/upstream/LICENSE
+    provenance_file: examples/mlkem_native/FETCH_INFO.md
+    patch_sha256: []
+    ancestry: pq-crystals/kyber public-domain reference
+    shared_code_fraction: unmeasured
+    parameters:
+      "512":
+        identity: ML-KEM-512
+        kat_sha256: 0a2d61707a68c0cac7b2a5005def19994e4e2a25cf8dc512b1254cbaa25473c0
+      "768":
+        identity: ML-KEM-768
+        kat_sha256: 8cff42556667edbd0fec7d0b2666d7710d80db71b684f8b4852a37ece2a4c844
+      "1024":
+        identity: ML-KEM-1024
+        kat_sha256: f9c6e424f4593cca818493cfe2424178ed0caa2a3945dc1a57cbb5d99e18ad2d
+    monolithic_c: mlkem/mlkem_native.c
+    monolithic_asm: mlkem/mlkem_native_asm.S
+    smoke_adapter: examples/mlkem_native/deterministic_smoke.c
+    kat_adapter: test/src/gen_KAT.c
+    config_prefix: MLK
+    namespace_prefix: mlk
+
+  mldsa-native:
+    algorithm: ML-DSA
+    role: separately-maintained-native-package
+    upstream: https://github.com/pq-code-package/mldsa-native
+    release: v1.0.0-beta2
+    release_status: beta
+    revision: 9b0ee84f4cf399043eca59eca4e5f8531ca1d61b
+    import_path: examples/mldsa_native/upstream
+    upstream_paths:
+      - LICENSE
+      - README.md
+      - META.yml
+      - mldsa
+      - test/src/gen_KAT.c
+      - test/notrandombytes
+    tree_sha256: a6899867ede95f0c5464c92b96ab314e83c610ff9e23c1cac6f3d78789e710ff
+    license: Apache-2.0 OR ISC OR MIT; test RNG has a broader permissive OR expression
+    license_file: examples/mldsa_native/upstream/LICENSE
+    provenance_file: examples/mldsa_native/FETCH_INFO.md
+    patch_sha256: []
+    ancestry: pq-crystals/dilithium public-domain reference
+    shared_code_fraction: unmeasured
+    claim_limit: >-
+      Beta API; build/KAT/equivalence evidence is not API-stability,
+      certification, or independent FIPS-validation evidence.
+    parameters:
+      "44":
+        identity: ML-DSA-44
+        kat_sha256: 33e7eb7e3b4965fc8b8274ebf8a222c519008ec242b3f753d1bc240f1ee3cb1f
+      "65":
+        identity: ML-DSA-65
+        kat_sha256: 2ff0ddcd0dc08b746aa04853d6f84c82c6c8ac38783c9061aed78e29c1698ae5
+      "87":
+        identity: ML-DSA-87
+        kat_sha256: 1bfb25b29f6f2bc89057e3bddee055a8f7df563b0e747004b2968159f7739afa
+    monolithic_c: mldsa/mldsa_native.c
+    monolithic_asm: mldsa/mldsa_native_asm.S
+    smoke_adapter: examples/mldsa_native/deterministic_smoke.c
+    kat_adapter: test/src/gen_KAT.c
+    config_prefix: MLD
+    namespace_prefix: mld
+
+integrations:
+  openssl-3.5-pqc-api:
+    role: production-provider-api-integration
+    counts_as_lineage: false
+    upstream: https://github.com/openssl/openssl
+    release: openssl-3.5.7
+    release_line: "3.5"
+    revision: 8cf17aaeb4599f8af87fefd810b5b5fee90fe69e
+    artifact_url: https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz
+    artifact_sha256: a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8
+    provenance_file: examples/openssl_pqc/FETCH_INFO.md
+    adapter: examples/openssl_pqc/openssl_pqc_smoke.c
+    algorithms:
+      - ML-KEM-512
+      - ML-KEM-768
+      - ML-KEM-1024
+      - ML-DSA-44
+      - ML-DSA-65
+      - ML-DSA-87
+    expected_transcript_sha256: f4330da7a28a30791b5904d6196d0ca05d2ebfa53f350382d49d297ab86573b3
+    build_scope:
+      architecture: x86_64
+      library_compiler: gcc
+      adapter_compilers: [gcc, clang]
+      optimization: O2
+    implementation_provenance: openssl-default-provider-internal
+
+build_contract:
+  operating_system: Linux
+  architectures:
+    x86_64:
+      github_runner: ubuntu-24.04
+      native_profile: x86_64-optimized
+      force_macros: [MLK_FORCE_X86_64, MLD_FORCE_X86_64]
+      required_cpu_features: [avx2, bmi2]
+      asm_symbol_suffix: avx2_asm
+      instruction_markers: [vpxor, vpmullw, vpmulld]
+    aarch64:
+      github_runner: ubuntu-24.04-arm
+      native_profile: aarch64-optimized
+      force_macros: [MLK_FORCE_AARCH64, MLD_FORCE_AARCH64]
+      required_cpu_features: []
+      asm_symbol_suffix: aarch64_asm
+      instruction_markers: [sqrdmulh, smull, umull]
+  profiles: [portable, architecture-native]
+  portable_definition: >-
+    Native arithmetic and FIPS202 backends are disabled and the monolithic
+    assembly unit is not linked. Generic compiler/inline-assembly value
+    barriers and secure zeroization remain enabled; CONFIG_NO_ASM is not a
+    synonym for the portable cryptographic backend.
+  compilers: [gcc, clang]
+  optimizations:
+    debug: [-O0, -g3]
+    O1: [-O1]
+    O2: [-O2]
+    O3: [-O3]
+    Os: [-Os]
+  expected_cells_per_architecture: 120
+  expected_cells_all_architectures: 240
+  execution: every-cell-deterministic-smoke
+  equivalence: every-parameter-profile-compiler-optimization-transcript
+  upstream_kat:
+    execution_cells: gcc-O2-portable-and-architecture-native
+    expected_checks_per_architecture: 12
+    digest_source: imported-META.yml
+  structural:
+    portable_forbids_native_asm_symbols: true
+    optimized_requires_native_asm_symbols: true
+    optimized_requires_architecture_instruction_marker: true
+    artifact_machine_header_required: true
+  timing_evidence: false
+
+same_corpus_mapping:
+  mlkem-native:
+    operation: crypto_kem_dec
+    secret_axis: secret-key bytes
+    public_axis: ciphertext bytes
+    status: adapter-prepared-not-executed
+  mldsa-native:
+    operation: signature_internal
+    secret_axis: secret-key bytes
+    public_axis: message and deterministic signing randomness
+    status: adapter-prepared-not-executed
+  openssl-3.5-pqc-api:
+    operations: [EVP_PKEY_decapsulate, EVP_DigestSign]
+    status: production-api-smoke-only
+
+timing_adapter:
+  status: prepared-not-executed
+  native_execution_backlog: docs/corpus/independent_upstreams_v1.yaml
+  emulated_results_may_promote: false
+  source_build_evidence_may_promote_timing: false
+
+review_gate:
+  status: needs-review
+  minimum_reviewers: 2
+  automatic_clean_promotion: false
+  open_items:
+    - measure or bound shared-code ancestry before stronger independence wording
+    - review x86_64 and AArch64 CI artifacts
+    - execute physical timing only under the native timing-v2 protocol

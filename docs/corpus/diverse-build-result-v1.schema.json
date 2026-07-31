@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Lee-Seungwon1215/WISA_proj/blob/main/docs/corpus/diverse-build-result-v1.schema.json",
+  "title": "CT-KAT diverse upstream build evidence",
+  "oneOf": [
+    {"$ref": "#/$defs/nativeMatrix"},
+    {"$ref": "#/$defs/opensslIntegration"}
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "host": {
+      "type": "object",
+      "required": ["system", "machine", "release"],
+      "properties": {
+        "system": {"type": "string"},
+        "machine": {"type": "string"},
+        "release": {"type": "string"},
+        "cpu_features": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "cell": {
+      "type": "object",
+      "required": [
+        "id", "lineage", "parameter", "architecture", "profile",
+        "compiler", "compiler_version", "optimization", "status",
+        "artifact_sha256", "artifact_machine", "transcript_sha256",
+        "native_asm_symbols", "instruction_markers", "kat_sha256"
+      ],
+      "properties": {
+        "id": {"type": "string"},
+        "lineage": {"enum": ["mlkem-native", "mldsa-native"]},
+        "parameter": {"type": "string"},
+        "architecture": {"enum": ["x86_64", "aarch64"]},
+        "profile": {"enum": ["portable", "architecture-native"]},
+        "compiler": {"enum": ["gcc", "clang"]},
+        "compiler_version": {"type": "string"},
+        "optimization": {"enum": ["debug", "O1", "O2", "O3", "Os"]},
+        "status": {"const": "passed"},
+        "artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_machine": {"type": "string", "minLength": 1},
+        "transcript_sha256": {"$ref": "#/$defs/sha256"},
+        "native_asm_symbols": {"type": "array", "items": {"type": "string"}},
+        "instruction_markers": {"type": "array", "items": {"type": "string"}},
+        "kat_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "command": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "equivalence": {
+      "type": "object",
+      "required": [
+        "lineage", "parameter", "compiler", "optimization",
+        "portable_sha256", "native_sha256", "equal"
+      ],
+      "properties": {
+        "lineage": {"enum": ["mlkem-native", "mldsa-native"]},
+        "parameter": {"type": "string"},
+        "compiler": {"enum": ["gcc", "clang"]},
+        "optimization": {"enum": ["debug", "O1", "O2", "O3", "Os"]},
+        "portable_sha256": {"$ref": "#/$defs/sha256"},
+        "native_sha256": {"$ref": "#/$defs/sha256"},
+        "equal": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "nativeMatrix": {
+      "type": "object",
+      "required": [
+        "schema_version", "kind", "generated_at", "git_commit", "host",
+        "architecture", "timing_evidence", "review_status", "full_matrix",
+        "summary", "cells", "equivalence"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "kind": {"const": "native-upstream-build-matrix"},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "host": {"$ref": "#/$defs/host"},
+        "architecture": {"enum": ["x86_64", "aarch64"]},
+        "timing_evidence": {"const": false},
+        "review_status": {"const": "needs-review"},
+        "full_matrix": {"type": "boolean"},
+        "summary": {
+          "type": "object",
+          "required": [
+            "expected_cells", "passed_cells", "kat_checks",
+            "equivalence_checks", "structural_checks"
+          ],
+          "properties": {
+            "expected_cells": {"type": "integer", "minimum": 1},
+            "passed_cells": {"type": "integer", "minimum": 1},
+            "kat_checks": {"type": "integer", "minimum": 1},
+            "equivalence_checks": {"type": "integer", "minimum": 1},
+            "structural_checks": {"type": "integer", "minimum": 1}
+          },
+          "additionalProperties": false
+        },
+        "cells": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/cell"}},
+        "equivalence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/equivalence"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "opensslCell": {
+      "type": "object",
+      "required": ["compiler", "compiler_version", "status", "artifact_sha256", "transcript_sha256"],
+      "properties": {
+        "compiler": {"enum": ["gcc", "clang"]},
+        "compiler_version": {"type": "string"},
+        "status": {"const": "passed"},
+        "artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "transcript_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "opensslIntegration": {
+      "type": "object",
+      "required": [
+        "schema_version", "kind", "generated_at", "git_commit", "host",
+        "release", "revision", "source_artifact_sha256", "openssl_version",
+        "counts_as_lineage", "timing_evidence", "review_status", "cells"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "kind": {"const": "openssl-pqc-api-integration"},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "host": {"$ref": "#/$defs/host"},
+        "release": {"const": "openssl-3.5.7"},
+        "revision": {"const": "8cf17aaeb4599f8af87fefd810b5b5fee90fe69e"},
+        "source_artifact_sha256": {"const": "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8"},
+        "openssl_version": {"type": "string", "pattern": "^OpenSSL 3\\.5\\.7 "},
+        "counts_as_lineage": {"const": false},
+        "timing_evidence": {"const": false},
+        "review_status": {"const": "needs-review"},
+        "cells": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/opensslCell"}}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -190,6 +190,30 @@ python scripts/check_third_party.py --write-notices
 - Local modifications: None; all 45 tracked files are byte-identical. CT-KAT adapters and profiles live outside the vendored tree.
 - Detailed provenance: `examples/fndsa_prospective/FETCH_INFO.md`
 
+## mlkem-native v1.2.0 monolithic source and KAT subset
+
+- Local path: `examples/mlkem_native/upstream`
+- Upstream: https://github.com/pq-code-package/mlkem-native
+- Revision: `0ba906cb14b1c241476134d7403a811b382ca498`
+- Upstream path: `LICENSE, README.md, META.yml, mlkem/, test/src/gen_KAT.c, and test/notrandombytes/`
+- License: `Apache-2.0 OR ISC OR MIT; test/notrandombytes is LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT`
+- License file: `examples/mlkem_native/upstream/LICENSE`
+- Tree SHA-256: `7f4d1da13cd51f8cca65fcb6bb8e4eb0b697e8097488f3058beab26b21c1334d`
+- Local modifications: None; all 130 imported files are byte-identical. CT-KAT adapters live outside the vendored tree.
+- Detailed provenance: `examples/mlkem_native/FETCH_INFO.md`
+
+## mldsa-native v1.0.0-beta2 monolithic source and KAT subset
+
+- Local path: `examples/mldsa_native/upstream`
+- Upstream: https://github.com/pq-code-package/mldsa-native
+- Revision: `9b0ee84f4cf399043eca59eca4e5f8531ca1d61b`
+- Upstream path: `LICENSE, README.md, META.yml, mldsa/, test/src/gen_KAT.c, and test/notrandombytes/`
+- License: `Apache-2.0 OR ISC OR MIT; test/notrandombytes is LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT`
+- License file: `examples/mldsa_native/upstream/LICENSE`
+- Tree SHA-256: `a6899867ede95f0c5464c92b96ab314e83c610ff9e23c1cac6f3d78789e710ff`
+- Local modifications: None; all 117 imported files are byte-identical. The beta claim limit and CT-KAT adapters live outside the vendored tree.
+- Detailed provenance: `examples/mldsa_native/FETCH_INFO.md`
+
 ## official dudect statistical engine
 
 - Local path: `ctkat/_vendor/dudect`

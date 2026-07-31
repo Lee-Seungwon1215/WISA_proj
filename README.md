@@ -135,9 +135,13 @@ WISA/
 │   ├── pqc_falcon1024/         # exact-pinned Falcon-1024 reference
 │   ├── fndsa_prospective/      # exact-pinned c-fn-dsa source + local adapters
 │   ├── c_fndsa512_prospective/ # native-FP + integer-FPR comparator profiles
-│   └── c_fndsa1024_prospective/
+│   ├── c_fndsa1024_prospective/
+│   ├── mlkem_native/           # v1.2.0 source/asm/upstream-KAT subset
+│   ├── mldsa_native/           # v1.0.0-beta2 source/asm/upstream-KAT subset
+│   └── openssl_pqc/            # exact OpenSSL 3.5.7 provider API adapter
 ├── docs/measurement/           # frozen native timing campaign + execution gate
 ├── docs/baselines/             # same-corpus dudect/TIMECOP/MicroWalk contract
+├── docs/corpus/                # lineage contract + 240-cell result schema
 ├── docs/ground_truth/kyberslash/ # exact diffs, manifest, evidence boundary
 ├── docs/ground_truth/falcon/   # comparator manifest + structural/FP snapshots
 ├── tests/                      # pytest regression suite
@@ -1115,6 +1119,40 @@ conformance nor physical constant time. The complete source boundary, frozen
 Linux/x86_64 structural snapshot, FP audit, reproduction commands, and native
 timing blocker are in
 [`docs/ground_truth/falcon/`](docs/ground_truth/falcon/README.md).
+
+### 6. Independent native-upstream build corpus
+
+The source/build corpus imports byte-identical subsets of mlkem-native v1.2.0
+and mldsa-native v1.0.0-beta2, including their upstream KAT generators and
+`META.yml` KAT hashes. Native CI executes this matrix on Linux x86_64 and
+AArch64:
+
+```text
+6 parameter sets × 2 profiles × 2 compilers × 5 optimizations × 2 architectures
+= 240 build/run cells
+```
+
+Each architecture produces 12 exact upstream KAT checks and 60
+portable-versus-native deterministic transcript comparisons. Optimized cells
+must also expose architecture-native assembly symbols and instruction markers
+in the generated ELF artifacts. A separate job verifies the official OpenSSL
+3.5.7 release tarball, builds it, and exercises keygen/encap/decap or
+keygen/sign/verify for all six ML-KEM/ML-DSA provider algorithms through both
+gcc- and clang-built adapters.
+
+```bash
+python scripts/check_diverse_upstreams.py
+python scripts/check_diverse_upstreams.py \
+  --run-build-matrix --quick --output-root /tmp/ctkat-diverse-quick
+```
+
+The lineage count is deliberately smaller than the target count: parameters,
+profiles, compilers, and the OpenSSL wrapper are not new primary lineages.
+mldsa-native remains labeled beta, both packages retain their reference-code
+ancestry, and shared-code fractions remain unmeasured. These build/KAT/asm
+artifacts are `needs-review`, not timing evidence or a constant-time/FIPS
+validation claim. See
+[`docs/corpus/INDEPENDENT_UPSTREAM_PLAN.md`](docs/corpus/INDEPENDENT_UPSTREAM_PLAN.md).
 
 ---
 

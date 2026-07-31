@@ -3,6 +3,37 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.10.0a1] - 2026-07-31
+
+### Added
+
+- Byte-identical, exact-commit subsets of mlkem-native v1.2.0 and
+  mldsa-native v1.0.0-beta2, including upstream KAT generators, KAT digests,
+  licenses, ancestry limits, and test-only RNG provenance.
+- A fail-closed Linux build runner for 240 x86_64/AArch64 cells across all six
+  parameter sets, portable/native profiles, gcc/clang, and
+  debug/O1/O2/O3/Os, with deterministic transcript equivalence and ELF
+  asm-symbol/instruction evidence.
+- Native GitHub runner gates that produce 24 exact upstream KAT checks, 120
+  portable-versus-optimized equivalence checks, and reviewable build artifacts.
+- An exact-SHA OpenSSL 3.5.7 source build and production-provider API smoke for
+  all ML-KEM and ML-DSA parameter sets, compiled against the result with both
+  gcc and clang.
+- A versioned diverse-build result schema, strict validator, and regression
+  tests that prevent wrapper, parameter, compiler, or profile count inflation.
+
+### Changed
+
+- The independent-upstream plan now records completed source/build gates and
+  separates four maintained primary-upstream lineages from one OpenSSL
+  integration case.
+- mldsa-native remains explicitly beta, both native packages retain their
+  public-domain reference ancestry, and unmeasured shared-code fractions are
+  not represented as zero.
+- Architecture CI, KAT success, and structural evidence remain
+  `needs-review`; none may be promoted into native timing, FIPS validation, or
+  constant-time proof.
+
 ## [0.9.0a1] - 2026-07-31
 
 ### Added
@@ -287,7 +318,8 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.9.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/2a78049...main
+[0.10.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/5aab795...main
+[0.9.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/2a78049...5aab795
 [0.8.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/679eaf5...2a78049
 [0.7.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b44340d...679eaf5
 [0.6.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/186f8ef...b44340d

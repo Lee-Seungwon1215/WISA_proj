@@ -49,6 +49,15 @@
   dudect physical run, 반복 안정성, human/reviewer cost는 아직 미측정이다.
   다음 독립-upstream import 순서와 lineage 집계 규칙도 machine-readable
   plan으로 동결했지만 target을 이미 import했다고 세지는 않는다.
+- **M4 / `CORP-001` source/build corpus 완료 (2026-07-31, `0.10.0a1`)** —
+  exact-pinned mlkem-native v1.2.0과 mldsa-native v1.0.0-beta2의 monolithic
+  source/assembly/upstream KAT subset을 무수정 import했다. x86_64/AArch64,
+  portable/native, gcc/clang, 5 optimization의 240-cell build/run과 24 KAT,
+  120 equivalence pair를 native CI artifact gate로 묶고 OpenSSL 3.5.7 exact
+  source의 ML-KEM/ML-DSA provider API 6종을 실제 호출한다. OpenSSL wrapper와
+  parameter/compiler/profile은 lineage로 세지 않으며 beta/ancestry/shared-code
+  claim limit를 보존한다. 모든 artifact는 여전히 `needs-review`이고 timing
+  evidence가 아니다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -57,8 +66,7 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비를 기다리는 동안의 다음 작업은 **독립 upstream source/build
-  corpus 확장**이다. native 장비가 확보되면 동결된 campaign, Falcon paired
+- native 장비가 확보되면 다음 작업은 동결된 campaign, Falcon paired
   campaign, same-corpus official dudect를 실행해 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
@@ -703,6 +711,9 @@ constant-time 증명이나 세 도구 통합 정확도가 아니다.
 
 ### `CORP-001` 독립 codebase
 
+**상태: source/build/structural CI package 완료, native timing과 2인 review 보류
+(2026-07-31, `0.10.0a1`)**
+
 parameter set이 아니라 upstream lineage로 센다.
 
 우선순위:
@@ -718,11 +729,18 @@ implementation upstream을 기록한다.
 
 권장 최소 목표:
 
-- 독립 upstream 3개 이상
-- reference와 optimized variant 모두 포함
-- x86_64와 AArch64 structural/build artifact
-- native timing microarchitecture 2종 이상
-- production integration 1개
+- [x] maintained primary upstream lineage 3개 이상
+- [x] portable와 optimized variant 모두 포함
+- [x] x86_64와 AArch64 structural/build artifact gate
+- [ ] native timing microarchitecture 2종 이상
+- [x] production integration 1개
+
+구현 계약은 `docs/corpus/diverse_upstreams_v1.yaml`, 실행기는
+`scripts/check_diverse_upstreams.py`다. 여기서 “독립”은 from-scratch라는 뜻이
+아니라 separately maintained primary upstream lineage라는 뜻이다. 두 native
+package의 reference ancestry와 `unmeasured` shared-code fraction을 숨기지 않으며,
+OpenSSL API integration은 별도 lineage로 세지 않는다. CI build/KAT/ELF asm
+artifact는 timing 또는 constant-time 증거로 승격할 수 없다.
 
 ### `ABL-001` CT-KAT 자체 ablation
 
@@ -898,8 +916,8 @@ M5 종료 조건:
   - [x] MicroWalk PinTracer Linux/x86_64 artifact CI gate
   - [ ] official dudect bare-metal physical artifact
   - [ ] host/compiler/seed 반복과 human/reviewer cost
-- [ ] 독립 upstream 3개 이상
-- [ ] x86_64/AArch64 build evidence
+- [x] maintained primary upstream lineage 3개 이상 (ancestry claim-limit 포함)
+- [x] x86_64/AArch64 build/structural artifact gate
 - [ ] native timing microarchitecture 2종
 - [x] KyberSlash KS1/KS2 non-timing ground truth
 - [ ] KyberSlash native timing / architecture matrix / attack reproduction
@@ -931,8 +949,9 @@ M5 종료 조건:
    — 완료 (`0.8.0a1`); paired native timing/2인 판정은 별도 미완료
 8. ~~**same-corpus baseline adapter + 독립 upstream 확장 설계**~~ — 완료
    (`0.9.0a1`); official dudect physical run과 human/stability metric은 별도 보류
-9. **독립 upstream source/build corpus 확장** — `mlkem-native` →
-   `mldsa-native` → OpenSSL production integration 순서
+9. ~~**독립 upstream source/build corpus 확장**~~ — 완료 (`0.10.0a1`):
+   mlkem-native → mldsa-native → OpenSSL 3.5.7 production integration,
+   240 build cell/24 upstream KAT/120 equivalence pair CI gate
 10. native 장비 확보 즉시 5번, Falcon, same-corpus dudect campaign
     실행·artifact review·재분류
 

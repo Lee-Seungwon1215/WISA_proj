@@ -50,6 +50,7 @@ jobs:
       - run: python scripts/check_example_configs.py
       - run: python scripts/check_kyberslash_ground_truth.py
       - run: python scripts/check_falcon_comparators.py
+      - run: python scripts/check_diverse_upstreams.py
       - run: python scripts/run_native_timing_campaign.py --check
       - run: python scripts/calibrate_timing_backend.py --check
       - run: python scripts/run_same_corpus_baselines.py --check
@@ -188,4 +189,81 @@ jobs:
         with:
           name: same-corpus-microwalk-${{ github.sha }}
           path: ${{ runner.temp }}/same-corpus-microwalk
+          if-no-files-found: error
+
+  diverse-native-upstreams:
+    name: Diverse upstreams / ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: ubuntu-24.04
+          - architecture: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install matrix tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc clang binutils
+          python -m pip install "pyyaml>=6,<7"
+      - name: Build, execute, and compare all 120 architecture cells
+        run: |
+          python scripts/check_diverse_upstreams.py \
+            --run-build-matrix \
+            --output-root "$RUNNER_TEMP/diverse-${{ matrix.architecture }}"
+          python scripts/check_diverse_upstreams.py \
+            --validate-result \
+            "$RUNNER_TEMP/diverse-${{ matrix.architecture }}/native-upstreams-${{ matrix.architecture }}.json"
+      - name: Upload build, KAT, equivalence, and asm evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diverse-upstreams-${{ matrix.architecture }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/diverse-${{ matrix.architecture }}/native-upstreams-${{ matrix.architecture }}.json
+            ${{ runner.temp }}/diverse-${{ matrix.architecture }}/artifacts/*/deterministic-smoke
+            ${{ runner.temp }}/diverse-${{ matrix.architecture }}/artifacts/*/upstream-kat
+            ${{ runner.temp }}/diverse-${{ matrix.architecture }}/artifacts/*/native.o
+          if-no-files-found: error
+
+  openssl-pqc-integration:
+    name: OpenSSL 3.5.7 PQ production API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install exact-release build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc clang make perl
+          python -m pip install "pyyaml>=6,<7"
+      - name: Build exact OpenSSL and execute six PQ provider operations
+        run: |
+          python scripts/check_diverse_upstreams.py \
+            --run-openssl \
+            --output-root "$RUNNER_TEMP/openssl-pqc"
+          python scripts/check_diverse_upstreams.py \
+            --validate-result \
+            "$RUNNER_TEMP/openssl-pqc/openssl-pqc-api.json"
+      - name: Upload exact source and integration evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: openssl-pqc-api-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/openssl-pqc/openssl-pqc-api.json
+            ${{ runner.temp }}/openssl-pqc/openssl-3.5.7.tar.gz
+            ${{ runner.temp }}/openssl-pqc/adapter-*/openssl-pqc-smoke
           if-no-files-found: error

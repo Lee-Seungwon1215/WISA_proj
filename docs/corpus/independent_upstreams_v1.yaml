@@ -1,6 +1,6 @@
 schema_version: "1.0"
 plan_id: ctkat-independent-upstreams-v1
-status: design-frozen-not-imported
+status: source-build-corpus-implemented-native-timing-pending
 
 counting_rule:
   unit: primary-upstream-lineage
@@ -28,26 +28,54 @@ current_lineages:
     role: prospective-fn-dsa-comparator
     imported: true
     claim_limit: not-a-FIPS-206-conformance-claim
+  - id: mlkem-native
+    upstream: https://github.com/pq-code-package/mlkem-native
+    revision: 0ba906cb14b1c241476134d7403a811b382ca498
+    role: maintained-native-ml-kem-lineage
+    imported: true
+    ancestry: pq-crystals/kyber-public-domain-reference
+    shared_code_fraction: unmeasured
+  - id: mldsa-native
+    upstream: https://github.com/pq-code-package/mldsa-native
+    revision: 9b0ee84f4cf399043eca59eca4e5f8531ca1d61b
+    role: maintained-native-ml-dsa-lineage
+    imported: true
+    ancestry: pq-crystals/dilithium-public-domain-reference
+    shared_code_fraction: unmeasured
+    claim_limit: beta-no-api-stability-or-independent-FIPS-validation-claim
 
 integration_queue:
   - order: 1
     id: mlkem-native
     upstream: https://github.com/pq-code-package/mlkem-native
-    revision: pin-exact-commit-at-import
+    release: v1.2.0
+    revision: 0ba906cb14b1c241476134d7403a811b382ca498
+    import_path: examples/mlkem_native/upstream
+    tree_sha256: 7f4d1da13cd51f8cca65fcb6bb8e4eb0b697e8097488f3058beab26b21c1334d
+    status: imported-build-gated-needs-review
     required_profiles: [portable, x86_64-optimized, aarch64-optimized]
     required_parameters: [ML-KEM-512, ML-KEM-768, ML-KEM-1024]
     purpose: independent-ml-kem-lineage-and-optimized-architecture-coverage
   - order: 2
     id: mldsa-native
     upstream: https://github.com/pq-code-package/mldsa-native
-    revision: pin-exact-commit-at-import
+    release: v1.0.0-beta2
+    release_status: beta
+    revision: 9b0ee84f4cf399043eca59eca4e5f8531ca1d61b
+    import_path: examples/mldsa_native/upstream
+    tree_sha256: a6899867ede95f0c5464c92b96ab314e83c610ff9e23c1cac6f3d78789e710ff
+    status: imported-build-gated-needs-review
+    claim_limit: no-api-stability-certification-or-independent-FIPS-validation-claim
     required_profiles: [portable, x86_64-optimized, aarch64-optimized]
     required_parameters: [ML-DSA-44, ML-DSA-65, ML-DSA-87]
     purpose: independent-ml-dsa-lineage-and-optimized-architecture-coverage
   - order: 3
     id: openssl-pqc-api
     upstream: https://github.com/openssl/openssl
-    revision: pin-exact-release-and-commit-at-import
+    release: openssl-3.5.7
+    revision: 8cf17aaeb4599f8af87fefd810b5b5fee90fe69e
+    artifact_sha256: a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8
+    status: exact-release-provider-api-build-gated-needs-review
     minimum_release_line: "3.5"
     required_profiles: [provider-api-integration]
     counts_as_lineage: false
@@ -88,3 +116,15 @@ native_execution_backlog:
     Only reviewed artifacts passing physical-host controls may update corpus
     timing evidence; prepared adapters and CI structural traces are not timing
     results.
+
+implemented_contract:
+  manifest: docs/corpus/diverse_upstreams_v1.yaml
+  result_schema: docs/corpus/diverse-build-result-v1.schema.json
+  runner: scripts/check_diverse_upstreams.py
+  build_cells_per_architecture: 120
+  architectures: [x86_64, aarch64]
+  upstream_kat_checks_all_architectures: 24
+  portable_native_equivalence_pairs_all_architectures: 120
+  openssl_provider_operations: 6
+  ci_artifact_review_status: needs-review
+  timing_evidence: false
