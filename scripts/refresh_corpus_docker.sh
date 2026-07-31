@@ -62,9 +62,19 @@ run_target examples/pqc_mlkem1024 ML-KEM pqclean_mlkem1024 \
   --triage kem_dec=public --triage kem_dec_fo=public \
   --review kem_dec=reviewed --review kem_dec_fo=reviewed \
   --review-id kem_dec=rvw-mlkem-evidence-v1 --review-id kem_dec_fo=rvw-mlkem-evidence-v1
+run_target examples/pqc_mlkem768_kyberslash1 ML-KEM pqclean_mlkem768_kyberslash1 \
+  --correctness pass --triage kem_dec=secret-risk \
+  --review kem_dec=reviewed --review-id kem_dec=rvw-kyberslash-ground-truth-v1
+run_target examples/pqc_mlkem768_kyberslash2 ML-KEM pqclean_mlkem768_kyberslash2 \
+  --correctness pass --triage kem_dec=secret-risk \
+  --review kem_dec=reviewed --review-id kem_dec=rvw-kyberslash-ground-truth-v1
 run_target examples/pqc_mlkem768_kyberslash ML-KEM pqclean_mlkem768_kyberslash \
+  --correctness pass --triage kem_dec=secret-risk \
+  --review kem_dec=reviewed --review-id kem_dec=rvw-kyberslash-ground-truth-v1
+run_target examples/pqc_kyber768_historical Kyber pqcrystals_kyber768_ref_a621b8d \
+  --correctness pass \
   --triage kem_dec=secret-risk \
-  --review kem_dec=reviewed --review-id kem_dec=rvw-kyberslash-seeded-v1
+  --review kem_dec=reviewed --review-id kem_dec=rvw-kyberslash-ground-truth-v1
 run_target examples/pqc_mldsa44 ML-DSA pqclean_mldsa44 \
   --triage sign=public --verdict sign=accepted-variable-time \
   --review sign=reviewed --review-id sign=rvw-mldsa-rejection-v1 \

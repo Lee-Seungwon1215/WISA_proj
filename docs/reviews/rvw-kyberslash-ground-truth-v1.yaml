@@ -1,0 +1,32 @@
+schema_version: "1.0"
+review_id: rvw-kyberslash-ground-truth-v1
+status: reviewed
+title: KyberSlash KS1/KS2 frozen ground-truth attribution
+reviewed_at: "2026-07-31"
+reviewers:
+  - id: project-maintainer
+    role: source-provenance-assembly-and-timecop-review
+scope:
+  - {target: pqclean_mlkem768_kyberslash1, harness: kem_dec}
+  - {target: pqclean_mlkem768_kyberslash2, harness: kem_dec}
+  - {target: pqclean_mlkem768_kyberslash, harness: kem_dec}
+  - {target: pqcrystals_kyber768_ref_a621b8d, harness: kem_dec}
+decision:
+  - The three frozen division sites are secret-derived risks at the algorithm level.
+  - Ordinary Memcheck is a negative control and does not model operand-dependent latency.
+  - The historical clang -O1/-Os poly_frommsg branch is a separate structural finding.
+  - Patched TIMECOP attributes KS1 on the complete secret-key decapsulation path.
+  - Direct site-operand TIMECOP attributes KS1 and both KS2 compression functions.
+  - The historical target is a source/provenance anchor, not a reproduced key-recovery exploit.
+evidence:
+  - docs/ground_truth/kyberslash/ground_truth.yaml
+  - docs/ground_truth/kyberslash/patches
+  - scripts/check_kyberslash_ground_truth.py
+  - scripts/run_kyberslash_timecop.py
+  - examples/pqc_kyber768_historical/FETCH_INFO.md
+  - ctkat/_vendor/kyberslash_timecop_FETCH_INFO.md
+limitations:
+  - Physical native timing and full key recovery have not been reproduced.
+  - Full-KEM Memcheck undefinedness does not propagate to the KS2 re-encryption operands.
+  - Historical structural behavior is compiler-sensitive and is not attributed to KyberSlash.
+  - One maintainer review only; this does not satisfy the paper's two-reviewer gate.

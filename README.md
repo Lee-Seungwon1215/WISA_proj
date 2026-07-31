@@ -110,6 +110,7 @@ WISA/
 │   ├── report.py
 │   ├── native/                 # official dudect raw-trace C bridge
 │   ├── _vendor/dudect/         # exact pinned upstream header + license
+│   ├── _vendor/kyberslash_timecop/ # pinned IACR patched-Valgrind source patch
 │   └── templates/
 │       ├── harness_generic.c.j2 / harness_kem.c.j2 / harness_sign.c.j2
 │       ├── timing_generic.c.j2 / timing_kem.c.j2 / timing_sign.c.j2
@@ -122,13 +123,17 @@ WISA/
 │   ├── pqc_mlkem512/           # PQClean ML-KEM-512 + valid/invalid KEM paths
 │   ├── pqc_mlkem768/           # PQClean ML-KEM-768 + valid/invalid KEM paths
 │   ├── pqc_mlkem1024/          # PQClean ML-KEM-1024 + valid/invalid KEM paths
-│   ├── pqc_mlkem768_kyberslash/# ML-KEM with KyberSlash /KYBER_Q positive control
+│   ├── pqc_mlkem768_kyberslash1/ # isolated KyberSlash1 positive control
+│   ├── pqc_mlkem768_kyberslash2/ # isolated KyberSlash2 positive control
+│   ├── pqc_mlkem768_kyberslash/  # combined KS1+KS2 positive control
+│   ├── pqc_kyber768_historical/  # exact pre-fix pq-crystals snapshot
 │   ├── pqc_mldsa44/            # PQClean ML-DSA-44 attribution/registry case
 │   ├── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
 │   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
 │   ├── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
 │   └── pqc_falcon512/          # Falcon/FN-DSA needs-analysis boundary target
 ├── docs/measurement/           # frozen native timing campaign + execution gate
+├── docs/ground_truth/kyberslash/ # exact diffs, manifest, evidence boundary
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # runners + release/corpus/provenance gates
 ├── Dockerfile, docker-compose.yml
@@ -159,7 +164,11 @@ blind spot을 가진다:
     emitted assembly에서 div/idiv/sdiv/udiv 후보 수집
     "KyberSlash류 operand-latency 후보가 빌드에 살아남나?"
          ↓
-[5] Timing measurement + official dudect — Statistical Timing
+[5] Patched TIMECOP — Secret operand attribution (opt-in)
+    tainted operand가 variable-latency 명령에 실제 도달했나?
+    "후보 명령의 피연산자가 이 분석 범위에서 secret-derived인가?"
+         ↓
+[6] Timing measurement + official dudect — Statistical Timing
     fixed-vs-random raw trace + raw/100 crop/second-order tests (max |t|)
     "설정한 두 class의 실행 시간 분포가 통계적으로 다른가?"
          ↓
@@ -179,6 +188,7 @@ blind spot을 가진다:
 | Valgrind | secret-tainted branch, secret-indexed memory access | 명령어 latency 차이, 실행 안 된 경로, power/EM |
 | ct-matrix | 빌드별 structural verdict 변화 | 왜 변했는지의 보안 의미 |
 | asm-scan | `div/idiv` 등 variable-latency 명령 후보 | operand가 secret인지 자동 증명하지 못함 |
+| patched TIMECOP | tainted operand가 가변시간 명령에 도달한 위치 | 물리 CPU의 latency 차이, taint가 끊긴 경로, 실행 안 된 경로 |
 | timing screen | 설정한 두 class 사이의 timing 차이 | 정확한 코드 위치, rare trigger, noisy/QEMU 환경, 하니스 confound |
 | triage | public 후보와 secret-risk/accepted behavior 분리 | 사람이 쓴 근거가 틀리면 같이 틀림 |
 
@@ -221,6 +231,7 @@ ct:
   workdir: .
   generated_dir: ./_generated  # 자동 생성된 하네스 .c/binary 위치
   seed: 0xC0FFEE               # 자동 생성 하네스의 xorshift PRNG 시드 (재현성)
+  timecop_mode: false          # patched TIMECOP client request; 전용 image에서만 true
   require_sentinel: true       # (E-2) manual-binary 하니스가 stdout에
                                # 'CTKAT-HARNESS-RAN: <name>' 를 emit해야 PASS.
                                # 없으면 status=ERROR → INCONCLUSIVE. template
@@ -735,16 +746,43 @@ setup-placebo trace가 검증한다.
 
 **KyberSlash는 별도 축이다.** KyberSlash류 문제는 secret-derived 값이
 division operand로 들어가고, 일부 컴파일러/옵션/CPU에서 그 division latency가
-입력 의존이 되는 경우다. `leak_target: ct` 랜덤샘플 PASS로 부재를 말할 수
-없다. CT-KAT의 직접 대응은 `asm-scan` 후보 수집 + 사람 triage다. 이 repo의
-positive control은 `examples/pqc_mlkem768/clean_kyberslash/poly.c`에서
-PQClean ML-KEM의 reciprocal-multiply fix(`* 80635 >> 28`)를 되돌려
-`poly_compress`/`poly_tomsg`에 `/KYBER_Q`를 복원한 것이다. Valgrind는
-분기/주소 의존이 없어 PASS하지만, asm-scan은 emitted assembly의 `div/idiv`
-후보를 잡는다. 단, asm-scan 자체는 operand taint를 증명하지 않으므로
-`varlat-secret-risk` 판정은 코드/알고리즘 review가 붙은 triage 결과다.
-즉 KyberSlash 판정은 Memcheck taint를 asm `div/idiv` operand에 연결한
-결과가 아니라, taint-free asm 후보에 source triage를 붙인 결과다.
+입력 의존이 되는 경우다. `leak_target: ct` 랜덤샘플 PASS나 ordinary
+Memcheck PASS로 부재를 말할 수 없다.
+
+`0.7.0a1`부터 ground truth는 stock, KS1-only, KS2-only, KS1+2의 네 modern
+target과 pre-fix `pq-crystals/kyber@a621b8d` historical snapshot으로
+분리된다. 결합 target은 이제 빠졌던 두 번째 KS2 site인
+`polyvec_compress`까지 포함해 다음 세 함수를 동결한다.
+
+- KS1: `poly_tomsg`
+- KS2: `poly_compress`, `polyvec_compress`
+
+네 modern target은 frozen x86_64 ordinary-Memcheck matrix에서 모두
+structural PASS다. historical snapshot은 별개로 clang `-O1/-Os`가
+`poly_frommsg`의 mask 식을 secret-dependent branch로 바꾸는 build-sensitive
+finding을 낸다. 이건 보존해야 할 역사 구현의 추가 증거지, KyberSlash division
+검출로 둔갑시키지 않는다.
+
+`docs/ground_truth/kyberslash/ground_truth.yaml`은 exact source diff, upstream
+commit과 artifact hash, source line/secret origin, deterministic full-KEM
+equivalence, expected assembly/Timecop 함수 집합을 기록한다. 최종 operand
+attribution은 IACR artifact의 패치드 Valgrind 3.22.0을 쓰는 전용 러너로
+재현한다.
+
+```bash
+python scripts/check_kyberslash_ground_truth.py
+docker compose --profile timecop build ctkat-timecop
+docker compose --profile timecop run --rm ctkat-timecop \
+  python scripts/run_kyberslash_timecop.py
+```
+
+Timecop 결과도 한 덩어리로 뭉개지 않는다. `kem_dec_secret_key_path`는 실제
+secret-key 영역에서 taint를 시작해 KS1 `poly_tomsg`까지 귀속한다. KS2는
+recovered-message와 hash/re-encryption 경계를 지나며 Memcheck undefinedness가
+보존되지 않으므로 이 범위에서 안 잡힌다. `site_operand_attribution`은 각
+polynomial operand를 직접 taint해 두 KS2 압축 함수까지 정확히 귀속한다.
+전자의 KS2 무검출을 안전 판정으로 읽으면 안 된다. 둘 다 operand attribution일
+뿐이며 Docker/QEMU 결과는 physical timing이나 key-recovery evidence가 아니다.
 
 **❌ FO-fallback path 미커버 → `leak_target: fo` 사용**:
 `leak_target: ct`는 `enc()`로 valid ct만 생성하므로 FO fallback / implicit
@@ -817,7 +855,8 @@ python -m ctkat asm-scan --config <ctkat.yaml> [--opt -O0 --opt -Os ...] [--cc g
 와 `triage_hint` 컬럼, JSON엔 `scanned_compilers`·기계비교용 `matrix`·`errors`).
 `triage_hint`는 판정이 아니라 리뷰 힌트다. 예를 들어 이 corpus의 KyberSlash
 positive control은 `gcc -Os`와 `clang -O0`에서 `poly_compress` /
-`poly_tomsg`의 `div/idiv`가 살아나며 `kyberslash-poly-review-secret-risk`
+`poly_tomsg` / `polyvec_compress`의 `div/idiv`가 살아나며
+`kyberslash-poly-review-secret-risk`
 힌트로 남는다. 반대로 FIPS202/Keccak `shake128`/`shake256` 후보는
 `keccak-rate-review-likely-public` 힌트로 남아 public triage 후보임을 빠르게
 보여준다. 단일 컴파일러·단일 빌드만 보면 놓칠 수 있다. **taint 분석이 아니라**
@@ -831,8 +870,10 @@ ERROR로 기록한 뒤 나머지로 계속한다(부분 결과, exit 0). 단 `ob
 컴파일러가 **하나도** 없으면 조용히 빈 결과로 exit 0 하지 않고 **config 에러로 exit
 2**(fail-closed). 기본 Docker 이미지에는 `gcc`와 `clang`이 모두 설치되어
 있다.
-정밀 taint는 패치드 Valgrind 필요(미구현). 현재 구현은 멀티 최적화
-`asm-scan` 후보 보고에 머문다.
+정밀 operand taint는 전용 Timecop Docker target과 lossless runner로
+구현되어 있다. 다만 일반 `screen`의 기본 경로에는 넣지 않는다. GPL 패치,
+특정 Valgrind 버전, 높은 실행 비용, 그리고 physical timing과 다른 증거
+의미를 숨기지 않기 위해 명시적 opt-in으로 유지한다.
 
 ```bash
 # 컴파일러 × cflags Valgrind 매트릭스 — 단독 실행은 관찰용, screen evidence 입력
@@ -937,9 +978,9 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 ### Committed corpus snapshot
 
 <!-- BEGIN CTKAT CORPUS SNAPSHOT -->
-<!-- source: docs/corpus/corpus_summary.csv sha256=98bde62aae9b52644dd41a696465d250c93bbae7c38540324ddb7e5bcab87365; regenerate: python scripts/render_readme_corpus.py --write -->
+<!-- source: docs/corpus/corpus_summary.csv sha256=582bd3fe96ea8fa21c8ba6f77a7e84a85c1c0aaa39ad8db810664e34af8376b5; regenerate: python scripts/render_readme_corpus.py --write -->
 
-`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:98bde62aae9b`).
+`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:582bd3fe96ea`).
 
 | family | target / harness | structural | asm / attribution | timing validity / signal | review | overall |
 |---|---|---|---|---|---|---|
@@ -950,7 +991,6 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 | ML-KEM | pqclean_mlkem768 / kem_dec_fo | no-finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.103) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
 | ML-KEM | pqclean_mlkem1024 / kem_dec | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
 | ML-KEM | pqclean_mlkem1024 / kem_dec_fo | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
-| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-seeded-v1) | risk-detected |
 | ML-DSA | pqclean_mldsa44 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.153) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
 | ML-DSA | pqclean_mldsa65 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
 | ML-DSA | pqclean_mldsa87 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
@@ -960,6 +1000,10 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 | synthetic | toy_lookup / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
 | synthetic | ct_matrix_flip / leaky | finding | no-candidate / not-applicable | not-run / not-run | not-needed | risk-detected |
 | synthetic | ct_matrix_flip / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
+| ML-KEM | pqclean_mlkem768_kyberslash1 / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| ML-KEM | pqclean_mlkem768_kyberslash2 / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| Kyber | pqcrystals_kyber768_ref_a621b8d / kem_dec | finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
 
 재생성: `python scripts/render_readme_corpus.py --write`
 <!-- END CTKAT CORPUS SNAPSHOT -->
@@ -1118,7 +1162,7 @@ PQClean ML-KEM-768은 현재 configured ct-matrix cells에서 Valgrind PASS다.
 
 - **Valgrind / dudect 둘 다 dynamic analysis** — 하네스가 실제로 실행한 경로만 검사. 실행 안 된 분기는 미검출.
 - **KAT/CT 분리 권장** — 정확성과 부채널 안전성은 독립. 두 binary 따로 만들어서 각자 검증.
-- **division/multiplication latency — Memcheck만으로는 미검출 (부분 완화: `ctkat asm-scan`)** — Memcheck는 분기와 메모리 주소 의존만 잡고 KyberSlash류 secret-dependent division latency는 잡지 못한다. 보조 수단으로 `ctkat asm-scan`이 소스를 여러 `-O`로 컴파일해 나눗셈 명령이 어느 빌드에서 살아남나 후보로 보고한다. 단독 명령은 warn-only지만 `screen`은 review 전까지 후보를 gating evidence로 보존한다(주의: taint 증명이 아니라 소스 내 모든 나눗셈을 후보로 냄). 정밀한 secret-taint 판정은 여전히 패치드 Valgrind나 별도 정적/알고리즘 분석 필요.
+- **division/multiplication latency — ordinary Memcheck만으로는 미검출** — Memcheck는 분기와 메모리 주소 의존만 잡고 KyberSlash류 secret-dependent division latency는 잡지 못한다. `ctkat asm-scan`은 여러 `-O`에서 살아남은 후보를 보고하고, opt-in patched TIMECOP 러너는 실행된 tainted operand를 귀속한다. 전자는 모든 나눗셈을 후보로 내며 후자는 dynamic taint가 끊긴 경로를 놓친다. 어느 쪽도 target CPU의 물리 latency나 full exploit을 증명하지 않는다.
 - **하네스가 cover하는 입력 분포 한계** — `rej_uniform` 같은 데이터 의존 분기는 통계적으로만 노출됨.
 
 ### 측정 환경 권장
