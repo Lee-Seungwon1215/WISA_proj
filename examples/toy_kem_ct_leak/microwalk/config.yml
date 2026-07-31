@@ -1,0 +1,53 @@
+constants:
+  WORK_DIR: $$$CTKAT_MICROWALK_WORK_DIR$$$
+  TARGET_PATH: $$$CTKAT_MICROWALK_TARGET_PATH$$$
+  RESULT_DIR: $$$CTKAT_MICROWALK_RESULT_DIR$$$
+---
+
+general:
+  logger:
+    log-level: warning
+    file: $$WORK_DIR$$/microwalk.log
+  monitor:
+    enable: true
+    sample-rate: 50
+
+testcase:
+  module: load
+  module-options:
+    input-directory: $$$CTKAT_MICROWALK_TESTCASE_DIR$$$
+
+trace:
+  module: pin
+  module-options:
+    output-directory: $$WORK_DIR$$/traces
+    pin-tool-path: $$$PINTOOL$$$
+    pin-path: $$$PIN_PATH$$$/pin
+    wrapper-path: $$TARGET_PATH$$
+    images:
+      - $$$CTKAT_MICROWALK_TARGET_NAME$$$
+  options:
+    input-buffer-size: 4
+
+preprocess:
+  module: pin
+  module-options:
+    output-directory: $$WORK_DIR$$/preprocessed
+    store-traces: true
+    keep-raw-traces: false
+  options:
+    input-buffer-size: 2
+    max-parallel-threads: 4
+
+analysis:
+  modules:
+    - module: control-flow-leakage
+      module-options:
+        output-directory: $$RESULT_DIR$$
+        map-files:
+          - $$$CTKAT_MICROWALK_MAP_PATH$$$
+        dump-call-tree: false
+        include-testcases-in-call-stacks: false
+  options:
+    input-buffer-size: 1
+    max-parallel-threads: 1

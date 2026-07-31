@@ -1,0 +1,90 @@
+schema_version: "1.0"
+plan_id: ctkat-independent-upstreams-v1
+status: design-frozen-not-imported
+
+counting_rule:
+  unit: primary-upstream-lineage
+  parameter_sets_are_independent: false
+  compiler_profiles_are_independent: false
+  wrappers_are_independent: false
+  forks:
+    rule: >-
+      Count a fork separately only when it maintains materially independent
+      implementation code; record its parent and shared-code fraction.
+  integrations:
+    rule: >-
+      A production API integration is an integration case, not another primary
+      cryptographic implementation unless its implementation lineage differs.
+
+current_lineages:
+  - id: pqclean
+    upstream: https://github.com/PQClean/PQClean
+    revision: 202a8f96315f9ed219387a50f7e40d04af037ea8
+    role: reference-clean-c-corpus
+    imported: true
+  - id: c-fn-dsa
+    upstream: https://github.com/pornin/c-fn-dsa
+    revision: 729698f031ea69bd33375d2fb0db3ac154ad1880
+    role: prospective-fn-dsa-comparator
+    imported: true
+    claim_limit: not-a-FIPS-206-conformance-claim
+
+integration_queue:
+  - order: 1
+    id: mlkem-native
+    upstream: https://github.com/pq-code-package/mlkem-native
+    revision: pin-exact-commit-at-import
+    required_profiles: [portable, x86_64-optimized, aarch64-optimized]
+    required_parameters: [ML-KEM-512, ML-KEM-768, ML-KEM-1024]
+    purpose: independent-ml-kem-lineage-and-optimized-architecture-coverage
+  - order: 2
+    id: mldsa-native
+    upstream: https://github.com/pq-code-package/mldsa-native
+    revision: pin-exact-commit-at-import
+    required_profiles: [portable, x86_64-optimized, aarch64-optimized]
+    required_parameters: [ML-DSA-44, ML-DSA-65, ML-DSA-87]
+    purpose: independent-ml-dsa-lineage-and-optimized-architecture-coverage
+  - order: 3
+    id: openssl-pqc-api
+    upstream: https://github.com/openssl/openssl
+    revision: pin-exact-release-and-commit-at-import
+    minimum_release_line: "3.5"
+    required_profiles: [provider-api-integration]
+    counts_as_lineage: false
+    purpose: production-integration-case-with-primary-implementation-provenance
+
+per_import_gates:
+  provenance:
+    - exact upstream URL and full revision
+    - license and vendored tree hash
+    - patch files with exact hashes
+    - primary implementation lineage distinct from wrapper lineage
+  correctness:
+    - upstream KAT or ACVP-compatible vectors
+    - deterministic smoke transcript
+    - reference-versus-optimized functional equivalence
+  build:
+    - gcc and clang
+    - debug, O1, O2, O3, and Os cells where supported
+    - x86_64 and AArch64 build artifacts
+    - unsupported profiles retained as explicit rows
+  evidence:
+    - structural harness and asm provenance
+    - same-corpus baseline mapping
+    - timing adapter prepared before native execution
+    - review artifact required before any declassification
+  publication:
+    - lineage count and variant, parameter, compiler, and architecture dimensions reported separately
+    - no emulated timing promoted
+    - no aggregate accuracy across unlike threat models
+
+native_execution_backlog:
+  minimum_microarchitectures: 2
+  paired_campaigns:
+    - existing-corpus-native-timing-v2
+    - falcon-reference-versus-ct
+    - same-corpus-official-dudect
+  promotion_rule: >-
+    Only reviewed artifacts passing physical-host controls may update corpus
+    timing evidence; prepared adapters and CI structural traces are not timing
+    results.

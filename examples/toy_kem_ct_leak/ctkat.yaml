@@ -4,9 +4,44 @@ project:
   root: .
 
 build:
-  # Source is compiled in by the dudect harness step.
+  # Source is compiled in by each analysis harness.
   argv: ["true"]
   workdir: .
+
+# The same `dec(ct, sk)` workload is also used by the TIMECOP and MicroWalk
+# baseline adapters.  Here `ct` is deliberately tainted: this toy benchmark
+# models input-dependent execution, not a claim that a real KEM ciphertext is
+# secret.
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-O2, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: leaky
+      template: generic
+      extra_headers: [toy_kem.h]
+      include_dirs: [include]
+      sources: [src/toy_kem.c]
+      function: LEAKY_crypto_kem_dec
+      return_type: int
+      args: [ss, ct, sk]
+      buffers:
+        - {name: ss, size: "LEAKY_CRYPTO_BYTES", role: output}
+        - {name: ct, size: "LEAKY_CRYPTO_CIPHERTEXTBYTES", role: secret}
+        - {name: sk, size: "LEAKY_CRYPTO_SECRETKEYBYTES", role: public}
+
+    - name: safe
+      template: generic
+      extra_headers: [toy_kem.h]
+      include_dirs: [include]
+      sources: [src/toy_kem.c]
+      function: SAFE_crypto_kem_dec
+      return_type: int
+      args: [ss, ct, sk]
+      buffers:
+        - {name: ss, size: "SAFE_CRYPTO_BYTES", role: output}
+        - {name: ct, size: "SAFE_CRYPTO_CIPHERTEXTBYTES", role: secret}
+        - {name: sk, size: "SAFE_CRYPTO_SECRETKEYBYTES", role: public}
 
 dudect:
   enabled: true
@@ -14,7 +49,9 @@ dudect:
   measurements: 50000
   warmup: 500
   batches: 10
-  clock: monotonic         # explicit for CI portability (see Bundle C)
+  # Resolves to RDTSCP on the frozen Linux/x86_64 native profile and to
+  # monotonic elsewhere. Non-native output is retained but never promoted.
+  clock: auto
   seed: 0xC0FFEE
   workdir: .
   generated_dir: ./_generated_dudect

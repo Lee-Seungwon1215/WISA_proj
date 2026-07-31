@@ -3,6 +3,33 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.9.0a1] - 2026-07-31
+
+### Added
+
+- A frozen same-source/function/ciphertext-axis benchmark with positive and
+  negative controls shared by official dudect, KyberSlash patched TIMECOP, and
+  MicroWalk PinTracer.
+- A complete 2-case × 3-tool capability matrix and common result schema that
+  preserves unsupported, crash, timeout, cost, review, and stability fields.
+- Executable host probing, TIMECOP canary/control runs, MicroWalk wrapper/MAP/
+  Pin execution, official-dudect physical execution, and lossless result
+  validation in one repository-specific runner.
+- An exact-digest MicroWalk Linux/x86_64 CI artifact gate and same-corpus
+  TIMECOP controls in the existing patched-backend job.
+- A machine-readable independent-upstream expansion plan that counts primary
+  implementation lineage instead of parameters, wrappers, or compiler cells.
+
+### Changed
+
+- The toy KEM timing control now exposes matching structural harnesses, so all
+  three baseline tools call the same `crypto_kem_dec` source and ciphertext
+  axis.
+- MicroWalk PinTracer on AArch64 is recorded as unsupported rather than omitted
+  or mislabeled as a failed/no-finding run.
+- Paper-grade official-dudect results remain blocked on physical-host controls;
+  CI structural success and QEMU smoke output cannot promote timing evidence.
+
 ## [0.8.0a1] - 2026-07-31
 
 ### Added
@@ -260,7 +287,8 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.8.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/679eaf5...main
+[0.9.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/2a78049...main
+[0.8.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/679eaf5...2a78049
 [0.7.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b44340d...679eaf5
 [0.6.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/186f8ef...b44340d
 [0.5.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/9768d83...186f8ef

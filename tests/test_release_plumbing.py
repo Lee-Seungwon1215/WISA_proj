@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cli_version_matches_package_version():
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == __version__ == "0.8.0a1"
+    assert result.stdout.strip() == __version__ == "0.9.0a1"
 
 
 def test_citation_release_version_matches_package_version():
@@ -88,6 +88,7 @@ def test_untrusted_profile_rejects_shell_even_when_opted_in():
         ("check_corpus.py", []),
         ("migrate_evidence_v1_to_v2.py", ["--check"]),
         ("check_falcon_comparators.py", ["--static-only"]),
+        ("run_same_corpus_baselines.py", ["--check"]),
     ],
 )
 def test_committed_release_gate_scripts_pass(script, args):

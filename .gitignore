@@ -24,7 +24,7 @@ examples/*/reports_*/
 
 # Bundle baseline measurements (raw timing CSVs ~3 MB each, regenerable
 # via `docker compose run --rm ctkat-dev bash scripts/run_phase4.sh`).
-baselines/
+/baselines/
 
 # Native timing campaigns are large, host-specific evidence bundles. Validate
 # and review them before copying selected immutable artifacts into docs/corpus.

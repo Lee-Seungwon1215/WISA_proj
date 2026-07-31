@@ -1,0 +1,7 @@
+case_id,tool_id,support,expected_outcome,evidence_gate,threat_model,observable
+toy-kem-ct-leaky,official_dudect,supported,finding,blocked-by-native-physical-host,statistical difference between two execution-time populations,elapsed clock ticks over the decapsulation call
+toy-kem-ct-leaky,timecop,supported,finding,linux-patched-backend,"dynamic undefinedness reaching branches, addresses, or variable-latency operands",Valgrind/VEX taint propagation and instrumented instruction use
+toy-kem-ct-leaky,microwalk_pin,supported,finding,linux-x86_64-pin,"input-dependent instruction, control-flow, and memory-access traces",Intel Pin execution traces analyzed by control-flow-leakage
+toy-kem-ct-safe,official_dudect,supported,no-finding,blocked-by-native-physical-host,statistical difference between two execution-time populations,elapsed clock ticks over the decapsulation call
+toy-kem-ct-safe,timecop,supported,no-finding,linux-patched-backend,"dynamic undefinedness reaching branches, addresses, or variable-latency operands",Valgrind/VEX taint propagation and instrumented instruction use
+toy-kem-ct-safe,microwalk_pin,supported,no-finding,linux-x86_64-pin,"input-dependent instruction, control-flow, and memory-access traces",Intel Pin execution traces analyzed by control-flow-leakage

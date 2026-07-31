@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Lee-Seungwon1215/WISA_proj/docs/baselines/baseline-result-v1.schema.json",
+  "title": "CT-KAT same-corpus baseline result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "suite_id",
+    "created_at",
+    "manifest",
+    "manifest_sha256",
+    "tool_id",
+    "host",
+    "rows",
+    "promotion_ready",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "kind": {"const": "ctkat-same-corpus-baseline"},
+    "suite_id": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "manifest": {"type": "string"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "tool_id": {
+      "enum": ["official_dudect", "timecop", "microwalk_pin", "capability_probe"]
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["system", "machine", "timing_evidence"],
+      "properties": {
+        "system": {"type": "string"},
+        "machine": {"type": "string"},
+        "timing_evidence": {"type": "boolean"}
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/row"}
+    },
+    "promotion_ready": {"type": "boolean"},
+    "errors": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "backend": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "nullableNumber": {"type": ["number", "null"]},
+    "nullableInteger": {"type": ["integer", "null"], "minimum": 0},
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "tool_id",
+        "capability",
+        "execution_status",
+        "outcome",
+        "known_issue_match",
+        "candidate_count",
+        "reviewed_concern_count",
+        "setup_seconds",
+        "config_loc",
+        "adapter_loc",
+        "runtime_seconds",
+        "peak_memory_kib",
+        "artifact_bytes",
+        "human_triage_minutes",
+        "reviewer_agreement",
+        "disposition_stability",
+        "evidence"
+      ],
+      "properties": {
+        "case_id": {"type": "string"},
+        "tool_id": {
+          "enum": ["official_dudect", "timecop", "microwalk_pin"]
+        },
+        "capability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason"],
+          "properties": {
+            "status": {"enum": ["supported", "unsupported"]},
+            "reason": {"type": "string"}
+          }
+        },
+        "execution_status": {
+          "enum": ["not-run", "completed", "crash", "timeout", "error"]
+        },
+        "outcome": {
+          "enum": ["finding", "no-finding", "inconclusive", "not-run"]
+        },
+        "known_issue_match": {"type": ["boolean", "null"]},
+        "candidate_count": {"$ref": "#/$defs/nullableInteger"},
+        "reviewed_concern_count": {"$ref": "#/$defs/nullableInteger"},
+        "setup_seconds": {"$ref": "#/$defs/nullableNumber"},
+        "config_loc": {"type": "integer", "minimum": 0},
+        "adapter_loc": {"type": "integer", "minimum": 0},
+        "runtime_seconds": {"$ref": "#/$defs/nullableNumber"},
+        "peak_memory_kib": {"$ref": "#/$defs/nullableInteger"},
+        "artifact_bytes": {"$ref": "#/$defs/nullableInteger"},
+        "human_triage_minutes": {"$ref": "#/$defs/nullableNumber"},
+        "reviewer_agreement": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "disposition_stability": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

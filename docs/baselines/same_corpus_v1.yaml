@@ -1,0 +1,163 @@
+schema_version: "1.0"
+suite_id: ctkat-same-corpus-baseline-v1
+status: adapters-ready-native-timing-deferred
+
+comparison_contract:
+  unit: source-snapshot-plus-function-plus-input-axis
+  source_snapshot: toy-kem-ct-input-v1
+  function_shape: crypto_kem_dec(shared_secret, ciphertext, secret_key)
+  input_axis: fixed-versus-varied-ciphertext
+  aggregate_accuracy: forbidden
+  rationale: >-
+    The tools observe different phenomena. Rows may be compared by known issue,
+    support, cost, and stability, but must not be collapsed into one accuracy
+    percentage.
+
+source_snapshot:
+  config:
+    path: examples/toy_kem_ct_leak/ctkat.yaml
+    sha256: 8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+  header:
+    path: examples/toy_kem_ct_leak/include/toy_kem.h
+    sha256: 3b0c86fad24a632ac115b95dd29c86a406f63c66a80511eca150c675888f87c6
+  implementation:
+    path: examples/toy_kem_ct_leak/src/toy_kem.c
+    sha256: 9c33d235ba40924b74be737c81efef8b5353eb784e9bdc3e2b2edf87bf6d2193
+
+testcase_protocol:
+  id: toy-kem-ciphertext-16x32-v1
+  scope: microwalk-pin-trace-materialization-of-the-shared-ciphertext-axis
+  count: 16
+  bytes_per_testcase: 32
+  generation: >-
+    For testcase i and byte j use (29*i + 17*j) mod 256, then replace byte
+    zero with 0x20 + floor(i/2) for even i or 0xa0 + floor(i/2) for odd i.
+  ordered_payload_sha256: 54b9f219351dddbe3bc36b72be80c8220f8c5627693bef10bb6b7b0161dd4f90
+  class_balance:
+    ct0-below-0x80: 8
+    ct0-at-least-0x80: 8
+
+cases:
+  - id: toy-kem-ct-leaky
+    harness: leaky
+    function: LEAKY_crypto_kem_dec
+    known_issue:
+      id: toy-ct0-secret-dependent-slow-path
+      state: present
+      class: secret-dependent-control-flow-and-time
+  - id: toy-kem-ct-safe
+    harness: safe
+    function: SAFE_crypto_kem_dec
+    known_issue:
+      id: toy-fixed-work-negative-control
+      state: absent
+      class: negative-control
+
+tools:
+  official_dudect:
+    display_name: official dudect
+    threat_model: statistical difference between two execution-time populations
+    observable: elapsed clock ticks over the decapsulation call
+    upstream: https://github.com/oreparaz/dudect
+    revision: dc269651fb2567e46755cfb2a13d3875592968b5
+    vendored_header:
+      path: ctkat/_vendor/dudect/dudect.h
+      sha256: 3fb3b2bd7f9e17ae34b7c92518c1311c67342c56facc80da925d85f121b649da
+    execution_profile:
+      systems: [Linux]
+      machines: [x86_64, AMD64]
+      evidence_gate: physical-host-controls
+      unsupported_reason: >-
+        The selected official adapter and RDTSCP campaign are x86_64 profiles;
+        emulation or a virtual timing host is retained but environment-rejected.
+    adapter:
+      command: [python, scripts/run_same_corpus_baselines.py, --run-dudect]
+      configuration_files: [examples/toy_kem_ct_leak/ctkat.yaml]
+      implementation_files: []
+      file_sha256:
+        examples/toy_kem_ct_leak/ctkat.yaml:
+          8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+
+  timecop:
+    display_name: KyberSlash patched-Valgrind TIMECOP
+    threat_model: dynamic undefinedness reaching branches, addresses, or variable-latency operands
+    observable: Valgrind/VEX taint propagation and instrumented instruction use
+    artifact: https://artifacts.iacr.org/tches/2025/a9
+    target_valgrind_version: 3.22.0
+    patch:
+      path: ctkat/_vendor/kyberslash_timecop/valgrind-3.22.0-varlat.patch
+      sha256: 4b684f1b4a3456dcebea91d6daeb0eebe1e35492753b9412d74385a22c1bc612
+    execution_profile:
+      systems: [Linux]
+      machines: [x86_64, AMD64, aarch64, arm64]
+      evidence_gate: structural-or-operand-attribution-only
+      unsupported_reason: patched Valgrind executable and headers are required
+    adapter:
+      command: [python, scripts/run_same_corpus_baselines.py, --run-timecop]
+      configuration_files: [examples/toy_kem_ct_leak/ctkat.yaml]
+      implementation_files: []
+      file_sha256:
+        examples/toy_kem_ct_leak/ctkat.yaml:
+          8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+
+  microwalk_pin:
+    display_name: MicroWalk PinTracer
+    threat_model: input-dependent instruction, control-flow, and memory-access traces
+    observable: Intel Pin execution traces analyzed by control-flow-leakage
+    upstream: https://github.com/microwalk-project/Microwalk
+    documentation_revision: 16a17bad45d6036c18c42a958516c0914346b8a6
+    documentation_tag: v3.2.0
+    execution_image: >-
+      ghcr.io/microwalk-project/microwalk@sha256:4c516c906c96ea76e68ac97ddd8ce41477c42547606351920fb8011c824cbcd2
+    source_image_linkage: unverified-upstream-image-metadata
+    execution_profile:
+      systems: [Linux]
+      machines: [x86_64, AMD64]
+      evidence_gate: pin-x86-structural
+      unsupported_reason: >-
+        This frozen baseline selects MicroWalk's PinTracer. AArch64 is an
+        explicit unsupported capability row, not a failed analysis.
+    adapter:
+      command: [python, scripts/run_same_corpus_baselines.py, --run-microwalk]
+      configuration_files:
+        - examples/toy_kem_ct_leak/microwalk/config.yml
+      implementation_files:
+        - examples/toy_kem_ct_leak/microwalk/main.c
+        - examples/toy_kem_ct_leak/microwalk/target.c
+      file_sha256:
+        examples/toy_kem_ct_leak/microwalk/config.yml:
+          901de902643c1c5661a5e132dd867c39fd23f1c93c2b27c07cc907eedf9083c0
+        examples/toy_kem_ct_leak/microwalk/main.c:
+          2ca8e737004f9cb7c9f084ffcb4bd37387891a1a49b2ffc713099c929f83a459
+        examples/toy_kem_ct_leak/microwalk/target.c:
+          6533eb41c1e4a4929e3767d91e53dcf89e818811ff84d081081864c5d540b7a5
+
+coverage:
+  - {case_id: toy-kem-ct-leaky, tool_id: official_dudect, support: supported,
+     expected_outcome: finding, evidence_gate: blocked-by-native-physical-host}
+  - {case_id: toy-kem-ct-safe, tool_id: official_dudect, support: supported,
+     expected_outcome: no-finding, evidence_gate: blocked-by-native-physical-host}
+  - {case_id: toy-kem-ct-leaky, tool_id: timecop, support: supported,
+     expected_outcome: finding, evidence_gate: linux-patched-backend}
+  - {case_id: toy-kem-ct-safe, tool_id: timecop, support: supported,
+     expected_outcome: no-finding, evidence_gate: linux-patched-backend}
+  - {case_id: toy-kem-ct-leaky, tool_id: microwalk_pin, support: supported,
+     expected_outcome: finding, evidence_gate: linux-x86_64-pin}
+  - {case_id: toy-kem-ct-safe, tool_id: microwalk_pin, support: supported,
+     expected_outcome: no-finding, evidence_gate: linux-x86_64-pin}
+
+common_metrics:
+  - capability_status
+  - execution_status
+  - known_issue_match
+  - candidate_count
+  - reviewed_concern_count
+  - setup_seconds
+  - config_loc
+  - adapter_loc
+  - runtime_seconds
+  - peak_memory_kib
+  - artifact_bytes
+  - human_triage_minutes
+  - reviewer_agreement
+  - disposition_stability

@@ -40,6 +40,15 @@
   attribution, 결정론적 KAT, FP opcode/fenv audit, asm scan을 동결했다.
   QEMU 결과는 timing 증거로 쓰지 않으며 paired native 측정은 `FAL-005`에
   남긴다.
+- **M4 / `BASE-001` adapter package 완료 (2026-07-31, `0.9.0a1`)** —
+  동일한 toy KEM source/function/ciphertext 축에 official dudect, KyberSlash
+  patched TIMECOP, MicroWalk PinTracer를 연결했다. 2 case × 3 tool coverage,
+  capability/실행/비용/human metric schema, deterministic input, exact backend
+  pin과 fail-closed normalizer를 동결했다. TIMECOP 양·음성 control은 실제
+  Linux container에서 검증했고 MicroWalk x86 CI gate를 추가했다. official
+  dudect physical run, 반복 안정성, human/reviewer cost는 아직 미측정이다.
+  다음 독립-upstream import 순서와 lineage 집계 규칙도 machine-readable
+  plan으로 동결했지만 target을 이미 import했다고 세지는 않는다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -48,9 +57,9 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비를 기다리는 동안의 다음 작업은 **same-corpus baseline과 독립
-  upstream 확장 설계**다. native 장비가 확보되면 동결된 campaign과 Falcon
-  paired campaign을 실행해 corpus를 재분류한다.
+- native 장비를 기다리는 동안의 다음 작업은 **독립 upstream source/build
+  corpus 확장**이다. native 장비가 확보되면 동결된 campaign, Falcon paired
+  campaign, same-corpus official dudect를 실행해 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
 
@@ -659,6 +668,9 @@ M3-B 종료 조건:
 
 ### `BASE-001` same-corpus adapters
 
+**상태: adapter/CI package 완료, paper-grade 반복 측정 보류
+(2026-07-31, `0.9.0a1`)**
+
 최소:
 
 - official dudect
@@ -680,6 +692,14 @@ M3-B 종료 조건:
 
 MicroWalk는 x86 Pin tracer 제약이 있으므로 x86 baseline으로 명시하고, AArch64
 미지원은 실패가 아니라 capability 범위로 기록한다.
+
+구현된 v1은 `toy_kem_ct_leak`의 같은 `dec(ct, sk)` 호출에 leaky/safe control을
+붙인다. manifest, 2×3 완전 coverage CSV, 공통 JSON schema, host probe,
+TIMECOP/MicroWalk executable runner, official dudect physical runner를
+`docs/baselines/`와 `scripts/run_same_corpus_baselines.py`에 동결했다.
+자동 실행으로 알 수 없는 human/reviewer/stability 값은 `0`이 아니라 `null`이다.
+도구별 `promotion_ready`는 해당 adapter artifact 계약의 성공일 뿐 구현의
+constant-time 증명이나 세 도구 통합 정확도가 아니다.
 
 ### `CORP-001` 독립 codebase
 
@@ -873,6 +893,11 @@ M5 종료 조건:
 ### 논문 제출
 
 - [ ] same-corpus baseline
+  - [x] 2 case × 3 tool adapter/capability/result schema
+  - [x] patched TIMECOP positive/negative structural artifact gate
+  - [x] MicroWalk PinTracer Linux/x86_64 artifact CI gate
+  - [ ] official dudect bare-metal physical artifact
+  - [ ] host/compiler/seed 반복과 human/reviewer cost
 - [ ] 독립 upstream 3개 이상
 - [ ] x86_64/AArch64 build evidence
 - [ ] native timing microarchitecture 2종
@@ -904,8 +929,12 @@ M5 종료 조건:
    — 완료 (`0.7.0a1`); native timing/attack은 별도 미완료
 7. ~~**Falcon reference-vs-CT comparator의 build/structural 기반 확장**~~
    — 완료 (`0.8.0a1`); paired native timing/2인 판정은 별도 미완료
-8. **same-corpus baseline + 독립 upstream 확장 설계** — 다음
-9. native 장비 확보 즉시 5번 및 Falcon campaign 실행·artifact review·재분류
+8. ~~**same-corpus baseline adapter + 독립 upstream 확장 설계**~~ — 완료
+   (`0.9.0a1`); official dudect physical run과 human/stability metric은 별도 보류
+9. **독립 upstream source/build corpus 확장** — `mlkem-native` →
+   `mldsa-native` → OpenSSL production integration 순서
+10. native 장비 확보 즉시 5번, Falcon, same-corpus dudect campaign
+    실행·artifact review·재분류
 
 첫 구현 batch의 완료 기준:
 

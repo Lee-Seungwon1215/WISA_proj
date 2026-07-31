@@ -137,6 +137,7 @@ WISA/
 │   ├── c_fndsa512_prospective/ # native-FP + integer-FPR comparator profiles
 │   └── c_fndsa1024_prospective/
 ├── docs/measurement/           # frozen native timing campaign + execution gate
+├── docs/baselines/             # same-corpus dudect/TIMECOP/MicroWalk contract
 ├── docs/ground_truth/kyberslash/ # exact diffs, manifest, evidence boundary
 ├── docs/ground_truth/falcon/   # comparator manifest + structural/FP snapshots
 ├── tests/                      # pytest regression suite
