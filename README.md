@@ -131,9 +131,14 @@ WISA/
 │   ├── pqc_mldsa65/            # PQClean ML-DSA-65 attribution/registry case
 │   ├── pqc_mldsa87/            # PQClean ML-DSA-87 attribution/registry case
 │   ├── pqc_sphincs_sha2_128f_simple/ # SPHINCS+ public-output attribution case
-│   └── pqc_falcon512/          # Falcon/FN-DSA needs-analysis boundary target
+│   ├── pqc_falcon512/          # exact-pinned Falcon-512 reference
+│   ├── pqc_falcon1024/         # exact-pinned Falcon-1024 reference
+│   ├── fndsa_prospective/      # exact-pinned c-fn-dsa source + local adapters
+│   ├── c_fndsa512_prospective/ # native-FP + integer-FPR comparator profiles
+│   └── c_fndsa1024_prospective/
 ├── docs/measurement/           # frozen native timing campaign + execution gate
 ├── docs/ground_truth/kyberslash/ # exact diffs, manifest, evidence boundary
+├── docs/ground_truth/falcon/   # comparator manifest + structural/FP snapshots
 ├── tests/                      # pytest regression suite
 ├── scripts/                    # runners + release/corpus/provenance gates
 ├── Dockerfile, docker-compose.yml
@@ -978,9 +983,9 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 ### Committed corpus snapshot
 
 <!-- BEGIN CTKAT CORPUS SNAPSHOT -->
-<!-- source: docs/corpus/corpus_summary.csv sha256=582bd3fe96ea8fa21c8ba6f77a7e84a85c1c0aaa39ad8db810664e34af8376b5; regenerate: python scripts/render_readme_corpus.py --write -->
+<!-- source: docs/corpus/corpus_summary.csv sha256=b4c1e9447baba81f49c773bc163df165d400a32717fb2aa89c67c56e97d3dd10; regenerate: python scripts/render_readme_corpus.py --write -->
 
-`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:582bd3fe96ea`).
+`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:b4c1e9447bab`).
 
 | family | target / harness | structural | asm / attribution | timing validity / signal | review | overall |
 |---|---|---|---|---|---|---|
@@ -995,7 +1000,6 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 | ML-DSA | pqclean_mldsa65 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
 | ML-DSA | pqclean_mldsa87 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
 | SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.523) | reviewed (rvw-sphincs-public-state-v1) | inconclusive |
-| Falcon | pqclean_falcon512 / sign | finding | candidate / unresolved | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.590) | pending | inconclusive |
 | synthetic | toy_lookup / leaky | finding | no-candidate / not-applicable | not-run / not-run | reviewed (rvw-toy-lookup-ground-truth-v1) | risk-detected |
 | synthetic | toy_lookup / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
 | synthetic | ct_matrix_flip / leaky | finding | no-candidate / not-applicable | not-run / not-run | not-needed | risk-detected |
@@ -1004,6 +1008,12 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 | ML-KEM | pqclean_mlkem768_kyberslash2 / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
 | ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
 | Kyber | pqcrystals_kyber768_ref_a621b8d / kem_dec | finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| Falcon | pqclean_falcon512_reference / sign | finding | candidate / unresolved | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.590) | pending | inconclusive |
+| Falcon | pqclean_falcon1024_reference / sign | finding | candidate / unresolved | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa512_prospective / sign_native_fp | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa512_prospective / sign_fpr_emu | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa1024_prospective / sign_native_fp | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa1024_prospective / sign_fpr_emu | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
 
 재생성: `python scripts/render_readme_corpus.py --write`
 <!-- END CTKAT CORPUS SNAPSHOT -->
@@ -1082,23 +1092,28 @@ case로 포함하되, `treehashx1` / `wots_gen_leafx1` 함수 전체를 registry
 root가 signature/public-verification state로 declassified되는 이 `sign`
 harness data flow에 한정해 `accepted-variable-time` override를 둔다.
 
-### 5. `pqc_falcon512` — Falcon/FN-DSA feasibility target
+### 5. Falcon reference-vs-c-fn-dsa comparator suite
 
-Falcon-512 is present as a first-pass PQClean clean signing target. Its legacy
-classification is `needs-analysis`; evidence v2 records `review=pending` and
-`overall=inconclusive`, not an accepted-variable-time or clean row. The harness
-taints `sk[1..]` because `sk[0]` is the public
-format header and full-sk taint would create an immediate false branch finding.
-Current Docker structural screening fails across gcc/clang debug/release cells,
-with findings in private-key decode, private-key completion, Gaussian sampling,
-and signature compression. Follow-up core/split probes show the important
-boundary: after wrapper/decode noise is removed, taint from long-term key
-material still reaches the Gaussian sampler, Bernoulli-exp path, floating-point
-rounding, and signing acceptance loop. That is a correct structural signal, but
-not by itself a timing-leak proof; accepting it would require a Falcon-specific
-isochrony argument across the exact build. Treat Falcon as a `needs-analysis`
-stress target and future-work boundary case, not as an `accepted-variable-time`
-row.
+Falcon is no longer represented by one vaguely named feasibility row. The
+corpus now separates exact-pinned PQClean Falcon-512/1024 references from
+prospective c-fn-dsa-512/1024, and splits c-fn-dsa into architecture-native FP
+and integer-FPR builds. The comparator requires byte-identical deterministic
+key/signature transcripts across the two c-fn-dsa profiles.
+
+Encoded `f`, `g`, and `F` origins, direct decode, Gaussian sampler, bounded
+signing core, signature encoding, FP opcode/fenv behavior, and integer-division
+assembly candidates are recorded separately. Every structural finding remains
+visible with `review=pending`; c-fn-dsa's constant-time intent is not used as a
+whitelist. PQClean's old QEMU timing snapshot remains
+`insufficient-power/no-signal-observed`, while every new comparator timing axis
+is explicitly `not-run`.
+
+The pinned c-fn-dsa revision describes itself as a best guess made before a
+published FN-DSA draft. Therefore these targets claim neither final FIPS 206
+conformance nor physical constant time. The complete source boundary, frozen
+Linux/x86_64 structural snapshot, FP audit, reproduction commands, and native
+timing blocker are in
+[`docs/ground_truth/falcon/`](docs/ground_truth/falcon/README.md).
 
 ---
 

@@ -19,21 +19,22 @@ Key generation and signing randomness come from the repository-owned
 structural runs analyze the same valid key/path. That interposer is not
 production randomness and is excluded from physical timing.
 
-## First-Pass Result
+## Frozen Structural Result
 
-Docker structural runs on 2026-06-10:
+The versioned Docker/QEMU snapshot was regenerated on 2026-07-31 with
+deterministic randomness:
 
-- `ct`: FAIL with 28 findings.
-- `ct-matrix`: FAIL across gcc/clang debug/opt1/release/opt3 cells.
+- `ct-matrix`: FAIL in all eight gcc/clang debug/opt1/release/opt3 cells.
+- Finding counts are gcc 28/40/40/40 and clang 24/30/31/31.
 - Main finding families: private-key decode checks, private-key completion,
   Gaussian sampler/rejection, and signature compression.
-- `asm-scan`: Keccak rate divisions plus `keygen.c:solve_NTRU_intermediate`
-  candidates. The keygen candidate is not signing-leak evidence by itself
-  because keypair generation runs before taint in this harness.
+- `asm-scan`: six rows across the Keccak rate divisions and
+  `keygen.c:solve_NTRU_intermediate`. The keygen candidate is not signing-leak
+  evidence by itself because keypair generation runs before taint.
 
-Treat this target as `needs-analysis` until those finding families are split and
-attributed. Do not promote it to an accepted row solely because this example
-exists.
+The committed identity is `pqclean_falcon512_reference`. Treat it as
+`needs-analysis`; do not promote it to an accepted row solely because this
+example exists.
 
 ## Attribution Probes
 
@@ -42,8 +43,9 @@ Two follow-up probes are included:
 - `ctkat_core.yaml`: manual harnesses that decode/complete/hash before taint,
   then taint either raw `f,g,F,G` (`sign_core_dyn`) or the expanded private key
   (`sign_core_tree`) before calling Falcon's internal signing functions.
-- `ctkat_split.yaml`: template harnesses that taint only encoded `f`, only
-  encoded `g`, or only encoded `F`.
+- `ctkat_split.yaml`: template harnesses named `sign_little_f_only`,
+  `sign_little_g_only`, and `sign_big_f_only`. These names remain distinct on
+  case-insensitive filesystems.
 
 Observed result:
 
@@ -54,7 +56,8 @@ Observed result:
 - `sign_core_dyn` and `sign_core_tree` both FAIL, so the core sampler/signing
   path remains tainted even after using pre-decoded or pre-expanded key material.
 - `f`, `g`, and `F` split-taint runs all reach the same sampler/compression
-  finding family. This is not a single bad encoded-key field.
+  function family (26/25/25 findings respectively). This is not a single bad
+  encoded-key field.
 
 Interpretation: Falcon is valuable as a `needs-analysis` stress target, but it is
 not currently a cheap `accepted-variable-time` corpus row. The signal is not the

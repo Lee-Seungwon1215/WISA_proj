@@ -92,16 +92,19 @@ run_target examples/pqc_sphincs_sha2_128f_simple SPHINCS+ pqclean_sphincs_sha2_1
   --review sign=reviewed --review-id sign=rvw-sphincs-public-state-v1 \
   --note "$SPHINCS_NOTE"
 run_target examples/pqc_falcon512 Falcon pqclean_falcon512_reference \
+  --replace-target pqclean_falcon512 \
   --review sign=pending \
   --note "sign=exact-pinned Falcon reference; structural findings are expected study inputs, not a physical timing or final FN-DSA claim"
 run_target examples/pqc_falcon1024 Falcon pqclean_falcon1024_reference \
   --review sign=pending \
   --note "sign=exact-pinned Falcon reference; native paired timing remains not-run"
 run_target examples/c_fndsa512_prospective Falcon c_fndsa512_prospective \
+  --correctness pass \
   --review sign_native_fp=pending --review sign_fpr_emu=pending \
   --note "sign_native_fp=prospective c-fn-dsa native-FP comparator; structural FAIL remains unwhitelisted and physical timing is not-run" \
   --note "sign_fpr_emu=prospective c-fn-dsa integer-FPR comparator; byte-identical KAT is correctness/build evidence only"
 run_target examples/c_fndsa1024_prospective Falcon c_fndsa1024_prospective \
+  --correctness pass \
   --review sign_native_fp=pending --review sign_fpr_emu=pending \
   --note "sign_native_fp=prospective c-fn-dsa native-FP comparator; structural FAIL remains unwhitelisted and physical timing is not-run" \
   --note "sign_fpr_emu=prospective c-fn-dsa integer-FPR comparator; byte-identical KAT is correctness/build evidence only"

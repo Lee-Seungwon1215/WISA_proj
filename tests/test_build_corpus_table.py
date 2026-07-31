@@ -402,6 +402,38 @@ def test_merge_write_is_idempotent_per_target(tmp_path):
     assert len(rows) == 2
 
 
+def test_merge_write_can_replace_an_obsolete_target_id(tmp_path):
+    fields = ["target", "x"]
+    bct.merge_write(
+        tmp_path,
+        "old-name",
+        [{"target": "old-name", "x": "1"}],
+        fields,
+        "t.csv",
+    )
+    bct.merge_write(
+        tmp_path,
+        "unrelated",
+        [{"target": "unrelated", "x": "2"}],
+        fields,
+        "t.csv",
+    )
+    bct.merge_write(
+        tmp_path,
+        "new-name",
+        [{"target": "new-name", "x": "3"}],
+        fields,
+        "t.csv",
+        ("old-name",),
+    )
+    with open(tmp_path / "t.csv", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert {row["target"]: row["x"] for row in rows} == {
+        "new-name": "3",
+        "unrelated": "2",
+    }
+
+
 def test_asm_error_from_varlat_json_is_surfaced(tmp_path):
     # N2: a compiler whose asm-scan errored (e.g. a source never compiled) must
     # NOT show a clean "0 divisions" — its asm_error must be surfaced in the

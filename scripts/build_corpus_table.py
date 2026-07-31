@@ -320,10 +320,18 @@ def build(
     return cells, summary
 
 
-def merge_write(out_dir: Path, target: str, new_rows: list, fields: list, fname: str) -> Path:
+def merge_write(
+    out_dir: Path,
+    target: str,
+    new_rows: list,
+    fields: list,
+    fname: str,
+    replace_targets: tuple[str, ...] = (),
+) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / fname
-    kept = [r for r in _read_csv(path) if r.get("target") != target]
+    removed = {target, *replace_targets}
+    kept = [r for r in _read_csv(path) if r.get("target") not in removed]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
         w.writeheader()
@@ -339,6 +347,12 @@ def main() -> None:
     ap.add_argument("--project-dir", required=True, type=Path)
     ap.add_argument("--family", required=True)
     ap.add_argument("--target", required=True)
+    ap.add_argument(
+        "--replace-target",
+        action="append",
+        default=[],
+        help="remove rows for an obsolete target ID while writing the new target",
+    )
     ap.add_argument("--arch", default="")
     ap.add_argument("--ctkat-commit", default="")
     ap.add_argument("--cc-version", action="append", default=[], metavar="cc=version")
@@ -423,8 +437,23 @@ def main() -> None:
         review_status=review_status,
         review_id=review_id,
     )
-    cp = merge_write(a.out_dir, a.target, cells, CELLS_FIELDS, "corpus_cells.csv")
-    sp = merge_write(a.out_dir, a.target, summary, SUMMARY_FIELDS, "corpus_summary.csv")
+    replace_targets = tuple(a.replace_target)
+    cp = merge_write(
+        a.out_dir,
+        a.target,
+        cells,
+        CELLS_FIELDS,
+        "corpus_cells.csv",
+        replace_targets,
+    )
+    sp = merge_write(
+        a.out_dir,
+        a.target,
+        summary,
+        SUMMARY_FIELDS,
+        "corpus_summary.csv",
+        replace_targets,
+    )
     print(f"[corpus] {a.target}: {len(cells)} cells -> {cp}")
     print(f"[corpus] {a.target}: {len(summary)} summary rows -> {sp}")
     for s in summary:

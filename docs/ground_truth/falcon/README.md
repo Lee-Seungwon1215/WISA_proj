@@ -114,9 +114,23 @@ docker compose run --rm ctkat-dev \
 docker compose run --rm ctkat-dev \
   python3 -m ctkat run --config examples/pqc_falcon1024/ctkat_split.yaml
 docker compose run --rm ctkat-dev \
+  python3 -m ctkat run --config examples/pqc_falcon512/ctkat_core.yaml
+docker compose run --rm ctkat-dev \
   python3 -m ctkat run --config examples/c_fndsa512_prospective/ctkat_split.yaml
 docker compose run --rm ctkat-dev \
   python3 -m ctkat run --config examples/c_fndsa1024_prospective/ctkat_split.yaml
+docker compose run --rm ctkat-dev \
+  python3 -m ctkat asm-scan --config examples/pqc_falcon512/ctkat.yaml \
+    --cc gcc --cc clang --opt=-O0 --opt=-O1 --opt=-O2 --opt=-O3 --opt=-Os
+docker compose run --rm ctkat-dev \
+  python3 -m ctkat asm-scan --config examples/pqc_falcon1024/ctkat.yaml \
+    --cc gcc --cc clang --opt=-O0 --opt=-O1 --opt=-O2 --opt=-O3 --opt=-Os
+docker compose run --rm ctkat-dev \
+  python3 -m ctkat asm-scan --config examples/c_fndsa512_prospective/ctkat.yaml \
+    --cc gcc --cc clang --opt=-O0 --opt=-O1 --opt=-O2 --opt=-O3 --opt=-Os
+docker compose run --rm ctkat-dev \
+  python3 -m ctkat asm-scan --config examples/c_fndsa1024_prospective/ctkat.yaml \
+    --cc gcc --cc clang --opt=-O0 --opt=-O1 --opt=-O2 --opt=-O3 --opt=-Os
 docker compose run --rm ctkat-dev \
   python3 scripts/audit_falcon_fp.py --output docs/ground_truth/falcon/fp_audit_x86_64.json
 ```
