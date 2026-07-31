@@ -120,6 +120,16 @@ def test_process_streams_are_retained_separately(tmp_path: Path):
     assert set(hashes) == {"stdout_sha256", "stderr_sha256", "timeout_sha256"}
 
 
+def test_compiled_artifact_is_made_host_readable(tmp_path: Path):
+    binary = tmp_path / "artifact"
+    binary.write_bytes(b"binary")
+    binary.chmod(0o711)
+
+    baseline._make_artifact_readable(binary)
+
+    assert binary.stat().st_mode & 0o777 == 0o755
+
+
 def test_docker_timeout_decodes_streams_and_cleans_named_container(monkeypatch):
     calls: list[list[str]] = []
 

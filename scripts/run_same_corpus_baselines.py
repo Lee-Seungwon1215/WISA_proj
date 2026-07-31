@@ -109,6 +109,11 @@ def _tree_bytes(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
+def _make_artifact_readable(path: Path) -> None:
+    """Preserve executable bits while allowing a host-side artifact upload."""
+    path.chmod(path.stat().st_mode | 0o444)
+
+
 def _subprocess_text(value: str | bytes | None) -> str:
     if value is None:
         return ""
@@ -911,6 +916,7 @@ def run_timecop(
         timeout=600,
         cc=compiler,
     )
+    _make_artifact_readable(canary_binary)
     canary_result, canary_argv, canary_seconds = _run_valgrind(
         executable,
         canary_binary,
@@ -984,6 +990,7 @@ def run_timecop(
             timeout=config.ct.compile_timeout,
             cc=compiler,
         )
+        _make_artifact_readable(binary_path)
         setup_seconds = time.monotonic() - setup_started
         run_result, argv, runtime_seconds = _run_valgrind(
             executable,
