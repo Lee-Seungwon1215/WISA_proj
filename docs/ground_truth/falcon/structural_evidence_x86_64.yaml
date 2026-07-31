@@ -1,0 +1,277 @@
+schema_version: 1
+kind: ctkat-falcon-structural-snapshot
+snapshot_date: 2026-07-31
+
+environment:
+  system: Linux
+  machine: x86_64
+  execution: docker-desktop-qemu
+  native_timing_evidence: false
+  tools:
+    gcc: 13.3.0
+    clang: 18.1.3
+    valgrind: 3.22.0
+    binutils: "2.42"
+
+source:
+  pqclean_revision: 202a8f96315f9ed219387a50f7e40d04af037ea8
+  c_fndsa_revision: 729698f031ea69bd33375d2fb0db3ac154ad1880
+
+# The reports below are normalized, version-controlled extracts of the raw
+# reports under examples/*/reports*. Those raw directories remain ignored
+# because they also contain binaries and verbose Valgrind logs. Re-run with
+# the commands in README.md and validate them with:
+#   python scripts/check_falcon_comparators.py --verify-local-reports
+full_sign_matrices:
+  pqclean_falcon512_reference:
+    config: examples/pqc_falcon512/ctkat.yaml
+    report: examples/pqc_falcon512/reports/ctkat_ct_matrix.csv
+    deterministic_replay:
+      runs: 2
+      byte_identical: true
+      csv_sha256: d419d1983453f93af54ab5c076bb3ff15cc7c78cb1b9c1c5b4a007717442cd43
+      json_sha256: 5d2db14c80ede90eff80ef82e5be3959c25d2e762e9b03180673dd4ffaf01f47
+    harnesses:
+      sign:
+        cells:
+          gcc_debug: {status: FAIL, findings: 28}
+          gcc_opt1: {status: FAIL, findings: 40}
+          gcc_release: {status: FAIL, findings: 40}
+          gcc_opt3: {status: FAIL, findings: 40}
+          clang_debug: {status: FAIL, findings: 24}
+          clang_opt1: {status: FAIL, findings: 30}
+          clang_release: {status: FAIL, findings: 31}
+          clang_opt3: {status: FAIL, findings: 31}
+        function_union:
+          - BerExp
+          - PQCLEAN_FALCON512_CLEAN_comp_encode
+          - PQCLEAN_FALCON512_CLEAN_complete_private
+          - PQCLEAN_FALCON512_CLEAN_sampler
+          - PQCLEAN_FALCON512_CLEAN_trim_i8_decode
+          - do_sign_dyn
+          - fpr_floor
+          - fpr_rint
+          - fpr_ursh
+  pqclean_falcon1024_reference:
+    config: examples/pqc_falcon1024/ctkat.yaml
+    report: examples/pqc_falcon1024/reports/ctkat_ct_matrix.csv
+    deterministic_replay:
+      runs: 2
+      byte_identical: true
+      csv_sha256: 38a635fb4407b0331f5cf52ee57e0e3715b917d21102c153ee9a0adb7f608fba
+      json_sha256: 110ba8640f161999378fe82e52bf7f1e4dc523e42d70b09dcf650b7116b016db
+    harnesses:
+      sign:
+        cells:
+          gcc_debug: {status: FAIL, findings: 28}
+          gcc_release: {status: FAIL, findings: 43}
+          clang_debug: {status: FAIL, findings: 24}
+          clang_release: {status: FAIL, findings: 31}
+        function_union:
+          - BerExp
+          - PQCLEAN_FALCON1024_CLEAN_comp_encode
+          - PQCLEAN_FALCON1024_CLEAN_complete_private
+          - PQCLEAN_FALCON1024_CLEAN_sampler
+          - PQCLEAN_FALCON1024_CLEAN_trim_i8_decode
+          - do_sign_dyn
+          - fpr_floor
+          - fpr_rint
+          - fpr_ursh
+  c_fndsa512_prospective:
+    config: examples/c_fndsa512_prospective/ctkat.yaml
+    report: examples/c_fndsa512_prospective/reports/ctkat_ct_matrix.csv
+    harnesses:
+      sign_native_fp:
+        cells:
+          gcc_debug: {status: FAIL, findings: 27}
+          gcc_release: {status: FAIL, findings: 66}
+          clang_debug: {status: FAIL, findings: 27}
+          clang_release: {status: FAIL, findings: 48}
+        function_union:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_hash_to_point
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - sampler_next_sse2
+          - sign_step1
+      sign_fpr_emu:
+        cells:
+          gcc_debug: {status: FAIL, findings: 27}
+          gcc_release: {status: FAIL, findings: 66}
+          clang_debug: {status: FAIL, findings: 27}
+          clang_release: {status: FAIL, findings: 54}
+        function_union:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_hash_to_point
+          - fndsa_sampler_next
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - fpr_rint
+          - fpr_ursh
+          - sign_step1
+  c_fndsa1024_prospective:
+    config: examples/c_fndsa1024_prospective/ctkat.yaml
+    report: examples/c_fndsa1024_prospective/reports/ctkat_ct_matrix.csv
+    harnesses:
+      sign_native_fp:
+        cells:
+          gcc_debug: {status: FAIL, findings: 27}
+          gcc_release: {status: FAIL, findings: 68}
+          clang_debug: {status: FAIL, findings: 27}
+          clang_release: {status: FAIL, findings: 48}
+        function_union:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_hash_to_point
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - sampler_next_sse2
+          - sign_step1
+      sign_fpr_emu:
+        cells:
+          gcc_debug: {status: FAIL, findings: 27}
+          gcc_release: {status: FAIL, findings: 68}
+          clang_debug: {status: FAIL, findings: 27}
+          clang_release: {status: FAIL, findings: 54}
+        function_union:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_hash_to_point
+          - fndsa_sampler_next
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - fpr_rint
+          - fpr_ursh
+          - sign_step1
+
+c_fndsa_boundary_probes:
+  c_fndsa512_prospective: &c_fndsa_boundaries
+    config: examples/c_fndsa512_prospective/ctkat_boundaries.yaml
+    report: examples/c_fndsa512_prospective/reports_boundaries/ctkat_report.csv
+    harnesses:
+      decode_valid_encoded:
+        findings: 1
+        functions: [fndsa_trim_i8_decode]
+      sampler_native_fp:
+        findings: 2
+        functions: [ber_exp, sampler_next_sse2]
+      sampler_fpr_emu:
+        findings: 2
+        functions: [ber_exp, fndsa_sampler_next]
+      signature_encoding:
+        findings: 3
+        functions: [fndsa_comp_encode]
+  c_fndsa1024_prospective:
+    <<: *c_fndsa_boundaries
+    config: examples/c_fndsa1024_prospective/ctkat_boundaries.yaml
+    report: examples/c_fndsa1024_prospective/reports_boundaries/ctkat_report.csv
+
+encoded_origin_split:
+  pqclean_falcon512_reference:
+    config: examples/pqc_falcon512/ctkat_split.yaml
+    report: examples/pqc_falcon512/reports_split/ctkat_report.csv
+    harnesses:
+      sign_little_f_only: &pqclean512_split
+        findings: 26
+        functions:
+          - BerExp
+          - PQCLEAN_FALCON512_CLEAN_comp_encode
+          - PQCLEAN_FALCON512_CLEAN_complete_private
+          - PQCLEAN_FALCON512_CLEAN_sampler
+          - PQCLEAN_FALCON512_CLEAN_trim_i8_decode
+          - do_sign_dyn
+          - fpr_floor
+      sign_little_g_only:
+        <<: *pqclean512_split
+        findings: 25
+      sign_big_f_only:
+        <<: *pqclean512_split
+        findings: 25
+  pqclean_falcon1024_reference:
+    config: examples/pqc_falcon1024/ctkat_split.yaml
+    report: examples/pqc_falcon1024/reports_split/ctkat_report.csv
+    harnesses:
+      sign_little_f_only: &pqclean1024_split
+        findings: 26
+        functions:
+          - BerExp
+          - PQCLEAN_FALCON1024_CLEAN_comp_encode
+          - PQCLEAN_FALCON1024_CLEAN_complete_private
+          - PQCLEAN_FALCON1024_CLEAN_sampler
+          - PQCLEAN_FALCON1024_CLEAN_trim_i8_decode
+          - do_sign_dyn
+          - fpr_floor
+      sign_little_g_only:
+        <<: *pqclean1024_split
+        findings: 25
+      sign_big_f_only:
+        <<: *pqclean1024_split
+        findings: 25
+  c_fndsa512_prospective:
+    config: examples/c_fndsa512_prospective/ctkat_split.yaml
+    report: examples/c_fndsa512_prospective/reports_split/ctkat_report.csv
+    harnesses: &c_fndsa_split
+      sign_little_f_only:
+        findings: 23
+        functions:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_hash_to_point
+          - fndsa_sampler_next
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - sign_step1
+      sign_little_g_only:
+        findings: 22
+        functions:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_hash_to_point
+          - fndsa_sampler_next
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - sign_step1
+      sign_big_f_only:
+        findings: 18
+        functions:
+          - ber_exp
+          - fndsa_comp_encode
+          - fndsa_sampler_next
+          - fndsa_sign_core
+          - fndsa_trim_i8_decode
+          - sign_step1
+  c_fndsa1024_prospective:
+    config: examples/c_fndsa1024_prospective/ctkat_split.yaml
+    report: examples/c_fndsa1024_prospective/reports_split/ctkat_report.csv
+    harnesses: *c_fndsa_split
+
+pqclean512_core_split:
+  config: examples/pqc_falcon512/ctkat_core.yaml
+  report: examples/pqc_falcon512/reports_core/ctkat_report.csv
+  harnesses:
+    sign_core_dyn:
+      findings: 17
+      functions: [BerExp, PQCLEAN_FALCON512_CLEAN_sampler, do_sign_dyn, fpr_floor]
+    sign_core_tree:
+      findings: 65
+      functions: [BerExp, PQCLEAN_FALCON512_CLEAN_sampler, do_sign_tree, fpr_floor]
+
+integer_division_scan:
+  pqclean_falcon512_reference:
+    report: examples/pqc_falcon512/reports/ctkat_varlat_candidates.csv
+    candidate_rows: 6
+    functions: [shake128, shake256, solve_NTRU_intermediate]
+  pqclean_falcon1024_reference:
+    report: examples/pqc_falcon1024/reports/ctkat_varlat_candidates.csv
+    candidate_rows: 3
+    functions: [shake128, shake256, solve_NTRU_intermediate]
+  c_fndsa512_prospective:
+    report: examples/c_fndsa512_prospective/reports/ctkat_varlat_candidates.csv
+    candidate_rows: 0
+    functions: []
+  c_fndsa1024_prospective:
+    report: examples/c_fndsa1024_prospective/reports/ctkat_varlat_candidates.csv
+    candidate_rows: 0
+    functions: []

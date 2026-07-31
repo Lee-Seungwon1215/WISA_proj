@@ -1,0 +1,172 @@
+schema_version: 1
+suite_id: ctkat-falcon-reference-vs-c-fndsa-v1
+status: build-and-structural-comparator
+snapshot_date: 2026-07-31
+
+standard_boundary:
+  nist_selected_algorithms_url: https://csrc.nist.gov/projects/post-quantum-cryptography/post-quantum-cryptography-standardization/selected-algorithms
+  nist_status_at_snapshot: FALCON selected; FIPS 206 listed as coming soon
+  nist_fips_206_presentation_url: https://csrc.nist.gov/presentations/2025/fips-206-fn-dsa-falcon
+  claim: no target in this suite claims final FIPS 206 conformance
+
+sources:
+  pqclean:
+    upstream: https://github.com/PQClean/PQClean
+    revision: 202a8f96315f9ed219387a50f7e40d04af037ea8
+    role: reference
+    standard_identity: Falcon
+    constant_time_implementation_claim: false
+    degrees:
+      "512":
+        target: pqclean_falcon512_reference
+        config: examples/pqc_falcon512/ctkat.yaml
+        split_config: examples/pqc_falcon512/ctkat_split.yaml
+        import_path: examples/pqc_falcon512/clean
+        upstream_path: crypto_sign/falcon-512/clean
+        tree_sha256: 151dc842c4c9a0aa74b692f475380f675c3f968febe2399f2f9e5e7b70e2fd6d
+        secret_key_bytes: 1281
+        encoded_components:
+          header: {offset: 0, length: 1, tainted: false}
+          f: {offset: 1, length: 384, tainted: true}
+          g: {offset: 385, length: 384, tainted: true}
+          F: {offset: 769, length: 512, tainted: true}
+      "1024":
+        target: pqclean_falcon1024_reference
+        config: examples/pqc_falcon1024/ctkat.yaml
+        split_config: examples/pqc_falcon1024/ctkat_split.yaml
+        import_path: examples/pqc_falcon1024/clean
+        upstream_path: crypto_sign/falcon-1024/clean
+        tree_sha256: c91baa9cc666a4b601cb793b362ab9b238755f15a530f4d54727588e099829bd
+        secret_key_bytes: 2305
+        encoded_components:
+          header: {offset: 0, length: 1, tainted: false}
+          f: {offset: 1, length: 640, tainted: true}
+          g: {offset: 641, length: 640, tainted: true}
+          F: {offset: 1281, length: 1024, tainted: true}
+  c_fndsa:
+    upstream: https://github.com/pornin/c-fn-dsa
+    revision: 729698f031ea69bd33375d2fb0db3ac154ad1880
+    role: constant-time-comparator
+    standard_identity: prospective-fn-dsa
+    conformance: none
+    import_path: examples/fndsa_prospective/upstream
+    upstream_path: repository root
+    tree_sha256: 0fd17c0d7a05650657b8660496d3fd15b5d2ef907a520dfa48b0688800298429
+    api_state_model: encoded-keys-only
+    profiles:
+      native_fp:
+        harness: sign_native_fp
+        required_flags:
+          - -D_GNU_SOURCE
+          - -DFNDSA_AVX2=0
+        forbidden_forced_flags:
+          - -DFNDSA_SSE2=0
+          - -DFNDSA_NEON=0
+          - -DFNDSA_RV64D=0
+        activation_rule: exactly one architecture-native FP backend must be active
+      integer_fpr:
+        harness: sign_fpr_emu
+        required_flags:
+          - -D_GNU_SOURCE
+          - -DFNDSA_AVX2=0
+          - -DFNDSA_SSE2=0
+          - -DFNDSA_NEON=0
+          - -DFNDSA_RV64D=0
+          - -DFNDSA_DIV_EMU=1
+          - -DFNDSA_SQRT_EMU=1
+        activation_rule: sign_fpr.c software binary64 and integer post-sampling path
+    degrees:
+      "512":
+        target: c_fndsa512_prospective
+        config: examples/c_fndsa512_prospective/ctkat.yaml
+        boundary_config: examples/c_fndsa512_prospective/ctkat_boundaries.yaml
+        split_config: examples/c_fndsa512_prospective/ctkat_split.yaml
+        logn: 9
+        signing_key_bytes: 1345
+        verifying_key_bytes: 897
+        signature_bytes: 666
+        taint:
+          header: {offset: 0, length: 1, tainted: false}
+          encoded_f_g_F: {offset: 1, length: 1280, tainted: true}
+          hashed_verifying_key: {offset: 1281, length: 64, tainted: false}
+      "1024":
+        target: c_fndsa1024_prospective
+        config: examples/c_fndsa1024_prospective/ctkat.yaml
+        boundary_config: examples/c_fndsa1024_prospective/ctkat_boundaries.yaml
+        split_config: examples/c_fndsa1024_prospective/ctkat_split.yaml
+        logn: 10
+        signing_key_bytes: 2369
+        verifying_key_bytes: 1793
+        signature_bytes: 1280
+        taint:
+          header: {offset: 0, length: 1, tainted: false}
+          encoded_f_g_F: {offset: 1, length: 2304, tainted: true}
+          hashed_verifying_key: {offset: 2305, length: 64, tainted: false}
+
+deterministic_kat:
+  method: seeded-keygen-seeded-sign-full-pk-sk-signature-transcript
+  adapter: examples/fndsa_prospective/adapter.c
+  source: examples/fndsa_prospective/kat.c
+  message_bytes: 64
+  profiles_must_match: true
+  degrees:
+    "512":
+      transcript_bytes: 2908
+      transcript_sha256: 1e6b170d888636fac55998a484e55f8618021dea4048a29e18319fc236926202
+    "1024":
+      transcript_bytes: 5442
+      transcript_sha256: 0873863edfb22be25f874b07d450da695348ae6400be5c8f9521001a018c9bb2
+
+boundaries:
+  encoded_key_decode:
+    pqclean: [trim_i8_decode]
+    c_fndsa: [trim_i8_decode]
+    taint_origins: [encoded-f, encoded-g, encoded-F]
+  private_key_completion:
+    pqclean: [complete_private]
+    c_fndsa: [mqpoly_div_ntt, mqpoly_int_to_small]
+    output: expanded-G
+  sampler_core:
+    pqclean: [ffSampling_fft, sampler, BerExp]
+    c_fndsa: [ffsamp_fft, sampler_next, ber_exp]
+    taint_origins: [expanded-basis, signing-randomness]
+  signing_acceptance_loop:
+    pqclean: [do_sign_dyn, do_sign_tree]
+    c_fndsa: [sign_core]
+    c_fndsa_bound: 27
+  signature_encoding:
+    pqclean: [comp_encode]
+    c_fndsa: [comp_encode]
+    pqclean_output: compressed-variable-length
+    c_fndsa_output: fixed-size-padded
+  full_sign_api:
+    pqclean: [crypto_sign_signature]
+    c_fndsa: [fndsa_sign_seeded]
+  expanded_key_api:
+    pqclean: internal-tree-probe-only
+    c_fndsa: unavailable-in-public-c-api-at-pinned-revision
+
+floating_point_contract:
+  representation: IEEE-754 binary64 with roundTiesToEven
+  upstream_source: examples/fndsa_prospective/upstream/sign_inner.h
+  excluded_values: [NaN, infinity, denormal]
+  native_rounding_controls:
+    x86_64: SSE2 rounding mode saved, set to nearest, and restored
+    aarch64: NEON round-to-nearest with denormal flush accepted by upstream
+  opcode_rule: presence is a build fact, never a leak verdict by itself
+  runtime_screen:
+    method: clear and inspect invalid/div-by-zero/overflow/underflow FP exceptions around seeded signing
+    scope: deterministic KAT only
+    limitation: no exception is not a proof that every possible key avoids exceptional values
+
+versioned_evidence:
+  structural_snapshot: docs/ground_truth/falcon/structural_evidence_x86_64.yaml
+  floating_point_audit: docs/ground_truth/falcon/fp_audit_x86_64.json
+  raw_report_policy: generated-under-examples-and-gitignored
+
+evidence_policy:
+  structural: ordinary Valgrind branch/address/undefined-value screen
+  fp_audit: compiler output opcode and unresolved-library-call inventory
+  physical_timing: not-run
+  timing_blocker: blocked-by-native-linux-host
+  promotion_rule: no timing or conformance claim may be inferred from build, KAT, structural, or opcode evidence

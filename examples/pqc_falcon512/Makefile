@@ -13,7 +13,7 @@ COMMON_SRCS := \
 	clean/sign.c \
 	clean/vrfy.c \
 	../pqc_mlkem768/common/fips202.c \
-	../pqc_mlkem768/common/randombytes.c
+	../falcon_comparator_support/deterministic_randombytes.c
 
 .PHONY: all clean
 

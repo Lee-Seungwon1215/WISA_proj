@@ -1,0 +1,81 @@
+project:
+  name: c_fndsa512_prospective_boundaries
+  language: c
+  root: ..
+
+build:
+  argv: ["true"]
+  workdir: .
+
+# Direct internal probes are attribution aids, not public c-fn-dsa APIs.
+ct:
+  workdir: .
+  generated_dir: ./_generated_boundaries
+  compile_timeout: 900
+  valgrind_timeout: 1200
+  harnesses:
+    - name: decode_valid_encoded
+      template: generic
+      function: ctkat_fndsa_decode
+      args: [secret, decoded]
+      return_type: void
+      extra_headers: [boundary_api.h]
+      cflags: &emu_flags
+        [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer,
+         -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=9, -DFNDSA_AVX2=0,
+         -DFNDSA_SSE2=0, -DFNDSA_NEON=0, -DFNDSA_RV64D=0,
+         -DFNDSA_DIV_EMU=1, -DFNDSA_SQRT_EMU=1]
+      include_dirs: &include_dirs
+        - ../fndsa_prospective
+        - ../fndsa_prospective/upstream
+      sources: &boundary_sources
+        - ../fndsa_prospective/boundary_adapter.c
+        - ../fndsa_prospective/upstream/codec.c
+        - ../fndsa_prospective/upstream/sign_sampler.c
+        - ../fndsa_prospective/upstream/sign_fpr.c
+        - ../fndsa_prospective/upstream/sign_fpoly.c
+        - ../fndsa_prospective/upstream/sha3.c
+      buffers:
+        - {name: secret, size: CTKAT_FNDSA_N, role: secret}
+        - {name: decoded, size: CTKAT_FNDSA_N, role: output}
+    - name: sampler_native_fp
+      template: generic
+      function: ctkat_fndsa_sampler
+      args: [secret, sample]
+      return_type: void
+      extra_headers: [boundary_api.h]
+      cflags:
+        [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer,
+         -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=9, -DFNDSA_AVX2=0]
+      include_dirs: *include_dirs
+      sources: *boundary_sources
+      buffers:
+        - {name: secret, size: "8", role: secret}
+        - {name: sample, size: "4", role: output}
+    - name: sampler_fpr_emu
+      template: generic
+      function: ctkat_fndsa_sampler
+      args: [secret, sample]
+      return_type: void
+      extra_headers: [boundary_api.h]
+      cflags: *emu_flags
+      include_dirs: *include_dirs
+      sources: *boundary_sources
+      buffers:
+        - {name: secret, size: "8", role: secret}
+        - {name: sample, size: "4", role: output}
+    - name: signature_encoding
+      template: generic
+      function: ctkat_fndsa_encode
+      args: [secret, encoded]
+      return_type: void
+      extra_headers: [boundary_api.h]
+      cflags: *emu_flags
+      include_dirs: *include_dirs
+      sources: *boundary_sources
+      buffers:
+        - {name: secret, size: CTKAT_FNDSA_N, role: secret}
+        - {name: encoded, size: CTKAT_FNDSA_ENCODING_BYTES, role: output}
+
+report:
+  output_dir: ./reports_boundaries

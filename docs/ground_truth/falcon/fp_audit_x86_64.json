@@ -1,0 +1,1044 @@
+{
+  "classification": {
+    "fenv_screen_proves_global_nonexceptional_range": false,
+    "fenv_screen_scope": "one deterministic seeded signing transcript",
+    "opcode_presence_is_leak_verdict": false,
+    "signing_scope_pattern": "(?:fndsa_(?:sign|fpr|fpoly|sampler|ber|ffsamp|comp_encode|gaussian)|ber_exp|ffsamp|sampler|mtwop63|CTKAT_FNDSA_crypto_sign_signature)"
+  },
+  "generated_at": "2026-07-31T07:18:43.250222+00:00",
+  "host": {
+    "machine": "x86_64",
+    "qemu_emulation_detected": true,
+    "release": "6.12.72-linuxkit",
+    "system": "Linux",
+    "timing_evidence": false
+  },
+  "kind": "ctkat-falcon-floating-point-build-audit",
+  "profiles": [
+    {
+      "binary_sha256": "cf724b5b6aca6fe64746f3c8a88e1ee6baddd710b7e8e9d926fd5e71bda22123",
+      "build_flags": [
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=9",
+        "-DFNDSA_AVX2=0",
+        "-DCTKAT_FNDSA_FENV_CHECK=1"
+      ],
+      "compile_command": [
+        "gcc",
+        "-std=c99",
+        "-O2",
+        "-g",
+        "-fno-inline",
+        "-fno-omit-frame-pointer",
+        "-fno-strict-aliasing",
+        "-fno-lto",
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=9",
+        "-DFNDSA_AVX2=0",
+        "-DCTKAT_FNDSA_FENV_CHECK=1",
+        "-I",
+        "./examples/c_fndsa512_prospective",
+        "-I",
+        "./examples/fndsa_prospective/upstream",
+        "./examples/fndsa_prospective/adapter.c",
+        "./examples/fndsa_prospective/kat.c",
+        "./examples/fndsa_prospective/upstream/codec.c",
+        "./examples/fndsa_prospective/upstream/mq.c",
+        "./examples/fndsa_prospective/upstream/sha3.c",
+        "./examples/fndsa_prospective/upstream/sysrng.c",
+        "./examples/fndsa_prospective/upstream/util.c",
+        "./examples/fndsa_prospective/upstream/kgen.c",
+        "./examples/fndsa_prospective/upstream/kgen_fxp.c",
+        "./examples/fndsa_prospective/upstream/kgen_gauss.c",
+        "./examples/fndsa_prospective/upstream/kgen_mp31.c",
+        "./examples/fndsa_prospective/upstream/kgen_ntru.c",
+        "./examples/fndsa_prospective/upstream/kgen_poly.c",
+        "./examples/fndsa_prospective/upstream/kgen_zint31.c",
+        "./examples/fndsa_prospective/upstream/sign.c",
+        "./examples/fndsa_prospective/upstream/sign_core.c",
+        "./examples/fndsa_prospective/upstream/sign_fpoly.c",
+        "./examples/fndsa_prospective/upstream/sign_fpr.c",
+        "./examples/fndsa_prospective/upstream/sign_sampler.c",
+        "./examples/fndsa_prospective/upstream/vrfy.c",
+        "-lm",
+        "-o",
+        "<temporary-binary>"
+      ],
+      "degree": 512,
+      "disassembly_command": "objdump -d --no-show-raw-insn <binary>",
+      "external_math_symbols": [],
+      "fenv_exception_screen": "pass",
+      "instructions": {
+        "floating_point": {
+          "all_binary": {
+            "addpd": 33,
+            "addsd": 3,
+            "comisd": 1,
+            "cvtdq2pd": 4,
+            "cvtpd2dq": 2,
+            "cvtsi2sd": 11,
+            "cvttsd2si": 3,
+            "divpd": 1,
+            "divsd": 2,
+            "movsd": 21,
+            "movss": 2,
+            "mulpd": 53,
+            "mulsd": 16,
+            "sqrtsd": 2,
+            "subpd": 19,
+            "subsd": 8
+          },
+          "all_binary_classes": {
+            "arithmetic": 132,
+            "comparison": 1,
+            "division": 3,
+            "move_or_sign": 23,
+            "rounding_or_conversion": 20,
+            "sqrt": 2
+          },
+          "functions": {
+            "ber_exp": {
+              "cvtsi2sd": 1,
+              "cvttsd2si": 1,
+              "movsd": 2,
+              "mulsd": 2,
+              "subsd": 1
+            },
+            "ffsamp_fft_deepest": {
+              "addpd": 2,
+              "addsd": 1,
+              "cvtsi2sd": 4,
+              "divsd": 1,
+              "movsd": 3,
+              "mulpd": 4,
+              "mulsd": 2,
+              "sqrtsd": 2,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_FFT": {
+              "addpd": 6,
+              "mulpd": 6,
+              "subpd": 4
+            },
+            "fndsa_fpoly_LDL_fft": {
+              "addpd": 1,
+              "addsd": 1,
+              "divpd": 1,
+              "divsd": 1,
+              "movsd": 4,
+              "mulpd": 4,
+              "mulsd": 4,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_add": {
+              "addpd": 1,
+              "addsd": 1
+            },
+            "fndsa_fpoly_apply_basis": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_gram_fft": {
+              "addpd": 10,
+              "mulpd": 16,
+              "subpd": 2
+            },
+            "fndsa_fpoly_iFFT": {
+              "addpd": 5,
+              "movsd": 2,
+              "mulpd": 7,
+              "subpd": 4
+            },
+            "fndsa_fpoly_merge_fft": {
+              "addpd": 3,
+              "movsd": 4,
+              "mulpd": 2,
+              "subpd": 1
+            },
+            "fndsa_fpoly_mul_fft": {
+              "addpd": 2,
+              "mulpd": 6,
+              "subpd": 2
+            },
+            "fndsa_fpoly_mulconst": {
+              "mulpd": 1,
+              "mulsd": 1
+            },
+            "fndsa_fpoly_neg": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_set_small": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_split_fft": {
+              "addpd": 2,
+              "movsd": 1,
+              "mulpd": 4,
+              "subpd": 1
+            },
+            "fndsa_fpoly_split_selfadj_fft": {
+              "addpd": 1,
+              "movsd": 1,
+              "mulpd": 3,
+              "subpd": 1
+            },
+            "fndsa_fpoly_sub": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            },
+            "fndsa_sign_core": {
+              "cvtpd2dq": 2
+            },
+            "mtwop63": {
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 1
+            },
+            "sampler_next_sse2": {
+              "comisd": 1,
+              "cvtsi2sd": 4,
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 6,
+              "subsd": 3
+            }
+          },
+          "signing_functions": {
+            "ber_exp": {
+              "cvtsi2sd": 1,
+              "cvttsd2si": 1,
+              "movsd": 2,
+              "mulsd": 2,
+              "subsd": 1
+            },
+            "ffsamp_fft_deepest": {
+              "addpd": 2,
+              "addsd": 1,
+              "cvtsi2sd": 4,
+              "divsd": 1,
+              "movsd": 3,
+              "mulpd": 4,
+              "mulsd": 2,
+              "sqrtsd": 2,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_FFT": {
+              "addpd": 6,
+              "mulpd": 6,
+              "subpd": 4
+            },
+            "fndsa_fpoly_LDL_fft": {
+              "addpd": 1,
+              "addsd": 1,
+              "divpd": 1,
+              "divsd": 1,
+              "movsd": 4,
+              "mulpd": 4,
+              "mulsd": 4,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_add": {
+              "addpd": 1,
+              "addsd": 1
+            },
+            "fndsa_fpoly_apply_basis": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_gram_fft": {
+              "addpd": 10,
+              "mulpd": 16,
+              "subpd": 2
+            },
+            "fndsa_fpoly_iFFT": {
+              "addpd": 5,
+              "movsd": 2,
+              "mulpd": 7,
+              "subpd": 4
+            },
+            "fndsa_fpoly_merge_fft": {
+              "addpd": 3,
+              "movsd": 4,
+              "mulpd": 2,
+              "subpd": 1
+            },
+            "fndsa_fpoly_mul_fft": {
+              "addpd": 2,
+              "mulpd": 6,
+              "subpd": 2
+            },
+            "fndsa_fpoly_mulconst": {
+              "mulpd": 1,
+              "mulsd": 1
+            },
+            "fndsa_fpoly_neg": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_set_small": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_split_fft": {
+              "addpd": 2,
+              "movsd": 1,
+              "mulpd": 4,
+              "subpd": 1
+            },
+            "fndsa_fpoly_split_selfadj_fft": {
+              "addpd": 1,
+              "movsd": 1,
+              "mulpd": 3,
+              "subpd": 1
+            },
+            "fndsa_fpoly_sub": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            },
+            "fndsa_sign_core": {
+              "cvtpd2dq": 2
+            },
+            "mtwop63": {
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 1
+            },
+            "sampler_next_sse2": {
+              "comisd": 1,
+              "cvtsi2sd": 4,
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 6,
+              "subsd": 3
+            }
+          },
+          "signing_scope": {
+            "addpd": 33,
+            "addsd": 3,
+            "comisd": 1,
+            "cvtdq2pd": 4,
+            "cvtpd2dq": 2,
+            "cvtsi2sd": 11,
+            "cvttsd2si": 3,
+            "divpd": 1,
+            "divsd": 2,
+            "movsd": 21,
+            "movss": 2,
+            "mulpd": 53,
+            "mulsd": 16,
+            "sqrtsd": 2,
+            "subpd": 19,
+            "subsd": 8
+          },
+          "signing_scope_classes": {
+            "arithmetic": 132,
+            "comparison": 1,
+            "division": 3,
+            "move_or_sign": 23,
+            "rounding_or_conversion": 20,
+            "sqrt": 2
+          }
+        },
+        "integer_division": {
+          "all_binary": {},
+          "functions": {},
+          "signing_functions": {},
+          "signing_scope": {}
+        }
+      },
+      "profile": "native_fp",
+      "resolved_macros": {
+        "FNDSA_64": "1",
+        "FNDSA_AVX2": "0",
+        "FNDSA_DIV_EMU": "0",
+        "FNDSA_NEON": "0",
+        "FNDSA_RV64D": "0",
+        "FNDSA_SQRT_EMU": "0",
+        "FNDSA_SSE2": "1"
+      },
+      "round_trip": "pass",
+      "target": "c_fndsa512_prospective",
+      "transcript_sha256": "1e6b170d888636fac55998a484e55f8618021dea4048a29e18319fc236926202",
+      "undefined_symbols": [
+        "_ITM_deregisterTMCloneTable",
+        "_ITM_registerTMCloneTable",
+        "__cxa_finalize@GLIBC_2.2.5",
+        "__errno_location@GLIBC_2.2.5",
+        "__gmon_start__",
+        "__libc_start_main@GLIBC_2.34",
+        "__stack_chk_fail@GLIBC_2.4",
+        "close@GLIBC_2.2.5",
+        "feclearexcept@GLIBC_2.2.5",
+        "fetestexcept@GLIBC_2.2.5",
+        "fwrite@GLIBC_2.2.5",
+        "getentropy@GLIBC_2.25",
+        "memcpy@GLIBC_2.14",
+        "memmove@GLIBC_2.2.5",
+        "memset@GLIBC_2.2.5",
+        "open@GLIBC_2.2.5",
+        "read@GLIBC_2.2.5"
+      ]
+    },
+    {
+      "binary_sha256": "8dc4b17f4fa0cab21b02164ff394a4151e6657f1e54b71b36a9e7cbc2ac3efc9",
+      "build_flags": [
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=9",
+        "-DFNDSA_AVX2=0",
+        "-DFNDSA_SSE2=0",
+        "-DFNDSA_NEON=0",
+        "-DFNDSA_RV64D=0",
+        "-DFNDSA_DIV_EMU=1",
+        "-DFNDSA_SQRT_EMU=1",
+        "-DCTKAT_FNDSA_FENV_CHECK=0"
+      ],
+      "compile_command": [
+        "gcc",
+        "-std=c99",
+        "-O2",
+        "-g",
+        "-fno-inline",
+        "-fno-omit-frame-pointer",
+        "-fno-strict-aliasing",
+        "-fno-lto",
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=9",
+        "-DFNDSA_AVX2=0",
+        "-DFNDSA_SSE2=0",
+        "-DFNDSA_NEON=0",
+        "-DFNDSA_RV64D=0",
+        "-DFNDSA_DIV_EMU=1",
+        "-DFNDSA_SQRT_EMU=1",
+        "-DCTKAT_FNDSA_FENV_CHECK=0",
+        "-I",
+        "./examples/c_fndsa512_prospective",
+        "-I",
+        "./examples/fndsa_prospective/upstream",
+        "./examples/fndsa_prospective/adapter.c",
+        "./examples/fndsa_prospective/kat.c",
+        "./examples/fndsa_prospective/upstream/codec.c",
+        "./examples/fndsa_prospective/upstream/mq.c",
+        "./examples/fndsa_prospective/upstream/sha3.c",
+        "./examples/fndsa_prospective/upstream/sysrng.c",
+        "./examples/fndsa_prospective/upstream/util.c",
+        "./examples/fndsa_prospective/upstream/kgen.c",
+        "./examples/fndsa_prospective/upstream/kgen_fxp.c",
+        "./examples/fndsa_prospective/upstream/kgen_gauss.c",
+        "./examples/fndsa_prospective/upstream/kgen_mp31.c",
+        "./examples/fndsa_prospective/upstream/kgen_ntru.c",
+        "./examples/fndsa_prospective/upstream/kgen_poly.c",
+        "./examples/fndsa_prospective/upstream/kgen_zint31.c",
+        "./examples/fndsa_prospective/upstream/sign.c",
+        "./examples/fndsa_prospective/upstream/sign_core.c",
+        "./examples/fndsa_prospective/upstream/sign_fpoly.c",
+        "./examples/fndsa_prospective/upstream/sign_fpr.c",
+        "./examples/fndsa_prospective/upstream/sign_sampler.c",
+        "./examples/fndsa_prospective/upstream/vrfy.c",
+        "-lm",
+        "-o",
+        "<temporary-binary>"
+      ],
+      "degree": 512,
+      "disassembly_command": "objdump -d --no-show-raw-insn <binary>",
+      "external_math_symbols": [],
+      "fenv_exception_screen": "not-applicable-integer-fpr",
+      "instructions": {
+        "floating_point": {
+          "all_binary": {
+            "movss": 2
+          },
+          "all_binary_classes": {
+            "move_or_sign": 2
+          },
+          "functions": {
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            }
+          },
+          "signing_functions": {
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            }
+          },
+          "signing_scope": {
+            "movss": 2
+          },
+          "signing_scope_classes": {
+            "move_or_sign": 2
+          }
+        },
+        "integer_division": {
+          "all_binary": {},
+          "functions": {},
+          "signing_functions": {},
+          "signing_scope": {}
+        }
+      },
+      "profile": "integer_fpr",
+      "resolved_macros": {
+        "FNDSA_64": "1",
+        "FNDSA_AVX2": "0",
+        "FNDSA_DIV_EMU": "1",
+        "FNDSA_NEON": "0",
+        "FNDSA_RV64D": "0",
+        "FNDSA_SQRT_EMU": "1",
+        "FNDSA_SSE2": "0"
+      },
+      "round_trip": "pass",
+      "target": "c_fndsa512_prospective",
+      "transcript_sha256": "1e6b170d888636fac55998a484e55f8618021dea4048a29e18319fc236926202",
+      "undefined_symbols": [
+        "_ITM_deregisterTMCloneTable",
+        "_ITM_registerTMCloneTable",
+        "__cxa_finalize@GLIBC_2.2.5",
+        "__errno_location@GLIBC_2.2.5",
+        "__gmon_start__",
+        "__libc_start_main@GLIBC_2.34",
+        "__stack_chk_fail@GLIBC_2.4",
+        "close@GLIBC_2.2.5",
+        "fwrite@GLIBC_2.2.5",
+        "getentropy@GLIBC_2.25",
+        "memcpy@GLIBC_2.14",
+        "memmove@GLIBC_2.2.5",
+        "memset@GLIBC_2.2.5",
+        "open@GLIBC_2.2.5",
+        "read@GLIBC_2.2.5"
+      ]
+    },
+    {
+      "binary_sha256": "c467ea620662ef500f4e2c81f070031864f758dc149f8635f06f8e8d3d1be6e5",
+      "build_flags": [
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=10",
+        "-DFNDSA_AVX2=0",
+        "-DCTKAT_FNDSA_FENV_CHECK=1"
+      ],
+      "compile_command": [
+        "gcc",
+        "-std=c99",
+        "-O2",
+        "-g",
+        "-fno-inline",
+        "-fno-omit-frame-pointer",
+        "-fno-strict-aliasing",
+        "-fno-lto",
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=10",
+        "-DFNDSA_AVX2=0",
+        "-DCTKAT_FNDSA_FENV_CHECK=1",
+        "-I",
+        "./examples/c_fndsa1024_prospective",
+        "-I",
+        "./examples/fndsa_prospective/upstream",
+        "./examples/fndsa_prospective/adapter.c",
+        "./examples/fndsa_prospective/kat.c",
+        "./examples/fndsa_prospective/upstream/codec.c",
+        "./examples/fndsa_prospective/upstream/mq.c",
+        "./examples/fndsa_prospective/upstream/sha3.c",
+        "./examples/fndsa_prospective/upstream/sysrng.c",
+        "./examples/fndsa_prospective/upstream/util.c",
+        "./examples/fndsa_prospective/upstream/kgen.c",
+        "./examples/fndsa_prospective/upstream/kgen_fxp.c",
+        "./examples/fndsa_prospective/upstream/kgen_gauss.c",
+        "./examples/fndsa_prospective/upstream/kgen_mp31.c",
+        "./examples/fndsa_prospective/upstream/kgen_ntru.c",
+        "./examples/fndsa_prospective/upstream/kgen_poly.c",
+        "./examples/fndsa_prospective/upstream/kgen_zint31.c",
+        "./examples/fndsa_prospective/upstream/sign.c",
+        "./examples/fndsa_prospective/upstream/sign_core.c",
+        "./examples/fndsa_prospective/upstream/sign_fpoly.c",
+        "./examples/fndsa_prospective/upstream/sign_fpr.c",
+        "./examples/fndsa_prospective/upstream/sign_sampler.c",
+        "./examples/fndsa_prospective/upstream/vrfy.c",
+        "-lm",
+        "-o",
+        "<temporary-binary>"
+      ],
+      "degree": 1024,
+      "disassembly_command": "objdump -d --no-show-raw-insn <binary>",
+      "external_math_symbols": [],
+      "fenv_exception_screen": "pass",
+      "instructions": {
+        "floating_point": {
+          "all_binary": {
+            "addpd": 33,
+            "addsd": 3,
+            "comisd": 1,
+            "cvtdq2pd": 4,
+            "cvtpd2dq": 2,
+            "cvtsi2sd": 11,
+            "cvttsd2si": 3,
+            "divpd": 1,
+            "divsd": 2,
+            "movsd": 21,
+            "movss": 2,
+            "mulpd": 53,
+            "mulsd": 16,
+            "sqrtsd": 2,
+            "subpd": 19,
+            "subsd": 8
+          },
+          "all_binary_classes": {
+            "arithmetic": 132,
+            "comparison": 1,
+            "division": 3,
+            "move_or_sign": 23,
+            "rounding_or_conversion": 20,
+            "sqrt": 2
+          },
+          "functions": {
+            "ber_exp": {
+              "cvtsi2sd": 1,
+              "cvttsd2si": 1,
+              "movsd": 2,
+              "mulsd": 2,
+              "subsd": 1
+            },
+            "ffsamp_fft_deepest": {
+              "addpd": 2,
+              "addsd": 1,
+              "cvtsi2sd": 4,
+              "divsd": 1,
+              "movsd": 3,
+              "mulpd": 4,
+              "mulsd": 2,
+              "sqrtsd": 2,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_FFT": {
+              "addpd": 6,
+              "mulpd": 6,
+              "subpd": 4
+            },
+            "fndsa_fpoly_LDL_fft": {
+              "addpd": 1,
+              "addsd": 1,
+              "divpd": 1,
+              "divsd": 1,
+              "movsd": 4,
+              "mulpd": 4,
+              "mulsd": 4,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_add": {
+              "addpd": 1,
+              "addsd": 1
+            },
+            "fndsa_fpoly_apply_basis": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_gram_fft": {
+              "addpd": 10,
+              "mulpd": 16,
+              "subpd": 2
+            },
+            "fndsa_fpoly_iFFT": {
+              "addpd": 5,
+              "movsd": 2,
+              "mulpd": 7,
+              "subpd": 4
+            },
+            "fndsa_fpoly_merge_fft": {
+              "addpd": 3,
+              "movsd": 4,
+              "mulpd": 2,
+              "subpd": 1
+            },
+            "fndsa_fpoly_mul_fft": {
+              "addpd": 2,
+              "mulpd": 6,
+              "subpd": 2
+            },
+            "fndsa_fpoly_mulconst": {
+              "mulpd": 1,
+              "mulsd": 1
+            },
+            "fndsa_fpoly_neg": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_set_small": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_split_fft": {
+              "addpd": 2,
+              "movsd": 1,
+              "mulpd": 4,
+              "subpd": 1
+            },
+            "fndsa_fpoly_split_selfadj_fft": {
+              "addpd": 1,
+              "movsd": 1,
+              "mulpd": 3,
+              "subpd": 1
+            },
+            "fndsa_fpoly_sub": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            },
+            "fndsa_sign_core": {
+              "cvtpd2dq": 2
+            },
+            "mtwop63": {
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 1
+            },
+            "sampler_next_sse2": {
+              "comisd": 1,
+              "cvtsi2sd": 4,
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 6,
+              "subsd": 3
+            }
+          },
+          "signing_functions": {
+            "ber_exp": {
+              "cvtsi2sd": 1,
+              "cvttsd2si": 1,
+              "movsd": 2,
+              "mulsd": 2,
+              "subsd": 1
+            },
+            "ffsamp_fft_deepest": {
+              "addpd": 2,
+              "addsd": 1,
+              "cvtsi2sd": 4,
+              "divsd": 1,
+              "movsd": 3,
+              "mulpd": 4,
+              "mulsd": 2,
+              "sqrtsd": 2,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_FFT": {
+              "addpd": 6,
+              "mulpd": 6,
+              "subpd": 4
+            },
+            "fndsa_fpoly_LDL_fft": {
+              "addpd": 1,
+              "addsd": 1,
+              "divpd": 1,
+              "divsd": 1,
+              "movsd": 4,
+              "mulpd": 4,
+              "mulsd": 4,
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_add": {
+              "addpd": 1,
+              "addsd": 1
+            },
+            "fndsa_fpoly_apply_basis": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_gram_fft": {
+              "addpd": 10,
+              "mulpd": 16,
+              "subpd": 2
+            },
+            "fndsa_fpoly_iFFT": {
+              "addpd": 5,
+              "movsd": 2,
+              "mulpd": 7,
+              "subpd": 4
+            },
+            "fndsa_fpoly_merge_fft": {
+              "addpd": 3,
+              "movsd": 4,
+              "mulpd": 2,
+              "subpd": 1
+            },
+            "fndsa_fpoly_mul_fft": {
+              "addpd": 2,
+              "mulpd": 6,
+              "subpd": 2
+            },
+            "fndsa_fpoly_mulconst": {
+              "mulpd": 1,
+              "mulsd": 1
+            },
+            "fndsa_fpoly_neg": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_fpoly_set_small": {
+              "cvtdq2pd": 2,
+              "cvtsi2sd": 1,
+              "movsd": 1
+            },
+            "fndsa_fpoly_split_fft": {
+              "addpd": 2,
+              "movsd": 1,
+              "mulpd": 4,
+              "subpd": 1
+            },
+            "fndsa_fpoly_split_selfadj_fft": {
+              "addpd": 1,
+              "movsd": 1,
+              "mulpd": 3,
+              "subpd": 1
+            },
+            "fndsa_fpoly_sub": {
+              "subpd": 1,
+              "subsd": 1
+            },
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            },
+            "fndsa_sign_core": {
+              "cvtpd2dq": 2
+            },
+            "mtwop63": {
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 1
+            },
+            "sampler_next_sse2": {
+              "comisd": 1,
+              "cvtsi2sd": 4,
+              "cvttsd2si": 1,
+              "movsd": 1,
+              "mulsd": 6,
+              "subsd": 3
+            }
+          },
+          "signing_scope": {
+            "addpd": 33,
+            "addsd": 3,
+            "comisd": 1,
+            "cvtdq2pd": 4,
+            "cvtpd2dq": 2,
+            "cvtsi2sd": 11,
+            "cvttsd2si": 3,
+            "divpd": 1,
+            "divsd": 2,
+            "movsd": 21,
+            "movss": 2,
+            "mulpd": 53,
+            "mulsd": 16,
+            "sqrtsd": 2,
+            "subpd": 19,
+            "subsd": 8
+          },
+          "signing_scope_classes": {
+            "arithmetic": 132,
+            "comparison": 1,
+            "division": 3,
+            "move_or_sign": 23,
+            "rounding_or_conversion": 20,
+            "sqrt": 2
+          }
+        },
+        "integer_division": {
+          "all_binary": {},
+          "functions": {},
+          "signing_functions": {},
+          "signing_scope": {}
+        }
+      },
+      "profile": "native_fp",
+      "resolved_macros": {
+        "FNDSA_64": "1",
+        "FNDSA_AVX2": "0",
+        "FNDSA_DIV_EMU": "0",
+        "FNDSA_NEON": "0",
+        "FNDSA_RV64D": "0",
+        "FNDSA_SQRT_EMU": "0",
+        "FNDSA_SSE2": "1"
+      },
+      "round_trip": "pass",
+      "target": "c_fndsa1024_prospective",
+      "transcript_sha256": "0873863edfb22be25f874b07d450da695348ae6400be5c8f9521001a018c9bb2",
+      "undefined_symbols": [
+        "_ITM_deregisterTMCloneTable",
+        "_ITM_registerTMCloneTable",
+        "__cxa_finalize@GLIBC_2.2.5",
+        "__errno_location@GLIBC_2.2.5",
+        "__gmon_start__",
+        "__libc_start_main@GLIBC_2.34",
+        "__stack_chk_fail@GLIBC_2.4",
+        "close@GLIBC_2.2.5",
+        "feclearexcept@GLIBC_2.2.5",
+        "fetestexcept@GLIBC_2.2.5",
+        "fwrite@GLIBC_2.2.5",
+        "getentropy@GLIBC_2.25",
+        "memcpy@GLIBC_2.14",
+        "memmove@GLIBC_2.2.5",
+        "memset@GLIBC_2.2.5",
+        "open@GLIBC_2.2.5",
+        "read@GLIBC_2.2.5"
+      ]
+    },
+    {
+      "binary_sha256": "1bedd90e11bb5e43bf8893de1aedd66b7b9ced9bc84c75ab864713fb884baa92",
+      "build_flags": [
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=10",
+        "-DFNDSA_AVX2=0",
+        "-DFNDSA_SSE2=0",
+        "-DFNDSA_NEON=0",
+        "-DFNDSA_RV64D=0",
+        "-DFNDSA_DIV_EMU=1",
+        "-DFNDSA_SQRT_EMU=1",
+        "-DCTKAT_FNDSA_FENV_CHECK=0"
+      ],
+      "compile_command": [
+        "gcc",
+        "-std=c99",
+        "-O2",
+        "-g",
+        "-fno-inline",
+        "-fno-omit-frame-pointer",
+        "-fno-strict-aliasing",
+        "-fno-lto",
+        "-D_GNU_SOURCE",
+        "-DCTKAT_FNDSA_LOGN=10",
+        "-DFNDSA_AVX2=0",
+        "-DFNDSA_SSE2=0",
+        "-DFNDSA_NEON=0",
+        "-DFNDSA_RV64D=0",
+        "-DFNDSA_DIV_EMU=1",
+        "-DFNDSA_SQRT_EMU=1",
+        "-DCTKAT_FNDSA_FENV_CHECK=0",
+        "-I",
+        "./examples/c_fndsa1024_prospective",
+        "-I",
+        "./examples/fndsa_prospective/upstream",
+        "./examples/fndsa_prospective/adapter.c",
+        "./examples/fndsa_prospective/kat.c",
+        "./examples/fndsa_prospective/upstream/codec.c",
+        "./examples/fndsa_prospective/upstream/mq.c",
+        "./examples/fndsa_prospective/upstream/sha3.c",
+        "./examples/fndsa_prospective/upstream/sysrng.c",
+        "./examples/fndsa_prospective/upstream/util.c",
+        "./examples/fndsa_prospective/upstream/kgen.c",
+        "./examples/fndsa_prospective/upstream/kgen_fxp.c",
+        "./examples/fndsa_prospective/upstream/kgen_gauss.c",
+        "./examples/fndsa_prospective/upstream/kgen_mp31.c",
+        "./examples/fndsa_prospective/upstream/kgen_ntru.c",
+        "./examples/fndsa_prospective/upstream/kgen_poly.c",
+        "./examples/fndsa_prospective/upstream/kgen_zint31.c",
+        "./examples/fndsa_prospective/upstream/sign.c",
+        "./examples/fndsa_prospective/upstream/sign_core.c",
+        "./examples/fndsa_prospective/upstream/sign_fpoly.c",
+        "./examples/fndsa_prospective/upstream/sign_fpr.c",
+        "./examples/fndsa_prospective/upstream/sign_sampler.c",
+        "./examples/fndsa_prospective/upstream/vrfy.c",
+        "-lm",
+        "-o",
+        "<temporary-binary>"
+      ],
+      "degree": 1024,
+      "disassembly_command": "objdump -d --no-show-raw-insn <binary>",
+      "external_math_symbols": [],
+      "fenv_exception_screen": "not-applicable-integer-fpr",
+      "instructions": {
+        "floating_point": {
+          "all_binary": {
+            "movss": 2
+          },
+          "all_binary_classes": {
+            "move_or_sign": 2
+          },
+          "functions": {
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            }
+          },
+          "signing_functions": {
+            "fndsa_gaussian0_helper": {
+              "movss": 2
+            }
+          },
+          "signing_scope": {
+            "movss": 2
+          },
+          "signing_scope_classes": {
+            "move_or_sign": 2
+          }
+        },
+        "integer_division": {
+          "all_binary": {},
+          "functions": {},
+          "signing_functions": {},
+          "signing_scope": {}
+        }
+      },
+      "profile": "integer_fpr",
+      "resolved_macros": {
+        "FNDSA_64": "1",
+        "FNDSA_AVX2": "0",
+        "FNDSA_DIV_EMU": "1",
+        "FNDSA_NEON": "0",
+        "FNDSA_RV64D": "0",
+        "FNDSA_SQRT_EMU": "1",
+        "FNDSA_SSE2": "0"
+      },
+      "round_trip": "pass",
+      "target": "c_fndsa1024_prospective",
+      "transcript_sha256": "0873863edfb22be25f874b07d450da695348ae6400be5c8f9521001a018c9bb2",
+      "undefined_symbols": [
+        "_ITM_deregisterTMCloneTable",
+        "_ITM_registerTMCloneTable",
+        "__cxa_finalize@GLIBC_2.2.5",
+        "__errno_location@GLIBC_2.2.5",
+        "__gmon_start__",
+        "__libc_start_main@GLIBC_2.34",
+        "__stack_chk_fail@GLIBC_2.4",
+        "close@GLIBC_2.2.5",
+        "fwrite@GLIBC_2.2.5",
+        "getentropy@GLIBC_2.25",
+        "memcpy@GLIBC_2.14",
+        "memmove@GLIBC_2.2.5",
+        "memset@GLIBC_2.2.5",
+        "open@GLIBC_2.2.5",
+        "read@GLIBC_2.2.5"
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source": {
+    "conformance": "none",
+    "revision": "729698f031ea69bd33375d2fb0db3ac154ad1880",
+    "standard_identity": "prospective-fn-dsa",
+    "tree_sha256": "0fd17c0d7a05650657b8660496d3fd15b5d2ef907a520dfa48b0688800298429",
+    "upstream": "https://github.com/pornin/c-fn-dsa"
+  },
+  "tools": {
+    "compiler": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "nm": "GNU nm (GNU Binutils for Ubuntu) 2.42",
+    "objdump": "GNU objdump (GNU Binutils for Ubuntu) 2.42"
+  }
+}

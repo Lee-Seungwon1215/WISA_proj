@@ -166,6 +166,30 @@ python scripts/check_third_party.py --write-notices
 - Local modifications: None; byte-identical to the recorded upstream directory.
 - Detailed provenance: `examples/pqc_falcon512/FETCH_INFO.md`
 
+## PQClean Falcon-1024 clean reference
+
+- Local path: `examples/pqc_falcon1024/clean`
+- Upstream: https://github.com/PQClean/PQClean
+- Revision: `202a8f96315f9ed219387a50f7e40d04af037ea8`
+- Upstream path: `crypto_sign/falcon-1024/clean`
+- License: `MIT with upstream patent notice`
+- License file: `examples/pqc_falcon1024/clean/LICENSE`
+- Tree SHA-256: `c91baa9cc666a4b601cb793b362ab9b238755f15a530f4d54727588e099829bd`
+- Local modifications: None; byte-identical to the recorded upstream directory.
+- Detailed provenance: `examples/pqc_falcon1024/FETCH_INFO.md`
+
+## c-fn-dsa prospective implementation snapshot
+
+- Local path: `examples/fndsa_prospective/upstream`
+- Upstream: https://github.com/pornin/c-fn-dsa
+- Revision: `729698f031ea69bd33375d2fb0db3ac154ad1880`
+- Upstream path: `repository root`
+- License: `Unlicense/public-domain dedication`
+- License file: `examples/fndsa_prospective/upstream/LICENSE`
+- Tree SHA-256: `0fd17c0d7a05650657b8660496d3fd15b5d2ef907a520dfa48b0688800298429`
+- Local modifications: None; all 45 tracked files are byte-identical. CT-KAT adapters and profiles live outside the vendored tree.
+- Detailed provenance: `examples/fndsa_prospective/FETCH_INFO.md`
+
 ## official dudect statistical engine
 
 - Local path: `ctkat/_vendor/dudect`

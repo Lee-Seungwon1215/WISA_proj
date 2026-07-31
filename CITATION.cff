@@ -4,7 +4,7 @@ title: "CT-KAT: Auditable Constant-Time Screening Orchestration"
 type: software
 authors:
   - name: "CT-KAT contributors"
-version: "0.7.0-alpha.1"
+version: "0.8.0-alpha.1"
 date-released: 2026-07-31
 repository-code: "https://github.com/Lee-Seungwon1215/WISA_proj"
 url: "https://github.com/Lee-Seungwon1215/WISA_proj"

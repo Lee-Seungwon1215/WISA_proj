@@ -157,6 +157,30 @@ modifications = "None; byte-identical to the recorded upstream directory."
 provenance_file = "examples/pqc_falcon512/FETCH_INFO.md"
 
 [[package]]
+name = "PQClean Falcon-1024 clean reference"
+local_path = "examples/pqc_falcon1024/clean"
+upstream_url = "https://github.com/PQClean/PQClean"
+revision = "202a8f96315f9ed219387a50f7e40d04af037ea8"
+upstream_path = "crypto_sign/falcon-1024/clean"
+license = "MIT with upstream patent notice"
+license_file = "examples/pqc_falcon1024/clean/LICENSE"
+tree_sha256 = "c91baa9cc666a4b601cb793b362ab9b238755f15a530f4d54727588e099829bd"
+modifications = "None; byte-identical to the recorded upstream directory."
+provenance_file = "examples/pqc_falcon1024/FETCH_INFO.md"
+
+[[package]]
+name = "c-fn-dsa prospective implementation snapshot"
+local_path = "examples/fndsa_prospective/upstream"
+upstream_url = "https://github.com/pornin/c-fn-dsa"
+revision = "729698f031ea69bd33375d2fb0db3ac154ad1880"
+upstream_path = "repository root"
+license = "Unlicense/public-domain dedication"
+license_file = "examples/fndsa_prospective/upstream/LICENSE"
+tree_sha256 = "0fd17c0d7a05650657b8660496d3fd15b5d2ef907a520dfa48b0688800298429"
+modifications = "None; all 45 tracked files are byte-identical. CT-KAT adapters and profiles live outside the vendored tree."
+provenance_file = "examples/fndsa_prospective/FETCH_INFO.md"
+
+[[package]]
 name = "official dudect statistical engine"
 local_path = "ctkat/_vendor/dudect"
 upstream_url = "https://github.com/oreparaz/dudect"

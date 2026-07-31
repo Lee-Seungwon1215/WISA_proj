@@ -1,5 +1,5 @@
 project:
-  name: pqclean_falcon512_split
+  name: pqclean_falcon512_reference_split
   language: c
   root: ..
 
@@ -20,9 +20,9 @@ build:
 ct:
   workdir: .
   generated_dir: ./_generated_split
-  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer]
   harnesses:
-    - name: sign_f_only
+    - name: sign_little_f_only
       template: sign
       header: api.h
       prefix: "PQCLEAN_FALCON512_CLEAN_"
@@ -42,8 +42,8 @@ ct:
         - clean/sign.c
         - clean/vrfy.c
         - ../pqc_mlkem768/common/fips202.c
-        - ../pqc_mlkem768/common/randombytes.c
-    - name: sign_g_only
+        - ../falcon_comparator_support/deterministic_randombytes.c
+    - name: sign_little_g_only
       template: sign
       header: api.h
       prefix: "PQCLEAN_FALCON512_CLEAN_"
@@ -51,7 +51,7 @@ ct:
         - {offset: "385", length: "384", comment: "encoded private g only"}
       include_dirs: *include_dirs
       sources: *sources
-    - name: sign_F_only
+    - name: sign_big_f_only
       template: sign
       header: api.h
       prefix: "PQCLEAN_FALCON512_CLEAN_"

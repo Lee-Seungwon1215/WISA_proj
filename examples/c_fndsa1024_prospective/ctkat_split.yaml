@@ -1,0 +1,69 @@
+project:
+  name: c_fndsa1024_prospective_split
+  language: c
+  root: ..
+
+build:
+  argv: ["true"]
+  workdir: .
+
+# Encoded-origin attribution under the integer-FPR profile.
+ct:
+  workdir: .
+  generated_dir: ./_generated_split
+  compile_timeout: 900
+  valgrind_timeout: 1200
+  cflags:
+    [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer,
+     -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=10, -DFNDSA_AVX2=0,
+     -DFNDSA_SSE2=0, -DFNDSA_NEON=0, -DFNDSA_RV64D=0,
+     -DFNDSA_DIV_EMU=1, -DFNDSA_SQRT_EMU=1]
+  harnesses:
+    - name: sign_little_f_only
+      template: sign
+      header: api.h
+      prefix: "CTKAT_FNDSA_"
+      secret_regions:
+        - {offset: "1", length: "640", comment: "encoded f only"}
+      include_dirs: &include_dirs
+        - .
+        - ../fndsa_prospective/upstream
+      sources: &sources
+        - ../fndsa_prospective/adapter.c
+        - ../fndsa_prospective/upstream/codec.c
+        - ../fndsa_prospective/upstream/mq.c
+        - ../fndsa_prospective/upstream/sha3.c
+        - ../fndsa_prospective/upstream/sysrng.c
+        - ../fndsa_prospective/upstream/util.c
+        - ../fndsa_prospective/upstream/kgen.c
+        - ../fndsa_prospective/upstream/kgen_fxp.c
+        - ../fndsa_prospective/upstream/kgen_gauss.c
+        - ../fndsa_prospective/upstream/kgen_mp31.c
+        - ../fndsa_prospective/upstream/kgen_ntru.c
+        - ../fndsa_prospective/upstream/kgen_poly.c
+        - ../fndsa_prospective/upstream/kgen_zint31.c
+        - ../fndsa_prospective/upstream/sign.c
+        - ../fndsa_prospective/upstream/sign_core.c
+        - ../fndsa_prospective/upstream/sign_fpoly.c
+        - ../fndsa_prospective/upstream/sign_fpr.c
+        - ../fndsa_prospective/upstream/sign_sampler.c
+        - ../fndsa_prospective/upstream/vrfy.c
+    - name: sign_little_g_only
+      template: sign
+      header: api.h
+      prefix: "CTKAT_FNDSA_"
+      secret_regions:
+        - {offset: "641", length: "640", comment: "encoded g only"}
+      include_dirs: *include_dirs
+      sources: *sources
+    - name: sign_big_f_only
+      template: sign
+      header: api.h
+      prefix: "CTKAT_FNDSA_"
+      secret_regions:
+        - {offset: "1281", length: "1024", comment: "encoded F only"}
+      include_dirs: *include_dirs
+      sources: *sources
+
+report:
+  output_dir: ./reports_split

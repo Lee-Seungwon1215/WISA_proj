@@ -1,4 +1,4 @@
-# PQClean Falcon-512 source provenance
+# PQClean Falcon-512 reference source provenance
 
 - Source: `https://github.com/PQClean/PQClean`
 - Revision: `202a8f96315f9ed219387a50f7e40d04af037ea8`
@@ -10,7 +10,8 @@
 - Local modifications: none; verified byte-identical to the recorded revision.
 - Originally fetched: `2026-06-10`
 
-This example is a first-pass Falcon/FN-DSA feasibility target. It is a
-`needs-analysis` boundary target, not a constant-time implementation claim.
+This example is a Falcon reference-family target. It is a `needs-analysis`
+boundary target, not prospective FN-DSA and not a constant-time implementation
+claim.
 Common SHAKE/randombytes dependencies are reused from the separately
 inventoried `../pqc_mlkem768/common`.

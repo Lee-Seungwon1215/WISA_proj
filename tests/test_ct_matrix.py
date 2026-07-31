@@ -101,7 +101,7 @@ def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monk
         extra_cflags=["-DPQCLEAN_NO_GLIBC_RANDOMBYTES"],
     )
     combos = expand_combos(["gcc"], {"debug": ["-O0", "-g"], "release": ["-O2"]})
-    m.scan_ct_matrix(
+    rows = m.scan_ct_matrix(
         [h],
         combos,
         workdir=tmp_path,
@@ -113,6 +113,8 @@ def test_scan_carries_harness_preprocessor_flags_into_every_combo(tmp_path, monk
     assert len(seen) == 2
     assert all("-DPQCLEAN_NO_GLIBC_RANDOMBYTES" in cf for cf in seen)
     assert seen[0][0] == "-O0"  # combo opt flags come first, define appended
+    assert rows[0].cflags == ("-O0", "-g", "-DPQCLEAN_NO_GLIBC_RANDOMBYTES")
+    assert rows[1].cflags == ("-O2", "-DPQCLEAN_NO_GLIBC_RANDOMBYTES")
 
 
 def test_scan_carries_dropped_count_for_stale_parser_canary(tmp_path, monkeypatch):

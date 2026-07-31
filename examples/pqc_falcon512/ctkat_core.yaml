@@ -1,5 +1,5 @@
 project:
-  name: pqclean_falcon512_core
+  name: pqclean_falcon512_reference_core
   language: c
   root: ..
 

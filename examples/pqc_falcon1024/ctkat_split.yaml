@@ -1,0 +1,58 @@
+project:
+  name: pqclean_falcon1024_reference_split
+  language: c
+  root: ..
+
+build:
+  argv: ["true"]
+  workdir: .
+
+# logn=10: f and g use 5 bits/coefficient (640 bytes each); F uses 8
+# bits/coefficient (1024 bytes). This is attribution-only narrow taint.
+ct:
+  workdir: .
+  generated_dir: ./_generated_split
+  compile_timeout: 900
+  valgrind_timeout: 1200
+  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer]
+  harnesses:
+    - name: sign_little_f_only
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON1024_CLEAN_"
+      secret_regions:
+        - {offset: "1", length: "640", comment: "encoded private f only"}
+      include_dirs: &include_dirs
+        - clean
+        - ../pqc_mlkem768/common
+      sources: &sources
+        - clean/codec.c
+        - clean/common.c
+        - clean/fft.c
+        - clean/fpr.c
+        - clean/keygen.c
+        - clean/pqclean.c
+        - clean/rng.c
+        - clean/sign.c
+        - clean/vrfy.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../falcon_comparator_support/deterministic_randombytes.c
+    - name: sign_little_g_only
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON1024_CLEAN_"
+      secret_regions:
+        - {offset: "641", length: "640", comment: "encoded private g only"}
+      include_dirs: *include_dirs
+      sources: *sources
+    - name: sign_big_f_only
+      template: sign
+      header: api.h
+      prefix: "PQCLEAN_FALCON1024_CLEAN_"
+      secret_regions:
+        - {offset: "1281", length: "1024", comment: "encoded private F only"}
+      include_dirs: *include_dirs
+      sources: *sources
+
+report:
+  output_dir: ./reports_split

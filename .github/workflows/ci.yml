@@ -49,6 +49,7 @@ jobs:
       - run: python scripts/check_third_party.py
       - run: python scripts/check_example_configs.py
       - run: python scripts/check_kyberslash_ground_truth.py
+      - run: python scripts/check_falcon_comparators.py
       - run: python scripts/run_native_timing_campaign.py --check
       - run: python scripts/calibrate_timing_backend.py --check
 

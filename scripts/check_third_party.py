@@ -61,6 +61,18 @@ def discovered_vendor_dirs() -> set[str]:
             or candidate.name in declared
         ):
             found.add(candidate.relative_to(ROOT).as_posix())
+    # Non-PQClean examples may also carry exact vendored trees. Their marker
+    # is authoritative so a directory such as `fndsa_prospective/upstream`
+    # does not have to masquerade under the `pqc_*` naming convention.
+    for marker in (ROOT / "examples").glob("*/.ctkat-vendor"):
+        parent = marker.parent
+        for line in marker.read_text(encoding="utf-8").splitlines():
+            name = line.strip()
+            if not name or name.startswith("#"):
+                continue
+            candidate = parent / name
+            if candidate.is_dir():
+                found.add(candidate.relative_to(ROOT).as_posix())
     vendor_root = ROOT / "ctkat" / "_vendor"
     if vendor_root.is_dir():
         for candidate in vendor_root.iterdir():

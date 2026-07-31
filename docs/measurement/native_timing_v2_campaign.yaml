@@ -81,7 +81,7 @@ targets:
     positive_control_effects: [4096, 65536, 1048576]
     timeout: 7200
 
-  - id: pqclean_falcon512
+  - id: pqclean_falcon512_reference
     family: Falcon
     config: examples/pqc_falcon512/ctkat.yaml
     harnesses: [sign]

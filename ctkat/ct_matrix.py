@@ -156,6 +156,7 @@ def scan_ct_matrix(
     rows: List[CtMatrixRow] = []
     for h in harnesses:
         for combo in combos:
+            effective_cflags = tuple(combo.cflags) + tuple(h.extra_cflags)
             if on_progress:
                 on_progress(f"{h.name} / {combo.label}")
             binary = binaries_dir / f"harness_{h.name}__{combo.label}"
@@ -169,7 +170,7 @@ def scan_ct_matrix(
                     # combo owns -O/codegen; the harness's defines/includes are
                     # carried into every cell so we build the SAME program the
                     # ct stage builds, just at a different opt level.
-                    cflags=list(combo.cflags) + list(h.extra_cflags),
+                    cflags=list(effective_cflags),
                     workdir=workdir,
                     timeout=compile_timeout,
                     cc=combo.cc,
@@ -180,7 +181,12 @@ def scan_ct_matrix(
                         harness=h.name,
                         combo=combo.label,
                         cc=combo.cc,
-                        cflags=combo.cflags,
+                        # Record the command's effective build-selection flags,
+                        # not merely the named optimization combo. Otherwise
+                        # two profile harnesses (e.g. native FP vs integer FPR)
+                        # compile different programs but emit indistinguishable
+                        # evidence rows.
+                        cflags=effective_cflags,
                         valgrind_status="ERROR",
                         findings=0,
                         error=f"compile failed: {_first_line(str(e))}",
@@ -204,7 +210,7 @@ def scan_ct_matrix(
                     harness=h.name,
                     combo=combo.label,
                     cc=combo.cc,
-                    cflags=combo.cflags,
+                    cflags=effective_cflags,
                     valgrind_status=outcome.status,
                     findings=len(outcome.findings),
                     error=outcome.error,

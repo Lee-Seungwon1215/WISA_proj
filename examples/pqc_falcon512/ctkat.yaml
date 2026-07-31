@@ -1,5 +1,5 @@
 project:
-  name: pqclean_falcon512
+  name: pqclean_falcon512_reference
   language: c
   root: ..
 
@@ -19,7 +19,7 @@ build:
 ct:
   workdir: .
   generated_dir: ./_generated
-  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  cflags: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer]
   harnesses:
     - name: sign
       template: sign
@@ -42,7 +42,7 @@ ct:
         - clean/sign.c
         - clean/vrfy.c
         - ../pqc_mlkem768/common/fips202.c
-        - ../pqc_mlkem768/common/randombytes.c
+        - ../falcon_comparator_support/deterministic_randombytes.c
 
 dudect:
   enabled: true
@@ -68,7 +68,7 @@ dudect:
       prefix: "PQCLEAN_FALCON512_CLEAN_"
       include_dirs: [clean, ../pqc_mlkem768/common]
       sources:
-        # common/randombytes.c omitted → weak override (seeded) is sole def.
+        # randombytes source omitted → timing template's seeded weak override.
         - clean/codec.c
         - clean/common.c
         - clean/fft.c

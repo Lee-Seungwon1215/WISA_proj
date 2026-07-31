@@ -1,0 +1,87 @@
+project:
+  name: c_fndsa1024_prospective
+  language: c
+  root: ..
+
+build:
+  argv: ["true"]
+  workdir: .
+
+# Same profiles as the degree-512 comparator; only CTKAT_FNDSA_LOGN changes.
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  compile_timeout: 900
+  valgrind_timeout: 1200
+  harnesses:
+    - name: sign_native_fp
+      template: sign
+      header: api.h
+      prefix: "CTKAT_FNDSA_"
+      cflags:
+        - -std=c99
+        - -O0
+        - -g
+        - -fno-inline
+        - -fno-omit-frame-pointer
+        - -D_GNU_SOURCE
+        - -DCTKAT_FNDSA_LOGN=10
+        - -DFNDSA_AVX2=0
+      secret_regions:
+        - {offset: "1", length: "CTKAT_FNDSA_CRYPTO_SECRETKEYBYTES - 65",
+           comment: "encoded f, g, F; public header and 64-byte hashed verifying key excluded"}
+      include_dirs: &include_dirs
+        - .
+        - ../fndsa_prospective/upstream
+      sources: &sources
+        - ../fndsa_prospective/adapter.c
+        - ../fndsa_prospective/upstream/codec.c
+        - ../fndsa_prospective/upstream/mq.c
+        - ../fndsa_prospective/upstream/sha3.c
+        - ../fndsa_prospective/upstream/sysrng.c
+        - ../fndsa_prospective/upstream/util.c
+        - ../fndsa_prospective/upstream/kgen.c
+        - ../fndsa_prospective/upstream/kgen_fxp.c
+        - ../fndsa_prospective/upstream/kgen_gauss.c
+        - ../fndsa_prospective/upstream/kgen_mp31.c
+        - ../fndsa_prospective/upstream/kgen_ntru.c
+        - ../fndsa_prospective/upstream/kgen_poly.c
+        - ../fndsa_prospective/upstream/kgen_zint31.c
+        - ../fndsa_prospective/upstream/sign.c
+        - ../fndsa_prospective/upstream/sign_core.c
+        - ../fndsa_prospective/upstream/sign_fpoly.c
+        - ../fndsa_prospective/upstream/sign_fpr.c
+        - ../fndsa_prospective/upstream/sign_sampler.c
+        - ../fndsa_prospective/upstream/vrfy.c
+    - name: sign_fpr_emu
+      template: sign
+      header: api.h
+      prefix: "CTKAT_FNDSA_"
+      cflags:
+        - -std=c99
+        - -O0
+        - -g
+        - -fno-inline
+        - -fno-omit-frame-pointer
+        - -D_GNU_SOURCE
+        - -DCTKAT_FNDSA_LOGN=10
+        - -DFNDSA_AVX2=0
+        - -DFNDSA_SSE2=0
+        - -DFNDSA_NEON=0
+        - -DFNDSA_RV64D=0
+        - -DFNDSA_DIV_EMU=1
+        - -DFNDSA_SQRT_EMU=1
+      secret_regions:
+        - {offset: "1", length: "CTKAT_FNDSA_CRYPTO_SECRETKEYBYTES - 65",
+           comment: "encoded f, g, F; public header and 64-byte hashed verifying key excluded"}
+      include_dirs: *include_dirs
+      sources: *sources
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug: [-std=c99, -O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    release: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto]

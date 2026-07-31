@@ -33,6 +33,13 @@
   Valgrind/TIMECOP을 pin해 full-KEM secret-key 경로와 direct site-operand
   attribution을 별도 증거로 만들었다. native timing과 key recovery는 여전히
   미실행이며 `KS-003`·`KS-004`에 남긴다.
+- **M3-B / `FAL-001`~`FAL-004` 비-timing comparator 완료
+  (2026-07-31, `0.8.0a1`)** — PQClean Falcon-512/1024 reference와 exact-pinned
+  prospective c-fn-dsa의 native-FP/integer-FPR profile을 분리했다. encoded
+  `f/g/F`, decode, sampler, bounded signing core, encoding의 structural
+  attribution, 결정론적 KAT, FP opcode/fenv audit, asm scan을 동결했다.
+  QEMU 결과는 timing 증거로 쓰지 않으며 paired native 측정은 `FAL-005`에
+  남긴다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -41,9 +48,9 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비를 기다리는 동안의 다음 작업은 **Falcon comparator의 비-timing
-  기반·target/provenance 준비**다. native
-  장비가 확보되면 동결된 campaign을 실행해 기존 corpus를 재분류한다.
+- native 장비를 기다리는 동안의 다음 작업은 **same-corpus baseline과 독립
+  upstream 확장 설계**다. native 장비가 확보되면 동결된 campaign과 Falcon
+  paired campaign을 실행해 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
 
@@ -543,6 +550,11 @@ M3-A 종료 조건:
 
 ## M3-B — Falcon을 “미해결 한 줄”에서 비교 연구로 승격
 
+구현 상태 (2026-07-31): `FAL-001`~`FAL-004`의 build/structural 범위는
+`docs/ground_truth/falcon/`에 완료·동결했다. `FAL-005` physical timing과
+`FAL-006`의 독립 2인 최종 판정은 native Linux host가 생길 때까지 명시적으로
+미완료다.
+
 ### 먼저 바로잡을 해석
 
 현재 `examples/pqc_falcon512`는 PQClean의 Falcon reference 계열이다. Falcon
@@ -866,7 +878,8 @@ M5 종료 조건:
 - [ ] native timing microarchitecture 2종
 - [x] KyberSlash KS1/KS2 non-timing ground truth
 - [ ] KyberSlash native timing / architecture matrix / attack reproduction
-- [ ] Falcon reference-vs-CT comparator
+- [x] Falcon reference-vs-CT build/structural comparator
+- [ ] Falcon paired native timing (`FAL-005`)
 - [ ] matrix ablation과 human triage cost
 - [ ] 2인 declassification review
 - [ ] one-command table/figure regeneration
@@ -889,8 +902,10 @@ M5 종료 조건:
    bare-metal 실측/재분류만 `blocked-by-native-host`
 6. ~~**KyberSlash ground-truth의 non-timing target/provenance부터 확장**~~
    — 완료 (`0.7.0a1`); native timing/attack은 별도 미완료
-7. **Falcon reference-vs-CT comparator의 build/structural 기반 확장** — 다음
-8. native 장비 확보 즉시 5번 campaign 실행·artifact review·재분류
+7. ~~**Falcon reference-vs-CT comparator의 build/structural 기반 확장**~~
+   — 완료 (`0.8.0a1`); paired native timing/2인 판정은 별도 미완료
+8. **same-corpus baseline + 독립 upstream 확장 설계** — 다음
+9. native 장비 확보 즉시 5번 및 Falcon campaign 실행·artifact review·재분류
 
 첫 구현 batch의 완료 기준:
 

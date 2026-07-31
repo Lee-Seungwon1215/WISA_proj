@@ -3,6 +3,38 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.8.0a1] - 2026-07-31
+
+### Added
+
+- Exact-pinned PQClean Falcon-1024 reference and prospective c-fn-dsa
+  Falcon-512/1024 comparator targets.
+- Separate c-fn-dsa architecture-native FP and integer-FPR profiles with
+  byte-identical deterministic key/signature transcripts.
+- Encoded `f`, `g`, and `F` origin probes plus direct decode, sampler, and
+  signature-encoding boundary probes.
+- A versioned Linux/x86_64 structural snapshot and a source/profile-aware FP
+  opcode, unresolved-symbol, and floating-point-exception audit.
+- A Falcon integrity gate covering source-tree provenance, non-conformance
+  labels, profile activation, taint boundaries, evidence snapshots, and KATs.
+
+### Changed
+
+- The old `pqclean_falcon512` identity is now explicitly
+  `pqclean_falcon512_reference`; both degrees use deterministic structural
+  randomness instead of silently reaching the host OS RNG.
+- Matrix CSV/JSON rows now record the effective harness preprocessor flags as
+  well as the compiler/optimization combination.
+- Falcon findings remain unresolved structural evidence: QEMU build/audit
+  output is explicitly barred from serving as native timing or FIPS 206
+  conformance evidence.
+
+### Fixed
+
+- Falcon split-harness names no longer differ only by `f` versus `F`, which
+  previously caused generated binary collisions on case-insensitive
+  filesystems and corrupted component attribution.
+
 ## [0.7.0a1] - 2026-07-31
 
 ### Added
@@ -228,7 +260,8 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.7.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b44340d...main
+[0.8.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/679eaf5...main
+[0.7.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b44340d...679eaf5
 [0.6.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/186f8ef...b44340d
 [0.5.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/9768d83...186f8ef
 [0.4.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/abaf92f...9768d83

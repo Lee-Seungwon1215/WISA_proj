@@ -1,8 +1,9 @@
-# PQClean Falcon-512 Feasibility Target
+# PQClean Falcon-512 Reference Target
 
-This example imports PQClean `crypto_sign/falcon-512/clean` as a first-pass
-Falcon/FN-DSA signing target. It is included in the paper corpus only as a
-`needs-analysis` boundary row, not as an accepted-variable-time row.
+This example imports PQClean `crypto_sign/falcon-512/clean` as an explicitly
+named Falcon reference-family signing target. It is included in the paper
+corpus only as a `needs-analysis` boundary row, not as prospective FN-DSA, a
+constant-time implementation, or an accepted-variable-time row.
 
 ## Harness Policy
 
@@ -13,6 +14,10 @@ Falcon private keys are encoded as:
 
 The CT harness taints only `sk[1..]`. Full-sk taint would mark the public header
 secret and create an immediate false branch finding in the format check.
+Key generation and signing randomness come from the repository-owned
+`falcon_comparator_support/deterministic_randombytes.c` interposer, so repeated
+structural runs analyze the same valid key/path. That interposer is not
+production randomness and is excluded from physical timing.
 
 ## First-Pass Result
 
