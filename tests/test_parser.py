@@ -35,6 +35,25 @@ def test_safe_log_yields_no_findings():
     assert parse_valgrind_log(text) == []
 
 
+def test_timecop_variable_latency_operand_is_high_severity_distinct_finding():
+    text = (
+        "==77== Variable-latency instruction operand of size 4 is secret/uninitialised\n"
+        "==77==    at 0x401234: PQCLEAN_MLKEM768_CLEAN_poly_tomsg (poly.c:155)\n"
+        "==77==    by 0x401100: PQCLEAN_MLKEM768_CLEAN_indcpa_dec (indcpa.c:310)\n"
+        "==77==  Uninitialised value was created by a client request\n"
+        "==77==    at 0x400100: main (harness.c:61)\n"
+        "==77== \n"
+    )
+    findings = parse_valgrind_log(text)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.type == FindingType.SECRET_DEPENDENT_VARIABLE_LATENCY
+    assert finding.severity == Severity.HIGH
+    assert finding.primary_frame.function == "PQCLEAN_MLKEM768_CLEAN_poly_tomsg"
+    assert finding.primary_frame.file == "poly.c"
+    assert finding.origin_frame.function == "main"
+
+
 def test_multi_log_yields_two_distinct_findings():
     text = (FIXTURES / "valgrind_multi.log").read_text()
     findings = parse_valgrind_log(text)

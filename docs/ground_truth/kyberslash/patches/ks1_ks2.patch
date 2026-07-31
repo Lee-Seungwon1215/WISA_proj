@@ -1,0 +1,96 @@
+--- a/clean/poly.c
++++ b/clean_kyberslash/poly.c
+@@ -1,3 +1,18 @@
++/* ============================================================================
++ * FROZEN KyberSlash1+2 GROUND-TRUTH OVERLAY — do NOT "fix" this file.
++ *
++ * PQClean ML-KEM-768 poly.c with both vulnerability families deliberately
++ * restored: poly_tomsg() is KyberSlash1 and poly_compress() is one of the two
++ * KyberSlash2 sites. The sibling polyvec.c restores the second KS2 site.
++ *
++ * Purpose: a real-crypto positive control for `ctkat asm-scan`. Under gcc the
++ * constant division is strength-reduced away at -O0/-O2 but SURVIVES as a real
++ * div/idiv at -Os, so asm-scan's multi-opt scan flags poly_compress/poly_tomsg
++ * at -Os, while the real (fixed) clean/poly.c flags nothing.
++ *
++ * Only those functions differ from the pinned clean baseline.
++ * ==========================================================================*/
++
+ #include "cbd.h"
+ #include "ntt.h"
+ #include "params.h"
+@@ -19,7 +34,6 @@
+ void PQCLEAN_MLKEM768_CLEAN_poly_compress(uint8_t r[KYBER_POLYCOMPRESSEDBYTES], const poly *a) {
+     unsigned int i, j;
+     int16_t u;
+-    uint32_t d0;
+     uint8_t t[8];
+ 
+ 
+@@ -28,12 +42,7 @@
+             // map to positive standard representatives
+             u  = a->coeffs[8 * i + j];
+             u += (u >> 15) & KYBER_Q;
+-            /*    t[j] = ((((uint16_t)u << 4) + KYBER_Q/2)/KYBER_Q) & 15; */
+-            d0 = u << 4;
+-            d0 += 1665;
+-            d0 *= 80635;
+-            d0 >>= 28;
+-            t[j] = d0 & 0xf;
++            t[j] = ((((uint16_t)u << 4) + KYBER_Q / 2) / KYBER_Q) & 15; /* CTKAT-KS2-POLY */
+         }
+ 
+         r[0] = t[0] | (t[1] << 4);
+@@ -142,13 +151,8 @@
+         msg[i] = 0;
+         for (j = 0; j < 8; j++) {
+             t  = a->coeffs[8 * i + j];
+-            // t += ((int16_t)t >> 15) & KYBER_Q;
+-            // t  = (((t << 1) + KYBER_Q/2)/KYBER_Q) & 1;
+-            t <<= 1;
+-            t += 1665;
+-            t *= 80635;
+-            t >>= 28;
+-            t &= 1;
++            t += ((int16_t)t >> 15) & KYBER_Q;
++            t = (((t << 1) + KYBER_Q / 2) / KYBER_Q) & 1; /* CTKAT-KS1 */
+             msg[i] |= t << j;
+         }
+     }
+--- a/clean/polyvec.c
++++ b/clean_kyberslash/polyvec.c
+@@ -1,3 +1,11 @@
++/* ============================================================================
++ * FROZEN KyberSlash1+2 GROUND-TRUTH OVERLAY — do not "fix" this file.
++ *
++ * Derived from the pinned PQClean ML-KEM-768 clean/polyvec.c. This restores
++ * the polyvec_compress() KyberSlash2 division; sibling poly.c restores KS1 and
++ * the other KS2 compression division.
++ * ==========================================================================*/
++
+ #include "params.h"
+ #include "poly.h"
+ #include "polyvec.h"
+@@ -14,7 +22,6 @@
+ **************************************************/
+ void PQCLEAN_MLKEM768_CLEAN_polyvec_compress(uint8_t r[KYBER_POLYVECCOMPRESSEDBYTES], const polyvec *a) {
+     unsigned int i, j, k;
+-    uint64_t d0;
+ 
+     uint16_t t[4];
+     for (i = 0; i < KYBER_K; i++) {
+@@ -22,13 +29,7 @@
+             for (k = 0; k < 4; k++) {
+                 t[k]  = a->vec[i].coeffs[4 * j + k];
+                 t[k] += ((int16_t)t[k] >> 15) & KYBER_Q;
+-                /*      t[k]  = ((((uint32_t)t[k] << 10) + KYBER_Q/2)/ KYBER_Q) & 0x3ff; */
+-                d0 = t[k];
+-                d0 <<= 10;
+-                d0 += 1665;
+-                d0 *= 1290167;
+-                d0 >>= 32;
+-                t[k] = d0 & 0x3ff;
++                t[k] = ((((uint32_t)t[k] << 10) + KYBER_Q / 2) / KYBER_Q) & 0x3ff; /* CTKAT-KS2-POLYVEC */
+             }
+ 
+             r[0] = (uint8_t)(t[0] >> 0);

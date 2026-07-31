@@ -7,10 +7,9 @@ build:
   argv: ["true"]
   workdir: .
 
-# Full ML-KEM-768 kem_dec, but clean/poly.c SWAPPED for the KyberSlash-vulnerable
-# ../pqc_mlkem768/clean_kyberslash/poly.c (secret-dependent /KYBER_Q restored in
-# poly_compress/poly_tomsg). Every other source + header is the real one from
-# ../pqc_mlkem768 (no copies); secret_regions are identical to the real ML-KEM.
+# Full ML-KEM-768 kem_dec with KyberSlash1 poly_tomsg and both KyberSlash2
+# compression sites restored. Headers and every unrelated source stay on the
+# pinned stock PQClean baseline.
 #
 # Corpus purpose: a row that is ct/Valgrind PASS (Memcheck is blind to division
 # LATENCY) while asm-scan flags the secret-derived div — i.e. verdict_class =
@@ -36,8 +35,8 @@ ct:
       sources:
         - ../pqc_mlkem768/clean/kem.c
         - ../pqc_mlkem768/clean/indcpa.c
-        - ../pqc_mlkem768/clean_kyberslash/poly.c      # <-- KyberSlash-vulnerable poly
-        - ../pqc_mlkem768/clean/polyvec.c
+        - ../pqc_mlkem768/clean_kyberslash/poly.c      # KS1 + KS2 poly site
+        - ../pqc_mlkem768/clean_kyberslash/polyvec.c   # KS2 polyvec site
         - ../pqc_mlkem768/clean/ntt.c
         - ../pqc_mlkem768/clean/reduce.c
         - ../pqc_mlkem768/clean/cbd.c

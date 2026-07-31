@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     platform: linux/amd64
     image: ctkat-dev:latest
     container_name: ctkat-dev
@@ -11,4 +12,17 @@ services:
     working_dir: /workspace
     tty: true
     stdin_open: true
+    command: /bin/bash
+
+  ctkat-timecop:
+    profiles: [timecop]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: timecop
+    platform: linux/amd64
+    image: ctkat-timecop:3.22.0
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
     command: /bin/bash

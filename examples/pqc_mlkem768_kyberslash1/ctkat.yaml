@@ -1,0 +1,56 @@
+project:
+  name: pqclean_mlkem768_kyberslash1
+  language: c
+  root: ..
+
+build:
+  argv: ["true"]
+  workdir: .
+
+# Full ML-KEM-768 kem_dec with only the KyberSlash1 poly_tomsg division
+# restored. KyberSlash2's poly_compress/polyvec_compress remain stock-patched.
+#
+# Ground-truth purpose: isolate KS1 from KS2. Stock Memcheck is expected to
+# PASS; asm-scan is expected to surface only poly_tomsg for the vulnerability.
+ct:
+  workdir: .
+  generated_dir: ./_generated
+  cflags: [-O0, -g, -fno-inline, -fno-omit-frame-pointer, -DPQCLEAN_NO_GLIBC_RANDOMBYTES]
+  harnesses:
+    - name: kem_dec
+      template: kem
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      secret_regions:
+        - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
+           comment: "indcpa secret polynomial s"}
+        - {offset: "KYBER_SECRETKEYBYTES - KYBER_SYMBYTES", length: "KYBER_SYMBYTES",
+           comment: "FO rejection seed z"}
+      include_dirs:
+        - ../pqc_mlkem768/clean
+        - ../pqc_mlkem768/common
+      sources:
+        - ../pqc_mlkem768/clean/kem.c
+        - ../pqc_mlkem768/clean/indcpa.c
+        - ../pqc_mlkem768/clean_kyberslash1/poly.c     # KS1-only poly_tomsg
+        - ../pqc_mlkem768/clean/polyvec.c
+        - ../pqc_mlkem768/clean/ntt.c
+        - ../pqc_mlkem768/clean/reduce.c
+        - ../pqc_mlkem768/clean/cbd.c
+        - ../pqc_mlkem768/clean/symmetric-shake.c
+        - ../pqc_mlkem768/clean/verify.c
+        - ../pqc_mlkem768/common/fips202.c
+        - ../pqc_mlkem768/common/randombytes.c
+
+report:
+  output_dir: ./reports
+
+matrix:
+  compilers: [gcc, clang]
+  ct_cflags:
+    debug:   [-O0, -g, -fno-inline, -fno-omit-frame-pointer]
+    opt1:    [-O1, -g, -fno-omit-frame-pointer, -fno-lto]
+    release: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    opt3:    [-O3, -g, -fno-omit-frame-pointer, -fno-lto]
+    size:    [-Os, -g, -fno-omit-frame-pointer, -fno-lto]

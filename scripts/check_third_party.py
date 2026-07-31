@@ -47,8 +47,18 @@ def load_entries(path: Path = INVENTORY) -> list[dict[str, str]]:
 def discovered_vendor_dirs() -> set[str]:
     found = set()
     for candidate in (ROOT / "examples").glob("pqc_*/*"):
+        marker = candidate.parent / ".ctkat-vendor"
+        declared = set()
+        if marker.is_file():
+            declared = {
+                line.strip()
+                for line in marker.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            }
         if candidate.is_dir() and (
-            candidate.name == "common" or candidate.name.startswith("clean")
+            candidate.name == "common"
+            or candidate.name.startswith("clean")
+            or candidate.name in declared
         ):
             found.add(candidate.relative_to(ROOT).as_posix())
     vendor_root = ROOT / "ctkat" / "_vendor"
@@ -75,13 +85,17 @@ def render_notices(entries: list[dict[str, str]]) -> str:
         "",
     ]
     for entry in entries:
+        if entry.get("revision"):
+            identity_line = f"- Revision: `{entry['revision']}`"
+        else:
+            identity_line = f"- Artifact SHA-256: `{entry['artifact_sha256']}`"
         lines.extend(
             [
                 f"## {entry['name']}",
                 "",
                 f"- Local path: `{entry['local_path']}`",
                 f"- Upstream: {entry['upstream_url']}",
-                f"- Revision: `{entry['revision']}`",
+                identity_line,
                 f"- Upstream path: `{entry['upstream_path']}`",
                 f"- License: `{entry['license']}`",
                 f"- License file: `{entry['license_file']}`",
@@ -100,7 +114,6 @@ def validate(entries: list[dict[str, str]]) -> list[str]:
         "name",
         "local_path",
         "upstream_url",
-        "revision",
         "upstream_path",
         "license",
         "license_file",
@@ -115,12 +128,19 @@ def validate(entries: list[dict[str, str]]) -> list[str]:
         if missing:
             errors.append(f"{label}: missing fields {sorted(missing)}")
             continue
+        revision = entry.get("revision", "")
+        artifact_sha256 = entry.get("artifact_sha256", "")
+        if bool(revision) == bool(artifact_sha256):
+            errors.append(f"{label}: set exactly one of revision or artifact_sha256")
+            continue
         local_path = entry["local_path"]
         if local_path in seen_paths:
             errors.append(f"{label}: duplicate local_path {local_path}")
         seen_paths.add(local_path)
-        if not REVISION_RE.fullmatch(entry["revision"]):
+        if revision and not REVISION_RE.fullmatch(revision):
             errors.append(f"{label}: revision must be a full 40-hex commit")
+        if artifact_sha256 and not SHA256_RE.fullmatch(artifact_sha256):
+            errors.append(f"{label}: artifact_sha256 must be 64 lowercase hex characters")
         if not SHA256_RE.fullmatch(entry["tree_sha256"]):
             errors.append(f"{label}: tree_sha256 must be 64 lowercase hex characters")
         if not entry["upstream_url"].startswith("https://"):
@@ -149,7 +169,7 @@ def validate(entries: list[dict[str, str]]) -> list[str]:
             provenance = provenance_path.read_text(encoding="utf-8")
             for expected in (
                 entry["local_path"],
-                entry["revision"],
+                revision or artifact_sha256,
                 entry["tree_sha256"],
             ):
                 if expected not in provenance:

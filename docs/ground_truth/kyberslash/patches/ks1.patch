@@ -1,0 +1,30 @@
+--- a/clean/poly.c
++++ b/clean_kyberslash1/poly.c
+@@ -1,3 +1,11 @@
++/* ============================================================================
++ * FROZEN KyberSlash1-ONLY GROUND-TRUTH OVERLAY — do not "fix" this file.
++ *
++ * Derived from the pinned PQClean ML-KEM-768 clean/poly.c. Only
++ * poly_tomsg() restores the historical secret-dependent /KYBER_Q expression;
++ * the KyberSlash2 compression paths remain patched reciprocal multiplies.
++ * ==========================================================================*/
++
+ #include "cbd.h"
+ #include "ntt.h"
+ #include "params.h"
+@@ -142,13 +150,8 @@
+         msg[i] = 0;
+         for (j = 0; j < 8; j++) {
+             t  = a->coeffs[8 * i + j];
+-            // t += ((int16_t)t >> 15) & KYBER_Q;
+-            // t  = (((t << 1) + KYBER_Q/2)/KYBER_Q) & 1;
+-            t <<= 1;
+-            t += 1665;
+-            t *= 80635;
+-            t >>= 28;
+-            t &= 1;
++            t += ((int16_t)t >> 15) & KYBER_Q;
++            t = (((t << 1) + KYBER_Q / 2) / KYBER_Q) & 1; /* CTKAT-KS1 */
+             msg[i] |= t << j;
+         }
+     }

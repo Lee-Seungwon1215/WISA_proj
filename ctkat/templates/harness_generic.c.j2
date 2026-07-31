@@ -47,6 +47,11 @@ int main(void) {
     ctkat_random_bytes({{ b.name }}, sizeof({{ b.name }}));
     {% endfor %}
 
+    {% if timecop_mode | default(false) -%}
+    /* Requires the pinned KyberSlash TIMECOP-patched Memcheck backend. */
+    VALGRIND_ENABLE_TIMECOP_MODE;
+    {% endif %}
+
     {% for b in buffers if b.role == "secret" -%}
     VALGRIND_MAKE_MEM_UNDEFINED({{ b.name }}, sizeof({{ b.name }}));
     {% endfor %}

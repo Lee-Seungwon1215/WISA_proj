@@ -572,6 +572,12 @@ class CtConfig(BaseModel):
     workdir: Path = Path(".")
     harnesses: List[HarnessConfig]
     valgrind_flags: List[str] = Field(default_factory=_default_valgrind_flags)
+    # Enable the client request introduced by the KyberSlash paper's patched
+    # Memcheck backend. Ordinary Valgrind headers do not define this request,
+    # so configs must opt in only inside the pinned TIMECOP environment.
+    # Keeping it separate prevents a normal branch/address PASS from being
+    # mislabeled as secret-operand attribution.
+    timecop_mode: bool = False
     cflags: List[str] = Field(default_factory=_default_cflags)
     generated_dir: Path = Path("./_generated")
     # Seed baked into auto-generated harnesses' PRNG so that the same yaml

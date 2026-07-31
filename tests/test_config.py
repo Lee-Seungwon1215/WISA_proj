@@ -39,6 +39,18 @@ def test_minimal_config_validates(tmp_path: Path):
     assert cfg.matrix is None
 
 
+def test_timecop_mode_is_explicit_and_defaults_off(tmp_path: Path):
+    default_cfg = load_config(_write(tmp_path, MINIMAL_YAML))
+    assert default_cfg.ct.timecop_mode is False
+
+    raw = yaml.safe_load(MINIMAL_YAML)
+    raw["ct"]["timecop_mode"] = True
+    enabled_path = tmp_path / "timecop.yaml"
+    enabled_path.write_text(yaml.safe_dump(raw))
+    enabled_cfg = load_config(enabled_path)
+    assert enabled_cfg.ct.timecop_mode is True
+
+
 # --- Phase C: MatrixConfig (ct-matrix sweep) --------------------------------
 
 

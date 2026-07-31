@@ -3,6 +3,45 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.7.0a1] - 2026-07-31
+
+### Added
+
+- Four exact-patch ML-KEM-768 KyberSlash ground-truth targets: stock,
+  KyberSlash1-only, KyberSlash2-only, and KyberSlash1+2.
+- A byte-identical historical `pq-crystals/kyber` reference snapshot from
+  `a621b8d`, with fix-commit chronology, source hashes, license, and provenance.
+- A deterministic full-KEM transcript test that requires all four modern
+  variants to be byte-identical, plus a historical KEM smoke test.
+- The IACR artifact's pinned Valgrind 3.22.0 TIMECOP patch, an opt-in Docker
+  target, a backend canary, a lossless two-scope attribution report, and a CI
+  artifact job.
+- A distinct high-severity
+  `SECRET_DEPENDENT_VARIABLE_LATENCY` finding type and harness support for the
+  patched backend's client request.
+
+### Changed
+
+- The KyberSlash corpus now separates candidate assembly evidence, full-KEM
+  secret-key-path dynamic taint, direct site-operand attribution, and physical
+  timing instead of collapsing them into one risk label.
+- Vendored-source inventory entries may now use an immutable artifact SHA-256
+  instead of pretending every external artifact has a Git revision.
+- The combined seeded control now restores all three KyberSlash sites,
+  including the previously omitted KyberSlash2 `polyvec_compress` division.
+
+### Fixed
+
+- KS2 is no longer falsely required to appear in the full decapsulation
+  undefinedness trace. The report records that taint is lost across the
+  recovered-message/hash boundary and verifies KS2 with a separately labeled
+  direct-operand scope.
+- A normal Memcheck PASS can no longer be described as evidence against
+  operand-dependent division latency.
+- The historical snapshot's clang `-O1`/`-Os` compiler-induced
+  `poly_frommsg` branch is preserved as separate structural evidence instead
+  of being forced into the modern controls' negative expectation.
+
 ## [0.6.0a1] - 2026-07-30
 
 ### Added
@@ -189,7 +228,8 @@ versioning while the public API is stabilizing.
 
 - Initial research prototype.
 
-[0.6.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/186f8ef...main
+[0.7.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/b44340d...main
+[0.6.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/186f8ef...b44340d
 [0.5.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/9768d83...186f8ef
 [0.4.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/abaf92f...9768d83
 [0.3.0a1]: https://github.com/Lee-Seungwon1215/WISA_proj/compare/619d73c...abaf92f

@@ -1,0 +1,199 @@
+schema_version: 1
+suite_id: ctkat-kyberslash-mlkem768-v1
+status: ground-truth-and-timecop-runner-validated
+
+baseline:
+  implementation: PQClean ML-KEM-768 clean
+  upstream: https://github.com/PQClean/PQClean
+  revision: 202a8f96315f9ed219387a50f7e40d04af037ea8
+  tree_sha256: c0cfee72c851bed51582749fa599b0f75a82aca31592528a203093f3dc9ca1cf
+  files:
+    poly.c:
+      path: examples/pqc_mlkem768/clean/poly.c
+      sha256: 94937bc6f82c7b57ee17d0c721780812d264be73fa0b2b83a79e2a9b690ddf05
+    polyvec.c:
+      path: examples/pqc_mlkem768/clean/polyvec.c
+      sha256: de5e2509f02d6e267fd0d834494c742e1964ae8defad853486bfe78ffec7acb2
+
+history:
+  upstream: https://github.com/pq-crystals/kyber
+  vulnerable_revision: a621b8dde405cc507cbcfc5f794570a4f98d69cc
+  ks1_fix_revision: dda29cc63af721981ee2c831cf00822e69be3220
+  ks2_fix_revision: 272125f6acc8e8b6850fd68ceb901a660ff48196
+  import_path: examples/pqc_kyber768_historical/ref
+  tree_sha256: 3ca097d98e2a48fdd463740cfa0484cbc339bcd1f1f5f2ca0157762a0317ae4d
+  files:
+    poly.c:
+      sha256: f23c985b837e406b273d2770ce614692db6d7bac08d1c1d506c26bc00956c49a
+    polyvec.c:
+      sha256: 3e0417f21fc27232a7f158def28f7165b26551ca077229298253f09f996acaba
+
+paper_artifact:
+  index: https://artifacts.iacr.org/tches/2025/a9
+  archive: https://artifacts.iacr.org/files/tches/2025/tches-2025-a9.zip
+  archive_sha256: 403af6cb4ff8d7a6a4057e280cd22e27c842fec97963645b66f9138e8b69a4b8
+  member_sha256:
+    demo1/demo1-pi2.c: 906ef0b537aac9559bce2622246eeccb7a12a68ecbdf7fc7d3796694f826d999
+    demo2/key_recovery/gen_challenges/kyber768/poly.c: 365d266d7f1d3c1926f55126a7b44d41dd0f7ff2170603a6d8b6cea7b1f3c81b
+    demo2/key_recovery/gen_challenges/kyber768/polyvec.c: 5112fbfde5e9c9e90fe3bd36dc5f1ff1256f2cb342e1c66af24d189a9b60b771
+
+timecop_backend:
+  kind: kyberslash-valgrind-timecop
+  attribution_scope: tainted-variable-latency-instruction-operands
+  target_valgrind_version: 3.22.0
+  target_tarball_sha256: c811db5add2c5f729944caf47c4e7a65dcaabb9461e472b578765dd7bf6d2d4c
+  patch_path: ctkat/_vendor/kyberslash_timecop/valgrind-3.22.0-varlat.patch
+  patch_sha256: 4b684f1b4a3456dcebea91d6daeb0eebe1e35492753b9412d74385a22c1bc612
+  execution_status: validated-in-arm64-container-and-amd64-emulation
+  timing_status: not-run
+
+sites:
+  ks1_poly_tomsg:
+    family: KS1
+    operation: secret-dependent integer division by 3329 during message decoding
+    function: PQCLEAN_MLKEM768_CLEAN_poly_tomsg
+    marker: CTKAT-KS1
+    source_origin: decapsulation secret polynomial s
+    dataflow: sk -> indcpa_dec -> message polynomial -> poly_tomsg numerator
+    historical_source: examples/pqc_kyber768_historical/ref/poly.c
+    historical_function: poly_tomsg
+    historical_line: 190
+  ks2_poly_compress:
+    family: KS2
+    operation: secret-dependent integer division by 3329 during re-encryption
+    function: PQCLEAN_MLKEM768_CLEAN_poly_compress
+    marker: CTKAT-KS2-POLY
+    source_origin: decapsulation result derived from secret polynomial s
+    dataflow: sk -> indcpa_dec -> recovered message -> indcpa_enc -> poly_compress numerator
+    historical_source: examples/pqc_kyber768_historical/ref/poly.c
+    historical_function: poly_compress
+    historical_line: 30
+  ks2_polyvec_compress:
+    family: KS2
+    operation: secret-dependent integer division by 3329 during re-encryption
+    function: PQCLEAN_MLKEM768_CLEAN_polyvec_compress
+    marker: CTKAT-KS2-POLYVEC
+    source_origin: decapsulation result derived from secret polynomial s
+    dataflow: sk -> indcpa_dec -> recovered message -> indcpa_enc -> polyvec_compress numerator
+    historical_source: examples/pqc_kyber768_historical/ref/polyvec.c
+    historical_function: polyvec_compress
+    historical_line: 50
+
+variants:
+  stock:
+    target: pqclean_mlkem768
+    config: examples/pqc_mlkem768/ctkat.yaml
+    patch: null
+    source_files:
+      - examples/pqc_mlkem768/clean/poly.c
+      - examples/pqc_mlkem768/clean/polyvec.c
+    expected_sites: []
+  ks1:
+    target: pqclean_mlkem768_kyberslash1
+    config: examples/pqc_mlkem768_kyberslash1/ctkat.yaml
+    patch: docs/ground_truth/kyberslash/patches/ks1.patch
+    patch_sha256: c176fa67184eea62e6054bda07092075ca247fd972e530f8122795953fd6b914
+    source_files:
+      - examples/pqc_mlkem768/clean_kyberslash1/poly.c
+      - examples/pqc_mlkem768/clean/polyvec.c
+    expected_sites: [ks1_poly_tomsg]
+  ks2:
+    target: pqclean_mlkem768_kyberslash2
+    config: examples/pqc_mlkem768_kyberslash2/ctkat.yaml
+    patch: docs/ground_truth/kyberslash/patches/ks2.patch
+    patch_sha256: c0eb64093a70dc8cdc51cd9e9ab54ee9f09818e47a4a363ab099e6f26a4fc9a6
+    source_files:
+      - examples/pqc_mlkem768/clean_kyberslash2/poly.c
+      - examples/pqc_mlkem768/clean_kyberslash2/polyvec.c
+    expected_sites: [ks2_poly_compress, ks2_polyvec_compress]
+  ks1_ks2:
+    target: pqclean_mlkem768_kyberslash
+    config: examples/pqc_mlkem768_kyberslash/ctkat.yaml
+    patch: docs/ground_truth/kyberslash/patches/ks1_ks2.patch
+    patch_sha256: c30d823f82408c3ffd93b2d503ae5589ed91dc68d582ae2c1cb89139d56c3975
+    source_files:
+      - examples/pqc_mlkem768/clean_kyberslash/poly.c
+      - examples/pqc_mlkem768/clean_kyberslash/polyvec.c
+    expected_sites: [ks1_poly_tomsg, ks2_poly_compress, ks2_polyvec_compress]
+
+functional_equivalence:
+  method: deterministic-randombytes-full-kem-transcript
+  iterations: 8
+  prng_seed: 0x4b59424552534c41
+  transcript_bytes: 37888
+  transcript_sha256: e5c93a35b4dfa171c56514ee260942079e59c802b1ac899e8f3d2b53e3b6cbf4
+  expected: all-four-variants-byte-identical
+
+expected_evidence:
+  ordinary_memcheck:
+    stock: no-finding
+    ks1: no-finding
+    ks2: no-finding
+    ks1_ks2: no-finding
+    historical:
+      status: build-dependent-finding
+      finding_type: SECRET_DEPENDENT_BRANCH
+      finding_function: pqcrystals_kyber768_ref_poly_frommsg
+      finding_cells: [clang_opt1, clang_size]
+      no_finding_cells:
+        - gcc_debug
+        - gcc_opt1
+        - gcc_release
+        - gcc_opt3
+        - gcc_size
+        - clang_debug
+        - clang_release
+        - clang_opt3
+    interpretation: >-
+      Ordinary Memcheck does not model variable-latency operands. The four
+      modern controls are structurally clean in the frozen x86_64 matrix. The
+      historical source has a separate compiler-induced poly_frommsg branch in
+      clang -O1/-Os; this is not a KyberSlash division finding.
+  assembly:
+    stock: []
+    ks1: [PQCLEAN_MLKEM768_CLEAN_poly_tomsg]
+    ks2:
+      - PQCLEAN_MLKEM768_CLEAN_poly_compress
+      - PQCLEAN_MLKEM768_CLEAN_polyvec_compress
+    ks1_ks2:
+      - PQCLEAN_MLKEM768_CLEAN_poly_tomsg
+      - PQCLEAN_MLKEM768_CLEAN_poly_compress
+      - PQCLEAN_MLKEM768_CLEAN_polyvec_compress
+    historical:
+      - pqcrystals_kyber768_ref_poly_tomsg
+      - pqcrystals_kyber768_ref_poly_compress
+      - pqcrystals_kyber768_ref_polyvec_compress
+    interpretation: candidates depend on compiler, optimization, and architecture
+  timecop:
+    kem_dec_secret_key_path:
+      stock: []
+      ks1: [PQCLEAN_MLKEM768_CLEAN_poly_tomsg]
+      ks2: []
+      ks1_ks2: [PQCLEAN_MLKEM768_CLEAN_poly_tomsg]
+      historical: [pqcrystals_kyber768_ref_poly_tomsg]
+      interpretation: >-
+        Undefinedness is seeded at secret-key regions. The KS2 operands are
+        secret-derived in the algorithm, but Memcheck's undefinedness does not
+        survive the recovered-message and hash/re-encryption boundary; absence
+        here is a taint-propagation limitation and is not evidence of safety.
+    site_operand_attribution:
+      stock: []
+      ks1: [PQCLEAN_MLKEM768_CLEAN_poly_tomsg]
+      ks2:
+        - PQCLEAN_MLKEM768_CLEAN_poly_compress
+        - PQCLEAN_MLKEM768_CLEAN_polyvec_compress
+      ks1_ks2:
+        - PQCLEAN_MLKEM768_CLEAN_poly_tomsg
+        - PQCLEAN_MLKEM768_CLEAN_poly_compress
+        - PQCLEAN_MLKEM768_CLEAN_polyvec_compress
+      historical:
+        - pqcrystals_kyber768_ref_poly_tomsg
+        - pqcrystals_kyber768_ref_poly_compress
+        - pqcrystals_kyber768_ref_polyvec_compress
+      interpretation: >-
+        Undefinedness is seeded directly at the three polynomial operands.
+        Exact function-set attribution requires the pinned patched backend and
+        is operand evidence, not an end-to-end timing measurement.
+  physical_timing:
+    all_variants: not-run
+    promotion_rule: never infer timing leakage from structural or operand attribution alone

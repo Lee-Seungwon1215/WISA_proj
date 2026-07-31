@@ -130,8 +130,14 @@ def triage_hint_for(source_file: str, function: str) -> str:
     """Heuristic-only label for common variable-latency candidate families."""
     src = source_file.lower()
     fn = function.lower()
-    if "kyberslash" in src and (fn.endswith("poly_compress") or fn.endswith("poly_tomsg")):
+    kyberslash_function = fn.endswith(("poly_compress", "poly_tomsg", "polyvec_compress"))
+    historical_kyber = "pqc_kyber768_historical/ref" in src or fn.startswith(
+        "pqcrystals_kyber768_ref_poly"
+    )
+    if kyberslash_function and ("kyberslash" in src or historical_kyber):
         return "kyberslash-poly-review-secret-risk"
+    if fn == "pqcrystals_kyber768_ref_gen_matrix":
+        return "kyber-public-matrix-length-review"
     if any(part in src for part in ("fips202", "keccak", "sp800-185")) or fn.startswith(
         ("shake", "sha3", "keccak")
     ):

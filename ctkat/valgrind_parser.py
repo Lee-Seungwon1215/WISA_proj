@@ -8,6 +8,7 @@ class FindingType(str, Enum):
     SECRET_DEPENDENT_BRANCH = "SECRET_DEPENDENT_BRANCH"
     SECRET_DEPENDENT_VALUE_USE = "SECRET_DEPENDENT_VALUE_USE"
     SECRET_DEPENDENT_MEMORY_ACCESS = "SECRET_DEPENDENT_MEMORY_ACCESS"
+    SECRET_DEPENDENT_VARIABLE_LATENCY = "SECRET_DEPENDENT_VARIABLE_LATENCY"
     MEMORY_ERROR = "MEMORY_ERROR"
     UNKNOWN = "UNKNOWN"
 
@@ -63,6 +64,11 @@ _BINARY_LOCATION_RE = re.compile(r"^in\s+(.+)$")
 # (banner lines like "Memcheck, a memory error detector", "ERROR SUMMARY",
 # "HEAP SUMMARY", "Command:", etc.) is treated as non-finding noise.
 _FINDING_CLASSIFIERS: tuple[tuple[str, FindingType, Severity], ...] = (
+    (
+        "Variable-latency instruction operand",
+        FindingType.SECRET_DEPENDENT_VARIABLE_LATENCY,
+        Severity.HIGH,
+    ),
     ("Conditional jump or move", FindingType.SECRET_DEPENDENT_BRANCH, Severity.HIGH),
     ("Use of uninitialised value", FindingType.SECRET_DEPENDENT_VALUE_USE, Severity.MEDIUM),
     ("Syscall param", FindingType.SECRET_DEPENDENT_VALUE_USE, Severity.MEDIUM),

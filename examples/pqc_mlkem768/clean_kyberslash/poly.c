@@ -1,19 +1,16 @@
 /* ============================================================================
- * FROZEN KyberSlash POSITIVE CONTROL — do NOT "fix" this file.
+ * FROZEN KyberSlash1+2 GROUND-TRUTH OVERLAY — do NOT "fix" this file.
  *
- * PQClean ML-KEM-768 poly.c with the KyberSlash fix DELIBERATELY REVERTED:
- * poly_compress() and poly_tomsg() use the original secret-dependent integer
- * division by the constant modulus KYBER_Q (=3329) instead of the shipped
- * reciprocal-multiply (`* 80635 >> 28`). That `/KYBER_Q` IS the KyberSlash leak
- * (TCHES 2025, eprint 2024/1049).
+ * PQClean ML-KEM-768 poly.c with both vulnerability families deliberately
+ * restored: poly_tomsg() is KyberSlash1 and poly_compress() is one of the two
+ * KyberSlash2 sites. The sibling polyvec.c restores the second KS2 site.
  *
  * Purpose: a real-crypto positive control for `ctkat asm-scan`. Under gcc the
  * constant division is strength-reduced away at -O0/-O2 but SURVIVES as a real
  * div/idiv at -Os, so asm-scan's multi-opt scan flags poly_compress/poly_tomsg
  * at -Os, while the real (fixed) clean/poly.c flags nothing.
  *
- * Only those two functions differ from clean/poly.c; the rest is verbatim, and
- * it compiles against the existing clean/ + common/ headers.
+ * Only those functions differ from the pinned clean baseline.
  * ==========================================================================*/
 
 #include "cbd.h"
@@ -37,7 +34,6 @@
 void PQCLEAN_MLKEM768_CLEAN_poly_compress(uint8_t r[KYBER_POLYCOMPRESSEDBYTES], const poly *a) {
     unsigned int i, j;
     int16_t u;
-    uint32_t d0;
     uint8_t t[8];
 
 
@@ -46,8 +42,7 @@ void PQCLEAN_MLKEM768_CLEAN_poly_compress(uint8_t r[KYBER_POLYCOMPRESSEDBYTES], 
             // map to positive standard representatives
             u  = a->coeffs[8 * i + j];
             u += (u >> 15) & KYBER_Q;
-            /*    t[j] = ((((uint16_t)u << 4) + KYBER_Q/2)/KYBER_Q) & 15; */
-            t[j] = ((((uint16_t)u << 4) + KYBER_Q/2)/KYBER_Q) & 15;   /* KyberSlash: secret-dependent /KYBER_Q */
+            t[j] = ((((uint16_t)u << 4) + KYBER_Q / 2) / KYBER_Q) & 15; /* CTKAT-KS2-POLY */
         }
 
         r[0] = t[0] | (t[1] << 4);
@@ -156,10 +151,8 @@ void PQCLEAN_MLKEM768_CLEAN_poly_tomsg(uint8_t msg[KYBER_INDCPA_MSGBYTES], const
         msg[i] = 0;
         for (j = 0; j < 8; j++) {
             t  = a->coeffs[8 * i + j];
-            // t += ((int16_t)t >> 15) & KYBER_Q;
-            // t  = (((t << 1) + KYBER_Q/2)/KYBER_Q) & 1;
             t += ((int16_t)t >> 15) & KYBER_Q;
-            t = (((t << 1) + KYBER_Q/2)/KYBER_Q) & 1;   /* KyberSlash: secret-dependent /KYBER_Q */
+            t = (((t << 1) + KYBER_Q / 2) / KYBER_Q) & 1; /* CTKAT-KS1 */
             msg[i] |= t << j;
         }
     }

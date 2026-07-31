@@ -27,6 +27,12 @@
   preflight, CPU pinning, 실행 재개, artifact hash·protocol 검증,
   `corpus_timing_updates.csv` 승격 후보 생성을 한 명령으로 묶었다. 현재
   macOS/ARM 환경에서는 실측하지 않았으며 이 상태를 결과 완료로 쓰지 않는다.
+- **M3-A / `KS-001`·`KS-002` 완료 (2026-07-31, `0.7.0a1`)** — stock,
+  KS1-only, KS2-only, KS1+2와 vulnerable historical source를 분리하고 exact
+  diff/provenance/KEM equivalence를 동결했다. IACR artifact의 patched
+  Valgrind/TIMECOP을 pin해 full-KEM secret-key 경로와 direct site-operand
+  attribution을 별도 증거로 만들었다. native timing과 key recovery는 여전히
+  미실행이며 `KS-003`·`KS-004`에 남긴다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -35,8 +41,8 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비를 기다리는 동안의 다음 작업은 **KyberSlash ground-truth와
-  Falcon comparator의 비-timing 기반·target/provenance 준비**다. native
+- native 장비를 기다리는 동안의 다음 작업은 **Falcon comparator의 비-timing
+  기반·target/provenance 준비**다. native
   장비가 확보되면 동결된 campaign을 실행해 기존 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
@@ -447,6 +453,9 @@ Docker/QEMU, cloud VM 결과는 engineering smoke로 보존할 수는 있어도 
 
 ## M3-A — KyberSlash를 진짜 benchmark로 완성
 
+**상태: `KS-001`·`KS-002` 완료 / `KS-003`·`KS-004`·`KS-005` 미완료
+(2026-07-31, `0.7.0a1`)**
+
 현재 target은 최신 PQClean ML-KEM source에 옛 `/KYBER_Q` 식 두 개를 함께 심은
 **reconstructed seeded control**이다. useful하지만 “historical vulnerable
 implementation reproduction”이라고 부르면 과장이다.
@@ -467,6 +476,15 @@ implementation reproduction”이라고 부르면 과장이다.
 - source patch를 machine-readable diff로 보존
 - expected vulnerable function, source line, secret origin을 ground-truth YAML에 기록
 
+완료 내용:
+
+- stock / KS1-only / KS2-only / KS1+2와 `pq-crystals/kyber@a621b8d`
+  historical snapshot을 독립 target으로 동결
+- 4개 modern target의 8회 full-KEM transcript byte equivalence와 historical
+  smoke를 CI에서 검증
+- 세 exact unified diff, 모든 marker/hash, fix commit chronology, IACR artifact
+  member hash를 machine-readable manifest에 기록
+
 ### `KS-002` detection layer 구분
 
 - Valgrind branch/address layer가 PASS하는 것을 negative expectation으로 고정
@@ -474,6 +492,18 @@ implementation reproduction”이라고 부르면 과장이다.
 - manual string hint가 아니라 secret operand dataflow로 최종 risk를 귀속
 - 가장 현실적인 1차 선택은 KyberSlash 연구의 patched-Valgrind/TIMECOP 계열 backend adapter
 - IR/LLVM taint는 후속 연구로 두되, 구현하면 backend 이름과 soundness 범위를 명시
+
+완료 내용:
+
+- ordinary Memcheck의 무검출을 negative expectation으로 유지
+- assembly candidate expectation을 target별 exact function set으로 분리
+- IACR artifact의 Valgrind 3.22.0 patch를 archive/tarball hash까지 pin하고
+  Docker/CI canary를 추가
+- full `kem_dec` secret-key-path와 direct polynomial-site operand attribution을
+  서로 다른 report scope로 저장. 전자는 KS1까지만 taint가 도달하고, 후자는
+  KS1 및 두 KS2 site를 정확히 귀속한다.
+- Docker/에뮬레이션 결과는 operand attribution일 뿐 physical timing evidence가
+  아니라는 promotion boundary를 report와 문서 양쪽에 고정
 
 ### `KS-003` build/architecture matrix
 
@@ -834,7 +864,8 @@ M5 종료 조건:
 - [ ] 독립 upstream 3개 이상
 - [ ] x86_64/AArch64 build evidence
 - [ ] native timing microarchitecture 2종
-- [ ] KyberSlash KS1/KS2 ground truth
+- [x] KyberSlash KS1/KS2 non-timing ground truth
+- [ ] KyberSlash native timing / architecture matrix / attack reproduction
 - [ ] Falcon reference-vs-CT comparator
 - [ ] matrix ablation과 human triage cost
 - [ ] 2인 declassification review
@@ -856,8 +887,9 @@ M5 종료 조건:
 4. ~~KEM/sign pool 하니스 + physical control/power 프로토콜 구현~~ — 완료
 5. **기존 corpus native v2 캠페인 준비** — 실행기·검증기 완료,
    bare-metal 실측/재분류만 `blocked-by-native-host`
-6. **KyberSlash ground-truth의 non-timing target/provenance부터 확장** — 다음
-7. **Falcon reference-vs-CT comparator의 build/structural 기반 확장**
+6. ~~**KyberSlash ground-truth의 non-timing target/provenance부터 확장**~~
+   — 완료 (`0.7.0a1`); native timing/attack은 별도 미완료
+7. **Falcon reference-vs-CT comparator의 build/structural 기반 확장** — 다음
 8. native 장비 확보 즉시 5번 campaign 실행·artifact review·재분류
 
 첫 구현 batch의 완료 기준:

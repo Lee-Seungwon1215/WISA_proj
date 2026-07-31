@@ -348,7 +348,7 @@ def _do_kat(cfg: CtkatConfig, cfg_dir: Path) -> Tuple[bool, Optional[int]]:
     return True, count
 
 
-def _build_generic_context(h: HarnessConfig, seed: int) -> dict:
+def _build_generic_context(h: HarnessConfig, seed: int, *, timecop_mode: bool = False) -> dict:
     return {
         "extra_headers": list(h.extra_headers),
         "function": h.function,
@@ -356,35 +356,38 @@ def _build_generic_context(h: HarnessConfig, seed: int) -> dict:
         "return_type": h.return_type,
         "buffers": [b.model_dump() for b in h.buffers],
         "seed": seed,
+        "timecop_mode": timecop_mode,
     }
 
 
-def _build_kem_context(h: HarnessConfig) -> dict:
+def _build_kem_context(h: HarnessConfig, *, timecop_mode: bool = False) -> dict:
     return {
         "header": h.header,
         "extra_headers": list(h.extra_headers),
         "prefix": h.prefix,
         "secret_regions": [r.model_dump() for r in h.secret_regions],
         "kem_decapsulation": h.kem_decapsulation,
+        "timecop_mode": timecop_mode,
     }
 
 
-def _build_sign_context(h: HarnessConfig) -> dict:
+def _build_sign_context(h: HarnessConfig, *, timecop_mode: bool = False) -> dict:
     return {
         "header": h.header,
         "extra_headers": list(h.extra_headers),
         "prefix": h.prefix,
         "secret_regions": [r.model_dump() for r in h.secret_regions],
+        "timecop_mode": timecop_mode,
     }
 
 
-def _template_context(h: HarnessConfig, seed: int) -> dict:
+def _template_context(h: HarnessConfig, seed: int, *, timecop_mode: bool = False) -> dict:
     if h.template == "generic":
-        return _build_generic_context(h, seed)
+        return _build_generic_context(h, seed, timecop_mode=timecop_mode)
     if h.template == "kem":
-        return _build_kem_context(h)
+        return _build_kem_context(h, timecop_mode=timecop_mode)
     if h.template == "sign":
-        return _build_sign_context(h)
+        return _build_sign_context(h, timecop_mode=timecop_mode)
     raise ValueError(f"unknown template: {h.template!r}")
 
 
@@ -413,7 +416,11 @@ def _do_generate(cfg: CtkatConfig, cfg_dir: Path) -> Dict[str, Path]:
             result = generate_and_compile(
                 name=h.name,
                 template=template,
-                context=_template_context(h, cfg.ct.seed),
+                context=_template_context(
+                    h,
+                    cfg.ct.seed,
+                    timecop_mode=cfg.ct.timecop_mode,
+                ),
                 output_dir=generated_dir,
                 sources=sources,
                 include_dirs=include_dirs,

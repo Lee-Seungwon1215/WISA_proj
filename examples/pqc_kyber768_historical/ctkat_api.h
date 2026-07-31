@@ -1,0 +1,18 @@
+#ifndef CTKAT_HISTORICAL_KYBER768_API_H
+#define CTKAT_HISTORICAL_KYBER768_API_H
+
+#include "api.h"
+
+#define pqcrystals_kyber768_ref_CRYPTO_SECRETKEYBYTES \
+    pqcrystals_kyber768_ref_SECRETKEYBYTES
+#define pqcrystals_kyber768_ref_CRYPTO_PUBLICKEYBYTES \
+    pqcrystals_kyber768_ref_PUBLICKEYBYTES
+#define pqcrystals_kyber768_ref_CRYPTO_CIPHERTEXTBYTES \
+    pqcrystals_kyber768_ref_CIPHERTEXTBYTES
+#define pqcrystals_kyber768_ref_CRYPTO_BYTES pqcrystals_kyber768_ref_BYTES
+
+#define pqcrystals_kyber768_ref_crypto_kem_keypair pqcrystals_kyber768_ref_keypair
+#define pqcrystals_kyber768_ref_crypto_kem_enc pqcrystals_kyber768_ref_enc
+#define pqcrystals_kyber768_ref_crypto_kem_dec pqcrystals_kyber768_ref_dec
+
+#endif

@@ -33,6 +33,56 @@ def test_generic_render_contains_taint_markers():
     assert "VALGRIND_MAKE_MEM_UNDEFINED(guess" not in out
 
 
+@pytest.mark.parametrize(
+    ("template", "context"),
+    [
+        ("generic", _generic_ctx(timecop_mode=True)),
+        (
+            "kem",
+            {
+                "header": "api.h",
+                "prefix": "",
+                "extra_headers": [],
+                "secret_regions": [],
+                "timecop_mode": True,
+            },
+        ),
+        (
+            "sign",
+            {
+                "header": "api.h",
+                "prefix": "",
+                "extra_headers": [],
+                "secret_regions": [],
+                "timecop_mode": True,
+            },
+        ),
+    ],
+)
+def test_timecop_mode_emits_patched_backend_client_request(template, context):
+    out = render_harness(template, context)
+    assert out.count("VALGRIND_ENABLE_TIMECOP_MODE;") == 1
+    assert out.index("VALGRIND_ENABLE_TIMECOP_MODE;") < out.index("VALGRIND_MAKE_MEM_UNDEFINED")
+
+
+@pytest.mark.parametrize(
+    ("template", "context"),
+    [
+        ("generic", _generic_ctx()),
+        (
+            "kem",
+            {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []},
+        ),
+        (
+            "sign",
+            {"header": "api.h", "prefix": "", "extra_headers": [], "secret_regions": []},
+        ),
+    ],
+)
+def test_normal_harness_does_not_require_timecop_patch(template, context):
+    assert "VALGRIND_ENABLE_TIMECOP_MODE" not in render_harness(template, context)
+
+
 def test_generic_render_call_line_includes_args():
     out = render_harness("generic", _generic_ctx())
     assert "bad_compare(secret, guess, sizeof(secret))" in out

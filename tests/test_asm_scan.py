@@ -205,6 +205,27 @@ def test_triage_hint_labels_known_public_and_kyberslash_candidates():
     )
     assert (
         triage_hint_for(
+            "../pqc_mlkem768/clean_kyberslash2/polyvec.c",
+            "PQCLEAN_MLKEM768_CLEAN_polyvec_compress",
+        )
+        == "kyberslash-poly-review-secret-risk"
+    )
+    assert (
+        triage_hint_for(
+            "ref/polyvec.c",
+            "pqcrystals_kyber768_ref_polyvec_compress",
+        )
+        == "kyberslash-poly-review-secret-risk"
+    )
+    assert (
+        triage_hint_for(
+            "ref/indcpa.c",
+            "pqcrystals_kyber768_ref_gen_matrix",
+        )
+        == "kyber-public-matrix-length-review"
+    )
+    assert (
+        triage_hint_for(
             "common/fips202.c",
             "shake128",
         )

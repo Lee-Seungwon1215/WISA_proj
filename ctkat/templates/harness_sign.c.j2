@@ -29,6 +29,11 @@ int main(void) {
 
     {{ prefix }}crypto_sign_keypair(pk, sk);
 
+    {% if timecop_mode | default(false) -%}
+    /* Requires the pinned KyberSlash TIMECOP-patched Memcheck backend. */
+    VALGRIND_ENABLE_TIMECOP_MODE;
+    {% endif %}
+
     {% if secret_regions -%}
     /* Some signature schemes embed public material inside `sk` — taint only
      * the listed byte ranges (same model as the KEM template). */

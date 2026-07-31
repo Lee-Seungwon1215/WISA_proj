@@ -48,6 +48,7 @@ jobs:
       - run: python scripts/render_readme_corpus.py --check
       - run: python scripts/check_third_party.py
       - run: python scripts/check_example_configs.py
+      - run: python scripts/check_kyberslash_ground_truth.py
       - run: python scripts/run_native_timing_campaign.py --check
       - run: python scripts/calibrate_timing_backend.py --check
 
@@ -127,3 +128,27 @@ jobs:
       - uses: actions/checkout@v7
       - run: docker build --tag ctkat-ci .
       - run: docker run --rm ctkat-ci ctkat --version
+
+  kyberslash-timecop:
+    name: KyberSlash TIMECOP attribution
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build pinned patched Valgrind backend
+        run: docker build --target timecop --tag ctkat-timecop-ci .
+      - name: Run backend canary and five-target attribution
+        run: |
+          mkdir -p "$RUNNER_TEMP/kyberslash-timecop"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -v "$RUNNER_TEMP/kyberslash-timecop:/results" \
+            -w /workspace \
+            ctkat-timecop-ci \
+            python scripts/run_kyberslash_timecop.py --output-root /results
+      - name: Upload lossless attribution report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: kyberslash-timecop-${{ github.sha }}
+          path: ${{ runner.temp }}/kyberslash-timecop
+          if-no-files-found: error

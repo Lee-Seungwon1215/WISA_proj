@@ -14,6 +14,9 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
   effect curve, and same-trace parity artifact.
 - `measurement/` — frozen native timing-v2 campaign, bare-metal preflight,
   resumable execution, artifact validation, and corpus-promotion boundary.
+- `ground_truth/kyberslash/` — frozen KS1/KS2/combined/historical sources,
+  exact diffs, provenance, deterministic KEM equivalence, and TIMECOP evidence
+  boundaries.
 - `corpus/` — committed v2 corpus, migration manifest, and frozen v1.2 archive.
 - `ROADMAP_REJECTION_RECOVERY.md` — rejection-review adjudication and the
   dependency-ordered completion plan, including the KyberSlash and Falcon

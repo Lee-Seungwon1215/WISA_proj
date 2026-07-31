@@ -58,17 +58,53 @@ python scripts/check_third_party.py --write-notices
 - Local modifications: None; byte-identical to the recorded upstream directory.
 - Detailed provenance: `examples/pqc_mlkem768/FETCH_INFO.md`
 
-## KyberSlash-derived ML-KEM-768 overlay
+## KyberSlash1-only ML-KEM-768 overlay
 
-- Local path: `examples/pqc_mlkem768/clean_kyberslash`
+- Local path: `examples/pqc_mlkem768/clean_kyberslash1`
 - Upstream: https://github.com/PQClean/PQClean
 - Revision: `202a8f96315f9ed219387a50f7e40d04af037ea8`
 - Upstream path: `crypto_kem/ml-kem-768/clean/poly.c (derived overlay)`
 - License: `CC0-1.0`
-- License file: `examples/pqc_mlkem768/clean_kyberslash/LICENSE`
-- Tree SHA-256: `7c337f02539fe668109e6051fe5004405fc88f9a3f21df99dd2dcfcd019ffa64`
-- Local modifications: Local README and license added; poly_compress and poly_tomsg intentionally restore two historical /KYBER_Q expressions as a positive control.
+- License file: `examples/pqc_mlkem768/clean_kyberslash1/LICENSE`
+- Tree SHA-256: `76caf17c4296cbf9dfb780941167e5b0cf01397748f0777d09c792fd6de73225`
+- Local modifications: Local README/license added; poly_tomsg alone restores the historical KyberSlash1 /KYBER_Q expression.
 - Detailed provenance: `examples/pqc_mlkem768/FETCH_INFO.md`
+
+## KyberSlash2-only ML-KEM-768 overlay
+
+- Local path: `examples/pqc_mlkem768/clean_kyberslash2`
+- Upstream: https://github.com/PQClean/PQClean
+- Revision: `202a8f96315f9ed219387a50f7e40d04af037ea8`
+- Upstream path: `crypto_kem/ml-kem-768/clean/poly.c and polyvec.c (derived overlay)`
+- License: `CC0-1.0`
+- License file: `examples/pqc_mlkem768/clean_kyberslash2/LICENSE`
+- Tree SHA-256: `7d9d3d02d746d1adbfea6411c57929a0831cc7829f1a4efa96e34b26f00dd3e3`
+- Local modifications: Local README/license added; poly_compress and polyvec_compress restore the historical KyberSlash2 /KYBER_Q expressions.
+- Detailed provenance: `examples/pqc_mlkem768/FETCH_INFO.md`
+
+## KyberSlash1+2 ML-KEM-768 overlay
+
+- Local path: `examples/pqc_mlkem768/clean_kyberslash`
+- Upstream: https://github.com/PQClean/PQClean
+- Revision: `202a8f96315f9ed219387a50f7e40d04af037ea8`
+- Upstream path: `crypto_kem/ml-kem-768/clean/poly.c and polyvec.c (derived overlay)`
+- License: `CC0-1.0`
+- License file: `examples/pqc_mlkem768/clean_kyberslash/LICENSE`
+- Tree SHA-256: `2546d9487d13113d19be0c3fd54b2a8d1f201c3d34bcd347c44a922ae8a43dd4`
+- Local modifications: Local README/license added; poly_tomsg, poly_compress, and polyvec_compress restore the KS1 and KS2 /KYBER_Q expressions.
+- Detailed provenance: `examples/pqc_mlkem768/FETCH_INFO.md`
+
+## Historical pq-crystals Kyber reference before KyberSlash fixes
+
+- Local path: `examples/pqc_kyber768_historical/ref`
+- Upstream: https://github.com/pq-crystals/kyber
+- Revision: `a621b8dde405cc507cbcfc5f794570a4f98d69cc`
+- Upstream path: `ref`
+- License: `Public domain/CC0 or Apache-2.0 with per-file notices`
+- License file: `examples/pqc_kyber768_historical/LICENSE`
+- Tree SHA-256: `3ca097d98e2a48fdd463740cfa0484cbc339bcd1f1f5f2ca0157762a0317ae4d`
+- Local modifications: None inside ref; byte-identical snapshot. CT-KAT adapters live in the parent directory.
+- Detailed provenance: `examples/pqc_kyber768_historical/FETCH_INFO.md`
 
 ## PQClean ML-DSA-44 clean
 
@@ -141,3 +177,15 @@ python scripts/check_third_party.py --write-notices
 - Tree SHA-256: `a672e626a6c39b53f653ab6c754700e806423244396c2a9bc4ee3bab7355bca4`
 - Local modifications: None; dudect.h and LICENSE are byte-identical to the pinned upstream revision. CT-KAT's adapter is maintained outside this vendored tree.
 - Detailed provenance: `ctkat/_vendor/dudect_FETCH_INFO.md`
+
+## IACR KyberSlash TIMECOP Valgrind patch
+
+- Local path: `ctkat/_vendor/kyberslash_timecop`
+- Upstream: https://artifacts.iacr.org/tches/2025/a9
+- Artifact SHA-256: `403af6cb4ff8d7a6a4057e280cd22e27c842fec97963645b66f9138e8b69a4b8`
+- Upstream path: `kyberslash-demo/valgrind/valgrind-3.22.0-varlat.patch and COPYING.GPL2`
+- License: `GPL-2.0-or-later`
+- License file: `ctkat/_vendor/kyberslash_timecop/COPYING.GPL2`
+- Tree SHA-256: `ff2ef869d78b57b87efe1470fcc5b217d4a79c31ab4ad643273d260435b6576c`
+- Local modifications: Patch and license are byte-identical to the IACR artifact; local README and FETCH_INFO add provenance.
+- Detailed provenance: `ctkat/_vendor/kyberslash_timecop_FETCH_INFO.md`

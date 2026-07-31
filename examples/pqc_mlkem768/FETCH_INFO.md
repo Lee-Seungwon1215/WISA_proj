@@ -23,16 +23,36 @@
 - Tree SHA-256: `11cbb7363fc3211f42d4e9aef2191ab476da02f44e54dbeda239b8deb01e1dc7`
 - Local modifications: none; verified byte-identical to the recorded revision.
 
-### KyberSlash positive-control overlay
+### KyberSlash1-only differential overlay
 
 - Upstream baseline: `crypto_kem/ml-kem-768/clean/poly.c`
+- Local path: `examples/pqc_mlkem768/clean_kyberslash1`
+- License: `CC0-1.0`; see
+  `examples/pqc_mlkem768/clean_kyberslash1/LICENSE`
+- Tree SHA-256: `76caf17c4296cbf9dfb780941167e5b0cf01397748f0777d09c792fd6de73225`
+- Local modifications: `poly_tomsg` alone restores the historical
+  KyberSlash1 `/KYBER_Q` expression.
+
+### KyberSlash2-only differential overlay
+
+- Upstream baseline: `crypto_kem/ml-kem-768/clean/{poly.c,polyvec.c}`
+- Local path: `examples/pqc_mlkem768/clean_kyberslash2`
+- License: `CC0-1.0`; see
+  `examples/pqc_mlkem768/clean_kyberslash2/LICENSE`
+- Tree SHA-256: `7d9d3d02d746d1adbfea6411c57929a0831cc7829f1a4efa96e34b26f00dd3e3`
+- Local modifications: `poly_compress` and `polyvec_compress` restore the
+  KyberSlash2 `/KYBER_Q` expressions; `poly_tomsg` remains patched.
+
+### KyberSlash1+2 differential overlay
+
+- Upstream baseline: `crypto_kem/ml-kem-768/clean/{poly.c,polyvec.c}`
 - Local path: `examples/pqc_mlkem768/clean_kyberslash`
 - License: `CC0-1.0`; see
   `examples/pqc_mlkem768/clean_kyberslash/LICENSE`
-- Tree SHA-256: `7c337f02539fe668109e6051fe5004405fc88f9a3f21df99dd2dcfcd019ffa64`
-- Local modifications: `poly_compress` and `poly_tomsg` intentionally restore
-  two historical `/KYBER_Q` expressions. The local README documents the exact
-  expressions. This is a derived positive control, not verbatim PQClean.
+- Tree SHA-256: `2546d9487d13113d19be0c3fd54b2a8d1f201c3d34bcd347c44a922ae8a43dd4`
+- Local modifications: `poly_tomsg`, `poly_compress`, and
+  `polyvec_compress` intentionally restore the KS1 and KS2 `/KYBER_Q`
+  expressions. This is a derived differential control, not verbatim PQClean.
 
 The machine-readable inventory and hash algorithm live in
 `third_party.toml` and `scripts/check_third_party.py`.

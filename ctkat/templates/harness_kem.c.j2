@@ -46,6 +46,11 @@ int main(void) {
     ct[0] ^= 0x01u;
 {% endif %}
 
+    {% if timecop_mode | default(false) -%}
+    /* Requires the pinned KyberSlash TIMECOP-patched Memcheck backend. */
+    VALGRIND_ENABLE_TIMECOP_MODE;
+    {% endif %}
+
     {% if secret_regions -%}
     /* Schemes like ML-KEM store public material inside `sk`. Taint only
      * the truly-secret byte ranges so analysis doesn't follow public data. */
