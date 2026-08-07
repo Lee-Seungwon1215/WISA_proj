@@ -1,0 +1,78 @@
+schema_version: 1
+matrix_id: ctkat-paper-claims-v1
+terminology:
+  screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
+  source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
+  timing_campaign: physical-host timing-v2 runs; a plan or CI build is never timing evidence
+
+claims:
+  - id: fail-closed-evidence-fold
+    statement: Missing correctness or invalid/confounded timing cannot produce a clean observation.
+    status: implemented-premeasurement
+    scope: evidence schema and committed corpus migration
+    evidence:
+      - ctkat/evidence.py
+      - tests/test_evidence.py
+      - docs/corpus/correctness_snapshot_v1.json
+      - docs/corpus/corpus_summary.csv
+    open_gates: []
+    prohibited_wording: constant-time proof
+  - id: build-matrix-sensitivity
+    statement: A single release build surfaces fewer candidate pairs than the full compiler/optimization matrix in the committed screening corpus.
+    status: implemented-premeasurement
+    scope: committed screening corpus only
+    evidence:
+      - docs/ablation/generated/ablation_summary.json
+      - docs/corpus/corpus_cells.csv
+    open_gates: []
+    prohibited_wording: universal tool accuracy
+  - id: kyberslash-attribution
+    statement: Stock, isolated KS1, isolated KS2, combined, and historical variants are provenance- and correctness-locked before timing comparison.
+    status: pending-independent-review
+    scope: ML-KEM/Kyber-768 frozen variants
+    evidence:
+      - docs/ground_truth/kyberslash/ground_truth.yaml
+      - docs/measurement/kyberslash_native_v1.yaml
+      - docs/reviews/paper/kyberslash-ground-truth-v2.yaml
+    open_gates:
+      - two independent premeasurement reviewers
+      - two-host physical timing artifacts
+    prohibited_wording: every division candidate leaks
+  - id: falcon-comparator
+    statement: Reference Falcon and prospective c-fn-dsa native-FP/integer-FPR profiles have exact provenance and separate full-signature timing targets.
+    status: pending-independent-review
+    scope: Falcon/FN-DSA 512 and 1024 comparators
+    evidence:
+      - docs/ground_truth/falcon/manifest.yaml
+      - docs/measurement/falcon_native_v1.yaml
+      - docs/reviews/paper/falcon-comparator-v2.yaml
+    open_gates:
+      - two independent premeasurement reviewers
+      - two-host physical timing artifacts
+      - output-length secondary analysis
+    prohibited_wording: FIPS 206 conformance
+  - id: diverse-upstream-builds
+    statement: Four primary upstream lineages are represented, with mlkem-native and mldsa-native build/KAT/equivalence matrices prepared across x86_64 and AArch64.
+    status: implemented-premeasurement
+    scope: provenance and source/build evidence, not timing
+    evidence:
+      - docs/corpus/diverse_upstreams_v1.yaml
+      - scripts/check_diverse_upstreams.py
+      - docs/reviews/paper/diverse-upstreams-v2.yaml
+    open_gates:
+      - review both architecture artifact bundles
+      - quantify or bound shared-code ancestry before stronger independence wording
+    prohibited_wording: four from-scratch independent implementations
+  - id: native-timing-results
+    statement: Paper-grade native timing will use two distinct physical x86_64 hosts, frozen controls, and no automatic corpus promotion.
+    status: pending-physical-measurement
+    scope: 25 predeclared timing axes plus same-corpus baselines
+    evidence:
+      - docs/measurement/paper_native_campaign_v1.yaml
+      - docs/measurement/EXPERIMENT_PREREGISTRATION.md
+      - scripts/check_paper_campaign.py
+    open_gates:
+      - execute both hosts
+      - hash and blind-review artifacts
+      - complete postmeasurement promotion review
+    prohibited_wording: no finding means proven constant-time

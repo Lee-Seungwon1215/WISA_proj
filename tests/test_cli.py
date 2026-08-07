@@ -2064,10 +2064,14 @@ def test_ct_valgrind_flags_without_error_exitcode_rejected():
 
 def _screen_yaml(tmp_path) -> Path:
     # one template harness so screen's auto (matrix + asm-scan) path runs.
-    return _ctkat_yaml_path(
+    path = _ctkat_yaml_path(
         tmp_path,
         harness_block="    - {name: h, template: generic, function: f, sources: [x.c]}",
     )
+    path.write_text(
+        path.read_text() + '\nkat:\n  argv: ["printf", "PASSED: 1\\n"]\n  expected_min: 1\n'
+    )
+    return path
 
 
 def _ctkat_yaml_path(tmp_path, *, harness_block: str) -> Path:
@@ -2130,6 +2134,19 @@ def test_screen_clean_is_no_finding_exit0(monkeypatch, tmp_path):
     assert "all harnesses cleared" in result.stdout.lower()
 
 
+def test_screen_without_correctness_is_inconclusive_exit2(monkeypatch, tmp_path):
+    _patch_screen(monkeypatch, matrix_rows=[_mrow("PASS")], candidates=[])
+    cfg = _ctkat_yaml_path(
+        tmp_path,
+        harness_block="    - {name: h, template: generic, function: f, sources: [x.c]}",
+    )
+    result = CliRunner().invoke(app, ["screen", "--config", str(cfg)])
+    assert result.exit_code == 2
+    out = (tmp_path / "reports" / "screen_summary.csv").read_text()
+    assert ",not-run," in out
+    assert "inconclusive" in out
+
+
 def test_screen_untriaged_candidate_gates_exit2(monkeypatch, tmp_path):
     cand = VarLatCandidate(
         harness="h",
@@ -2168,8 +2185,8 @@ def test_screen_asm_candidates_are_scoped_by_harness(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, ["screen", "--config", str(_screen_yaml(tmp_path))])
     assert result.exit_code == 2
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
-    assert "2.0,h1,not-run,no-finding,no-candidate,not-applicable" in out
-    assert "2.0,h2,not-run,no-finding,candidate,unresolved" in out
+    assert "2.0,h1,pass,no-finding,no-candidate,not-applicable" in out
+    assert "2.0,h2,pass,no-finding,candidate,unresolved" in out
 
 
 def test_screen_unscanned_matrix_compiler_is_incomplete(monkeypatch, tmp_path):
@@ -2315,7 +2332,7 @@ def test_screen_manual_harness_is_asm_incomplete_exit2(monkeypatch, tmp_path):
     out = (tmp_path / "reports" / "screen_summary.csv").read_text()
     assert "ct-clean-asm-incomplete" in out
     assert ",not-run,not-applicable," in out
-    assert "needs-review" in out
+    assert "inconclusive" in out
 
 
 def test_screen_primary_ct_error_gates_exit2(monkeypatch, tmp_path):

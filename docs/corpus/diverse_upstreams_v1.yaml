@@ -1,7 +1,7 @@
 schema_version: 1
 corpus_id: ctkat-diverse-upstreams-v1
 status: imported-build-gated-needs-review
-frozen_at: "2026-07-31"
+frozen_at: "2026-08-07"
 
 claim_scope:
   source_provenance: complete
@@ -33,9 +33,9 @@ lineages:
     algorithm: ML-KEM
     role: separately-maintained-native-package
     upstream: https://github.com/pq-code-package/mlkem-native
-    release: v1.2.0
+    release: v1.3.0
     release_status: stable
-    revision: 0ba906cb14b1c241476134d7403a811b382ca498
+    revision: 398050c877ff4353c96305c6434b63528accfc37
     import_path: examples/mlkem_native/upstream
     upstream_paths:
       - LICENSE
@@ -44,7 +44,7 @@ lineages:
       - mlkem
       - test/src/gen_KAT.c
       - test/notrandombytes
-    tree_sha256: 7f4d1da13cd51f8cca65fcb6bb8e4eb0b697e8097488f3058beab26b21c1334d
+    tree_sha256: 101a2e35764993175c99dbbb7bb67c2f42970f525b0fd4493e5811eef162ec0a
     license: Apache-2.0 OR ISC OR MIT; test RNG has a broader permissive OR expression
     license_file: examples/mlkem_native/upstream/LICENSE
     provenance_file: examples/mlkem_native/FETCH_INFO.md

@@ -1,0 +1,32 @@
+project:
+  name: mldsa_native_65_portable
+  language: c
+  root: ..
+
+build: {argv: ["true"], workdir: .}
+
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 1000
+  warmup: 50
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  generated_dir: ./_generated_dudect_portable
+  compiler:
+    cc: gcc
+    cflags: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
+             -DMLD_CONFIG_PARAMETER_SET=65]
+  harnesses:
+    - name: sign
+      template: sign
+      header: timing_api.h
+      randombytes_header: src/randombytes.h
+      prefix: "CTKAT_MLDSA_"
+      include_dirs: [., upstream/mldsa]
+      sources:
+        - timing_adapter.c
+        - upstream/mldsa/mldsa_native.c
+
+report: {output_dir: ./reports_timing_portable}

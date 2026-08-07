@@ -219,6 +219,13 @@ def test_kem_class_label_uses_high_bits():
     assert "ctkat_label_next() & 1ULL" not in out
 
 
+def test_kem_seeded_interpose_matches_historical_void_randombytes_api():
+    out = render_timing_harness("kem", _kem_ctx(randombytes_return="void"))
+    assert "__attribute__((weak)) void randombytes" in out
+    interpose = out[out.index("__attribute__((weak)) void randombytes") :]
+    assert "return 0;" not in interpose.split("}", 1)[0]
+
+
 def test_kem_captures_dec_return_with_ctkat_use():
     out = render_timing_harness("kem", _kem_ctx())
     # The timed dec's return value must be captured and CTKAT_USE'd to

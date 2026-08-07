@@ -2,9 +2,7 @@
 
 # mlkem-native
 
-![Base tests](https://github.com/pq-code-package/mlkem-native/actions/workflows/base.yml/badge.svg)
-![Extended tests](https://github.com/pq-code-package/mlkem-native/actions/workflows/ci.yml/badge.svg)
-![Proof: CBMC](https://github.com/pq-code-package/mlkem-native/actions/workflows/cbmc.yml/badge.svg)
+![CI](https://github.com/pq-code-package/mlkem-native/actions/workflows/all.yml/badge.svg)
 ![Proof: HOL-Light](https://github.com/pq-code-package/mlkem-native/actions/workflows/hol_light.yml/badge.svg)
 ![Benchmarks](https://github.com/pq-code-package/mlkem-native/actions/workflows/bench.yml/badge.svg)
 ![C90](https://img.shields.io/badge/language-C90-blue.svg)
@@ -102,7 +100,7 @@ mlkem-native currently offers the following backends:
 If you'd like contribute new backends, please reach out or just open a PR.
 
 Our AArch64 assembly is developed using the [SLOTHY](https://github.com/slothy-optimizer/slothy) superoptimizer, following the approach described in the SLOTHY paper[^SLOTHY_Paper]:
-We write 'clean' assembly by hand and automate micro-optimizations (e.g. see the [clean](dev/aarch64_clean/src/ntt_aarch64_asm.S) vs [optimized](dev/aarch64_opt/src/ntt_aarch64_asm.S) AArch64 NTT).
+We write 'clean' assembly by hand and automate micro-optimizations (e.g. see the [clean](dev/aarch64_clean/src/mlkem_ntt_aarch64_asm.S) vs [optimized](dev/aarch64_opt/src/mlkem_ntt_aarch64_asm.S) AArch64 NTT).
 See [dev/README.md](dev/README.md) for more details.
 
 ## Test Vectors

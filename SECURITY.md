@@ -7,8 +7,8 @@ commit on `main`; older snapshots are not maintained.
 
 | Version | Supported |
 |---|---|
-| `main` / `0.2.x` alpha | yes |
-| `0.1.x` | no |
+| `main` / `0.11.x` alpha | yes |
+| `0.10.x` and older | no |
 
 ## Reporting a vulnerability
 

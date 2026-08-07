@@ -156,6 +156,7 @@ class CampaignSpec:
     schema_version: str
     campaign_id: str
     description: str
+    coverage_mode: str
     host: dict[str, Any]
     protocol: ProtocolSpec
     targets: tuple[TargetSpec, ...]
@@ -270,6 +271,7 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
             "schema_version",
             "campaign_id",
             "description",
+            "coverage_mode",
             "host",
             "protocol",
             "targets",
@@ -281,6 +283,9 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
     campaign_id = root.get("campaign_id")
     if not isinstance(campaign_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]+", campaign_id):
         raise CampaignError("campaign_id must match [a-z0-9][a-z0-9._-]+")
+    coverage_mode = root.get("coverage_mode")
+    if coverage_mode not in {"committed-timing-rows", "manifest-only"}:
+        raise CampaignError("coverage_mode must be committed-timing-rows or manifest-only")
 
     host = _require_mapping(root.get("host"), "host")
     _forbid_unknown(
@@ -417,6 +422,7 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
         schema_version="1.0",
         campaign_id=campaign_id,
         description=str(root.get("description", "")),
+        coverage_mode=str(coverage_mode),
         host=dict(host),
         protocol=protocol,
         targets=tuple(targets),
@@ -612,14 +618,15 @@ def static_check(campaign: CampaignSpec) -> list[str]:
                     "under configured include dirs"
                 )
 
-    corpus_axes = _corpus_timing_axes()
-    if manifest_axes != corpus_axes:
-        missing = sorted(corpus_axes - manifest_axes)
-        extra = sorted(manifest_axes - corpus_axes)
-        errors.append(
-            f"campaign/corpus timing-axis drift: missing={missing or 'none'}, "
-            f"extra={extra or 'none'}"
-        )
+    if campaign.coverage_mode == "committed-timing-rows":
+        corpus_axes = _corpus_timing_axes()
+        if manifest_axes != corpus_axes:
+            missing = sorted(corpus_axes - manifest_axes)
+            extra = sorted(manifest_axes - corpus_axes)
+            errors.append(
+                f"campaign/corpus timing-axis drift: missing={missing or 'none'}, "
+                f"extra={extra or 'none'}"
+            )
     return errors
 
 

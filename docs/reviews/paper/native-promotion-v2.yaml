@@ -1,0 +1,27 @@
+schema_version: "2.0"
+review_id: paper-native-promotion-v2
+status: pending
+title: Final native timing promotion review
+review_phase: post-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: paper-native-campaign, harness: all-frozen-axes, build_scope: two-bare-metal-x86_64-microarchitectures}
+threat_model: Empirical timing differences under the pre-registered class axes and physical-host acceptance controls.
+secret_origin: Target-specific secret key, ciphertext, message, randomness, sampler, and encoding axes recorded by each component manifest.
+observed_dependency: pending physical execution
+declassification_predicate: A result is promotable only if A/A, placebo, power, repeat, host, integrity, and reviewer gates all pass.
+public_transcript: Per-target public inputs and outputs declared in the frozen measurement manifest.
+security_argument: Raw PASS is non-decisional unless timing_validity is valid and the complete artifact bundle is independently reviewed.
+known_limitations:
+  - A no-signal result is bounded by the reported MDE and selected hosts.
+  - The campaign is not a formal constant-time proof.
+evidence:
+  - docs/measurement/native_timing_v2_campaign.yaml
+expected_evidence:
+  - immutable native artifacts from two accepted hosts
+  - merged promotion candidates and paper tables
+reviewers: []
+expiry_conditions:
+  - source, manifest, compiler, host policy, or backend revision changes
+  - artifact hash mismatch
+  - reviewer independence no longer holds

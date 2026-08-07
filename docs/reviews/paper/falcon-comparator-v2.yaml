@@ -1,0 +1,33 @@
+schema_version: "2.0"
+review_id: paper-falcon-comparator-v2
+status: pending
+title: Falcon reference versus prospective c-fn-dsa comparator
+review_phase: pre-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: pqclean_falcon512_reference, harness: sign, build_scope: reference-512}
+  - {target: pqclean_falcon1024_reference, harness: sign, build_scope: reference-1024}
+  - {target: c_fndsa512_prospective, harness: sign_native_fp, build_scope: native-fp-512}
+  - {target: c_fndsa512_prospective, harness: sign_fpr_emu, build_scope: integer-fpr-512}
+  - {target: c_fndsa1024_prospective, harness: sign_native_fp, build_scope: native-fp-1024}
+  - {target: c_fndsa1024_prospective, harness: sign_fpr_emu, build_scope: integer-fpr-1024}
+threat_model: Secret-dependent decode, Gaussian sampling, signing-loop, floating-point, or encoding behavior.
+secret_origin: Encoded f, g, and F components, expanded basis/tree state, and signing randomness.
+observed_dependency: Structural findings and FP/integer-FPR instruction paths separated by profile and boundary.
+declassification_predicate: Any accepted dependency must be scoped to an exact boundary and public output; constant-time intent is not evidence.
+public_transcript: Message, public key, and completed signature bytes only.
+security_argument: Reference and prospective comparator findings remain visible until two reviewers inspect exact source/build evidence.
+known_limitations:
+  - Prospective c-fn-dsa is not a final FIPS 206 conformance target.
+  - Physical paired timing and length correlation are pending.
+evidence:
+  - docs/ground_truth/falcon/manifest.yaml
+  - docs/ground_truth/falcon/structural_evidence_x86_64.yaml
+  - docs/ground_truth/falcon/fp_audit_x86_64.json
+expected_evidence:
+  - paired native timing report for both degrees and profiles
+reviewers: []
+expiry_conditions:
+  - Falcon or c-fn-dsa revision changes
+  - FN-DSA standard identity changes
+  - FP profile or compiler flags change

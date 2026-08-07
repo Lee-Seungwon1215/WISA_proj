@@ -1,0 +1,266 @@
+{
+  "ablation": {
+    "ablation_id": "ctkat-evidence-ablation-v1",
+    "interpretation": [
+      "The first three stages quantify candidate-generation burden, not tool accuracy.",
+      "The reviewed fold is the only stage that reports final evidence states.",
+      "The native timing ablation is missing by design and is represented as pending, never zero."
+    ],
+    "schema_version": 1,
+    "source_sha256": {
+      "cells": "8c64abf7ce48ea71fc51b6084902b37d0eb18491010a74ea7890dfda9ada2d80",
+      "summary": "4fa3189320da55debabd10a396937eeb1bd3d4cd9921c70cce9a96c9790f5d55"
+    },
+    "stages": [
+      {
+        "asm_candidate_pairs": 0,
+        "build_sensitive_pairs": 0,
+        "candidate_pairs": 11,
+        "cells": 24,
+        "ct_finding_pairs": 11,
+        "inconclusive_pairs": "",
+        "needs_review_pairs": "",
+        "no_finding_pairs": "",
+        "note": "candidate generation only; not a final evidence verdict",
+        "pairs": 24,
+        "risk_detected_pairs": "",
+        "stage": "single-release-build",
+        "status": "complete"
+      },
+      {
+        "asm_candidate_pairs": 0,
+        "build_sensitive_pairs": 2,
+        "candidate_pairs": 13,
+        "cells": 204,
+        "ct_finding_pairs": 13,
+        "inconclusive_pairs": "",
+        "needs_review_pairs": "",
+        "no_finding_pairs": "",
+        "note": "candidate generation only; not a final evidence verdict",
+        "pairs": 24,
+        "risk_detected_pairs": "",
+        "stage": "full-build-matrix",
+        "status": "complete"
+      },
+      {
+        "asm_candidate_pairs": 16,
+        "build_sensitive_pairs": 2,
+        "candidate_pairs": 22,
+        "cells": 204,
+        "ct_finding_pairs": 13,
+        "inconclusive_pairs": "",
+        "needs_review_pairs": "",
+        "no_finding_pairs": "",
+        "note": "candidate generation only; not a final evidence verdict",
+        "pairs": 24,
+        "risk_detected_pairs": "",
+        "stage": "full-matrix-plus-asm",
+        "status": "complete"
+      },
+      {
+        "asm_candidate_pairs": 16,
+        "build_sensitive_pairs": 2,
+        "candidate_pairs": "",
+        "cells": 204,
+        "ct_finding_pairs": 13,
+        "inconclusive_pairs": 10,
+        "needs_review_pairs": 5,
+        "no_finding_pairs": 4,
+        "note": "reviewed=16; pending=6; fold is fail-closed",
+        "pairs": 25,
+        "risk_detected_pairs": 6,
+        "stage": "reviewed-evidence-fold",
+        "status": "complete"
+      },
+      {
+        "asm_candidate_pairs": "",
+        "build_sensitive_pairs": "",
+        "candidate_pairs": "",
+        "cells": "",
+        "ct_finding_pairs": "",
+        "inconclusive_pairs": "",
+        "needs_review_pairs": "",
+        "no_finding_pairs": "",
+        "note": "official timing-v2 artifacts do not exist on two eligible hosts yet",
+        "pairs": "",
+        "risk_detected_pairs": "",
+        "stage": "official-versus-legacy-timing",
+        "status": "pending-physical-native-measurement"
+      }
+    ]
+  },
+  "claims": [
+    {
+      "claim_id": "fail-closed-evidence-fold",
+      "evidence_items": 4,
+      "open_gates": 0,
+      "prohibited_wording": "constant-time proof",
+      "scope": "evidence schema and committed corpus migration",
+      "status": "implemented-premeasurement"
+    },
+    {
+      "claim_id": "build-matrix-sensitivity",
+      "evidence_items": 2,
+      "open_gates": 0,
+      "prohibited_wording": "universal tool accuracy",
+      "scope": "committed screening corpus only",
+      "status": "implemented-premeasurement"
+    },
+    {
+      "claim_id": "kyberslash-attribution",
+      "evidence_items": 3,
+      "open_gates": 2,
+      "prohibited_wording": "every division candidate leaks",
+      "scope": "ML-KEM/Kyber-768 frozen variants",
+      "status": "pending-independent-review"
+    },
+    {
+      "claim_id": "falcon-comparator",
+      "evidence_items": 3,
+      "open_gates": 3,
+      "prohibited_wording": "FIPS 206 conformance",
+      "scope": "Falcon/FN-DSA 512 and 1024 comparators",
+      "status": "pending-independent-review"
+    },
+    {
+      "claim_id": "diverse-upstream-builds",
+      "evidence_items": 3,
+      "open_gates": 2,
+      "prohibited_wording": "four from-scratch independent implementations",
+      "scope": "provenance and source/build evidence, not timing",
+      "status": "implemented-premeasurement"
+    },
+    {
+      "claim_id": "native-timing-results",
+      "evidence_items": 3,
+      "open_gates": 3,
+      "prohibited_wording": "no finding means proven constant-time",
+      "scope": "25 predeclared timing axes plus same-corpus baselines",
+      "status": "pending-physical-measurement"
+    }
+  ],
+  "corpus_pairs": 25,
+  "corpus_state_counts": {
+    "inconclusive": 10,
+    "needs-review": 5,
+    "no-finding-observed": 4,
+    "risk-detected": 6
+  },
+  "kind": "ctkat-premeasurement-paper-artifacts",
+  "measurement_campaign": {
+    "campaign_id": "ctkat-paper-native-v1",
+    "component_count": 4,
+    "components": [
+      {
+        "campaign_id": "corpus-native-timing-v2",
+        "coverage_mode": "committed-timing-rows",
+        "id": "committed-corpus-refresh",
+        "protocol_rows": 1500000,
+        "static_ok": true,
+        "targets": 6,
+        "timing_axes": 8
+      },
+      {
+        "campaign_id": "kyberslash-native-v1",
+        "coverage_mode": "manifest-only",
+        "id": "kyberslash-contrast",
+        "protocol_rows": 1680000,
+        "static_ok": true,
+        "targets": 5,
+        "timing_axes": 7
+      },
+      {
+        "campaign_id": "falcon-native-v1",
+        "coverage_mode": "manifest-only",
+        "id": "falcon-contrast",
+        "protocol_rows": 990000,
+        "static_ok": true,
+        "targets": 6,
+        "timing_axes": 6
+      },
+      {
+        "campaign_id": "diverse-native-v1",
+        "coverage_mode": "manifest-only",
+        "id": "diverse-lineages",
+        "protocol_rows": 810000,
+        "static_ok": true,
+        "targets": 4,
+        "timing_axes": 4
+      }
+    ],
+    "errors": [],
+    "physical_hosts_required": 2,
+    "protocol_rows_all_hosts": 9960000,
+    "protocol_rows_per_host": 4980000,
+    "status": "static-plan-valid",
+    "target_executions": 21,
+    "timing_axes": 25
+  },
+  "review_readiness": {
+    "minimum_reviewers": 2,
+    "packets": [
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-mlkem-public-attribution-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-signature-declassification-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-kyberslash-ground-truth-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-falcon-comparator-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-same-corpus-baseline-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-diverse-upstreams-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "post-measurement",
+        "required_before_measurement": "false",
+        "review_id": "paper-native-promotion-v2",
+        "reviewers": 0,
+        "status": "pending"
+      }
+    ],
+    "paper_ready": false,
+    "pre_measurement_ready": false,
+    "status_counts": {
+      "pending": 7
+    }
+  },
+  "schema_version": 1
+}

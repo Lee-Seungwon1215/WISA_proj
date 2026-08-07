@@ -58,6 +58,18 @@
   parameter/compiler/profile은 lineage로 세지 않으며 beta/ancestry/shared-code
   claim limit를 보존한다. 모든 artifact는 여전히 `needs-review`이고 timing
   evidence가 아니다.
+- **M5 / paper premeasurement freeze 완료 (2026-08-07, `0.11.0a1`)** —
+  mlkem-native를 v1.3.0 exact revision으로 갱신하고, 기존 corpus·KyberSlash·
+  Falcon·diverse lineage를 두 physical host의 4개 component/21 target
+  execution/25 timing axis로 동결했다. correctness 미실행 clean fold를 막고,
+  9개 실제 암호 target/13개 summary row의 deterministic API round-trip
+  correctness를 input/transcript hash로 새로 동결했다. 기존 KyberSlash와
+  c-fn-dsa KAT 8 row를 합쳐 전체 25 row 중 21 row가 correctness PASS이며,
+  나머지 toy 4 row는 미실행을 숨기지 않고 inconclusive로 유지한다.
+  preregistration·ablation·claim matrix·생성형 paper table·2인 review packet·
+  blind rerun·one-command artifact·dependency/action/container pin을 구현했다.
+  남은 것은 사람 2인의 premeasurement review와 native 장비 2대 실행,
+  postmeasurement review 및 명시적 corpus promotion뿐이다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -952,8 +964,11 @@ M5 종료 조건:
 9. ~~**독립 upstream source/build corpus 확장**~~ — 완료 (`0.10.0a1`):
    mlkem-native → mldsa-native → OpenSSL 3.5.7 production integration,
    240 build cell/24 upstream KAT/120 equivalence pair CI gate
-10. native 장비 확보 즉시 5번, Falcon, same-corpus dudect campaign
-    실행·artifact review·재분류
+10. ~~**측정 전 paper campaign/artifact 동결**~~ — 완료 (`0.11.0a1`):
+    4 component/25 axis, ablation, two-person packets, preregistration,
+    generated tables, blind rerun, lock/pin, one-command gate
+11. native 장비 확보 즉시 두 host에서 동결 campaign과 same-corpus dudect를
+    실행하고, postmeasurement 2인 review 뒤 별도 commit으로 재분류
 
 첫 구현 batch의 완료 기준:
 

@@ -6,6 +6,9 @@
 > `docs/corpus/archive/v1.2/`; its frozen v2 output is under
 > `docs/corpus/archive/v2.0-from-v1.2/`. The deterministic migration is
 > `python scripts/migrate_evidence_v1_to_v2.py --check`.
+> Active cryptographic rows additionally use the input- and transcript-hashed
+> API round trips in `docs/corpus/correctness_snapshot_v1.json`, verified by
+> `python scripts/check_corpus_correctness.py --verify-snapshot`.
 
 ## Why v2 exists
 
@@ -56,15 +59,19 @@ The machine-readable core schema is
 2. A confirmed structural/asm risk or a **valid** timing signal becomes
    `risk-detected`.
 3. A layer `error` becomes `tool-error` unless a confirmed risk already exists.
-4. Partial structural/asm coverage or timing that is
+4. `correctness=not-run` becomes `inconclusive`; it can never reach the quiet
+   clean fold, while a risk already observed in another layer remains visible.
+5. Partial structural/asm coverage or timing that is
    `confounded|insufficient-power|environment-rejected` becomes `inconclusive`.
-5. A timing warning, unresolved attribution, or
+6. A timing warning, unresolved attribution, or
    `pending|disputed|expired` review becomes `needs-review`.
-6. Only an otherwise consistent record becomes `no-finding-observed`.
+7. Only an otherwise consistent, correctness-validated record becomes
+   `no-finding-observed`.
 
 Important invariants:
 
 - `timing_validity != valid` can never supply clean or risk evidence.
+- `correctness=not-run` can never supply a clean observation.
 - A raw timing `FAIL` with `timing_validity=confounded` is `inconclusive`, not
   `risk-detected` and certainly not clean.
 - A raw timing `PASS` without power calibration is
@@ -202,6 +209,11 @@ raw or migration provenance:
   was initialized from it but may evolve through later measured refreshes.
 - `scripts/check_corpus.py` validates headers, enums, the recomputed overall
   fold, review artifact scope, JSON-schema enum drift, and raw provenance.
+- `scripts/check_corpus_correctness.py --verify-snapshot` recompiles nine
+  frozen cryptographic targets with deterministic test randomness, executes
+  KEM enc/dec or signature sign/verify, and compares the source-input and
+  transcript hashes. Its snapshot maps PASS only to the named summary rows;
+  it is functional correctness evidence, not timing or constant-time evidence.
 - `scripts/render_readme_corpus.py` generates the README snapshot from the v2
   summary, so old `FAIL + robust` prose cannot return unnoticed.
 

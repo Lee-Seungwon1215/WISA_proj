@@ -1,0 +1,65 @@
+schema_version: 1
+campaign_id: ctkat-paper-native-v1
+status: premeasurement-frozen
+frozen_at: "2026-08-07"
+
+execution_policy:
+  minimum_physical_hosts: 2
+  minimum_distinct_cpu_models: 2
+  operating_system: Linux
+  architecture: x86_64
+  virtualization_allowed: false
+  emulation_allowed: false
+  same_commit_required: true
+  pilot_and_final_separated: true
+  final_code_changes_allowed: false
+  cross_component_artifact_reuse: false
+
+components:
+  - id: committed-corpus-refresh
+    purpose: replace legacy timing rows without silently expanding corpus scope
+    manifest: docs/measurement/native_timing_v2_campaign.yaml
+    command: python3 scripts/run_native_timing_campaign.py --manifest docs/measurement/native_timing_v2_campaign.yaml --output-root measurement_runs/host-ID/committed-corpus --execute
+  - id: kyberslash-contrast
+    purpose: stock, isolated KS1, isolated KS2, combined, and historical contrast
+    manifest: docs/measurement/kyberslash_native_v1.yaml
+    command: python3 scripts/run_native_timing_campaign.py --manifest docs/measurement/kyberslash_native_v1.yaml --output-root measurement_runs/host-ID/kyberslash --execute
+  - id: falcon-contrast
+    purpose: full-signature reference, native-FP, and integer-FPR comparison
+    manifest: docs/measurement/falcon_native_v1.yaml
+    command: python3 scripts/run_native_timing_campaign.py --manifest docs/measurement/falcon_native_v1.yaml --output-root measurement_runs/host-ID/falcon --execute
+  - id: diverse-lineages
+    purpose: portable versus native profiles in two maintained upstream lineages
+    manifest: docs/measurement/diverse_native_v1.yaml
+    command: python3 scripts/run_native_timing_campaign.py --manifest docs/measurement/diverse_native_v1.yaml --output-root measurement_runs/host-ID/diverse --execute
+
+same_corpus_baseline:
+  check_command: python3 scripts/run_same_corpus_baselines.py --check
+  execute_command: python3 scripts/run_same_corpus_baselines.py --run-dudect --output-root measurement_runs/host-ID/same-corpus
+  automatic_promotion: false
+
+upstream_freeze:
+  mlkem-native:
+    release: v1.3.0
+    revision: 398050c877ff4353c96305c6434b63528accfc37
+    tree_sha256: 101a2e35764993175c99dbbb7bb67c2f42970f525b0fd4493e5811eef162ec0a
+  mldsa-native:
+    release: v1.0.0-beta2
+    revision: 9b0ee84f4cf399043eca59eca4e5f8531ca1d61b
+    tree_sha256: a6899867ede95f0c5464c92b96ab314e83c610ff9e23c1cac6f3d78789e710ff
+
+promotion:
+  automatic_corpus_mutation: false
+  require_artifact_hashes: true
+  require_two_person_review: true
+  require_both_hosts: true
+  require_control_pass: true
+  review_manifest: docs/reviews/paper/manifest.yaml
+  preregistration: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+
+claim_limits:
+  - a static plan is not timing evidence
+  - a single host is a pilot, not final evidence
+  - full-signature Falcon timing includes variable-length encoding
+  - c-fn-dsa is prospective comparator evidence, not a FIPS 206 conformance claim
+  - OpenSSL is a provider-API integration case and not an independent lineage

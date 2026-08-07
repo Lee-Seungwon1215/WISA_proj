@@ -1,0 +1,69 @@
+schema_version: "1.0"
+campaign_id: diverse-native-v1
+description: >-
+  Frozen same-parameter portable versus x86_64-native timing comparison for
+  separately maintained mlkem-native and mldsa-native lineages.
+coverage_mode: manifest-only
+
+host:
+  system: Linux
+  machines: [x86_64, AMD64]
+  require_single_cpu_affinity: true
+  reject_emulation: true
+  reject_virtualization: true
+  recommended_governor: performance
+
+protocol:
+  backend: official-dudect
+  clock: rdtsc
+  seed: 0xC0FFEE
+  warmup: 1000
+  batches: 10
+  process_repeats: 3
+  pool_size: 64
+  aa_abs_t_limit: 4.5
+  positive_abs_t_threshold: 10.0
+  aa_max_failures: 0
+  target_power: 0.80
+  power_alpha: 0.01
+  compiler: gcc
+  compile_timeout: 900
+  backend_timeout: 300
+
+targets:
+  - id: mlkem_native_768_portable
+    family: ML-KEM/mlkem-native-portable
+    config: examples/mlkem_native/ctkat_timing_portable.yaml
+    harnesses: [kem_dec]
+    axes: {kem_dec: sk}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 4096]
+    timeout: 1800
+  - id: mlkem_native_768_x86_64
+    family: ML-KEM/mlkem-native-x86_64
+    config: examples/mlkem_native/ctkat_timing_x86_64.yaml
+    harnesses: [kem_dec]
+    axes: {kem_dec: sk}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 4096]
+    timeout: 1800
+  - id: mldsa_native_65_portable
+    family: ML-DSA/mldsa-native-portable
+    config: examples/mldsa_native/ctkat_timing_portable.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 4096, 32768]
+    timeout: 3600
+  - id: mldsa_native_65_x86_64
+    family: ML-DSA/mldsa-native-x86_64
+    config: examples/mldsa_native/ctkat_timing_x86_64.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 4096, 32768]
+    timeout: 3600

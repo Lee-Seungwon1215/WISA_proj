@@ -9,6 +9,16 @@
 
 #include "../../mlkem/mlkem_native.h"
 
+#if defined(MLK_CONFIG_NO_KEYPAIR_API) || defined(MLK_CONFIG_NO_ENCAPS_API) || \
+    defined(MLK_CONFIG_NO_DECAPS_API)
+int main(void)
+{
+  printf("SKIPPED (KAT requires full API)\n");
+  return 0;
+}
+#else /* MLK_CONFIG_NO_KEYPAIR_API || MLK_CONFIG_NO_ENCAPS_API || \
+         MLK_CONFIG_NO_DECAPS_API */
+
 #if defined(_WIN64) || defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
@@ -42,6 +52,10 @@ static void print_hex(const char *label, const uint8_t *data, size_t size)
   printf("\n");
 }
 
+/* Prototype for a re-#define'd main, to satisfy -Wmissing-prototypes. */
+#if defined(main)
+int main(void);
+#endif
 int main(void)
 {
   unsigned i;
@@ -86,3 +100,5 @@ int main(void)
 
   return 0;
 }
+#endif /* !(MLK_CONFIG_NO_KEYPAIR_API || MLK_CONFIG_NO_ENCAPS_API || \
+          MLK_CONFIG_NO_DECAPS_API) */

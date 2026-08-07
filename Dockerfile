@@ -1,4 +1,6 @@
-FROM ubuntu:24.04 AS base
+# Multi-architecture Ubuntu 24.04 index resolved 2026-08-07. Keep the readable
+# tag while pinning the immutable index digest used by amd64 and arm64 CI.
+FROM ubuntu:24.04@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
@@ -23,20 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Pin upper bounds too: pydantic in particular has been willing to break
-# `@model_validator` semantics across 2.x minor releases, and we want a
-# Dockerfile rebuild months from now to keep working without surprise. If
-# you bump a major, run the full test suite first.
-#
-# `rich` is listed explicitly because typer only depends on it transitively
-# today, which would break us if typer ever made it optional.
-RUN pip install --no-cache-dir \
-        "typer>=0.12,<1.0" \
-        "pydantic>=2,<3" \
-        "pyyaml>=6,<7" \
-        "jinja2>=3,<4" \
-        "rich>=13,<15" \
-        "pytest>=8,<9"
+COPY requirements/runtime.lock /opt/ctkat-runtime.lock
+RUN pip install --no-cache-dir --require-hashes -r /opt/ctkat-runtime.lock
 
 COPY pyproject.toml README.md LICENSE /opt/ctkat-src/
 COPY ctkat /opt/ctkat-src/ctkat
@@ -50,7 +40,7 @@ CMD ["/bin/bash"]
 # KyberSlash's operand-attribution backend is intentionally opt-in. The
 # ordinary runtime above keeps distro Valgrind; this builder pins the exact
 # release and full patch published with the IACR artifact.
-FROM ubuntu:24.04 AS timecop-builder
+FROM ubuntu:24.04@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea AS timecop-builder
 
 ARG VALGRIND_VERSION=3.22.0
 ARG VALGRIND_SHA256=c811db5add2c5f729944caf47c4e7a65dcaabb9461e472b578765dd7bf6d2d4c

@@ -78,10 +78,12 @@ static void ctkat_rand_bytes(uint8_t *buf, size_t len) {
 /* If a strong target randombytes symbol is linked, it replaces this weak
  * interpose and the counter remains zero.  That fact is emitted in the
  * runtime manifest instead of falsely claiming seeded randomness. */
-__attribute__((weak)) int randombytes(uint8_t *buf, size_t len) {
+__attribute__((weak)) {{ randombytes_return | default("int") }} randombytes(uint8_t *buf, size_t len) {
     ctkat_randombytes_calls++;
     ctkat_rand_bytes(buf, len);
+{% if randombytes_return is not defined or randombytes_return == "int" -%}
     return 0;
+{% endif -%}
 }
 
 static int ctkat_parse_u64(const char *text, uint64_t *value) {

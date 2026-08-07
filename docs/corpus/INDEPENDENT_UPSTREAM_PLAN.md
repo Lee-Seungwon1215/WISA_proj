@@ -7,10 +7,12 @@ primary upstream lineage다. 기계 판독 가능한 source/build/result 계약�
 
 ## 구현된 범위
 
-`0.10.0a1`에서 다음 source/build gate를 구현했다.
+현재 사전측정 동결본에는 다음 source/build gate가 구현돼 있다. 최초
+`0.10.0a1` import의 mlkem-native v1.2.0은 `0.11.0a1` 동결에서 v1.3.0으로
+교체했고 KAT digest 불변을 확인했다.
 
-1. `mlkem-native v1.2.0`
-   (`0ba906cb14b1c241476134d7403a811b382ca498`)
+1. `mlkem-native v1.3.0`
+   (`398050c877ff4353c96305c6434b63528accfc37`)
 2. `mldsa-native v1.0.0-beta2`
    (`9b0ee84f4cf399043eca59eca4e5f8531ca1d61b`)
 3. `OpenSSL 3.5.7`

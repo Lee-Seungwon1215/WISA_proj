@@ -190,16 +190,16 @@ python scripts/check_third_party.py --write-notices
 - Local modifications: None; all 45 tracked files are byte-identical. CT-KAT adapters and profiles live outside the vendored tree.
 - Detailed provenance: `examples/fndsa_prospective/FETCH_INFO.md`
 
-## mlkem-native v1.2.0 monolithic source and KAT subset
+## mlkem-native v1.3.0 monolithic source and KAT subset
 
 - Local path: `examples/mlkem_native/upstream`
 - Upstream: https://github.com/pq-code-package/mlkem-native
-- Revision: `0ba906cb14b1c241476134d7403a811b382ca498`
+- Revision: `398050c877ff4353c96305c6434b63528accfc37`
 - Upstream path: `LICENSE, README.md, META.yml, mlkem/, test/src/gen_KAT.c, and test/notrandombytes/`
 - License: `Apache-2.0 OR ISC OR MIT; test/notrandombytes is LicenseRef-PD-hp OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT`
 - License file: `examples/mlkem_native/upstream/LICENSE`
-- Tree SHA-256: `7f4d1da13cd51f8cca65fcb6bb8e4eb0b697e8097488f3058beab26b21c1334d`
-- Local modifications: None; all 130 imported files are byte-identical. CT-KAT adapters live outside the vendored tree.
+- Tree SHA-256: `101a2e35764993175c99dbbb7bb67c2f42970f525b0fd4493e5811eef162ec0a`
+- Local modifications: None; all 131 imported files are byte-identical. CT-KAT adapters live outside the vendored tree.
 - Detailed provenance: `examples/mlkem_native/FETCH_INFO.md`
 
 ## mldsa-native v1.0.0-beta2 monolithic source and KAT subset

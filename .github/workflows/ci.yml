@@ -22,8 +22,8 @@ jobs:
       matrix:
         python: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -34,16 +34,24 @@ jobs:
     name: Quality and artifact integrity
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.11.17"
+          enable-cache: false
       - run: python -m pip install -e ".[quality]"
+      - run: uv lock --check
+      - run: uv export --frozen --no-header --no-dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/runtime.lock" && cmp requirements/runtime.lock "$RUNNER_TEMP/runtime.lock"
+      - run: uv export --frozen --no-header --no-dev --extra dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/artifact.lock" && cmp requirements/artifact.lock "$RUNNER_TEMP/artifact.lock"
       - run: ruff check ctkat scripts tests
       - run: ruff format --check ctkat scripts tests
       - run: mypy ctkat
       - run: python scripts/check_corpus.py
+      - run: python scripts/check_corpus_correctness.py --verify-snapshot
       - run: python scripts/migrate_evidence_v1_to_v2.py --check
       - run: python scripts/render_readme_corpus.py --check
       - run: python scripts/check_third_party.py
@@ -52,15 +60,22 @@ jobs:
       - run: python scripts/check_falcon_comparators.py
       - run: python scripts/check_diverse_upstreams.py
       - run: python scripts/run_native_timing_campaign.py --check
+      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/kyberslash_native_v1.yaml --check
+      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/falcon_native_v1.yaml --check
+      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/diverse_native_v1.yaml --check
       - run: python scripts/calibrate_timing_backend.py --check
       - run: python scripts/run_same_corpus_baselines.py --check
+      - run: python scripts/check_paper_campaign.py
+      - run: python scripts/check_paper_reviews.py
+      - run: python scripts/run_ablation.py --check
+      - run: python scripts/build_paper_artifacts.py --check
 
   package:
     name: Wheel and sdist
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -103,8 +118,8 @@ jobs:
     name: Installed wheel / Valgrind / gcc+clang
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -128,7 +143,7 @@ jobs:
     name: Docker image
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: docker build --tag ctkat-ci .
       - run: docker run --rm ctkat-ci ctkat --version
 
@@ -136,7 +151,7 @@ jobs:
     name: KyberSlash TIMECOP attribution
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Build pinned patched Valgrind backend
         run: docker build --target timecop --tag ctkat-timecop-ci .
       - name: Run backend canary and five-target attribution
@@ -160,7 +175,7 @@ jobs:
               --output-root /results/same-corpus
       - name: Upload lossless attribution report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: kyberslash-timecop-${{ github.sha }}
           path: ${{ runner.temp }}/kyberslash-timecop
@@ -171,8 +186,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -185,7 +200,7 @@ jobs:
             --output-root "$RUNNER_TEMP/same-corpus-microwalk"
       - name: Upload lossless MicroWalk report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: same-corpus-microwalk-${{ github.sha }}
           path: ${{ runner.temp }}/same-corpus-microwalk
@@ -204,8 +219,8 @@ jobs:
           - architecture: aarch64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -224,7 +239,7 @@ jobs:
             "$RUNNER_TEMP/diverse-${{ matrix.architecture }}/native-upstreams-${{ matrix.architecture }}.json"
       - name: Upload build, KAT, equivalence, and asm evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: diverse-upstreams-${{ matrix.architecture }}-${{ github.sha }}
           path: |
@@ -239,8 +254,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -259,7 +274,7 @@ jobs:
             "$RUNNER_TEMP/openssl-pqc/openssl-pqc-api.json"
       - name: Upload exact source and integration evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: openssl-pqc-api-${{ github.sha }}
           path: |

@@ -1,0 +1,28 @@
+schema_version: 1
+bundle_id: replace-with-final-bundle-id
+ctkat_commit: replace-with-40-hex-commit
+hosts:
+  - id: host-a
+    cpu_model: replace-with-exact-cpu-model
+    physical: true
+    virtualization_detected: false
+    components:
+      committed-corpus-refresh: replace/host-a/committed-corpus
+      kyberslash-contrast: replace/host-a/kyberslash
+      falcon-contrast: replace/host-a/falcon
+      diverse-lineages: replace/host-a/diverse
+    same_corpus_result: replace/host-a/same-corpus/same-corpus-result.json
+  - id: host-b
+    cpu_model: replace-with-different-exact-cpu-model
+    physical: true
+    virtualization_detected: false
+    components:
+      committed-corpus-refresh: replace/host-b/committed-corpus
+      kyberslash-contrast: replace/host-b/kyberslash
+      falcon-contrast: replace/host-b/falcon
+      diverse-lineages: replace/host-b/diverse
+    same_corpus_result: replace/host-b/same-corpus/same-corpus-result.json
+blind_rerun:
+  operator_did_not_see_other_host_results: true
+  target_labels_blinded_during_execution: true
+  unblinding_record: replace/UNBLINDING.md

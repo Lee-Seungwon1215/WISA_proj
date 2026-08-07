@@ -16,6 +16,7 @@ from scripts import run_native_timing_campaign as campaign
 
 def test_committed_campaign_covers_every_existing_timing_row():
     spec = campaign.load_campaign()
+    assert spec.coverage_mode == "committed-timing-rows"
     assert campaign.static_check(spec) == []
     pairs = {(target.id, harness) for target in spec.targets for harness in target.harnesses}
     assert pairs == campaign._corpus_timing_pairs()
@@ -27,6 +28,16 @@ def test_committed_campaign_covers_every_existing_timing_row():
     assert axes == campaign._corpus_timing_axes()
     assert len(spec.targets) == 6
     assert len(pairs) == 8
+
+
+def test_manifest_only_campaign_does_not_claim_committed_corpus_coverage(monkeypatch):
+    spec = replace(campaign.load_campaign(), coverage_mode="manifest-only")
+    monkeypatch.setattr(
+        campaign,
+        "_corpus_timing_axes",
+        lambda: {("unrelated", "axis", "sk")},
+    )
+    assert campaign.static_check(spec) == []
 
 
 def test_campaign_overrides_do_not_mutate_modest_example_defaults(tmp_path):

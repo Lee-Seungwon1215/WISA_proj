@@ -30,7 +30,7 @@ current_lineages:
     claim_limit: not-a-FIPS-206-conformance-claim
   - id: mlkem-native
     upstream: https://github.com/pq-code-package/mlkem-native
-    revision: 0ba906cb14b1c241476134d7403a811b382ca498
+    revision: 398050c877ff4353c96305c6434b63528accfc37
     role: maintained-native-ml-kem-lineage
     imported: true
     ancestry: pq-crystals/kyber-public-domain-reference
@@ -48,10 +48,10 @@ integration_queue:
   - order: 1
     id: mlkem-native
     upstream: https://github.com/pq-code-package/mlkem-native
-    release: v1.2.0
-    revision: 0ba906cb14b1c241476134d7403a811b382ca498
+    release: v1.3.0
+    revision: 398050c877ff4353c96305c6434b63528accfc37
     import_path: examples/mlkem_native/upstream
-    tree_sha256: 7f4d1da13cd51f8cca65fcb6bb8e4eb0b697e8097488f3058beab26b21c1334d
+    tree_sha256: 101a2e35764993175c99dbbb7bb67c2f42970f525b0fd4493e5811eef162ec0a
     status: imported-build-gated-needs-review
     required_profiles: [portable, x86_64-optimized, aarch64-optimized]
     required_parameters: [ML-KEM-512, ML-KEM-768, ML-KEM-1024]

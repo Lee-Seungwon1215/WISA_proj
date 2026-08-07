@@ -1,0 +1,29 @@
+schema_version: "2.0"
+review_id: paper-mlkem-public-attribution-v2
+status: pending
+title: ML-KEM public Keccak attribution and correctness gate
+review_phase: pre-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: pqclean_mlkem512, harness: kem_dec, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+  - {target: pqclean_mlkem768, harness: kem_dec_fo, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+  - {target: pqclean_mlkem1024, harness: kem_dec, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+threat_model: Secret-dependent branch, address, or variable-latency operand during ML-KEM decapsulation.
+secret_origin: IND-CPA secret polynomial and FO rejection seed; embedded public key material is excluded.
+observed_dependency: Assembly division candidates in public Keccak rate computations; legacy timing rows are non-decisional.
+declassification_predicate: Candidate operands must be traced to public Keccak rate or other public transcript state for the exact build cell.
+public_transcript: Public key, ciphertext, Keccak rate constants, and values derived solely from them.
+security_argument: No candidate may clear solely by function name; both reviewers inspect source, disassembly, and attribution evidence.
+known_limitations:
+  - Correctness PASS must be refreshed before a no-finding paper claim.
+  - Dynamic structural coverage does not include unexecuted paths.
+evidence:
+  - docs/corpus/corpus_summary.csv
+  - docs/reviews/rvw-mlkem-evidence-v1.yaml
+expected_evidence:
+  - paper artifact structural refresh report
+reviewers: []
+expiry_conditions:
+  - source revision changes
+  - compiler or flags change
+  - secret-region declaration changes

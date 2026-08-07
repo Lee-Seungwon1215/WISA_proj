@@ -1,0 +1,30 @@
+schema_version: "2.0"
+review_id: paper-kyberslash-ground-truth-v2
+status: pending
+title: KyberSlash stock, KS1, KS2, combined, and historical attribution
+review_phase: pre-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: pqclean_mlkem768_kyberslash1, harness: kem_dec, build_scope: frozen-ground-truth-matrix}
+  - {target: pqclean_mlkem768_kyberslash2, harness: kem_dec, build_scope: frozen-ground-truth-matrix}
+  - {target: pqclean_mlkem768_kyberslash, harness: kem_dec, build_scope: frozen-ground-truth-matrix}
+  - {target: pqcrystals_kyber768_ref_a621b8d, harness: kem_dec, build_scope: frozen-historical-matrix}
+threat_model: Secret-derived operands reaching variable-latency integer division even without secret branch or address findings.
+secret_origin: Decapsulation secret polynomial coefficients and derived message/compression values.
+observed_dependency: Patched TIMECOP attribution at KS1 and KS2 sites plus emitted division candidates by build cell.
+declassification_predicate: none; confirmed secret-derived operands remain risk-detected.
+public_transcript: Ciphertext and public key are public, but they do not declassify secret-derived division operands.
+security_argument: Stock, isolated variants, combined variant, historical source, and patched control must remain distinguishable.
+known_limitations:
+  - Operand attribution is not physical latency evidence.
+  - Full key recovery is outside the pre-measurement claim.
+evidence:
+  - docs/ground_truth/kyberslash/ground_truth.yaml
+  - docs/reviews/rvw-kyberslash-ground-truth-v1.yaml
+expected_evidence:
+  - native paired latency report
+reviewers: []
+expiry_conditions:
+  - ground-truth patch hash changes
+  - upstream source revision changes
+  - attribution backend revision changes

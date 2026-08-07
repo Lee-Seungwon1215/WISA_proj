@@ -1,0 +1,56 @@
+schema_version: 1
+snapshot_id: ctkat-corpus-correctness-v1
+status: deterministic-api-roundtrip-frozen
+compiler:
+  cc: gcc
+  cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+randomness: generated-deterministic-PQCLEAN_randombytes-test-interpose
+
+targets:
+  - id: pqclean_mlkem512
+    config: examples/pqc_mlkem512/ctkat.yaml
+    source_harness: kem_dec
+    template: kem
+    summary_harnesses: [kem_dec, kem_dec_fo]
+  - id: pqclean_mlkem768
+    config: examples/pqc_mlkem768/ctkat.yaml
+    source_harness: kem_dec
+    template: kem
+    summary_harnesses: [kem_dec, kem_dec_ct, kem_dec_fo]
+  - id: pqclean_mlkem1024
+    config: examples/pqc_mlkem1024/ctkat.yaml
+    source_harness: kem_dec
+    template: kem
+    summary_harnesses: [kem_dec, kem_dec_fo]
+  - id: pqclean_mldsa44
+    config: examples/pqc_mldsa44/ctkat.yaml
+    source_harness: sign
+    template: sign
+    summary_harnesses: [sign]
+  - id: pqclean_mldsa65
+    config: examples/pqc_mldsa65/ctkat.yaml
+    source_harness: sign
+    template: sign
+    summary_harnesses: [sign]
+  - id: pqclean_mldsa87
+    config: examples/pqc_mldsa87/ctkat.yaml
+    source_harness: sign
+    template: sign
+    summary_harnesses: [sign]
+  - id: pqclean_sphincs_sha2_128f_simple
+    config: examples/pqc_sphincs_sha2_128f_simple/ctkat.yaml
+    source_harness: sign
+    template: sign
+    summary_harnesses: [sign]
+  - id: pqclean_falcon512_reference
+    config: examples/pqc_falcon512/ctkat.yaml
+    source_harness: sign
+    template: sign
+    summary_harnesses: [sign]
+  - id: pqclean_falcon1024_reference
+    config: examples/pqc_falcon1024/ctkat.yaml
+    source_harness: sign
+    template: sign
+    summary_harnesses: [sign]
+
+snapshot: docs/corpus/correctness_snapshot_v1.json

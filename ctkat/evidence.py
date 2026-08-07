@@ -293,6 +293,15 @@ def fold_overall(
     ):
         return Overall.TOOL_ERROR
 
+    # A risk signal remains useful even when functional validation has not
+    # run, which is why this gate intentionally follows the risk fold above.
+    # The inverse is not true: a quiet structural/asm/timing run on an
+    # unvalidated binary must never become a clean headline.  Synthetic
+    # fixtures that deliberately omit correctness can still report detected
+    # risks, but real-code no-finding claims require an explicit PASS.
+    if correctness == Correctness.NOT_RUN:
+        return Overall.INCONCLUSIVE
+
     if (
         structural == Structural.INCOMPLETE
         or asm == AsmEvidence.INCOMPLETE

@@ -54,6 +54,25 @@ ctkat --version
 ctkat infer --header tests/fixtures/headers/kem.h
 ```
 
+논문 측정 전 동결 상태를 한 번에 재검증하려면 hash-locked environment에서:
+
+```bash
+uv sync --frozen --extra dev
+uv run ./scripts/reproduce_artifact.sh \
+  --profile premeasurement \
+  --output-root artifact_runs/premeasurement
+```
+
+이 명령은 native timing을 위조해서 채우지 않는다. 테스트·9개 target의
+deterministic API round-trip correctness·corpus·provenance·4개 native
+campaign(21 target execution/25 axis)·2인 review packet schema·ablation·paper
+table drift를 검사하고 command log/source hash/SHA256SUMS를 남긴다.
+실제 측정은 서로 다른 physical x86_64 CPU 두 대와 완료된 review가 필요하다.
+리뷰 6종의 독립 2인 승인이 끝난 뒤에는 같은 명령의
+`--profile measurement-ready`가 통과해야만 측정을 시작한다.
+실험 동결본은 `docs/measurement/paper_native_campaign_v1.yaml`, 논문 골격과
+claim 상태는 `docs/paper/`, blind/final bundle 절차는 `docs/artifact/`에 있다.
+
 Valgrind 구조 검사는 Linux가 필요하다. macOS/Windows 개발 환경에서는
 Docker Desktop을 실행한 뒤:
 
@@ -136,7 +155,7 @@ WISA/
 │   ├── fndsa_prospective/      # exact-pinned c-fn-dsa source + local adapters
 │   ├── c_fndsa512_prospective/ # native-FP + integer-FPR comparator profiles
 │   ├── c_fndsa1024_prospective/
-│   ├── mlkem_native/           # v1.2.0 source/asm/upstream-KAT subset
+│   ├── mlkem_native/           # v1.3.0 source/asm/upstream-KAT subset
 │   ├── mldsa_native/           # v1.0.0-beta2 source/asm/upstream-KAT subset
 │   └── openssl_pqc/            # exact OpenSSL 3.5.7 provider API adapter
 ├── docs/measurement/           # frozen native timing campaign + execution gate
@@ -988,37 +1007,37 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 ### Committed corpus snapshot
 
 <!-- BEGIN CTKAT CORPUS SNAPSHOT -->
-<!-- source: docs/corpus/corpus_summary.csv sha256=b4c1e9447baba81f49c773bc163df165d400a32717fb2aa89c67c56e97d3dd10; regenerate: python scripts/render_readme_corpus.py --write -->
+<!-- source: docs/corpus/corpus_summary.csv sha256=4fa3189320da55debabd10a396937eeb1bd3d4cd9921c70cce9a96c9790f5d55; regenerate: python scripts/render_readme_corpus.py --write -->
 
-`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:b4c1e9447bab`).
+`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:4fa3189320da`).
 
-| family | target / harness | structural | asm / attribution | timing validity / signal | review | overall |
-|---|---|---|---|---|---|---|
-| ML-KEM | pqclean_mlkem512 / kem_dec | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
-| ML-KEM | pqclean_mlkem512 / kem_dec_fo | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
-| ML-KEM | pqclean_mlkem768 / kem_dec | no-finding | candidate / public | confounded / signal (raw FAIL, \|t\|=145.316) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
-| ML-KEM | pqclean_mlkem768 / kem_dec_ct | not-run | not-run / not-applicable | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.304) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
-| ML-KEM | pqclean_mlkem768 / kem_dec_fo | no-finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.103) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
-| ML-KEM | pqclean_mlkem1024 / kem_dec | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
-| ML-KEM | pqclean_mlkem1024 / kem_dec_fo | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
-| ML-DSA | pqclean_mldsa44 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.153) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
-| ML-DSA | pqclean_mldsa65 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
-| ML-DSA | pqclean_mldsa87 / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
-| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.523) | reviewed (rvw-sphincs-public-state-v1) | inconclusive |
-| synthetic | toy_lookup / leaky | finding | no-candidate / not-applicable | not-run / not-run | reviewed (rvw-toy-lookup-ground-truth-v1) | risk-detected |
-| synthetic | toy_lookup / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
-| synthetic | ct_matrix_flip / leaky | finding | no-candidate / not-applicable | not-run / not-run | not-needed | risk-detected |
-| synthetic | ct_matrix_flip / safe | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | no-finding-observed |
-| ML-KEM | pqclean_mlkem768_kyberslash1 / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
-| ML-KEM | pqclean_mlkem768_kyberslash2 / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
-| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
-| Kyber | pqcrystals_kyber768_ref_a621b8d / kem_dec | finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
-| Falcon | pqclean_falcon512_reference / sign | finding | candidate / unresolved | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.590) | pending | inconclusive |
-| Falcon | pqclean_falcon1024_reference / sign | finding | candidate / unresolved | not-run / not-run | pending | needs-review |
-| Falcon | c_fndsa512_prospective / sign_native_fp | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
-| Falcon | c_fndsa512_prospective / sign_fpr_emu | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
-| Falcon | c_fndsa1024_prospective / sign_native_fp | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
-| Falcon | c_fndsa1024_prospective / sign_fpr_emu | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| family | target / harness | correctness | structural | asm / attribution | timing validity / signal | review | overall |
+|---|---|---|---|---|---|---|---|
+| ML-KEM | pqclean_mlkem512 / kem_dec | pass | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem512 / kem_dec_fo | pass | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem768 / kem_dec | pass | no-finding | candidate / public | confounded / signal (raw FAIL, \|t\|=145.316) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
+| ML-KEM | pqclean_mlkem768 / kem_dec_ct | pass | not-run | not-run / not-applicable | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.304) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
+| ML-KEM | pqclean_mlkem768 / kem_dec_fo | pass | no-finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.103) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
+| ML-KEM | pqclean_mlkem1024 / kem_dec | pass | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-KEM | pqclean_mlkem1024 / kem_dec_fo | pass | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
+| ML-DSA | pqclean_mldsa44 / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.153) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
+| ML-DSA | pqclean_mldsa65 / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
+| ML-DSA | pqclean_mldsa87 / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
+| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.523) | reviewed (rvw-sphincs-public-state-v1) | inconclusive |
+| synthetic | toy_lookup / leaky | not-run | finding | no-candidate / not-applicable | not-run / not-run | reviewed (rvw-toy-lookup-ground-truth-v1) | risk-detected |
+| synthetic | toy_lookup / safe | not-run | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | inconclusive |
+| synthetic | ct_matrix_flip / leaky | not-run | finding | no-candidate / not-applicable | not-run / not-run | not-needed | risk-detected |
+| synthetic | ct_matrix_flip / safe | not-run | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | inconclusive |
+| ML-KEM | pqclean_mlkem768_kyberslash1 / kem_dec | pass | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| ML-KEM | pqclean_mlkem768_kyberslash2 / kem_dec | pass | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| ML-KEM | pqclean_mlkem768_kyberslash / kem_dec | pass | no-finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| Kyber | pqcrystals_kyber768_ref_a621b8d / kem_dec | pass | finding | candidate / secret-risk | not-run / not-run | reviewed (rvw-kyberslash-ground-truth-v1) | risk-detected |
+| Falcon | pqclean_falcon512_reference / sign | pass | finding | candidate / unresolved | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.590) | pending | inconclusive |
+| Falcon | pqclean_falcon1024_reference / sign | pass | finding | candidate / unresolved | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa512_prospective / sign_native_fp | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa512_prospective / sign_fpr_emu | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa1024_prospective / sign_native_fp | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| Falcon | c_fndsa1024_prospective / sign_fpr_emu | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
 
 재생성: `python scripts/render_readme_corpus.py --write`
 <!-- END CTKAT CORPUS SNAPSHOT -->
@@ -1122,7 +1141,7 @@ timing blocker are in
 
 ### 6. Independent native-upstream build corpus
 
-The source/build corpus imports byte-identical subsets of mlkem-native v1.2.0
+The source/build corpus imports byte-identical subsets of mlkem-native v1.3.0
 and mldsa-native v1.0.0-beta2, including their upstream KAT generators and
 `META.yml` KAT hashes. Native CI executes this matrix on Linux x86_64 and
 AArch64:

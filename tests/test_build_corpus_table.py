@@ -293,7 +293,9 @@ def test_build_untriaged_is_the_honest_default(tmp_path):
         [_vl("h", "gcc", "foo", "-Os")],
         [],
     )
-    _cells, summary = bct.build(tmp_path, "f", "t", {}, "", "", {})  # no --triage
+    _cells, summary = bct.build(
+        tmp_path, "f", "t", {}, "", "", {}, correctness="pass"
+    )  # no --triage
     assert summary[0]["varlat_triage"] == "untriaged"
     assert summary[0]["legacy_verdict_class"] == "ct-clean-untriaged"
     assert summary[0]["legacy_basis"] == "stop"
@@ -345,7 +347,7 @@ def test_build_pass_no_candidates_is_robust(tmp_path):
     # ct PASS with NO asm-scan candidates -> robust (nothing to triage), even
     # without an explicit --triage (regression for the ct-clean-untriaged trap).
     _write_reports(tmp_path, [_ctm("safe", "gcc_debug", "gcc", "-O0", "PASS")], [], [])
-    _c, s = bct.build(tmp_path, "syn", "t", {}, "", "", {})
+    _c, s = bct.build(tmp_path, "syn", "t", {}, "", "", {}, correctness="pass")
     assert s[0]["legacy_verdict_class"] == "robust"
     assert s[0]["legacy_basis"] == "auto"
     assert s[0]["overall"] == "no-finding-observed"
@@ -371,7 +373,7 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
 
     # suffix-match against PFX_-prefixed names; all registered -> accepted
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_make_hint;PFX_pack_sig")], [], [])
-    _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
+    _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg, correctness="pass")
     assert s[0]["legacy_verdict_class"] == "accepted-variable-time"
     assert s[0]["legacy_basis"] == "auto"
     assert s[0]["review"] == "pending"
@@ -381,7 +383,7 @@ def test_build_ct_fail_registry_accepted_vs_needs_analysis(tmp_path):
 
     # one unregistered function -> needs-analysis, named in the note (default-deny)
     _write_reports(tmp_path, [_row("PFX_poly_chknorm;PFX_mystery_fn")], [], [])
-    _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg)
+    _c, s = bct.build(tmp_path, "ML-DSA", "t", {}, "", "", {}, registry=reg, correctness="pass")
     assert s[0]["legacy_verdict_class"] == "needs-analysis"
     assert s[0]["legacy_basis"] == "stop"
     assert s[0]["overall"] == "needs-review"
@@ -546,7 +548,7 @@ def test_missing_asm_coverage_manifest_cannot_claim_no_candidate(tmp_path):
         [],
         asm_manifest=False,
     )
-    cells, summary = bct.build(tmp_path, "syn", "t", {}, "x86_64", "abc", {})
+    cells, summary = bct.build(tmp_path, "syn", "t", {}, "x86_64", "abc", {}, correctness="pass")
     assert cells[0]["asm_status"] == "NOT_RUN"
     assert summary[0]["asm"] == "not-run"
     assert summary[0]["overall"] == "needs-review"

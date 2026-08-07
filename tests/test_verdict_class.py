@@ -186,7 +186,7 @@ def test_summarize_groups_and_orders_by_harness():
         {"target": "t", "harness": "b", **_cell("FAIL", funcs="PFX_x")},
         {"target": "t", "harness": "a", **_cell("FAIL")},  # 'a' flips
     ]
-    rows = summarize(cells, family="X", triage={}, dud_by={}, dcfg={})
+    rows = summarize(cells, family="X", triage={}, dud_by={}, dcfg={}, correctness="pass")
     by = {r["harness"]: r for r in rows}
     assert [r["harness"] for r in rows] == ["a", "b"]  # first-seen order
     assert by["a"]["legacy_verdict_class"] == "build-sensitive-ct"

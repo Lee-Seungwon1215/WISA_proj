@@ -738,6 +738,12 @@ class DudectHarnessConfig(BaseModel):
     # the same mapping.  Set null only for a self-contained deterministic toy
     # API that has no randombytes header/symbol.
     randombytes_header: Optional[str] = "randombytes.h"
+    # Historical SUPERCOP/PQClean-derived APIs are split between the modern
+    # `int randombytes(...)` contract and an older `void randombytes(...)`
+    # contract. The seeded timing interpose must match the declaration exactly;
+    # a cross-translation-unit return-type mismatch would make the comparison
+    # undefined rather than reproducible.
+    randombytes_return: Literal["int", "void"] = "int"
     prefix: str = ""
     # kem-only
     # Which axis of the KEM API is varied between class 0 and class 1.

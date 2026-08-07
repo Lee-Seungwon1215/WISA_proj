@@ -206,6 +206,19 @@ def test_tool_error_and_correctness_failure_are_not_clean():
     assert _evidence(correctness=Correctness.FAIL).overall == Overall.INCONCLUSIVE
 
 
+def test_correctness_not_run_cannot_fold_to_no_finding():
+    assert _evidence(correctness=Correctness.NOT_RUN).overall == Overall.INCONCLUSIVE
+
+
+def test_correctness_not_run_does_not_hide_an_observed_risk():
+    evidence = _evidence(
+        correctness=Correctness.NOT_RUN,
+        structural=Structural.FINDING,
+        legacy_verdict_class="build-sensitive-ct",
+    )
+    assert evidence.overall == Overall.RISK
+
+
 def test_explicit_contradictory_overall_is_rejected():
     with pytest.raises(ValueError, match="contradicts evidence fold"):
         _evidence(overall=Overall.NO_FINDING, structural=Structural.ERROR)

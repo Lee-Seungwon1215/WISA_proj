@@ -1,0 +1,39 @@
+project:
+  name: pqclean_falcon1024_reference
+  language: c
+  root: ..
+
+build: {argv: ["true"], workdir: .}
+
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 1000
+  warmup: 50
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: sign
+      template: sign
+      header: api.h
+      randombytes_header: randombytes.h
+      prefix: "PQCLEAN_FALCON1024_CLEAN_"
+      include_dirs: [clean, ../pqc_mlkem768/common]
+      sources:
+        - clean/codec.c
+        - clean/common.c
+        - clean/fft.c
+        - clean/fpr.c
+        - clean/keygen.c
+        - clean/pqclean.c
+        - clean/rng.c
+        - clean/sign.c
+        - clean/vrfy.c
+        - ../pqc_mlkem768/common/fips202.c
+
+report: {output_dir: ./reports}

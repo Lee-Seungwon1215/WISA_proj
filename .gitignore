@@ -29,6 +29,7 @@ examples/*/reports_*/
 # Native timing campaigns are large, host-specific evidence bundles. Validate
 # and review them before copying selected immutable artifacts into docs/corpus.
 measurement_runs/
+artifact_runs/
 .ctkat-diverse-build/
 
 # Local-only historical notes / agent prompting files
@@ -36,7 +37,7 @@ measurement_runs/
 .claude/
 
 # Local paper source / packaging artifacts
-paper/
+/paper/
 paper.zip
 
 # Editor / OS

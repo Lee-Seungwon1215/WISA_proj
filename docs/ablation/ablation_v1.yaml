@@ -1,0 +1,35 @@
+schema_version: 1
+ablation_id: ctkat-evidence-ablation-v1
+status: committed-screening-complete-native-timing-pending
+data_sources:
+  cells: docs/corpus/corpus_cells.csv
+  summary: docs/corpus/corpus_summary.csv
+
+stages:
+  - id: single-release-build
+    input: cells
+    selector: combo-equals-gcc_release
+    evidence: structural-only
+  - id: full-build-matrix
+    input: cells
+    selector: all-committed-cells
+    evidence: structural-only
+  - id: full-matrix-plus-asm
+    input: cells
+    selector: all-committed-cells
+    evidence: structural-and-assembly-candidates
+  - id: reviewed-evidence-fold
+    input: summary
+    selector: all-committed-pairs
+    evidence: correctness-structural-asm-attribution-timing-review
+
+deferred_stage:
+  id: official-versus-legacy-timing
+  status: pending-physical-native-measurement
+  reason: official timing-v2 artifacts do not exist on two eligible hosts yet
+  zero_must_not_mean_missing: true
+
+outputs:
+  csv: docs/ablation/generated/ablation_summary.csv
+  json: docs/ablation/generated/ablation_summary.json
+  markdown: docs/ablation/generated/README.md

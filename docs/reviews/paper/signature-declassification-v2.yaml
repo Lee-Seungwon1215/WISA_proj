@@ -1,0 +1,30 @@
+schema_version: "2.0"
+review_id: paper-signature-declassification-v2
+status: pending
+title: ML-DSA and SPHINCS+ public-output declassification
+review_phase: pre-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: pqclean_mldsa44, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+  - {target: pqclean_mldsa65, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+  - {target: pqclean_mldsa87, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+  - {target: pqclean_sphincs_sha2_128f_simple, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+threat_model: Secret-dependent signing control flow or memory access observable before values become public signature state.
+secret_origin: Long-term signing key components and signing randomness.
+observed_dependency: Rejection, hint, tree, and WOTS paths previously attributed to public-output generation.
+declassification_predicate: Each dependency must be shown to occur only after the exact value is committed to the public signature transcript.
+public_transcript: Signature bytes and public verification state for the exact harness invocation.
+security_argument: Review is data-flow scoped and cannot whitelist whole functions or all parameter sets by analogy.
+known_limitations:
+  - Specification permission alone is not a constant-time claim.
+  - Legacy timing PASS rows are underpowered and remain inconclusive.
+evidence:
+  - docs/reviews/rvw-mldsa-rejection-v1.yaml
+  - docs/reviews/rvw-sphincs-public-state-v1.yaml
+expected_evidence:
+  - refreshed structural cells with correctness PASS
+reviewers: []
+expiry_conditions:
+  - source or standard revision changes
+  - compiler or optimization matrix changes
+  - declassification probe changes

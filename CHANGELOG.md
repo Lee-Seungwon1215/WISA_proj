@@ -3,6 +3,55 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.11.0a1] - 2026-08-07
+
+### Added
+
+- A two-host paper campaign that freezes the committed-corpus refresh,
+  stock/KS1/KS2/combined/historical KyberSlash comparison, Falcon-512/1024
+  reference/native-FP/integer-FPR comparison, and mlkem-native/mldsa-native
+  portable-versus-x86_64 comparison: 21 target executions and 25 timing axes.
+- Timing-only c-fn-dsa and mldsa-native adapters whose key/signing seeds come
+  from the seeded harness interpose, plus an exact `void randombytes` ABI mode
+  for the historical Kyber snapshot.
+- An internal experiment preregistration, deterministic evidence ablation,
+  paper outline, claim/evidence matrix, generated paper tables, seven
+  independent two-person review packets, blind-rerun checklist, and final
+  bundle template.
+- One-command `premeasurement`, fail-closed `measurement-ready`, and `final`
+  artifact profiles with command logs, tracked-source hashes, review/bundle
+  validation, and symlink-rejecting SHA-256 manifests.
+- A deterministic functional-correctness snapshot for nine ML-KEM, ML-DSA,
+  SPHINCS+, and Falcon targets, binding generated API-roundtrip transcripts to
+  exact configuration and source-input hashes.
+- A cross-platform `uv.lock`, hash-locked runtime/artifact requirements,
+  digest-pinned Ubuntu base image, and commit-pinned GitHub Actions.
+
+### Changed
+
+- The final premeasurement mlkem-native freeze moves from v1.2.0 to v1.3.0 at
+  exact revision `398050c877ff4353c96305c6434b63528accfc37`; KAT digests remain
+  unchanged and the vendored subset hash is updated.
+- Native campaign manifests may use `manifest-only` coverage for new paper
+  comparisons while the original corpus-refresh manifest still requires exact
+  equality with committed timing rows.
+- Paper tables now separate the screening corpus, source/build corpus, and
+  physical timing campaign instead of inflating parameters, profiles,
+  wrappers, or integrations into implementation counts.
+
+### Fixed
+
+- An evidence object with `correctness=not-run` can no longer fold to
+  `no-finding-observed`; it remains `inconclusive` while preserving any observed
+  risk.
+- Thirteen active corpus rows previously missing an executable correctness
+  precondition now reference the frozen API-roundtrip snapshot; four synthetic
+  rows remain explicitly `not-run` and `inconclusive`.
+- The c-fn-dsa timing comparison no longer reuses the structural adapter's fixed
+  key seed, which would have made fixed and random secret-key pools identical.
+- Missing native timing ablation data is represented as pending rather than a
+  misleading zero.
+
 ## [0.10.0a1] - 2026-07-31
 
 ### Added

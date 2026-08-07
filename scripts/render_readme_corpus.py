@@ -37,6 +37,7 @@ def render_block(csv_path: Path = DEFAULT_CSV) -> str:
         "family",
         "target",
         "harness",
+        "correctness",
         "structural",
         "asm",
         "asm_attribution",
@@ -65,10 +66,10 @@ def render_block(csv_path: Path = DEFAULT_CSV) -> str:
         ),
         "",
         (
-            "| family | target / harness | structural | asm / attribution "
+            "| family | target / harness | correctness | structural | asm / attribution "
             "| timing validity / signal | review | overall |"
         ),
-        "|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         timing = f"{row['timing_validity']} / {row['timing_signal']}"
@@ -87,6 +88,7 @@ def render_block(csv_path: Path = DEFAULT_CSV) -> str:
                 [
                     _cell(row["family"]),
                     _cell(f"{row['target']} / {row['harness']}"),
+                    _cell(row["correctness"]),
                     _cell(row["structural"]),
                     _cell(f"{row['asm']} / {row['asm_attribution']}"),
                     _cell(timing),

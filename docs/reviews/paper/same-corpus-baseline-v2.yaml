@@ -1,0 +1,28 @@
+schema_version: "2.0"
+review_id: paper-same-corpus-baseline-v2
+status: pending
+title: Same-corpus TIMECOP, MicroWalk, and official dudect comparison
+review_phase: pre-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: toy_kem_ct_leak, harness: leaky, build_scope: common-positive-control}
+  - {target: toy_kem_ct_leak, harness: safe, build_scope: common-negative-control}
+threat_model: Tool capability comparison on the same source, function, ciphertext axis, and positive/negative controls.
+secret_origin: Toy KEM secret-key byte controlling a branch in the positive case.
+observed_dependency: Backend-specific candidate, trace, or timing evidence under one frozen workload.
+declassification_predicate: Negative control must be source-equivalent except for the seeded leak and must remain finding-free within each supported threat model.
+public_transcript: Ciphertext and decapsulation output.
+security_argument: Unsupported, timeout, crash, and missing cost fields remain explicit rather than excluded.
+known_limitations:
+  - Toy controls validate adapters but do not alone establish real-code superiority.
+  - Physical official-dudect cost and stability are pending.
+evidence:
+  - docs/baselines/same_corpus_v1.yaml
+  - docs/baselines/same_corpus_v1_matrix.csv
+expected_evidence:
+  - repeated native baseline result bundle
+reviewers: []
+expiry_conditions:
+  - toy source or adapter changes
+  - backend revision changes
+  - common workload definition changes

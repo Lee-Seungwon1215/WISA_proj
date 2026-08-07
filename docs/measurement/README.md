@@ -1,5 +1,33 @@
 # Native timing campaign
 
+논문용 최상위 동결본은 `paper_native_campaign_v1.yaml`이다. 기존 corpus refresh
+외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
+두 개의 서로 다른 physical x86_64 CPU model에서 같은 commit을 실행해야 한다.
+
+```bash
+python scripts/check_paper_campaign.py
+
+python scripts/run_native_timing_campaign.py \
+  --manifest docs/measurement/kyberslash_native_v1.yaml --check
+python scripts/run_native_timing_campaign.py \
+  --manifest docs/measurement/falcon_native_v1.yaml --check
+python scripts/run_native_timing_campaign.py \
+  --manifest docs/measurement/diverse_native_v1.yaml --check
+```
+
+현재 정적 범위는 4 component, 21 target execution, 25 timing axis다. 이 숫자는
+독립 구현 수가 아니다. 같은 target이 비교/control 목적으로 여러 component에
+나올 수 있고 portable/native profile도 하나의 lineage 안에 있다.
+
+- `native_timing_v2_campaign.yaml`: committed timing row 8축의 replacement
+- `kyberslash_native_v1.yaml`: stock/KS1/KS2/combined/historical 7축
+- `falcon_native_v1.yaml`: 512/1024 reference/native-FP/integer-FPR 6축
+- `diverse_native_v1.yaml`: mlkem-native/mldsa-native portable/x86_64 4축
+
+가설, sample/control 수, 제외 기준, multiplicity, host disagreement,
+promotion 문구는 `EXPERIMENT_PREREGISTRATION.md`에 측정 전에 고정했다. static
+check 성공은 timing 결과가 아니라 “실행 정의가 준비됨”만 뜻한다.
+
 `native_timing_v2_campaign.yaml`은 기존 corpus의 timing 8개 축을
 timing-harness-v2로 다시 측정하기 위한 동결된 실행 계획이다. 현재 repository는
 **준비 완료, native 실행 보류** 상태다.

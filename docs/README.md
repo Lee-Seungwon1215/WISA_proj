@@ -1,7 +1,7 @@
 # CT-KAT docs map
 
-This directory keeps project-facing documentation for running and extending
-CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
+This directory keeps project-facing documentation for running, extending, and
+reproducing CT-KAT. Superseded scratchpads remain local-only.
 
 ## Current source of truth
 
@@ -14,14 +14,19 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
   effect curve, and same-trace parity artifact.
 - `measurement/` — frozen native timing-v2 campaign, bare-metal preflight,
   resumable execution, artifact validation, and corpus-promotion boundary.
+- `paper/` — premeasurement outline, claim/evidence matrix, and generated
+  corpus/ablation/campaign/review readiness tables.
+- `artifact/` — one-command profiles, two-host bundle template, hashes, and
+  blind-rerun checklist.
 - `baselines/` — same-source/input official dudect, patched TIMECOP, and
   MicroWalk PinTracer adapters, complete capability matrix, and common result
   schema.
 - `ground_truth/kyberslash/` — frozen KS1/KS2/combined/historical sources,
   exact diffs, provenance, deterministic KEM equivalence, and TIMECOP evidence
   boundaries.
-- `corpus/` — committed v2 corpus, migration manifest, frozen v1.2 archive,
-  and independent-upstream expansion contract.
+- `corpus/` — committed v2 corpus, deterministic correctness snapshot,
+  migration manifest, frozen v1.2 archive, and independent-upstream expansion
+  contract.
 - `ROADMAP_REJECTION_RECOVERY.md` — rejection-review adjudication and the
   dependency-ordered completion plan, including the KyberSlash and Falcon
   workstreams.
@@ -29,6 +34,7 @@ CT-KAT. Planning notes, paper drafts, and review scratchpads are local-only.
 ## Local-only archive
 
 Old audit ledgers, original design prompts, KyberSlash brainstorming notes,
-agent prompting guides, forward plans, and paper material are intentionally
-excluded from git under `.local_archive/` or `paper/`. They are useful history,
-but not source of truth for current behavior.
+agent prompting guides, and superseded drafts are intentionally excluded from
+git under `.local_archive/` or the repository-root `/paper/`. They are useful
+history, but not source of truth for current behavior. The tracked `docs/paper/`
+tree is the current premeasurement paper source of truth.

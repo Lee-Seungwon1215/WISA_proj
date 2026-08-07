@@ -67,4 +67,7 @@ def test_v1_review_basis_does_not_self_promote_without_manifest_override():
     assert source["basis"] == "review"
     assert row["review"] == "pending"
     assert row["review_id"] == ""
-    assert row["overall"] == "needs-review"
+    # Missing correctness now blocks every quiet/review-only legacy row before
+    # it can be promoted.  The row remains non-clean, but the primary reason
+    # is that the implementation was never functionally validated.
+    assert row["overall"] == "inconclusive"

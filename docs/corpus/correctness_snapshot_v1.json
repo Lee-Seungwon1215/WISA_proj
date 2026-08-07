@@ -1,0 +1,134 @@
+{
+  "compiler": "gcc",
+  "compiler_version": "Apple clang version 17.0.0 (clang-1700.0.13.5)",
+  "kind": "ctkat-corpus-correctness-snapshot",
+  "machine": "arm64",
+  "method": "deterministic-keygen-enc-dec-or-sign-verify-api-roundtrip",
+  "randomness": "generated-deterministic-PQCLEAN_randombytes-test-interpose",
+  "schema_version": 1,
+  "snapshot_id": "ctkat-corpus-correctness-v1",
+  "system": "Darwin",
+  "targets": [
+    {
+      "config": "examples/pqc_mlkem512/ctkat.yaml",
+      "config_sha256": "4849381e2336d0bada79d375063693edf022122652b1ae35ed22ccf91fbc8e99",
+      "input_set_sha256": "4c32abe3e5708153e2b0ac885b034142dfa1b9c3aef87bf46ba7fbcec757a1a0",
+      "status": "pass",
+      "summary_harnesses": [
+        "kem_dec",
+        "kem_dec_fo"
+      ],
+      "target": "pqclean_mlkem512",
+      "template": "kem",
+      "transcript_bytes": 3232,
+      "transcript_sha256": "79f98876d4fa276b8e61e8f30921283712131cd0c184122e0fe2ec367e6ea5f4"
+    },
+    {
+      "config": "examples/pqc_mlkem768/ctkat.yaml",
+      "config_sha256": "0289653f531fa6dea230c9a6494aa2ff46d1b5ee53b10dd17c09a7a520b02c4e",
+      "input_set_sha256": "392cade2909af8cf92001a8f380024bbcf392ecc60d4a7bac3294415665ec08b",
+      "status": "pass",
+      "summary_harnesses": [
+        "kem_dec",
+        "kem_dec_ct",
+        "kem_dec_fo"
+      ],
+      "target": "pqclean_mlkem768",
+      "template": "kem",
+      "transcript_bytes": 4704,
+      "transcript_sha256": "b7263b61600d1e4a12114fd22415e821673f62a0c7f1c9df7e7a92199bc8a263"
+    },
+    {
+      "config": "examples/pqc_mlkem1024/ctkat.yaml",
+      "config_sha256": "dfe1d336a3ee4205d68d8e5f50af89ae6c5f603e1a835d2749007ea521851080",
+      "input_set_sha256": "96ed2141bbedac1c535016918995f2e67c0cd9f5106bd6568aaaea3fece0d665",
+      "status": "pass",
+      "summary_harnesses": [
+        "kem_dec",
+        "kem_dec_fo"
+      ],
+      "target": "pqclean_mlkem1024",
+      "template": "kem",
+      "transcript_bytes": 6336,
+      "transcript_sha256": "6136c2cb690e8446376a078c4c4a8fdf5d99f9cf547f579236e6dce8ab9d734d"
+    },
+    {
+      "config": "examples/pqc_mldsa44/ctkat.yaml",
+      "config_sha256": "bd7ba771e835d0824cc53e9366e03b0095e996f2810711b8c54335985fd9cc91",
+      "input_set_sha256": "32e7f252bb680ff809e1413b20b084231af1bca36a859ab4a6658802b10f45f9",
+      "status": "pass",
+      "summary_harnesses": [
+        "sign"
+      ],
+      "target": "pqclean_mldsa44",
+      "template": "sign",
+      "transcript_bytes": 6300,
+      "transcript_sha256": "ce6e251c343ea07886e501ee2b6985a2a1261a633cef468cd1d9a1ad84860f10"
+    },
+    {
+      "config": "examples/pqc_mldsa65/ctkat.yaml",
+      "config_sha256": "2481297beecf8b467a9fa7bd798a16c4bae73407d01446a09330dc2fad9abf32",
+      "input_set_sha256": "114bee92d23546fc6111ac0d27312d4ffbfa2debaf9638e598299e406654098a",
+      "status": "pass",
+      "summary_harnesses": [
+        "sign"
+      ],
+      "target": "pqclean_mldsa65",
+      "template": "sign",
+      "transcript_bytes": 9301,
+      "transcript_sha256": "f3cfe15dd7dac8d69b97a7c119cc7d1b23045b700e2a333ba96ace5211c51b50"
+    },
+    {
+      "config": "examples/pqc_mldsa87/ctkat.yaml",
+      "config_sha256": "e5a71aa703dfeb20273eee36afa029e14bab6c7567608e8bf76b2e31614d4011",
+      "input_set_sha256": "b18bd66efd30441683f911ba81e29a113607d2707928d381781711bc9cc6eb2b",
+      "status": "pass",
+      "summary_harnesses": [
+        "sign"
+      ],
+      "target": "pqclean_mldsa87",
+      "template": "sign",
+      "transcript_bytes": 12123,
+      "transcript_sha256": "171092280e457a2619a605d0ec72d74110cd0acd36459cd315cdc80b202ab8d2"
+    },
+    {
+      "config": "examples/pqc_sphincs_sha2_128f_simple/ctkat.yaml",
+      "config_sha256": "a43ef54927b5cf8546f98a1c5dad2ff1006b87c4e7d4b9b34f2ef0373c94f0c1",
+      "input_set_sha256": "a5059922f201bde8a7333786c0dda2e559923e0b7c756cb2cbfb5a2b853a287f",
+      "status": "pass",
+      "summary_harnesses": [
+        "sign"
+      ],
+      "target": "pqclean_sphincs_sha2_128f_simple",
+      "template": "sign",
+      "transcript_bytes": 17192,
+      "transcript_sha256": "50612849daac00de057c1ff0128e9dcae7a388ba485927a51cfc6c7d28121c0a"
+    },
+    {
+      "config": "examples/pqc_falcon512/ctkat.yaml",
+      "config_sha256": "4ed052de71f5cb9051ae960d1e09957dfe243693348cf1fdbb1420c49b3d01eb",
+      "input_set_sha256": "15812777506eb2613264f4e55ef1ee5344a47cc1dedb286645deb82e3ac9a9a7",
+      "status": "pass",
+      "summary_harnesses": [
+        "sign"
+      ],
+      "target": "pqclean_falcon512_reference",
+      "template": "sign",
+      "transcript_bytes": 2839,
+      "transcript_sha256": "97d7a3bc46768f0733d5709e3d2793410fa84bb49630345d82a89866a559153b"
+    },
+    {
+      "config": "examples/pqc_falcon1024/ctkat.yaml",
+      "config_sha256": "c72ea336953e9ce253974290f4aacbdfcc7a7e8c9b26791b5c4faf1cc6e94c3b",
+      "input_set_sha256": "e1a29dcb81adffebf4ff62f652355e7c81598b3eec1cab626a4817d7e93acaa7",
+      "status": "pass",
+      "summary_harnesses": [
+        "sign"
+      ],
+      "target": "pqclean_falcon1024_reference",
+      "template": "sign",
+      "transcript_bytes": 5374,
+      "transcript_sha256": "a58fa012a6514307738ab60ca6d22b275c562b5df3a801708055d970df5d28a2"
+    }
+  ]
+}

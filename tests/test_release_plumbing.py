@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cli_version_matches_package_version():
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == __version__ == "0.10.0a1"
+    assert result.stdout.strip() == __version__ == "0.11.0a1"
 
 
 def test_citation_release_version_matches_package_version():

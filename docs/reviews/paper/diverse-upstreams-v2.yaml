@@ -1,0 +1,29 @@
+schema_version: "2.0"
+review_id: paper-diverse-upstreams-v2
+status: pending
+title: Independent upstream source and build evidence
+review_phase: pre-measurement
+source_revision_policy: exact-clean-git-head-at-review
+scope:
+  - {target: mlkem-native, harness: build-kat-equivalence, build_scope: 3-parameters-2-profiles-2-compilers-5-optimizations-2-architectures}
+  - {target: mldsa-native, harness: build-kat-equivalence, build_scope: 3-parameters-2-profiles-2-compilers-5-optimizations-2-architectures}
+  - {target: openssl-3.5-pqc-api, harness: provider-smoke, build_scope: six-provider-operations}
+threat_model: Generalization and provenance audit; build evidence must not be promoted to physical timing or constant-time evidence.
+secret_origin: Algorithm-specific secret keys; no source/build-only result performs a secret timing classification.
+observed_dependency: KAT, portable/native transcript equivalence, ELF machine identity, native symbols, and instruction markers.
+declassification_predicate: none for CT claims; this packet only approves source/build provenance and claim limits.
+public_transcript: Deterministic KAT and smoke outputs.
+security_argument: Lineages, parameters, profiles, compilers, architectures, and wrappers are counted separately and transparently.
+known_limitations:
+  - Shared-code fractions remain unmeasured.
+  - Build and KAT evidence is not timing evidence.
+evidence:
+  - docs/corpus/diverse_upstreams_v1.yaml
+  - docs/corpus/independent_upstreams_v1.yaml
+expected_evidence:
+  - final x86_64 and AArch64 CI build bundles
+reviewers: []
+expiry_conditions:
+  - upstream revision changes
+  - architecture profile selection changes
+  - KAT or equivalence digest changes

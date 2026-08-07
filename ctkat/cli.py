@@ -738,6 +738,7 @@ def _dudect_context(
                 "prefix": h.prefix,
                 "leak_target": h.leak_target,
                 "randombytes_header": h.randombytes_header,
+                "randombytes_return": h.randombytes_return,
             }
         )
     elif h.template == "sign":
@@ -753,6 +754,7 @@ def _dudect_context(
                 "prefix": h.prefix,
                 "sign_leak_target": h.sign_leak_target,
                 "randombytes_header": h.randombytes_header,
+                "randombytes_return": h.randombytes_return,
             }
         )
     else:  # generic

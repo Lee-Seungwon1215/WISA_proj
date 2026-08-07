@@ -1,0 +1,40 @@
+project:
+  name: pqcrystals_kyber768_ref_a621b8d
+  language: c
+  root: .
+
+build: {argv: ["true"], workdir: .}
+
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 10000
+  warmup: 200
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  generated_dir: ./_generated_dudect
+  compiler:
+    cc: gcc
+    cflags: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto, -DKYBER_K=3]
+  harnesses:
+    - name: kem_dec
+      template: kem
+      header: ctkat_api.h
+      randombytes_header: randombytes.h
+      randombytes_return: void
+      prefix: "pqcrystals_kyber768_ref_"
+      include_dirs: [., ref]
+      sources:
+        - ref/kem.c
+        - ref/indcpa.c
+        - ref/poly.c
+        - ref/polyvec.c
+        - ref/ntt.c
+        - ref/reduce.c
+        - ref/cbd.c
+        - ref/symmetric-shake.c
+        - ref/verify.c
+        - ref/fips202.c
+
+report: {output_dir: ./reports}

@@ -4,6 +4,7 @@ description: >-
   Deferred native-x86_64 timing-harness-v2 refresh for every timing row in the
   committed evidence corpus. The campaign records evidence but never edits the
   curated corpus automatically.
+coverage_mode: committed-timing-rows
 
 host:
   system: Linux
