@@ -732,13 +732,21 @@ def _control_payload(
             "control retained fewer than two rows in a class"
         )
     n0, n1 = len(class0), len(class1)
-    mean0, mean1 = mean(class0), mean(class1)
+    # ``TimingSamples`` stores cycles as floats, so the producer serializes
+    # control means as JSON numbers such as ``1699595.0``.  The independent
+    # artifact parser intentionally restores cycle counts to integers, and
+    # ``statistics.mean`` returns an ``int`` when that mean is exact.  Keep
+    # statistical quantities in the real-valued domain here; otherwise the
+    # strict integer-field branch in ``_same_number`` rejects a numerically
+    # identical producer value solely because JSON preserved its ``.0``.
+    mean0, mean1 = float(mean(class0)), float(mean(class1))
     var0, var1 = variance(class0), variance(class1)
     denominator = math.sqrt(var0 / n0 + var1 / n1)
+    numerator = mean0 - mean1
     t_score = (
         0.0
-        if denominator == 0.0 and mean0 == mean1
-        else (math.inf if denominator == 0.0 else (mean0 - mean1) / denominator)
+        if denominator == 0.0 and numerator == 0.0
+        else (math.copysign(math.inf, numerator) if denominator == 0.0 else numerator / denominator)
     )
     abs_t_score = abs(t_score)
     status = (
@@ -781,7 +789,20 @@ def _control_payload(
         payload["minimum_detectable_effect"] = (
             NormalDist().inv_cdf(1.0 - power_alpha / 2.0) + NormalDist().inv_cdf(target_power)
         ) * standard_error
+        payload["positive_detection_effect_at_target_power"] = (
+            fail_threshold + NormalDist().inv_cdf(target_power)
+        ) * standard_error
     return payload
+
+
+def _positive_control_detected(
+    payload: Mapping[str, Any],
+    *,
+    abs_t_threshold: float,
+) -> bool:
+    """Independently enforce the seeded delay's known class-1-slower direction."""
+
+    return payload["mean_delta"] > 0.0 and payload["t_score"] <= -abs_t_threshold
 
 
 def _compare_payload(
@@ -940,7 +961,11 @@ def _verify_protocol_contract(
     for effect in contract.positive_effects:
         effect_runs = [item for item in positive_payloads if item["effect_ticks"] == effect]
         detections = sum(
-            item["abs_t_score"] >= contract.positive_abs_t_threshold for item in effect_runs
+            _positive_control_detected(
+                item,
+                abs_t_threshold=contract.positive_abs_t_threshold,
+            )
+            for item in effect_runs
         )
         power_curve.append(
             {
@@ -960,6 +985,9 @@ def _verify_protocol_contract(
         "required_positive_detections": required_detections,
         "positive_power_passed": power_curve[-1]["detections"] >= required_detections,
         "minimum_detectable_effects": [item["minimum_detectable_effect"] for item in aa_payloads],
+        "positive_detection_effects_at_target_power": [
+            item["positive_detection_effect_at_target_power"] for item in aa_payloads
+        ],
         "positive_power_curve": power_curve,
         "winning_analysis": winning_analysis,
     }
@@ -972,6 +1000,7 @@ def _verify_protocol_contract(
         "required_positive_detections",
         "positive_power_passed",
         "minimum_detectable_effects",
+        "positive_detection_effects_at_target_power",
     ):
         if not _same_number(summary[field_name], protocol.get(field_name)):
             errors.append(

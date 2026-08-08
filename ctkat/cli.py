@@ -923,6 +923,31 @@ def _minimum_detectable_effect(
     return (z_alpha + z_power) * standard_error
 
 
+def _positive_detection_effect(
+    result: WelchResult,
+    *,
+    abs_t_threshold: float,
+    target_power: float,
+) -> float:
+    """A/A-noise-derived effect for the directional positive-control rule.
+
+    Unlike the legacy nominal MDE above, this diagnostic uses the actual
+    positive-control threshold.  The injected delay has a known direction
+    (class 1 must be slower), so the normal approximation is
+    ``(threshold + z_power) * standard_error``.
+    """
+
+    z_power = NormalDist().inv_cdf(target_power)
+    standard_error = math.sqrt(result.var0 / result.n0 + result.var1 / result.n1)
+    return (abs_t_threshold + z_power) * standard_error
+
+
+def _positive_control_detected(payload: dict, *, abs_t_threshold: float) -> bool:
+    """Return whether a seeded class-1 delay was detected in its known direction."""
+
+    return payload["mean_delta"] > 0.0 and payload["t_score"] <= -abs_t_threshold
+
+
 def _control_result_payload(
     role: str,
     process_index: int,
@@ -933,6 +958,7 @@ def _control_result_payload(
     effect_ticks: int = 0,
     alpha: Optional[float] = None,
     target_power: Optional[float] = None,
+    positive_abs_t_threshold: Optional[float] = None,
 ) -> dict:
     payload = {
         "role": role,
@@ -959,6 +985,12 @@ def _control_result_payload(
         payload["minimum_detectable_effect"] = _minimum_detectable_effect(
             result,
             alpha=alpha,
+            target_power=target_power,
+        )
+    if positive_abs_t_threshold is not None and target_power is not None:
+        payload["positive_detection_effect_at_target_power"] = _positive_detection_effect(
+            result,
+            abs_t_threshold=positive_abs_t_threshold,
             target_power=target_power,
         )
     return payload
@@ -1121,6 +1153,7 @@ def _run_v2_harness_protocol(
                 aa_result,
                 alpha=protocol.power_alpha,
                 target_power=protocol.target_power,
+                positive_abs_t_threshold=protocol.positive_abs_t_threshold,
             )
         )
 
@@ -1210,7 +1243,11 @@ def _run_v2_harness_protocol(
             payload for payload in positive_payloads if payload["effect_ticks"] == effect_ticks
         ]
         detections = sum(
-            payload["abs_t_score"] >= protocol.positive_abs_t_threshold for payload in effect_runs
+            _positive_control_detected(
+                payload,
+                abs_t_threshold=protocol.positive_abs_t_threshold,
+            )
+            for payload in effect_runs
         )
         power_curve.append(
             {
@@ -1278,6 +1315,9 @@ def _run_v2_harness_protocol(
         "power_alpha": protocol.power_alpha,
         "minimum_detectable_effects": [
             payload["minimum_detectable_effect"] for payload in aa_payloads
+        ],
+        "positive_detection_effects_at_target_power": [
+            payload["positive_detection_effect_at_target_power"] for payload in aa_payloads
         ],
         "randomness_policies_observed": randomness,
         "output_length": {

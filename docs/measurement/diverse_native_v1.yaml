@@ -56,7 +56,7 @@ targets:
     axes: {sign: sk}
     target_measurements: 30000
     control_measurements: 5000
-    positive_control_effects: [512, 4096, 32768]
+    positive_control_effects: [65536, 262144, 1048576]
     timeout: 3600
   - id: mldsa_native_65_x86_64
     family: ML-DSA/mldsa-native-x86_64
@@ -65,5 +65,5 @@ targets:
     axes: {sign: sk}
     target_measurements: 30000
     control_measurements: 5000
-    positive_control_effects: [512, 4096, 32768]
+    positive_control_effects: [65536, 262144, 1048576]
     timeout: 3600

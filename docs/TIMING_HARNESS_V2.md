@@ -52,7 +52,7 @@ implementation-specific generic harness와 별도 evidence row로 분리한다.
 |---|---|---|---|
 | `aa` | label과 무관하게 class-0 pool | label과 무관하게 동일 분포 | `|t| < aa_abs_t_limit` |
 | `setup-placebo` | 실제 target axis처럼 class-dependent copy 후 같은 work buffer를 fixed data로 정규화 | fixed data/common-work 주소 | setup/cache 잔류 무신호 |
-| `positive` | label과 무관하게 class-0 pool | 동일 target + class 1 clock-tick delay | effect별 detection curve |
+| `positive` | label과 무관하게 class-0 pool | 동일 target + class 1 clock-tick delay | class 1이 느린 방향의 effect별 detection curve |
 
 positive delay는 RDTSCP이면 cycle, monotonic이면 ns 단위의 요청값이다. 요청값을
 효과 크기라고 가정하지 않고 실제 mean delta와 검출률을 artifact에 기록한다.
@@ -60,6 +60,10 @@ A/A variance와 `power_alpha`, `target_power`로 각 run의 normal-approximation
 nominal sensitivity를 함께 계산한다. 기존 artifact 필드명은
 `minimum_detectable_effects`지만 target trace 분산으로 계산한 정식 MDE나
 achieved-power 추정치가 아니며, no-signal target을 그 값으로 bound하지 않는다.
+별도의 `positive_detection_effects_at_target_power`는 실제 directional gate
+`t <= -positive_abs_t_threshold`에 A/A standard error를 대입한
+`(positive_abs_t_threshold + z(target_power)) * SE` 진단값이다. 이것도
+host/A/A 기반 계획 보조값일 뿐 target trace의 MDE나 achieved power가 아니다.
 
 ## Validity gate
 
@@ -72,7 +76,8 @@ achieved-power 추정치가 아니며, no-signal target을 그 값으로 bound�
 4. process repeat 3회 미만 → `insufficient-power`
 5. A/A false-alarm budget 실패 → `confounded`
 6. setup-placebo 실패 → `confounded`
-7. largest positive effect의 repeat 검출 비율이 `target_power` 미달 →
+7. largest positive effect가 class 1 지연 방향으로 threshold를 넘긴 repeat
+   비율이 `target_power` 미달 →
    `insufficient-power` (3 repeats와 0.8이면 3/3 요구)
 8. target raw status repeat 불일치 → `insufficient-power`
 9. seeded randombytes interpose 미확인 → `confounded`

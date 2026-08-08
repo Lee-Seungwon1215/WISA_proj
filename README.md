@@ -517,7 +517,8 @@ KEM/sign이 `valid` 후보가 되려면 다음을 **전부** 통과해야 한다
 2. 세 개 이상 독립 process/seed에서 같은 target raw status
 3. label만 다른 physical A/A의 사전 false-alarm budget
 4. class setup 뒤 fixed target을 재는 setup-placebo 무신호
-5. 가장 큰 seeded effect의 repeat 검출 비율이 `target_power` 이상
+5. 가장 큰 seeded effect가 class 1 지연 방향(`mean_delta > 0`,
+   `t <= -positive_abs_t_threshold`)으로 검출된 repeat 비율이 `target_power` 이상
 6. 모든 official target repeat의 minimum measurement 충족
 7. runtime manifest가 seeded randombytes interpose 사용을 확인
 
@@ -532,7 +533,10 @@ A/A/setup-placebo가 깨지면 `confounded`, positive-control 검출 비율이�
 diagnostic(기존 필드명 `minimum_detectable_effects`)이 들어간다. 이 값은
 `power_alpha`와 `target_power`를 쓴 two-sided normal approximation이지만
 target trace 분산 기반 MDE나 achieved-power 추정치가 아니며, no-signal 효과의
-상한으로 쓰지 않는다.
+상한으로 쓰지 않는다. 실제 directional positive threshold를 반영한
+`positive_detection_effects_at_target_power =
+(positive_abs_t_threshold + z(target_power)) * SE`도 함께 기록하지만, 이 역시
+A/A noise 기반 계획 진단값이지 target 효과의 bound는 아니다.
 
 Linux에서는 process affinity가 CPU 하나가 아니면, 그리고 모든 OS에서 QEMU
 emulation이면 `environment-rejected`다. system, machine, kernel, clock,

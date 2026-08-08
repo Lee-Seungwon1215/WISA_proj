@@ -17,6 +17,7 @@ from ctkat.official_dudect_verify import (
     RAW_TIMING_HEADER,
     TimingArtifactSample,
     _control_payload,
+    _positive_control_detected,
     _timing_domain_seed,
     parse_official_protocol_csv,
     recompute_pinned_official_dudect,
@@ -67,7 +68,7 @@ def test_campaign_overrides_do_not_mutate_modest_example_defaults(tmp_path):
     assert dudect.compile_timeout == 600
     assert dudect.backend_timeout == 300
     assert dudect.timing_protocol.control_measurements == 5_000
-    assert dudect.timing_protocol.positive_control_effects == [512, 4096, 32768]
+    assert dudect.timing_protocol.positive_control_effects == [65536, 262144, 1048576]
     assert dudect.generated_dir == (tmp_path / "generated").resolve()
     assert cfg.dudect.measurements == original_measurements == 2_000
     assert cfg.dudect.clock == original_clock == "auto"
@@ -424,16 +425,20 @@ def _small_artifact_fixture(tmp_path, *, target_measurements=20_050):
         )
         for effect in target.positive_control_effects
     ]
-    positive_curve = [
-        {
-            "effect_ticks": item["effect_ticks"],
-            "detections": int(item["abs_t_score"] >= protocol.positive_abs_t_threshold),
-            "runs": 1,
-            "detection_rate": float(item["abs_t_score"] >= protocol.positive_abs_t_threshold),
-            "mean_observed_delta": item["mean_delta"],
-        }
-        for item in positive_payloads
-    ]
+    positive_curve = []
+    for item in positive_payloads:
+        detected = (
+            item["mean_delta"] > 0.0 and item["t_score"] <= -protocol.positive_abs_t_threshold
+        )
+        positive_curve.append(
+            {
+                "effect_ticks": item["effect_ticks"],
+                "detections": int(detected),
+                "runs": 1,
+                "detection_rate": float(detected),
+                "mean_observed_delta": item["mean_delta"],
+            }
+        )
     target_payload = {
         "process_index": 0,
         "analysis_seed": analysis_seed,
@@ -478,6 +483,9 @@ def _small_artifact_fixture(tmp_path, *, target_measurements=20_050):
         "required_positive_detections": 1,
         "positive_power_passed": True,
         "minimum_detectable_effects": [aa_payloads[0]["minimum_detectable_effect"]],
+        "positive_detection_effects_at_target_power": [
+            aa_payloads[0]["positive_detection_effect_at_target_power"]
+        ],
         "randomness_policies_observed": ["seeded-interpose"],
         "signature_call_contract": {
             "configured": "fixed",
@@ -570,6 +578,51 @@ def test_artifact_validator_accepts_complete_promotion_ready_bundle(tmp_path):
     assert row["report"] == f"{target.id}/reports/dudect_backend_report.json"
     assert row["promotion_ready"] == "true"
     assert row["timing_threshold"] == campaign.OFFICIAL_TIMING_THRESHOLD
+
+    backend = json.loads((report_dir / "dudect_backend_report.json").read_text(encoding="utf-8"))
+    protocol = backend["harnesses"][0]["harness_protocol"]
+    assert (
+        protocol["positive_detection_effects_at_target_power"][0]
+        > protocol["minimum_detectable_effects"][0]
+    )
+
+
+def test_independent_positive_detection_rejects_reversed_or_small_effect():
+    assert _positive_control_detected(
+        {"mean_delta": 250.0, "t_score": -10.0},
+        abs_t_threshold=10.0,
+    )
+    assert not _positive_control_detected(
+        {"mean_delta": 250.0, "t_score": -9.99},
+        abs_t_threshold=10.0,
+    )
+    assert not _positive_control_detected(
+        {"mean_delta": -250.0, "t_score": 12.0},
+        abs_t_threshold=10.0,
+    )
+
+
+def test_artifact_validator_accepts_integral_control_means_serialized_as_floats(tmp_path):
+    spec, target, report_dir = _small_artifact_fixture(tmp_path)
+    backend_path = report_dir / "dudect_backend_report.json"
+    backend = json.loads(backend_path.read_text(encoding="utf-8"))
+    protocol = backend["harnesses"][0]["harness_protocol"]
+    for field_name in ("aa_controls", "setup_placebo_controls", "positive_controls"):
+        for payload in protocol[field_name]:
+            for statistic in ("mean0", "mean1", "mean_delta"):
+                payload[statistic] = float(payload[statistic])
+    for payload in protocol["positive_power_curve"]:
+        payload["mean_observed_delta"] = float(payload["mean_observed_delta"])
+    backend_path.write_text(json.dumps(backend), encoding="utf-8")
+
+    result = campaign.validate_target_artifacts(
+        spec,
+        target,
+        report_dir,
+        host_paper_eligible=True,
+    )
+
+    assert result.errors == []
 
 
 def test_artifact_validator_rejects_hash_and_trace_count_drift(tmp_path):

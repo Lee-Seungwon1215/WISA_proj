@@ -1096,6 +1096,47 @@ def test_timing_v2_role_repeat_effect_seeds_are_unique_and_deterministic():
     assert all(seed != 0 for seed in first.values())
 
 
+def test_positive_control_detection_requires_expected_direction_and_threshold():
+    import ctkat.cli as cli_module
+
+    assert cli_module._positive_control_detected(
+        {"mean_delta": 250.0, "t_score": -10.0},
+        abs_t_threshold=10.0,
+    )
+    assert not cli_module._positive_control_detected(
+        {"mean_delta": 250.0, "t_score": -9.99},
+        abs_t_threshold=10.0,
+    )
+    assert not cli_module._positive_control_detected(
+        {"mean_delta": -250.0, "t_score": 12.0},
+        abs_t_threshold=10.0,
+    )
+
+
+def test_positive_detection_effect_uses_actual_directional_gate():
+    from statistics import NormalDist
+
+    import ctkat.cli as cli_module
+
+    result = WelchResult(
+        n0=50,
+        n1=50,
+        mean0=100.0,
+        mean1=100.0,
+        var0=100.0,
+        var1=100.0,
+        t_score=0.0,
+        abs_t_score=0.0,
+        status="PASS",
+    )
+    expected = (10.0 + NormalDist().inv_cdf(0.8)) * 2.0
+    assert cli_module._positive_detection_effect(
+        result,
+        abs_t_threshold=10.0,
+        target_power=0.8,
+    ) == pytest.approx(expected)
+
+
 def test_timing_harness_v2_controls_can_reach_valid():
     import ctkat.cli as cli_module
 

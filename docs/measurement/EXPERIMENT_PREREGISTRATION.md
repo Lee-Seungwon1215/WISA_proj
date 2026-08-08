@@ -85,11 +85,14 @@ declassify a risk finding.
 - The largest predeclared injected delay must be detected in at least
   `ceil(target_power * process_repeats)` repeats; with the frozen three repeats
   and `target_power=0.8`, this means three detections. This observed fraction is
-  an acceptance control, not a precise achieved-power estimate. The separately
-  reported normal-approximation value is derived from A/A noise and is only a
-  nominal sensitivity diagnostic; it does not bound the target trace. All A/A
-  runs must stay within the frozen limit. AUX/core migration, truncated traces,
-  RNG interposition failure, malformed output lengths, or artifact-hash mismatch
+  an acceptance control, not a precise achieved-power estimate. Detection is
+  directional: the delayed class 1 must have a positive mean delta and
+  `t <= -positive_abs_t_threshold`; an equally large reversed effect does not
+  pass. The separately reported A/A normal-approximation diagnostics include
+  both the legacy alpha-based nominal sensitivity and the effect implied by the
+  actual directional threshold. Neither bounds the target trace. All A/A runs
+  must stay within the frozen limit. AUX/core migration, truncated traces, RNG
+  interposition failure, malformed output lengths, or artifact-hash mismatch
   invalidate that unit.
 - Every axis with a linked-binary contract must preserve the exact measured
   binary, generated source, compiler/config/source hashes, and full
