@@ -18,8 +18,8 @@
 ## 정적 검사와 현재 host probe
 
 ```bash
-python scripts/run_same_corpus_baselines.py --check
-python scripts/run_same_corpus_baselines.py \
+uv run python scripts/run_same_corpus_baselines.py --check
+uv run python scripts/run_same_corpus_baselines.py \
   --probe \
   --output measurement_runs/same-corpus-capability.json
 ```
@@ -46,21 +46,37 @@ docker run --rm \
   ctkat-timecop \
   python scripts/run_same_corpus_baselines.py \
     --run-timecop \
+    --run-kind engineering \
     --output-root /results/same-corpus
 ```
 
 runner는 variable-latency canary를 먼저 통과시킨 뒤 두 하니스를 같은 compiler
 profile로 만든다. 양성의 branch finding과 음성의 zero finding이 모두 manifest와
-맞아야 `promotion_ready=true`다. 이 값은 TIMECOP artifact가 자기 계약을
-통과했다는 뜻이지 physical timing이나 constant-time 증명이 아니다.
+맞아야 engineering artifact가 완전하다. container 실행은 언제나
+non-promotable이다. final TIMECOP은 exact-pinned patched Valgrind를 bare-metal
+host에 설치하고 `--prefix /exact/pinned/prefix`로 실행해야 한다. 이 값은 TIMECOP
+artifact가 자기 계약을 통과했다는 뜻이지 physical timing이나 constant-time
+증명이 아니다.
+
+TIMECOP 행은 생성된 harness source, 연결된 tracked source들의 SHA-256,
+구조화된 compile argv/workdir, compiler의 요청명·실행 경로·resolved 경로·binary
+SHA-256·전체 `--version` transcript, 그리고 ASLR 주소를 제거한 finding signature를
+보존한다. engineering 결과는 이 원시 artifact를 완결해서 후속 점검에 넘길 수
+있다. 다만 final 승격 검증은 보존 로그를 증언으로 믿지 않는다. 현재 checkout에서
+harness를 다시 렌더링하고 tracked source hash를 맞춘 뒤, 기록된 정확한 compiler로
+격리 임시 디렉터리에 canary와 양성/음성 harness를 모두 재빌드한다. 이어 현재의
+exact-prefix patched Valgrind로 세 binary를 새로 실행해 stable finding signature,
+return code, classifier status, finding/no-finding outcome이 보존 raw와 같은지
+재확인한다. 어느 단계든 재현할 수 없거나 서로 다르면 final은 fail-closed다.
 
 ## MicroWalk PinTracer
 
 Linux/x86_64 Docker host에서:
 
 ```bash
-python scripts/run_same_corpus_baselines.py \
+uv run python scripts/run_same_corpus_baselines.py \
   --run-microwalk \
+  --run-kind engineering \
   --output-root measurement_runs/same-corpus
 ```
 
@@ -81,8 +97,9 @@ image digest와 v3.2.0 documentation revision을 각각 pin하고 그 build link
 bare-metal Linux/x86_64에서 CPU affinity를 하나로 고정한 뒤:
 
 ```bash
-taskset -c 2 python scripts/run_same_corpus_baselines.py \
+taskset -c 2 uv run python scripts/run_same_corpus_baselines.py \
   --run-dudect \
+  --run-kind engineering \
   --output-root measurement_runs/same-corpus
 ```
 
@@ -94,7 +111,7 @@ virtualization, affinity gate 중 하나라도 실패하면 공통 outcome은
 모든 artifact는 다시 검사할 수 있다.
 
 ```bash
-python scripts/run_same_corpus_baselines.py \
+uv run python scripts/run_same_corpus_baselines.py \
   --validate-result measurement_runs/.../baseline_report.json
 ```
 

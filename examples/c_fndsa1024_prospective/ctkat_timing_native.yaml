@@ -25,6 +25,10 @@ dudect:
       header: api.h
       randombytes_header: null
       prefix: "CTKAT_FNDSA_"
+      signature_length_contract: fixed
+      binary_contract:
+        manifest: ../falcon_comparator_support/timing_binary_contracts_v1.yaml
+        target: c_fndsa1024_native_fp
       include_dirs: [., ../fndsa_prospective/upstream]
       sources:
         - ../fndsa_prospective/timing_adapter.c

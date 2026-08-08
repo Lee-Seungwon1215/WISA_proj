@@ -219,6 +219,8 @@ ct:
       template: kem
       header: api.h
       kem_decapsulation: invalid
+      rejection_oracle_function: TEST_rkprf
+      rejection_seed_offset: TEST_SECRETKEYBYTES - 32
 """
     cfg = load_config(_write(tmp_path, good))
     assert cfg.ct.harnesses[0].kem_decapsulation == "invalid"
@@ -235,6 +237,21 @@ ct:
 """
     with pytest.raises(ValidationError, match="kem_decapsulation.*template=kem"):
         load_config(_write(tmp_path, bad))
+
+
+def test_ct_rejection_path_requires_exact_oracle_pair(tmp_path: Path):
+    missing = """
+project: {name: demo}
+build: {command: "true"}
+ct:
+  harnesses:
+    - name: h1
+      template: kem
+      header: api.h
+      kem_decapsulation: invalid
+"""
+    with pytest.raises(ValidationError, match="requires an exact rejection_oracle"):
+        load_config(_write(tmp_path, missing))
 
 
 # --- DudectHarnessConfig validator ------------------------------------------
@@ -520,9 +537,26 @@ def test_dudect_kem_leak_target_fo_accepted(tmp_path: Path):
         "      template: kem\n"
         "      header: api.h\n"
         "      leak_target: fo\n"
+        "      rejection_oracle_function: TEST_rkprf\n"
+        "      rejection_seed_offset: TEST_SECRETKEYBYTES - 32\n"
     )
     cfg = load_config(_write(tmp_path, body))
     assert cfg.dudect.harnesses[0].leak_target == "fo"
+
+
+def test_dudect_rejection_axis_requires_exact_oracle_pair(tmp_path: Path):
+    body = (
+        "project: {name: demo}\n"
+        "build: {command: 'true'}\n"
+        "dudect:\n"
+        "  harnesses:\n"
+        "    - name: h\n"
+        "      template: kem\n"
+        "      header: api.h\n"
+        "      leak_target: chosen_ct\n"
+    )
+    with pytest.raises(ValidationError, match="requires an exact rejection_oracle"):
+        load_config(_write(tmp_path, body))
 
 
 def test_timing_harness_v2_protocol_defaults_are_fail_closed():
@@ -554,6 +588,32 @@ def test_sign_timing_harness_accepts_message_axis():
         sign_leak_target="msg",
     )
     assert harness.sign_leak_target == "msg"
+
+
+def test_sign_timing_harness_output_length_contracts_are_explicit():
+    from ctkat.config import DudectHarnessConfig
+
+    fixed = DudectHarnessConfig(name="fixed", template="sign", header="api.h")
+    bounded = DudectHarnessConfig(
+        name="falcon",
+        template="sign",
+        header="api.h",
+        signature_length_contract="bounded",
+    )
+    assert fixed.signature_length_contract == "fixed"
+    assert bounded.signature_length_contract == "bounded"
+
+
+def test_non_sign_timing_harness_rejects_bounded_signature_contract():
+    from ctkat.config import DudectHarnessConfig
+
+    with pytest.raises(ValidationError, match="only valid for template=sign"):
+        DudectHarnessConfig(
+            name="kem-bounded",
+            template="kem",
+            header="api.h",
+            signature_length_contract="bounded",
+        )
 
 
 def test_non_sign_timing_harness_rejects_message_axis():

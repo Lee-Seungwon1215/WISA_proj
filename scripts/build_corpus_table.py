@@ -36,9 +36,13 @@ from pathlib import Path
 # puts scripts/ on sys.path, not the repo root — bootstrap the root so we can
 # import the shared classifier (the single source of truth for verdict_class,
 # also used by `ctkat screen`). Mirrors the lazy path-insert in _dudect_cfg.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from ctkat.asm_evidence import load_target_index  # noqa: E402
 from ctkat.evidence import SCHEMA_VERSION  # noqa: E402
 from ctkat.verdict_class import load_registry, opt_of, summarize  # noqa: E402
+
+ASM_EVIDENCE_CAMPAIGN = ROOT / "docs/measurement/mlkem_asm_evidence_v1.yaml"
 
 CELLS_FIELDS = [
     "schema_version",
@@ -168,6 +172,8 @@ def build(
     timing_validity=None,
     review_status=None,
     review_id=None,
+    asm_evidence_index=None,
+    asm_evidence_campaign=ASM_EVIDENCE_CAMPAIGN,
 ):
     if registry is None:
         registry = load_registry()
@@ -178,8 +184,57 @@ def build(
     dud = _read_csv(reports / "dudect_summary.csv")
     dcfg = _dudect_cfg(project_dir)
 
+    if asm_evidence_index is None:
+        default_index = reports / "ctkat_asm_evidence.json"
+        if default_index.is_file():
+            asm_evidence_index = default_index
+
+    authoritative_asm = None
+    asm_provenance = ""
+    if asm_evidence_index is not None:
+        authoritative_asm = load_target_index(
+            Path(asm_evidence_index),
+            expected_target=target,
+            campaign_path=Path(asm_evidence_campaign),
+            repo_root=ROOT,
+            require_current_commit=False,
+        )
+        manifest = authoritative_asm["manifest"]
+        bundle_path = authoritative_asm["bundle_path"]
+        raw_path = bundle_path.parent / manifest["raw_bundle"]["path"]
+        evidence_commit = str(manifest["source_revision"]["commit"])
+        if commit and not evidence_commit.startswith(str(commit)):
+            raise ValueError(
+                f"--ctkat-commit {commit!r} does not match asm evidence commit {evidence_commit}"
+            )
+        commit = evidence_commit
+        evidence_arch = str(manifest["host"]["machine"])
+        normalized_evidence_arch = (
+            "x86_64" if evidence_arch in {"x86_64", "AMD64"} else evidence_arch
+        )
+        normalized_arch = "x86_64" if arch == "AMD64" else arch
+        if normalized_arch and normalized_arch != normalized_evidence_arch:
+            raise ValueError(f"--arch {arch!r} does not match asm evidence host {evidence_arch!r}")
+        arch = normalized_evidence_arch
+
+        def display_path(path: Path) -> str:
+            try:
+                return path.resolve().relative_to(ROOT.resolve()).as_posix()
+            except ValueError:
+                return str(path.resolve())
+
+        asm_provenance = (
+            "asm evidence: "
+            f"index={display_path(Path(asm_evidence_index))}; "
+            f"bundle={display_path(bundle_path)}; "
+            f"commit={evidence_commit}; "
+            f"campaign_sha256={manifest['campaign_manifest']['sha256']}; "
+            f"raw={display_path(raw_path)}; "
+            f"raw_sha256={manifest['raw_bundle']['sha256']}"
+        )
+
     ctm_projects = {row.get("project", "") for row in ctm if row.get("project")}
-    if varlat_json:
+    if varlat_json and authoritative_asm is None:
         if varlat_json.get("kind") != "varlat_candidates":
             raise ValueError("asm coverage JSON kind must be 'varlat_candidates'")
         manifest_project = str(varlat_json.get("project", ""))
@@ -209,8 +264,37 @@ def build(
                     (r["function"], int(r.get("count", "1") or 1))
                 )
 
+    authoritative_status: dict[tuple[str, str, str], str] = {}
+    authoritative_error: dict[tuple[str, str, str], str] = {}
+    authoritative_pairs_by_harness: dict[str, set[tuple[str, str]]] = {}
+    if authoritative_asm is not None:
+        # The evidence bundle is source-granular.  Collapse only after checking
+        # every source in the exact harness/compiler/opt group; one failed or
+        # missing source poisons the group instead of becoming a false clean
+        # zero-candidate row.
+        grouped: dict[tuple[str, str, str], list[dict]] = {}
+        vindex = {}
+        for cell in authoritative_asm["cells"]:
+            key = (cell["harness"], cell["compiler"], cell["opt"])
+            grouped.setdefault(key, []).append(cell)
+            authoritative_pairs_by_harness.setdefault(cell["harness"], set()).add(
+                (cell["compiler"], cell["opt"])
+            )
+            for candidate in cell.get("candidates", []):
+                vindex.setdefault(key, []).append((candidate["function"], 1))
+        for key, source_cells in grouped.items():
+            failed_cells = [cell for cell in source_cells if cell.get("status") != "pass"]
+            if failed_cells:
+                authoritative_status[key] = "ERROR"
+                authoritative_error[key] = "; ".join(
+                    f"{cell['source_file']}={cell.get('status', 'missing')}"
+                    for cell in failed_cells
+                )
+            else:
+                authoritative_status[key] = "PASS"
+
     observed_candidate_cells = {(compiler, opt) for _harness, compiler, opt in vindex}
-    if varlat_json:
+    if varlat_json and authoritative_asm is None:
         declared_coverage = {(cc, opt) for cc in scanned_ccs for opt in scanned_opts}
         undeclared_candidates = sorted(observed_candidate_cells - declared_coverage)
         if undeclared_candidates:
@@ -219,7 +303,9 @@ def build(
                 f"{undeclared_candidates}"
             )
 
-    def _asm_status_for(cc: str, opt: str) -> str:
+    def _asm_status_for(harness: str, cc: str, opt: str) -> str:
+        if authoritative_asm is not None:
+            return authoritative_status.get((harness, cc, opt), "NOT_RUN")
         if cc in asm_err_by_cc:
             return "ERROR"
         if (cc in scanned_ccs and opt in scanned_opts) or (
@@ -227,6 +313,11 @@ def build(
         ):
             return "PASS"
         return "NOT_RUN"
+
+    def _asm_error_for(harness: str, cc: str, opt: str) -> str:
+        if authoritative_asm is not None:
+            return authoritative_error.get((harness, cc, opt), "")
+        return asm_err_by_cc.get(cc, "")
 
     cells = []
     for r in ctm:
@@ -249,10 +340,10 @@ def build(
                 "ct_findings": r.get("findings", ""),
                 "ct_finding_funcs": r.get("finding_funcs", ""),
                 "ct_error": r.get("error", ""),
-                "asm_status": _asm_status_for(r["cc"], opt),
+                "asm_status": _asm_status_for(r["harness"], r["cc"], opt),
                 "asm_div_count": str(sum(c for _f, c in hits)),
                 "asm_div_funcs": ";".join(sorted({f for f, _c in hits})),
-                "asm_error": asm_err_by_cc.get(r["cc"], ""),
+                "asm_error": _asm_error_for(r["harness"], r["cc"], opt),
             }
         )
 
@@ -267,7 +358,12 @@ def build(
     for cc in asm_err_by_cc:
         coverage_pairs.update((cc, opt) for opt in scanned_opts)
     for harness in harnesses:
-        for cc, opt in sorted(coverage_pairs):
+        harness_coverage = (
+            authoritative_pairs_by_harness.get(harness, set())
+            if authoritative_asm is not None
+            else coverage_pairs
+        )
+        for cc, opt in sorted(harness_coverage):
             key = (harness, cc, opt)
             if key in represented_asm:
                 continue
@@ -289,10 +385,10 @@ def build(
                     "ct_findings": "0",
                     "ct_finding_funcs": "",
                     "ct_error": "",
-                    "asm_status": _asm_status_for(cc, opt),
+                    "asm_status": _asm_status_for(harness, cc, opt),
                     "asm_div_count": str(sum(count for _function, count in hits)),
                     "asm_div_funcs": ";".join(sorted({function for function, _count in hits})),
-                    "asm_error": asm_err_by_cc.get(cc, ""),
+                    "asm_error": _asm_error_for(harness, cc, opt),
                 }
             )
             represented_asm.add(key)
@@ -317,6 +413,10 @@ def build(
         review_id=review_id,
         target=target,
     )
+    if asm_provenance:
+        for row in summary:
+            notes = str(row.get("notes", "")).strip()
+            row["notes"] = f"{notes}; {asm_provenance}" if notes else asm_provenance
     return cells, summary
 
 
@@ -400,6 +500,20 @@ def main() -> None:
         default=[],
         metavar="harness=artifact-id",
     )
+    ap.add_argument(
+        "--asm-evidence-index",
+        type=Path,
+        help=(
+            "verified target index from build_asm_evidence.py; supersedes the "
+            "legacy aggregate varlat CSV/JSON"
+        ),
+    )
+    ap.add_argument(
+        "--asm-evidence-campaign",
+        type=Path,
+        default=ASM_EVIDENCE_CAMPAIGN,
+        help="frozen campaign used to validate --asm-evidence-index",
+    )
     ap.add_argument("--out-dir", type=Path, default=Path("docs/corpus"))
     a = ap.parse_args()
 
@@ -436,6 +550,8 @@ def main() -> None:
         timing_validity=timing_validity,
         review_status=review_status,
         review_id=review_id,
+        asm_evidence_index=a.asm_evidence_index,
+        asm_evidence_campaign=a.asm_evidence_campaign,
     )
     replace_targets = tuple(a.replace_target)
     cp = merge_write(

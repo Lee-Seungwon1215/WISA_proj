@@ -36,7 +36,7 @@ target mode의 timed region에는 target call만 있다.
 |---|---|---|---|
 | KEM `sk` | fixed valid `(sk, ct)` tuple pool | random valid paired tuple pool | common `sk_work`, `ct_work` |
 | KEM `ct` | fixed valid-ct pool | random valid-ct pool | fixed sk, common buffers |
-| KEM `fo` | valid-ct pool | paired byte-corrupted invalid-ct pool | fixed sk, common buffers |
+| KEM `fo` | valid-ct pool | paired byte-corrupted ct pool with exact rejection-key witness | fixed sk, common buffers |
 | sign `sk` | fixed valid-sk pool | random valid-sk pool | fixed message, common buffers |
 | sign `msg` | fixed-message pool | random-message pool | fixed sk, common buffers |
 
@@ -57,7 +57,9 @@ implementation-specific generic harness와 별도 evidence row로 분리한다.
 positive delay는 RDTSCP이면 cycle, monotonic이면 ns 단위의 요청값이다. 요청값을
 효과 크기라고 가정하지 않고 실제 mean delta와 검출률을 artifact에 기록한다.
 A/A variance와 `power_alpha`, `target_power`로 각 run의 normal-approximation
-minimum detectable effect를 함께 계산한다.
+nominal sensitivity를 함께 계산한다. 기존 artifact 필드명은
+`minimum_detectable_effects`지만 target trace 분산으로 계산한 정식 MDE나
+achieved-power 추정치가 아니며, no-signal target을 그 값으로 bound하지 않는다.
 
 ## Validity gate
 
@@ -70,13 +72,15 @@ minimum detectable effect를 함께 계산한다.
 4. process repeat 3회 미만 → `insufficient-power`
 5. A/A false-alarm budget 실패 → `confounded`
 6. setup-placebo 실패 → `confounded`
-7. largest positive effect가 target power 미달 → `insufficient-power`
+7. largest positive effect의 repeat 검출 비율이 `target_power` 미달 →
+   `insufficient-power` (3 repeats와 0.8이면 3/3 요구)
 8. target raw status repeat 불일치 → `insufficient-power`
 9. seeded randombytes interpose 미확인 → `confounded`
 10. 전부 통과 → `valid`
 
 `valid`는 PASS 동의어가 아니다. `valid + FAIL`은 해석 가능한 signal이고
-`valid + PASS`는 기록된 MDE/입력 분포 안의 no-signal이다.
+`valid + PASS`는 선택한 host와 입력 분포에서 관측된 no-signal이다. A/A 기반
+nominal sensitivity 숫자는 보조 진단일 뿐 target 효과의 상한이 아니다.
 
 ## Artifacts
 

@@ -3,6 +3,7 @@ review_id: paper-diverse-upstreams-v2
 status: pending
 title: Independent upstream source and build evidence
 review_phase: pre-measurement
+final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: mlkem-native, harness: build-kat-equivalence, build_scope: 3-parameters-2-profiles-2-compilers-5-optimizations-2-architectures}

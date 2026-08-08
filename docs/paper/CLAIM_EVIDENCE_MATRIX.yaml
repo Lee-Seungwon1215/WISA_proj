@@ -1,5 +1,5 @@
-schema_version: 1
-matrix_id: ctkat-paper-claims-v1
+schema_version: 2
+matrix_id: ctkat-paper-claims-v2
 terminology:
   screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
   source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
@@ -27,24 +27,26 @@ claims:
     open_gates: []
     prohibited_wording: universal tool accuracy
   - id: kyberslash-attribution
-    statement: Stock, isolated KS1, isolated KS2, combined, and historical variants are provenance- and correctness-locked before timing comparison.
+    statement: Stock, isolated KS1, isolated KS2, and combined full-KEM variants use one fixed key and public chosen-ciphertext pools, while three vulnerable/patched site pairs separately test operand-dependent hardware latency under exact linked-binary contracts.
     status: pending-independent-review
     scope: ML-KEM/Kyber-768 frozen variants
     evidence:
       - docs/ground_truth/kyberslash/ground_truth.yaml
-      - docs/measurement/kyberslash_native_v1.yaml
+      - docs/measurement/kyberslash_native_v2.yaml
+      - docs/measurement/KYBERSLASH_NATIVE_V2.md
       - docs/reviews/paper/kyberslash-ground-truth-v2.yaml
     open_gates:
       - two independent premeasurement reviewers
       - two-host physical timing artifacts
-    prohibited_wording: every division candidate leaks
+    prohibited_wording: full attack or key recovery reproduced
   - id: falcon-comparator
-    statement: Reference Falcon and prospective c-fn-dsa native-FP/integer-FPR profiles have exact provenance and separate full-signature timing targets.
+    statement: Reference Falcon and prospective c-fn-dsa native-FP/integer-FPR profiles have exact provenance, separate full-signature timing targets, and measured-binary sampler contracts matched to their actual software-FPR/SSE2 structure.
     status: pending-independent-review
     scope: Falcon/FN-DSA 512 and 1024 comparators
     evidence:
       - docs/ground_truth/falcon/manifest.yaml
       - docs/measurement/falcon_native_v1.yaml
+      - examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
       - docs/reviews/paper/falcon-comparator-v2.yaml
     open_gates:
       - two independent premeasurement reviewers
@@ -66,9 +68,9 @@ claims:
   - id: native-timing-results
     statement: Paper-grade native timing will use two distinct physical x86_64 hosts, frozen controls, and no automatic corpus promotion.
     status: pending-physical-measurement
-    scope: 25 predeclared timing axes plus same-corpus baselines
+    scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
-      - docs/measurement/paper_native_campaign_v1.yaml
+      - docs/measurement/paper_native_campaign_v2.yaml
       - docs/measurement/EXPERIMENT_PREREGISTRATION.md
       - scripts/check_paper_campaign.py
     open_gates:

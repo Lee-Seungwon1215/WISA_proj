@@ -3,6 +3,7 @@ review_id: paper-falcon-comparator-v2
 status: pending
 title: Falcon reference versus prospective c-fn-dsa comparator
 review_phase: pre-measurement
+final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: pqclean_falcon512_reference, harness: sign, build_scope: reference-512}
@@ -24,8 +25,10 @@ evidence:
   - docs/ground_truth/falcon/manifest.yaml
   - docs/ground_truth/falcon/structural_evidence_x86_64.yaml
   - docs/ground_truth/falcon/fp_audit_x86_64.json
+  - examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
 expected_evidence:
-  - paired native timing report for both degrees and profiles
+  - linked-binary sampler contract reports for all six targets on both hosts
+  - paired native timing reports for both degrees and profiles on two distinct CPU models
 reviewers: []
 expiry_conditions:
   - Falcon or c-fn-dsa revision changes

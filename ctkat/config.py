@@ -246,6 +246,40 @@ def _check_yaml_identifiers(
         )
 
 
+def _check_rejection_oracle(
+    where: str,
+    *,
+    function: Optional[str],
+    seed_offset: Optional[str],
+    required: bool,
+) -> None:
+    """Validate the optional untimed KEM implicit-rejection witness.
+
+    A mutated ciphertext plus a shared-secret mismatch does not itself prove
+    that decapsulation selected the implicit-rejection output.  KEM harnesses
+    that claim that path therefore name the scheme's rejection-key function
+    and the secret-key offset of its rejection seed.  The generated harness
+    compares decapsulation output with that independently computed value before
+    any measurement or secret tainting begins.
+    """
+
+    if (function is None) != (seed_offset is None):
+        raise ValueError(
+            f"{where}: rejection_oracle_function and rejection_seed_offset must be set together"
+        )
+    if required and function is None:
+        raise ValueError(
+            f"{where}: the requested rejection-path axis requires an exact "
+            "rejection_oracle_function and rejection_seed_offset"
+        )
+    if function is not None and not _C_IDENT_PATTERN.fullmatch(function):
+        raise ValueError(
+            f"{where}: rejection_oracle_function={function!r} must be a valid C identifier"
+        )
+    if seed_offset is not None:
+        _check_c_expr(where, "rejection_seed_offset", seed_offset)
+
+
 # CPU architectures that support the x86 `rdtsc`/`rdtscp` instructions used
 # by the dudect timing harness. Compared case-insensitively against
 # platform.machine() because Windows reports "AMD64" while Linux/macOS Intel
@@ -504,9 +538,16 @@ class HarnessConfig(BaseModel):
     secret_regions: List[SecretRegion] = Field(default_factory=list)
     # KEM-only structural decapsulation path. The default keeps the historical
     # valid-ciphertext harness. `invalid` mutates a freshly encapsulated
-    # ciphertext before decapsulation so the FO/implicit-rejection path is
-    # structurally exercised under Valgrind.
+    # ciphertext and requires an exact rejection-output oracle before the
+    # FO/implicit-rejection path is structurally exercised under Valgrind.
     kem_decapsulation: Literal["valid", "invalid"] = "valid"
+    # Exact untimed witness for KEM rejection-path claims.  The function must
+    # have the ML-KEM-shaped ``(out, rejection_seed, ciphertext)`` ABI.  Both
+    # fields are mandatory when ``kem_decapsulation=invalid`` so a mere
+    # mutation/original-secret mismatch cannot be mislabeled as proof that the
+    # implementation selected implicit rejection.
+    rejection_oracle_function: Optional[str] = None
+    rejection_seed_offset: Optional[str] = None
 
     @model_validator(mode="after")
     def _check_mode(self) -> "HarnessConfig":
@@ -525,6 +566,16 @@ class HarnessConfig(BaseModel):
         if self.template != "kem" and self.kem_decapsulation != "valid":
             raise ValueError(
                 f"harness {self.name!r}: kem_decapsulation is only valid for template=kem"
+            )
+        _check_rejection_oracle(
+            f"ct harness {self.name!r}",
+            function=self.rejection_oracle_function,
+            seed_offset=self.rejection_seed_offset,
+            required=self.kem_decapsulation == "invalid",
+        )
+        if self.template != "kem" and self.rejection_oracle_function is not None:
+            raise ValueError(
+                f"harness {self.name!r}: rejection oracle is only valid for template=kem"
             )
         # Bundle O (T20, T7 follow-up): enforce the regex policy that was
         # left as Bundle H2 follow-up after the `name` field landed.
@@ -715,6 +766,29 @@ class DudectCompilerConfig(BaseModel):
         return self
 
 
+class TimingBinaryContractRef(BaseModel):
+    """Fail-closed post-link instruction contract for a timing binary.
+
+    The manifest is project-contained and selects one target-specific rule
+    set.  The timing command refuses to collect a sample when the exact linked
+    binary does not satisfy that rule set.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest: Path
+    target: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+
+    @model_validator(mode="after")
+    def _check_manifest(self) -> "TimingBinaryContractRef":
+        _check_project_relative_path(
+            "dudect binary_contract",
+            "manifest",
+            self.manifest,
+        )
+        return self
+
+
 class DudectHarnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -750,13 +824,26 @@ class DudectHarnessConfig(BaseModel):
     #   "sk" — fixed valid tuple pool vs random valid tuple pool (default)
     #   "ct" — fixed valid-ct pool vs random valid-ct pool (sk held constant;
     #          detects ct-content leaks, e.g. branches/lookups indexed by ct)
-    #   "fo" — paired valid vs byte-corrupted invalid ct pools
-    #          (sk held constant; detects timing leaks in FO fallback /
-    #           implicit rejection path — Bundle K, U2 #1)
+    #   "fo" — paired valid vs byte-corrupted ct pools whose rejection output
+    #          is proved by an exact oracle (sk held constant; detects timing
+    #          leaks in FO fallback / implicit rejection — Bundle K, U2 #1)
+    #   "chosen_ct" — a fixed key and two frozen, publicly mutated ciphertext
+    #          pools, each rejection-witnessed before timing.  This removes the
+    #          old sk+ct class confound; it is a public chosen-input contrast,
+    #          not by itself a secret attribution claim.
+    #   "operand_bin" — direct public numerator-bin canary input.  Only use
+    #          with an API whose decapsulation boundary is explicitly the
+    #          frozen site-operation canary.
     # Pick one per harness; define multiple harnesses for multiple modes.
     # Only meaningful for template=kem; rejected at load time if combined
     # with template=generic.
-    leak_target: Literal["sk", "ct", "fo"] = "sk"
+    leak_target: Literal["sk", "ct", "fo", "chosen_ct", "operand_bin"] = "sk"
+    # Exact untimed implicit-rejection witness used by ``fo`` and
+    # ``chosen_ct``.  See the structural harness fields above for the ABI and
+    # rationale.  Requiring this in config makes an unsupported KEM fail at
+    # load time instead of silently calling a mutation "invalid".
+    rejection_oracle_function: Optional[str] = None
+    rejection_seed_offset: Optional[str] = None
     # Signature timing-harness-v2 supports the two API-level axes that can be
     # expressed portably across PQClean-style signers:
     #   "sk"  — fixed-vs-random secret key, fixed message
@@ -768,6 +855,19 @@ class DudectHarnessConfig(BaseModel):
     # boundary; pretending there is one portable "sign core" ABI would be a
     # worse methodology bug than leaving that split explicit.
     sign_leak_target: Literal["sk", "msg"] = "sk"
+    # Successful detached-signature calls must obey one of two portable
+    # PQClean-shaped output contracts.  ``fixed`` means ``siglen`` is exactly
+    # ``CRYPTO_BYTES``.  ``bounded`` is for variable-length encodings such as
+    # Falcon and means ``1 <= siglen <= CRYPTO_BYTES``.  Keeping the choice in
+    # config (and copying it into generated-source/runtime metadata) prevents
+    # a failed/short signing call from being silently treated as an ordinary
+    # timing sample.  The conservative default is fixed: a newly-added
+    # variable-length API must opt in or its pre-measurement round-trip fails.
+    signature_length_contract: Literal["fixed", "bounded"] = "fixed"
+    # Optional exact post-link disassembly contract.  This is intentionally a
+    # per-harness setting: a source-level `/ q` is not evidence that the
+    # measured binary still contains a variable-latency division instruction.
+    binary_contract: Optional[TimingBinaryContractRef] = None
 
     @model_validator(mode="after")
     def _check_mode(self) -> "DudectHarnessConfig":
@@ -793,10 +893,26 @@ class DudectHarnessConfig(BaseModel):
                 f"dudect harness {self.name!r}: leak_target={self.leak_target!r} "
                 "only valid for template=kem"
             )
+        _check_rejection_oracle(
+            f"dudect harness {self.name!r}",
+            function=self.rejection_oracle_function,
+            seed_offset=self.rejection_seed_offset,
+            required=self.leak_target in {"fo", "chosen_ct"},
+        )
+        if self.template != "kem" and self.rejection_oracle_function is not None:
+            raise ValueError(
+                f"dudect harness {self.name!r}: rejection oracle is only valid for template=kem"
+            )
         if self.template != "sign" and self.sign_leak_target != "sk":
             raise ValueError(
                 f"dudect harness {self.name!r}: "
                 f"sign_leak_target={self.sign_leak_target!r} only valid for template=sign"
+            )
+        if self.template != "sign" and self.signature_length_contract != "fixed":
+            raise ValueError(
+                f"dudect harness {self.name!r}: "
+                f"signature_length_contract={self.signature_length_contract!r} "
+                "only valid for template=sign"
             )
         _check_yaml_identifiers(
             f"dudect harness {self.name!r}",
@@ -847,8 +963,9 @@ class TimingHarnessProtocolConfig(BaseModel):
     pool_size: int = Field(default=64, ge=2, le=4096)
     # Controls do not feed official dudect's >10k class-0 minimum, so they can
     # be shorter than the target trace while still measuring the physical
-    # harness.  The power artifact reports the resulting MDE instead of
-    # silently treating a short control as proof.
+    # harness.  The artifact reports an A/A-noise-derived nominal sensitivity
+    # diagnostic instead of silently treating a short control as proof.  Its
+    # legacy MDE field name is not a bound on the target effect.
     # null/default reuses dudect.measurements.  Paper runs can raise this
     # independently; modest example configs do not unexpectedly multiply a
     # 1,000-sample target into 20,000 expensive signature controls.
@@ -1163,6 +1280,14 @@ def _check_config_paths_under_project_root(cfg: CtkatConfig, cfg_dir: Path) -> N
                     where=f"dudect harness {dudect_harness.name!r}",
                     label=f"include_dirs[{i}]",
                     value=p,
+                )
+            if dudect_harness.binary_contract is not None:
+                _check_path_under_root(
+                    cfg_dir=cfg_dir,
+                    project_root=project_root,
+                    where=f"dudect harness {dudect_harness.name!r}",
+                    label="binary_contract.manifest",
+                    value=dudect_harness.binary_contract.manifest,
                 )
 
 

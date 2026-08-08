@@ -2,7 +2,11 @@ import math
 
 import pytest
 
-from ctkat.dudect_runner import parse_timing_csv, run_timing_harness
+from ctkat.dudect_runner import (
+    parse_timing_csv,
+    run_timing_harness,
+    validate_signature_trace,
+)
 
 
 def test_parse_basic_csv():
@@ -188,6 +192,70 @@ def test_v2_parser_retains_aux_output_lengths_and_drop_reasons():
         "cpu-migration",
         "clock-anomaly",
     ]
+
+
+def _signature_metadata(contract="bounded", length_min="1", length_max="64"):
+    return {
+        "signature_length_contract": contract,
+        "signature_length_min": length_min,
+        "signature_length_max": length_max,
+        "signature_correctness_gate": "passed",
+        "signature_return_code_recorded": "true",
+        "measured_signature_contract_failures": "0",
+    }
+
+
+def test_signature_v2_parser_records_and_validates_every_return_code():
+    text = (
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length,"
+        "signature_return_code\n"
+        "0,0,100,3,3,,63,0\n"
+        "1,1,200,3,4,cpu-migration,64,0\n"
+        "2,1,110,3,3,,62,0\n"
+    )
+    samples = parse_timing_csv(text)
+    samples.runtime_metadata = _signature_metadata()
+    validate_signature_trace(samples, "bounded")
+    assert samples.signature_trace is True
+    assert samples.signature_return_codes == [0, 0]
+    assert samples.dropped_samples[0].signature_return_code == 0
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        ("0,0,100,3,3,,63,-1", "returned -1"),
+        ("0,0,100,3,3,,65,0", "outside [1,64]"),
+    ],
+)
+def test_signature_trace_rejects_failed_or_out_of_range_measured_call(row, message):
+    samples = parse_timing_csv(
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length,"
+        f"signature_return_code\n{row}\n"
+    )
+    samples.runtime_metadata = _signature_metadata()
+    with pytest.raises(ValueError, match=message.replace("[", r"\[").replace("]", r"\]")):
+        validate_signature_trace(samples, "bounded")
+
+
+def test_signature_trace_rejects_missing_round_trip_gate_or_contract_drift():
+    samples = parse_timing_csv(
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length,"
+        "signature_return_code\n0,0,100,3,3,,64,0\n"
+    )
+    samples.runtime_metadata = _signature_metadata("bounded")
+    samples.runtime_metadata["signature_correctness_gate"] = "failed"
+    with pytest.raises(ValueError, match="correctness gate"):
+        validate_signature_trace(samples, "fixed")
+
+
+def test_fixed_signature_trace_requires_exact_runtime_length():
+    samples = parse_timing_csv(
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length,"
+        "signature_return_code\n0,0,100,3,3,,64,0\n1,1,110,3,3,,64,0\n"
+    )
+    samples.runtime_metadata = _signature_metadata("fixed", "64", "64")
+    validate_signature_trace(samples, "fixed")
 
 
 def test_v2_parser_fails_closed_on_unlabelled_aux_migration():

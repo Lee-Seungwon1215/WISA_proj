@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,14 +24,17 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v1.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v2.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
     ("committed-corpus-refresh", "docs/measurement/native_timing_v2_campaign.yaml"),
-    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v1.yaml"),
+    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v2.yaml"),
     ("falcon-contrast", "docs/measurement/falcon_native_v1.yaml"),
     ("diverse-lineages", "docs/measurement/diverse_native_v1.yaml"),
 )
+BASELINE_COMMAND_ORDER = ("official_dudect", "timecop", "microwalk_pin")
+EXECUTION_PLACEHOLDERS = ("host-ID", "CPU-ID", "TIMECOP-PREFIX")
+HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 def _repo_path(value: Any, label: str) -> Path:
@@ -50,10 +55,74 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, Any]:
     return data
 
 
+def render_execution_commands(
+    manifest: dict[str, Any],
+    *,
+    host_id: str,
+    cpu: int,
+    timecop_prefix: Path,
+) -> list[str]:
+    """Render the frozen four-component and three-baseline final commands."""
+
+    if not HOST_ID_RE.fullmatch(host_id):
+        raise ValueError("host id must contain only letters, digits, dot, underscore, or hyphen")
+    if isinstance(cpu, bool) or cpu < 0:
+        raise ValueError("cpu must be a non-negative logical CPU id")
+    if not timecop_prefix.is_absolute():
+        raise ValueError("TIMECOP prefix must be an absolute path")
+
+    components = manifest.get("components")
+    baseline = manifest.get("same_corpus_baseline")
+    execute_commands = baseline.get("execute_commands") if isinstance(baseline, dict) else None
+    if not isinstance(components, list) or not isinstance(execute_commands, dict):
+        raise ValueError("frozen execution command matrix is malformed")
+    raw_commands = [item.get("command") for item in components if isinstance(item, dict)] + [
+        execute_commands.get(tool_id) for tool_id in BASELINE_COMMAND_ORDER
+    ]
+    if len(raw_commands) != 7 or any(not isinstance(command, str) for command in raw_commands):
+        raise ValueError("frozen execution command matrix must contain exactly seven commands")
+
+    replacements = {
+        "CPU-ID": str(cpu),
+        "TIMECOP-PREFIX": str(timecop_prefix),
+    }
+    rendered: list[str] = []
+    for raw_command in raw_commands:
+        assert isinstance(raw_command, str)
+        argv = []
+        for token in shlex.split(raw_command):
+            token = token.replace("host-ID", host_id)
+            token = replacements.get(token, token)
+            argv.append(token)
+        command = shlex.join(argv)
+        remaining = [value for value in EXECUTION_PLACEHOLDERS if value in command]
+        if remaining:
+            raise ValueError(f"unresolved execution placeholders: {remaining}")
+        rendered.append(command)
+    return rendered
+
+
 def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
     errors: list[str] = []
-    if manifest.get("schema_version") != 1:
-        errors.append("schema_version must be 1")
+    expected_top_level = {
+        "schema_version",
+        "campaign_id",
+        "status",
+        "frozen_at",
+        "execution_policy",
+        "components",
+        "same_corpus_baseline",
+        "analysis",
+        "upstream_freeze",
+        "promotion",
+        "claim_limits",
+    }
+    if set(manifest) != expected_top_level:
+        errors.append("paper campaign top-level field set drift")
+    if manifest.get("schema_version") != 2:
+        errors.append("schema_version must be 2")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v2":
+        errors.append("campaign_id must be ctkat-paper-native-v2")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
 
@@ -72,6 +141,11 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "pilot_and_final_separated": True,
         "final_code_changes_allowed": False,
         "cross_component_artifact_reuse": False,
+        "final_run_kind": "final",
+        "engineering_results_promotable": False,
+        "pilot_results_promotable": False,
+        "final_resume_allowed": False,
+        "human_review_gate_required": True,
     }
     for key, expected in required_policy.items():
         if policy.get(key) != expected:
@@ -94,6 +168,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         if not isinstance(item, dict):
             errors.append(f"components[{index}] must be a mapping")
             continue
+        if set(item) != {"id", "purpose", "manifest", "command"}:
+            errors.append(f"components[{index}] field set drift")
         try:
             path = _repo_path(item.get("manifest"), f"components[{index}].manifest")
             native = load_native_manifest(path)
@@ -104,9 +180,10 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         if native_errors:
             errors.extend(f"{item.get('id')}: {error}" for error in native_errors)
         expected_command = (
-            "python3 scripts/run_native_timing_campaign.py --manifest "
+            "uv run --frozen python scripts/run_native_timing_campaign.py --manifest "
             f"{item['manifest']} --output-root measurement_runs/host-ID/"
-            f"{ {'committed-corpus-refresh': 'committed-corpus', 'kyberslash-contrast': 'kyberslash', 'falcon-contrast': 'falcon', 'diverse-lineages': 'diverse'}[item['id']] } --execute"
+            f"{ {'committed-corpus-refresh': 'committed-corpus', 'kyberslash-contrast': 'kyberslash', 'falcon-contrast': 'falcon', 'diverse-lineages': 'diverse'}[item['id']] } "
+            "--run-kind final --cpu CPU-ID --execute"
         )
         if item.get("command") != expected_command:
             errors.append(f"{item.get('id')}: execution command drift")
@@ -114,7 +191,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         protocol_rows = 0
         for target in native.targets:
             per_harness = native.protocol.process_repeats * (
-                target.target_measurements
+                2 * target.target_measurements
                 + (2 + len(target.positive_control_effects)) * target.control_measurements
             )
             protocol_rows += len(target.harnesses) * per_harness
@@ -136,10 +213,62 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
     if not isinstance(baseline, dict):
         errors.append("same_corpus_baseline must be a mapping")
         baseline = {}
-    if baseline.get("check_command") != "python3 scripts/run_same_corpus_baselines.py --check":
+    if baseline.get("check_command") != (
+        "uv run --frozen python scripts/run_same_corpus_baselines.py --check"
+    ):
         errors.append("same-corpus check command drift")
+    expected_baseline_commands = {
+        "official_dudect": (
+            "uv run --frozen python scripts/run_same_corpus_baselines.py "
+            "--run-dudect --run-kind final "
+            "--cpu CPU-ID --output-root measurement_runs/host-ID/same-corpus"
+        ),
+        "timecop": (
+            "uv run --frozen python scripts/run_same_corpus_baselines.py "
+            "--run-timecop --run-kind final "
+            "--prefix TIMECOP-PREFIX --output-root measurement_runs/host-ID/same-corpus"
+        ),
+        "microwalk_pin": (
+            "uv run --frozen python scripts/run_same_corpus_baselines.py "
+            "--run-microwalk --run-kind final "
+            "--output-root measurement_runs/host-ID/same-corpus"
+        ),
+    }
+    if baseline.get("execute_commands") != expected_baseline_commands:
+        errors.append("same-corpus execution command matrix drift")
     if baseline.get("automatic_promotion") is not False:
         errors.append("same-corpus baseline must not auto-promote")
+
+    analysis = manifest.get("analysis")
+    if not isinstance(analysis, dict):
+        errors.append("analysis must be a mapping")
+        analysis = {}
+    expected_analysis = {
+        "script": "scripts/analyze_paper_native_results.py",
+        "blind_scope": "result-analyst-label-blinding",
+        "blinded_command": (
+            "uv run --frozen python scripts/analyze_paper_native_results.py "
+            "--bundle BUNDLE.yaml "
+            "--verification-commit COMMIT --output-root analysis/blinded "
+            "--output-mode blinded"
+        ),
+        "unblinded_command": (
+            "uv run --frozen python scripts/analyze_paper_native_results.py "
+            "--bundle BUNDLE.yaml "
+            "--verification-commit COMMIT --output-root analysis/named "
+            "--output-mode unblinded --blinding-record UNBLINDING.yaml"
+        ),
+        "either_host_valid_finding_keeps_risk": True,
+        "holm_within_preregistered_family": True,
+        "report_host_heterogeneity": True,
+    }
+    if analysis != expected_analysis:
+        errors.append("analysis/blinding contract drift")
+    try:
+        if not _repo_path(analysis.get("script"), "analysis.script").is_file():
+            errors.append("analysis.script is missing")
+    except ValueError as exc:
+        errors.append(str(exc))
 
     promotion = manifest.get("promotion")
     if not isinstance(promotion, dict):
@@ -147,7 +276,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         promotion = {}
     for key in (
         "require_artifact_hashes",
-        "require_two_person_review",
+        "require_automated_engineering_audits",
+        "require_two_person_human_review",
         "require_both_hosts",
         "require_control_pass",
     ):
@@ -155,7 +285,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
             errors.append(f"promotion.{key} must be true")
     if promotion.get("automatic_corpus_mutation") is not False:
         errors.append("promotion.automatic_corpus_mutation must be false")
-    for key in ("review_manifest", "preregistration"):
+    for key in ("review_manifest", "automated_audit_manifest", "preregistration"):
         try:
             required_path = _repo_path(promotion.get(key), f"promotion.{key}")
             if not required_path.is_file():
@@ -194,11 +324,28 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
     return errors, report
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--json", type=Path)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--print-commands",
+        action="store_true",
+        help="print seven final commands with all host placeholders resolved",
+    )
+    parser.add_argument("--host-id", help="safe host label used in output paths")
+    parser.add_argument("--cpu", type=int, help="logical CPU id for pinned timing commands")
+    parser.add_argument(
+        "--timecop-prefix",
+        type=Path,
+        help="absolute exact-pinned patched Valgrind installation prefix",
+    )
+    args = parser.parse_args(argv)
+    render_args = (args.host_id, args.cpu, args.timecop_prefix)
+    if args.print_commands and any(value is None for value in render_args):
+        parser.error("--print-commands requires --host-id, --cpu, and --timecop-prefix")
+    if not args.print_commands and any(value is not None for value in render_args):
+        parser.error("--host-id, --cpu, and --timecop-prefix require --print-commands")
     try:
         manifest = load_manifest(args.manifest)
         errors, report = validate(manifest)
@@ -212,6 +359,22 @@ def main() -> int:
         for error in errors:
             print(f"[paper-campaign] ERROR: {error}", file=sys.stderr)
         return 2
+    if args.print_commands:
+        assert args.host_id is not None
+        assert args.cpu is not None
+        assert args.timecop_prefix is not None
+        try:
+            commands = render_execution_commands(
+                manifest,
+                host_id=args.host_id,
+                cpu=args.cpu,
+                timecop_prefix=args.timecop_prefix,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        for command in commands:
+            print(command)
+        return 0
     print(
         f"[paper-campaign] OK: {report['component_count']} components, "
         f"{report['target_executions']} target executions, {report['timing_axes']} axes, "

@@ -60,15 +60,46 @@ jobs:
       - run: python scripts/check_falcon_comparators.py
       - run: python scripts/check_diverse_upstreams.py
       - run: python scripts/run_native_timing_campaign.py --check
-      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/kyberslash_native_v1.yaml --check
+      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/kyberslash_native_v2.yaml --check
       - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/falcon_native_v1.yaml --check
       - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/diverse_native_v1.yaml --check
       - run: python scripts/calibrate_timing_backend.py --check
       - run: python scripts/run_same_corpus_baselines.py --check
+      - run: python scripts/check_asm_evidence.py --static
+      - run: python scripts/check_automated_audits.py
       - run: python scripts/check_paper_campaign.py
       - run: python scripts/check_paper_reviews.py
       - run: python scripts/run_ablation.py --check
       - run: python scripts/build_paper_artifacts.py --check
+
+  mlkem-asm-evidence:
+    name: ML-KEM assembly evidence / 660 cells
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install exact native tool classes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc clang binutils
+          python -m pip install .
+      - name: Build and independently reproduce every frozen cell
+        run: |
+          python scripts/build_asm_evidence.py \
+            --output-root "$RUNNER_TEMP/mlkem-asm-evidence"
+          python scripts/check_asm_evidence.py \
+            --bundle "$RUNNER_TEMP/mlkem-asm-evidence/asm_evidence_bundle.json"
+      - name: Upload the complete independently-verifiable evidence tree
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mlkem-asm-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/mlkem-asm-evidence
+          if-no-files-found: error
 
   package:
     name: Wheel and sdist
@@ -172,6 +203,7 @@ jobs:
             ctkat-timecop-ci \
             python scripts/run_same_corpus_baselines.py \
               --run-timecop \
+              --run-kind engineering \
               --output-root /results/same-corpus
       - name: Upload lossless attribution report
         if: always()
@@ -196,6 +228,7 @@ jobs:
         run: |
           python scripts/run_same_corpus_baselines.py \
             --run-microwalk \
+            --run-kind engineering \
             --microwalk-timeout 900 \
             --output-root "$RUNNER_TEMP/same-corpus-microwalk"
       - name: Upload lossless MicroWalk report

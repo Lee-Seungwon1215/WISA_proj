@@ -44,7 +44,12 @@ from .ct_matrix import (
     write_ct_matrix_json,
 )
 from .ct_runner import MAX_VALGRIND_LOG_BYTES, classify_valgrind_run
-from .dudect_runner import TimingProtocolTrace, TimingSamples, run_timing_harness
+from .dudect_runner import (
+    TimingProtocolTrace,
+    TimingSamples,
+    run_timing_harness,
+    signature_trace_contract_errors,
+)
 from .evidence import SCHEMA_VERSION, Overall
 from .harness_generator import (
     CompilerNotFoundError,
@@ -75,6 +80,10 @@ from .statistics import (
     batch_t_scores,
     welch_t_test,
     welch_with_cropping,
+)
+from .timing_binary_contract import (
+    TimingBinaryContractError,
+    verify_timing_binary_contract,
 )
 from .timing_environment import collect_timing_environment
 from .timing_harness_generator import generate_and_compile_timing
@@ -367,6 +376,8 @@ def _build_kem_context(h: HarnessConfig, *, timecop_mode: bool = False) -> dict:
         "prefix": h.prefix,
         "secret_regions": [r.model_dump() for r in h.secret_regions],
         "kem_decapsulation": h.kem_decapsulation,
+        "rejection_oracle_function": h.rejection_oracle_function,
+        "rejection_seed_offset": h.rejection_seed_offset,
         "timecop_mode": timecop_mode,
     }
 
@@ -737,6 +748,8 @@ def _dudect_context(
                 "header": h.header,
                 "prefix": h.prefix,
                 "leak_target": h.leak_target,
+                "rejection_oracle_function": h.rejection_oracle_function,
+                "rejection_seed_offset": h.rejection_seed_offset,
                 "randombytes_header": h.randombytes_header,
                 "randombytes_return": h.randombytes_return,
             }
@@ -753,6 +766,7 @@ def _dudect_context(
                 "header": h.header,
                 "prefix": h.prefix,
                 "sign_leak_target": h.sign_leak_target,
+                "signature_length_contract": h.signature_length_contract,
                 "randombytes_header": h.randombytes_header,
                 "randombytes_return": h.randombytes_return,
             }
@@ -896,7 +910,12 @@ def _minimum_detectable_effect(
     alpha: float,
     target_power: float,
 ) -> float:
-    """Normal-approximation two-sided MDE in the harness clock domain."""
+    """A/A-noise-derived nominal sensitivity in the harness clock domain.
+
+    The legacy artifact key calls this an MDE.  It is not computed from the
+    target-trace variance and therefore must not be interpreted as a bound on
+    an unobserved target effect.
+    """
 
     z_alpha = NormalDist().inv_cdf(1.0 - alpha / 2.0)
     z_power = NormalDist().inv_cdf(target_power)
@@ -969,6 +988,7 @@ def _run_v2_harness_protocol(
     aa_payloads: list[dict] = []
     placebo_payloads: list[dict] = []
     positive_payloads: list[dict] = []
+    signature_contract = harness.signature_length_contract if harness.template == "sign" else None
 
     for process_index in range(protocol.process_repeats):
         target_seed = (
@@ -989,6 +1009,7 @@ def _run_v2_harness_protocol(
                 seed_override=calibration_seed,
                 mode="target",
                 measurements_override=dud.measurements,
+                signature_length_contract=signature_contract,
             )
             traces.append(
                 TimingProtocolTrace(
@@ -1006,6 +1027,7 @@ def _run_v2_harness_protocol(
             seed_override=target_seed,
             mode="target",
             measurements_override=dud.measurements,
+            signature_length_contract=signature_contract,
         )
         samples.calibration = calibration
         traces.append(TimingProtocolTrace("target", process_index, target_seed, samples))
@@ -1082,6 +1104,7 @@ def _run_v2_harness_protocol(
             seed_override=aa_seed,
             mode="aa",
             measurements_override=control_measurements,
+            signature_length_contract=signature_contract,
         )
         traces.append(TimingProtocolTrace("aa", process_index, aa_seed, aa_samples))
         aa_result = _physical_control_result(
@@ -1109,6 +1132,7 @@ def _run_v2_harness_protocol(
             seed_override=placebo_seed,
             mode="placebo",
             measurements_override=control_measurements,
+            signature_length_contract=signature_contract,
         )
         traces.append(
             TimingProtocolTrace("setup-placebo", process_index, placebo_seed, placebo_samples)
@@ -1140,6 +1164,7 @@ def _run_v2_harness_protocol(
                 mode="positive",
                 effect_ticks=effect_ticks,
                 measurements_override=control_measurements,
+                signature_length_contract=signature_contract,
             )
             traces.append(
                 TimingProtocolTrace(
@@ -1263,6 +1288,93 @@ def _run_v2_harness_protocol(
             "variable": len(set(output_lengths)) > 1,
         },
     }
+    if harness.template == "kem" and harness.leak_target in {
+        "chosen_ct",
+        "operand_bin",
+    }:
+        input_metadata = [trace.samples.runtime_metadata for trace in traces]
+        expected_common = {
+            "axis": harness.leak_target,
+            "key_policy": "fixed",
+            "corpus_seed": str(effective_seed),
+        }
+        if harness.leak_target == "chosen_ct":
+            expected_common["class_contract"] = "paired-invalid-public-chosen-ciphertexts"
+            expected_common["rejection_witness"] = "exact-rkprf-output"
+            digest_names: tuple[str, ...] = (
+                "fixed_sk_sha3_256",
+                "class0_ct_sha3_256",
+                "class1_ct_sha3_256",
+            )
+        else:
+            expected_common.update(
+                {
+                    "class_contract": "frozen-public-coefficient-bins",
+                    "class0_coefficients": "0-63",
+                    "class1_coefficients": "3265-3328",
+                }
+            )
+            digest_names = ()
+        metadata_matches = all(
+            all(item.get(key) == value for key, value in expected_common.items())
+            for item in input_metadata
+        )
+        digest_values = {
+            name: sorted({item.get(name, "") for item in input_metadata}) for name in digest_names
+        }
+        digests_valid = all(
+            len(values) == 1 and re.fullmatch(r"[0-9a-f]{64}", values[0])
+            for values in digest_values.values()
+        )
+        overall.harness_protocol["input_contract"] = {
+            "axis": harness.leak_target,
+            "key_policy": "fixed",
+            "public_class_axis": True,
+            "secret_key_varies_between_classes": False,
+            "expected_metadata": expected_common,
+            "observed_digests": digest_values,
+            "traces_validated": len(input_metadata),
+            "passed": metadata_matches and digests_valid,
+            "evidence_boundary": (
+                "fixed-key public chosen-ciphertext contrast; secret attribution "
+                "requires separate operand evidence"
+                if harness.leak_target == "chosen_ct"
+                else "direct public numerator-bin latency canary; not full-KEM leakage"
+            ),
+        }
+    if harness.template == "sign":
+        signature_metadata = [trace.samples.runtime_metadata for trace in traces]
+
+        def one_metadata_uint(name: str) -> Optional[int]:
+            values = {item.get(name) for item in signature_metadata}
+            if len(values) != 1:
+                return None
+            value = next(iter(values))
+            return int(value) if isinstance(value, str) and value.isdigit() else None
+
+        overall.harness_protocol["signature_call_contract"] = {
+            "configured": harness.signature_length_contract,
+            "return_code_column": "signature_return_code",
+            "return_code_success": 0,
+            "return_codes_recorded": all(
+                item.get("signature_return_code_recorded") == "true" for item in signature_metadata
+            ),
+            "correctness_round_trip_gate": all(
+                item.get("signature_correctness_gate") == "passed" for item in signature_metadata
+            ),
+            "measured_contract_failures": sum(
+                int(item["measured_signature_contract_failures"]) for item in signature_metadata
+            ),
+            "resolved_min": one_metadata_uint("signature_length_min"),
+            "resolved_max": one_metadata_uint("signature_length_max"),
+            "traces_validated": len(signature_metadata),
+            "passed": all(
+                not signature_trace_contract_errors(
+                    trace.samples, harness.signature_length_contract
+                )
+                for trace in traces
+            ),
+        }
     return samples, overall, batches
 
 
@@ -1301,6 +1413,13 @@ def _set_timing_validity(
             corruption_reasons.append(
                 f"{label} trace bookkeeping found "
                 f"{raw_total - accounted} malformed/unaccounted rows"
+            )
+        if harness.template == "sign":
+            corruption_reasons.extend(
+                f"{label} {reason}"
+                for reason in signature_trace_contract_errors(
+                    trace, harness.signature_length_contract
+                )
             )
         dropped_total = dropped_zero + dropped_migration
         if raw_total and dropped_total / raw_total > 0.01:
@@ -1384,7 +1503,8 @@ def _set_timing_validity(
         elif not protocol.get("positive_power_passed", False):
             result.timing_validity = "insufficient-power"
             interpretation_reasons.append(
-                "largest seeded positive-control effect did not reach the target detection power"
+                "largest seeded positive-control effect did not reach the required "
+                "repeat detection fraction"
             )
         elif not protocol.get("target_status_consistent", False):
             result.timing_validity = "insufficient-power"
@@ -1403,6 +1523,33 @@ def _set_timing_validity(
             interpretation_reasons.append(
                 "target key/sign randomness was not confirmed to use the seeded interpose; "
                 "the runtime manifest is not reproducible from the recorded seed"
+            )
+        elif harness.binary_contract is not None and not protocol.get("binary_contract", {}).get(
+            "passed", False
+        ):
+            result.timing_validity = "error"
+            interpretation_reasons.append(
+                "configured exact linked-binary instruction contract is missing or failed"
+            )
+        elif (
+            harness.template == "kem"
+            and harness.leak_target
+            in {
+                "chosen_ct",
+                "operand_bin",
+            }
+            and not protocol.get("input_contract", {}).get("passed", False)
+        ):
+            result.timing_validity = "error"
+            interpretation_reasons.append(
+                f"{harness.leak_target} fixed-input metadata contract did not pass"
+            )
+        elif harness.template == "sign" and not protocol.get("signature_call_contract", {}).get(
+            "passed", False
+        ):
+            result.timing_validity = "error"
+            interpretation_reasons.append(
+                "signature return-code/length/correctness-gate contract did not pass"
             )
         else:
             result.timing_validity = "valid"
@@ -1447,6 +1594,11 @@ def _emit_dudect_report(
             output_length = (
                 trace.output_lengths[index] if index < len(trace.output_lengths) else None
             )
+            signature_return_code = (
+                trace.signature_return_codes[index]
+                if index < len(trace.signature_return_codes)
+                else None
+            )
             retained.append(
                 (
                     sample_id,
@@ -1456,6 +1608,7 @@ def _emit_dudect_report(
                     aux_end,
                     "",
                     output_length,
+                    signature_return_code,
                 )
             )
         dropped = [
@@ -1467,6 +1620,7 @@ def _emit_dudect_report(
                 item.aux_end,
                 item.reason,
                 item.output_length,
+                item.signature_return_code,
             )
             for item in trace.dropped_samples
         ]
@@ -1482,6 +1636,7 @@ def _emit_dudect_report(
         "aux_end",
         "drop_reason",
         "output_length",
+        "signature_return_code",
         "protocol",
     ]
     with open(raw_path, "w", newline="", encoding="utf-8") as f:
@@ -1531,6 +1686,7 @@ def _emit_dudect_report(
                 "aux_end",
                 "drop_reason",
                 "output_length",
+                "signature_return_code",
                 "protocol",
             ]
         )
@@ -1753,6 +1909,7 @@ def _do_dudect(
     project_name: str,
     out_dir: Path,
     crop: bool = True,
+    config_path: Optional[Path] = None,
 ) -> List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]]:
     qemu = detect_qemu_emulation()
     # Resolve clock=auto once up front so every downstream consumer (Jinja2
@@ -1885,6 +2042,27 @@ def _do_dudect(
         console.print(f"   [dim]source: {gen.source_path}[/]")
         console.print(f"   [dim]binary: {gen.binary_path}[/]")
 
+        contract_report: Optional[Path] = None
+        if h.binary_contract is not None:
+            try:
+                contract_report = verify_timing_binary_contract(
+                    manifest_path=_resolve(cfg_dir, h.binary_contract.manifest),
+                    target=h.binary_contract.target,
+                    binary_path=gen.binary_path,
+                    generated_source_path=gen.source_path,
+                    config_path=config_path,
+                    source_paths=[_resolve(cfg_dir, source) for source in h.sources],
+                    compiler=dud.compiler.cc,
+                    cflags=list(dud.compiler.cflags),
+                    compile_command=gen.compile_command,
+                    output_dir=out_dir / "binary_contract",
+                )
+            except TimingBinaryContractError as e:
+                console.print(f"[bold red][CTKAT] timing binary contract FAIL ({h.name})[/]")
+                console.print(str(e))
+                raise typer.Exit(1)
+            console.print(f"   [dim]binary contract: {contract_report}[/]")
+
         console.print(
             f"[bold cyan]==> Run timing harness[/]: [bold]{h.name}[/] (this may take a while)"
         )
@@ -1964,6 +2142,22 @@ def _do_dudect(
                 )
                 continue
 
+            if contract_report is not None:
+                import hashlib as _hashlib
+                import json as _json
+
+                contract_payload = _json.loads(contract_report.read_text(encoding="utf-8"))
+                overall.harness_protocol["binary_contract"] = {
+                    "passed": contract_payload.get("passed") is True,
+                    "contract_id": contract_payload.get("contract_id"),
+                    "contract_target": contract_payload.get("contract_target"),
+                    "report": str(contract_report.relative_to(out_dir)),
+                    "report_sha256": _hashlib.sha256(contract_report.read_bytes()).hexdigest(),
+                    "binary_sha256": contract_payload.get("binary", {}).get("sha256"),
+                    "full_disassembly_sha256": contract_payload.get("disassembly", {}).get(
+                        "full_sha256"
+                    ),
+                }
             _set_timing_validity(
                 overall,
                 samples,
@@ -2336,7 +2530,14 @@ def dudect(
             raise typer.Exit(2)
 
     out_dir = _resolve(cfg_dir, cfg.report.output_dir)
-    results = _do_dudect(dud, cfg_dir, cfg.project.name, out_dir, crop=crop)
+    results = _do_dudect(
+        dud,
+        cfg_dir,
+        cfg.project.name,
+        out_dir,
+        crop=crop,
+        config_path=config.resolve(),
+    )
     _print_dudect_summary(results)
 
     # T41: an empty result set means no harness actually ran — nothing was
@@ -2610,6 +2811,7 @@ def run(
             cfg.project.name,
             out_dir,
             crop=crop,
+            config_path=config.resolve(),
         )
         _print_dudect_summary(dud_results)
         any_dudect_fail = any(r.status == "FAIL" for _, _, r, _ in dud_results)
@@ -2990,7 +3192,14 @@ def screen(
     # 6. dudect
     dud_results = []
     if cfg.dudect is not None and cfg.dudect.enabled and cfg.dudect.harnesses:
-        dud_results = _do_dudect(cfg.dudect, cfg_dir, cfg.project.name, out_dir, crop=crop)
+        dud_results = _do_dudect(
+            cfg.dudect,
+            cfg_dir,
+            cfg.project.name,
+            out_dir,
+            crop=crop,
+            config_path=config.resolve(),
+        )
         _emit_dudect_report(cfg.project.name, out_dir, dud_results)
 
     # 7. build per-cell records (the shape verdict_class.summarize expects).

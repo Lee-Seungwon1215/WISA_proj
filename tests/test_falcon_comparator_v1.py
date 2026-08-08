@@ -3,9 +3,11 @@ from scripts.check_falcon_comparators import (
     load_fp_audit,
     load_manifest,
     load_structural_snapshot,
+    load_timing_campaign,
     validate_fp_audit,
     validate_static,
     validate_structural_snapshot,
+    validate_timing_campaign,
 )
 
 
@@ -43,3 +45,16 @@ def test_falcon_fp_audit_keeps_build_facts_below_timing_verdict():
 
 def test_falcon_split_harness_names_are_case_insensitive_filesystem_safe():
     assert len({name.casefold() for name in SPLIT_HARNESSES}) == len(SPLIT_HARNESSES)
+
+
+def test_falcon_native_campaign_is_closed_over_six_binary_contracts():
+    campaign = load_timing_campaign()
+    assert validate_timing_campaign(campaign) == []
+    assert {target["id"] for target in campaign["targets"]} == {
+        "pqclean_falcon512_reference",
+        "pqclean_falcon1024_reference",
+        "c_fndsa512_native_fp",
+        "c_fndsa1024_native_fp",
+        "c_fndsa512_fpr_emu",
+        "c_fndsa1024_fpr_emu",
+    }

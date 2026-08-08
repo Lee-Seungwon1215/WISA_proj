@@ -10,12 +10,12 @@ The committed screening corpus contains 25 target/harness pairs: 6 risk-detected
 
 | Component | Targets | Axes | Rows/host | Status |
 |---|---:|---:|---:|---|
-| committed-corpus-refresh | 6 | 8 | 1500000 | prepared-not-measured |
-| kyberslash-contrast | 5 | 7 | 1680000 | prepared-not-measured |
-| falcon-contrast | 6 | 6 | 990000 | prepared-not-measured |
-| diverse-lineages | 4 | 4 | 810000 | prepared-not-measured |
+| committed-corpus-refresh | 6 | 8 | 2220000 | prepared-not-measured |
+| kyberslash-contrast | 10 | 10 | 3300000 | prepared-not-measured |
+| falcon-contrast | 6 | 6 | 1530000 | prepared-not-measured |
+| diverse-lineages | 4 | 4 | 1170000 | prepared-not-measured |
 
-Final timing requires 2 physical hosts; the frozen plan contains 25 component-axis executions and 9960000 protocol rows across both hosts.
+Final timing requires 2 physical hosts; the frozen plan contains 28 component-axis executions and 16440000 protocol rows across both hosts.
 
 ## Independent review readiness
 
@@ -27,7 +27,7 @@ Packets: 7; premeasurement ready: false; paper ready: false. Pending is an hones
 |---|---|---:|---:|
 | fail-closed-evidence-fold | implemented-premeasurement | 4 | 0 |
 | build-matrix-sensitivity | implemented-premeasurement | 2 | 0 |
-| kyberslash-attribution | pending-independent-review | 3 | 2 |
-| falcon-comparator | pending-independent-review | 3 | 3 |
+| kyberslash-attribution | pending-independent-review | 4 | 2 |
+| falcon-comparator | pending-independent-review | 4 | 3 |
 | diverse-upstream-builds | implemented-premeasurement | 3 | 2 |
 | native-timing-results | pending-physical-measurement | 3 | 3 |

@@ -65,13 +65,25 @@ uv run ./scripts/reproduce_artifact.sh \
 
 이 명령은 native timing을 위조해서 채우지 않는다. 테스트·9개 target의
 deterministic API round-trip correctness·corpus·provenance·4개 native
-campaign(21 target execution/25 axis)·2인 review packet schema·ablation·paper
-table drift를 검사하고 command log/source hash/SHA256SUMS를 남긴다.
+campaign(26 target execution/28 axis)·자동화 감사·2인 review packet
+schema·ablation·paper table drift를 검사하고 command log/source
+hash/SHA256SUMS를 남긴다.
+같은 명령의 `--profile engineering-ready`는 네 관점 자동화 감사까지
+fail-closed로 요구하며, 사람 리뷰가 없어도 네이티브 engineering run 준비 여부를
+판정한다. 락파일, Ruff 포맷/린트, mypy도 이 프로필에서 다시 확인한다. 실제 Linux
+측정 호스트에서는 `--profile native-engineering-ready`를 사용해 고정된 timing
+backend calibration까지 통과시킨 뒤 engineering run을 시작한다.
 실제 측정은 서로 다른 physical x86_64 CPU 두 대와 완료된 review가 필요하다.
-리뷰 6종의 독립 2인 승인이 끝난 뒤에는 같은 명령의
-`--profile measurement-ready`가 통과해야만 측정을 시작한다.
-실험 동결본은 `docs/measurement/paper_native_campaign_v1.yaml`, 논문 골격과
+측정 전 리뷰 6종의 독립 2인 승인이 끝난 뒤에는 같은 명령의
+`--profile measurement-ready`가 통과해야만 측정을 시작한다. 일곱 번째
+`native-promotion` 리뷰는 두 호스트 artifact와 분석 digest를 동결한 뒤 받는
+측정 후 승인이라 측정 시작 조건으로 세탁하지 않는다.
+자동화 에이전트 감사는 engineering 준비도를 높일 뿐 이 사람 승인을 대신하지
+않는다. 실험 동결본은 `docs/measurement/paper_native_campaign_v2.yaml`, 논문 골격과
 claim 상태는 `docs/paper/`, blind/final bundle 절차는 `docs/artifact/`에 있다.
+측정 후에는 `--profile verification`으로 digest가 박힌 후보를 먼저 만든 뒤,
+`native-promotion-v2`의 독립 2인 사람이 그 정확한 digest를 승인하고,
+`--profile paper-ready --candidate-root ...`로 최종 재검증한다.
 
 Valgrind 구조 검사는 Linux가 필요하다. macOS/Windows 개발 환경에서는
 Docker Desktop을 실행한 뒤:
@@ -505,21 +517,22 @@ KEM/sign이 `valid` 후보가 되려면 다음을 **전부** 통과해야 한다
 2. 세 개 이상 독립 process/seed에서 같은 target raw status
 3. label만 다른 physical A/A의 사전 false-alarm budget
 4. class setup 뒤 fixed target을 재는 setup-placebo 무신호
-5. 가장 큰 seeded effect가 설정한 `target_power`로 반복 검출
+5. 가장 큰 seeded effect의 repeat 검출 비율이 `target_power` 이상
 6. 모든 official target repeat의 minimum measurement 충족
 7. runtime manifest가 seeded randombytes interpose 사용을 확인
 
-A/A/setup-placebo가 깨지면 `confounded`, effect power나 repeat 수/일관성이
+A/A/setup-placebo가 깨지면 `confounded`, positive-control 검출 비율이나 repeat 수/일관성이
 부족하면 `insufficient-power`다. 이 validity는 raw PASS/FAIL과 독립이라
-`valid + FAIL`은 유효한 timing signal, `valid + PASS`는 해당 run의 검출
-한계 안에서 no-signal이다. generic은 caller-defined setup을 자동 대칭화할
+`valid + FAIL`은 유효한 timing signal, `valid + PASS`는 선택한 host와 입력
+분포에서 관측된 no-signal이다. generic은 caller-defined setup을 자동 대칭화할
 수 없으므로 계속 `insufficient-power`다.
 
 `dudect_backend_report.json`에는 A/A별 t, false-alarm budget, 각 effect의
-실측 mean delta/detection rate, A/A noise로 계산한 run별 minimum detectable
-effect(MDE)가 들어간다. MDE는 `power_alpha`와 `target_power`를 쓴
-two-sided normal approximation이며 “검출 못 했으니 0” 같은 개소리를
-막기 위한 run 한계치다.
+실측 mean delta/detection rate, A/A noise로 계산한 run별 nominal sensitivity
+diagnostic(기존 필드명 `minimum_detectable_effects`)이 들어간다. 이 값은
+`power_alpha`와 `target_power`를 쓴 two-sided normal approximation이지만
+target trace 분산 기반 MDE나 achieved-power 추정치가 아니며, no-signal 효과의
+상한으로 쓰지 않는다.
 
 Linux에서는 process affinity가 CPU 하나가 아니면, 그리고 모든 OS에서 QEMU
 emulation이면 `environment-rejected`다. system, machine, kernel, clock,
@@ -553,7 +566,7 @@ timing-harness-v2로 다시 재기 위한 실행 계획은
 checkout에서 가능한 준비 상태는 다음 명령으로 계속 검사한다.
 
 ```bash
-python scripts/run_native_timing_campaign.py --check
+uv run python scripts/run_native_timing_campaign.py --check
 ```
 
 bare-metal x86_64 Linux가 생기면 clean checkout에서 한 명령으로 preflight,
@@ -561,17 +574,18 @@ CPU pinning, target별 3-process 측정, physical controls, artifact 검증과 c
 승격 후보 생성까지 실행한다.
 
 ```bash
-python scripts/run_native_timing_campaign.py \
-  --execute \
+uv run python scripts/run_native_timing_campaign.py \
+  --execute --run-kind engineering \
   --cpu 2 \
   --output-root measurement_runs/corpus-native-timing-v2
 ```
 
-중단한 run은 `--resume`, 일부 target은 반복 가능한 `--target`으로 이어간다.
-결과의 다섯 artifact와 hash/protocol row 수를 다시 검사하려면
-`--validate-run <output-root>`를 쓴다. exit `0`만 모든 선택 축이
-promotion-ready라는 뜻이고, `2`는 artifact는 완전하지만 validity gate가
-깨졌다는 뜻이다. runner는 `corpus_timing_updates.csv`만 만들며
+engineering/pilot 중단 run은 `--resume`, 일부 target은 반복 가능한
+`--target`으로 이어간다. final은 resume이 금지된다. 결과 artifact와
+hash/protocol row 수를 다시 검사하려면 `--validate-run <output-root>
+--expected-run-kind engineering`을 쓴다. engineering/pilot의 exit `0`은
+artifact 완결성이지 promotion-ready가 아니다. final에서만 exit `0`이 모든
+선택 축의 승격 가능 상태를 뜻한다. runner는 `corpus_timing_updates.csv`만 만들며
 `docs/corpus`를 자동 수정하지 않는다. 자세한 host gate와 산출물 계약은
 [`docs/measurement/README.md`](docs/measurement/README.md)에 있다.
 
@@ -703,10 +717,10 @@ Valgrind/Memcheck로 구조 CT를 본다. 이 모드는 정상 decapsulation pat
 안 탄다.
 
 FO/rejection path도 구조적으로 보고 싶으면 별도 하니스에
-`kem_decapsulation: invalid`를 박는다. 이 모드는 정상 encapsulation 결과의
-ciphertext 한 바이트를 뒤집고 decapsulation을 실행한다. 이후 dec 결과가 원래
-enc shared secret과 같으면 하네스가 실패해서, invalid-path 하네스가 조용히
-정상 path만 분석하는 일을 막는다.
+`kem_decapsulation: invalid`를 박고 scheme-specific rejection oracle을 같이
+고정한다. 이 모드는 정상 encapsulation 결과의 ciphertext 한 바이트를 뒤집은
+뒤, dec 결과가 `rkprf(z, ct)`와 정확히 같은지 untimed gate에서 확인한다. 단순히
+원래 enc shared secret과 다르다는 이유만으로 invalid path라고 우기지 않는다.
 
 ```yaml
 ct:
@@ -720,6 +734,9 @@ ct:
       template: kem
       kem_decapsulation: invalid
       header: api.h
+      extra_headers: [params.h, symmetric.h]
+      rejection_oracle_function: PQCLEAN_MLKEM768_CLEAN_kyber_shake256_rkprf
+      rejection_seed_offset: KYBER_SECRETKEYBYTES - KYBER_SYMBYTES
 ```
 
 `valid`/`invalid`는 Valgrind 구조 분석 축이고, 아래 `dudect.leak_target:
@@ -736,7 +753,7 @@ fo`는 timing 비교 축이다. 둘은 서로 대체가 아니라 보완 관계�
 |---|---|---|---|---|
 | `sk` (기본) | **정상 dec** | 각 pool entry의 ct는 해당 sk에 매칭된 valid ct | class-0 fixed tuple pool vs class-1 random valid tuple pool | 정상 dec 경로의 sk-content dependent timing |
 | `ct` | **정상 dec** | sk fixed 양 class | class-0 fixed valid-ct pool vs class-1 random valid-ct pool | 정상 dec 경로의 ct-content dependent timing |
-| `fo` | **정상 ↔ FO** 비교 | sk fixed 양 class | paired valid-ct pool vs byte-corrupted invalid-ct pool | 정상 path와 FO fallback/implicit-rejection timing 차이 |
+| `fo` | **정상 ↔ FO** 비교 | sk fixed 양 class | paired valid-ct pool vs byte-corrupted pool whose rejection output is oracle-verified | 정상 path와 FO fallback/implicit-rejection timing 차이 |
 
 **Bundle M (F13/F14 audit fix)**: 이전 버전의 sk-leak은 양 class 모두
 `rand_bytes(ct, ...)`로 ct를 random bytes로 채워 dec()가 매번 FO
@@ -799,7 +816,7 @@ attribution은 IACR artifact의 패치드 Valgrind 3.22.0을 쓰는 전용 러�
 재현한다.
 
 ```bash
-python scripts/check_kyberslash_ground_truth.py
+uv run python scripts/check_kyberslash_ground_truth.py
 docker compose --profile timecop build ctkat-timecop
 docker compose --profile timecop run --rm ctkat-timecop \
   python scripts/run_kyberslash_timecop.py
@@ -813,13 +830,14 @@ polynomial operand를 직접 taint해 두 KS2 압축 함수까지 정확히 귀�
 전자의 KS2 무검출을 안전 판정으로 읽으면 안 된다. 둘 다 operand attribution일
 뿐이며 Docker/QEMU 결과는 physical timing이나 key-recovery evidence가 아니다.
 
-**❌ FO-fallback path 미커버 → `leak_target: fo` 사용**:
+**❌ FO-fallback path 미커버 → rejection oracle과 `leak_target: fo` 사용**:
 `leak_target: ct`는 `enc()`로 valid ct만 생성하므로 FO fallback / implicit
 rejection 경로는 안 들어감. 이 경로에 거주하는 leak (예: 정상 path 대비
 시간 차이로 ct invalidity가 누설)을 검출하려면 **`leak_target: fo`** 박을 것.
-class 0/1의 paired valid/invalid ct pool을 측정 전에 만든다. 같은 sk와
-동일 work-buffer 주소에서 dec timing을 비교하므로 정상 vs rejection 경로의
-차이를 보되 per-iteration enc confound는 넣지 않는다.
+class 0/1의 paired valid/mutated ct pool을 측정 전에 만들고 class 1의 dec
+출력이 exact `rkprf(z, ct)`인지 확인한다. 같은 sk와 동일 work-buffer 주소에서
+dec timing을 비교하므로 정상 vs rejection 경로의 차이를 보되 per-iteration
+enc confound는 넣지 않는다.
 
 ```yaml
 dudect:
@@ -828,6 +846,9 @@ dudect:
       template: kem
       header: api.h
       leak_target: fo      # ← FO fallback path 검사
+      extra_headers: [params.h, symmetric.h]
+      rejection_oracle_function: PQCLEAN_MLKEM768_CLEAN_kyber_shake256_rkprf
+      rejection_seed_offset: KYBER_SECRETKEYBYTES - KYBER_SYMBYTES
 ```
 
 sk-leak / ct-leak / fo-leak 세 모드는 직교 axis — 한 KEM 구현을 더 넓게
@@ -1007,9 +1028,9 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 ### Committed corpus snapshot
 
 <!-- BEGIN CTKAT CORPUS SNAPSHOT -->
-<!-- source: docs/corpus/corpus_summary.csv sha256=4fa3189320da55debabd10a396937eeb1bd3d4cd9921c70cce9a96c9790f5d55; regenerate: python scripts/render_readme_corpus.py --write -->
+<!-- source: docs/corpus/corpus_summary.csv sha256=fc3c9dd81d2b3929eda60221bcbc21150c3da9040e631ac8c8be856c3ca66d6b; regenerate: python scripts/render_readme_corpus.py --write -->
 
-`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:4fa3189320da`).
+`docs/corpus/corpus_summary.csv`에서 자동 생성한 committed snapshot (`sha256:fc3c9dd81d2b`).
 
 | family | target / harness | correctness | structural | asm / attribution | timing validity / signal | review | overall |
 |---|---|---|---|---|---|---|---|
@@ -1020,10 +1041,6 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 | ML-KEM | pqclean_mlkem768 / kem_dec_fo | pass | no-finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=2.103) | reviewed (rvw-mlkem-evidence-v1) | inconclusive |
 | ML-KEM | pqclean_mlkem1024 / kem_dec | pass | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
 | ML-KEM | pqclean_mlkem1024 / kem_dec_fo | pass | no-finding | candidate / public | not-run / not-run | reviewed (rvw-mlkem-evidence-v1) | no-finding-observed |
-| ML-DSA | pqclean_mldsa44 / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.153) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
-| ML-DSA | pqclean_mldsa65 / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
-| ML-DSA | pqclean_mldsa87 / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | reviewed (rvw-mldsa-rejection-v1) | inconclusive |
-| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | pass | finding | candidate / public | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.523) | reviewed (rvw-sphincs-public-state-v1) | inconclusive |
 | synthetic | toy_lookup / leaky | not-run | finding | no-candidate / not-applicable | not-run / not-run | reviewed (rvw-toy-lookup-ground-truth-v1) | risk-detected |
 | synthetic | toy_lookup / safe | not-run | no-finding | no-candidate / not-applicable | not-run / not-run | not-needed | inconclusive |
 | synthetic | ct_matrix_flip / leaky | not-run | finding | no-candidate / not-applicable | not-run / not-run | not-needed | risk-detected |
@@ -1038,6 +1055,10 @@ exit 0을 던졌음 (F7/F8). CI는 `ctkat <stage> --config ... && deploy`
 | Falcon | c_fndsa512_prospective / sign_fpr_emu | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
 | Falcon | c_fndsa1024_prospective / sign_native_fp | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
 | Falcon | c_fndsa1024_prospective / sign_fpr_emu | pass | finding | no-candidate / not-applicable | not-run / not-run | pending | needs-review |
+| ML-DSA | pqclean_mldsa44 / sign | pass | finding | candidate / secret-risk | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.153) | expired (rvw-mldsa-rejection-v1) | inconclusive |
+| ML-DSA | pqclean_mldsa65 / sign | pass | finding | candidate / secret-risk | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.661) | expired (rvw-mldsa-rejection-v1) | inconclusive |
+| ML-DSA | pqclean_mldsa87 / sign | pass | finding | candidate / secret-risk | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.748) | expired (rvw-mldsa-rejection-v1) | inconclusive |
+| SPHINCS+ | pqclean_sphincs_sha2_128f_simple / sign | pass | finding | candidate / mixed | insufficient-power / no-signal-observed (raw PASS, \|t\|=1.523) | expired (rvw-sphincs-public-state-v1) | inconclusive |
 
 재생성: `python scripts/render_readme_corpus.py --write`
 <!-- END CTKAT CORPUS SNAPSHOT -->
@@ -1111,10 +1132,9 @@ CSV가 source of truth다.
 
 ML-KEM-512/1024는 ML-KEM-768과 같은 valid/invalid decapsulation 구조
 하니스를 사용한다. SPHINCS+-SHA2-128f-simple은 hash-based signature breadth
-case로 포함하되, `treehashx1` / `wots_gen_leafx1` 함수 전체를 registry에
-등록하지 않는다. `triage.yaml`은 `R`, `mhash`, `tree`, `idx_leaf`, intermediate
-root가 signature/public-verification state로 declassified되는 이 `sign`
-harness data flow에 한정해 `accepted-variable-time` override를 둔다.
+case로 포함하되, 기존 public-state declassification은 exact-build raw probe가
+보존되지 않아 철회됐다. `treehashx1` / `wots_gen_leafx1`은 자동 registry에
+등록하지 않으며 현재 `mixed`, `expired`, `needs-analysis`로 fail closed한다.
 
 ### 5. Falcon reference-vs-c-fn-dsa comparator suite
 
@@ -1160,8 +1180,8 @@ keygen/sign/verify for all six ML-KEM/ML-DSA provider algorithms through both
 gcc- and clang-built adapters.
 
 ```bash
-python scripts/check_diverse_upstreams.py
-python scripts/check_diverse_upstreams.py \
+uv run python scripts/check_diverse_upstreams.py
+uv run python scripts/check_diverse_upstreams.py \
   --run-build-matrix --quick --output-root /tmp/ctkat-diverse-quick
 ```
 

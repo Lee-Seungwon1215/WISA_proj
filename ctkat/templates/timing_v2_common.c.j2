@@ -164,8 +164,8 @@ static inline uint64_t ctkat_now(uint32_t *aux) {
 {% endif %}
 
 /* Inject a clock-domain effect, not a compiler-dependent empty loop count.
- * The measured positive-control artifact records the observed delta/power
- * curve; this request is only the seeded lower bound. */
+ * The measured positive-control artifact records the observed delta and
+ * repeat detection fraction; this request is only the seeded lower bound. */
 static void ctkat_inject_delay(uint64_t ticks) {
     if (ticks == 0) return;
     uint32_t ignored_aux = 0;
@@ -183,6 +183,9 @@ static uint32_t aux_start_buf[CTKAT_MEASUREMENTS];
 static uint32_t aux_end_buf[CTKAT_MEASUREMENTS];
 static uint8_t drop_buf[CTKAT_MEASUREMENTS];
 static size_t output_length_buf[CTKAT_MEASUREMENTS];
+{% if record_return_code | default(false) -%}
+static int return_code_buf[CTKAT_MEASUREMENTS];
+{% endif %}
 
 static void ctkat_store_timing(
     size_t index,
@@ -191,12 +194,16 @@ static void ctkat_store_timing(
     uint64_t t1,
     uint32_t aux0,
     uint32_t aux1,
-    size_t output_length
+    size_t output_length{% if record_return_code | default(false) %},
+    int return_code{% endif %}
 ) {
     classes_buf[index] = (uint8_t)clazz;
     aux_start_buf[index] = aux0;
     aux_end_buf[index] = aux1;
     output_length_buf[index] = output_length;
+{% if record_return_code | default(false) -%}
+    return_code_buf[index] = return_code;
+{% endif %}
     if (t1 < t0) {
         cycles_buf[index] = 0;
         drop_buf[index] = CTKAT_DROP_CLOCK;
@@ -210,19 +217,20 @@ static void ctkat_store_timing(
 }
 
 static void ctkat_emit_trace(size_t measurements) {
-    printf("sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n");
+    printf("sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length{% if record_return_code | default(false) %},signature_return_code{% endif %}\n");
     for (size_t i = 0; i < measurements; i++) {
         const char *reason = "";
         if (drop_buf[i] == CTKAT_DROP_CLOCK) reason = "clock-anomaly";
         else if (drop_buf[i] == CTKAT_DROP_MIGRATION) reason = "cpu-migration";
-        printf("%zu,%u,%llu,%u,%u,%s,%zu\n",
+        printf("%zu,%u,%llu,%u,%u,%s,%zu{% if record_return_code | default(false) %},%d{% endif %}\n",
                i,
                (unsigned)classes_buf[i],
                (unsigned long long)cycles_buf[i],
                (unsigned)aux_start_buf[i],
                (unsigned)aux_end_buf[i],
                reason,
-               output_length_buf[i]);
+               output_length_buf[i]{% if record_return_code | default(false) %},
+               return_code_buf[i]{% endif %});
     }
 }
 

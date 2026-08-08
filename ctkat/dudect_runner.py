@@ -48,6 +48,7 @@ class DroppedTimingSample:
     aux_end: Optional[int]
     reason: str
     output_length: Optional[int] = None
+    signature_return_code: Optional[int] = None
 
 
 @dataclass
@@ -77,6 +78,12 @@ class TimingSamples:
     aux_start: List[Optional[int]] = field(default_factory=list)
     aux_end: List[Optional[int]] = field(default_factory=list)
     output_lengths: List[Optional[int]] = field(default_factory=list)
+    # Signature timing traces extend the v2 CSV with one return code per
+    # measured call.  Non-sign v1/v2 traces keep this list empty; a sign trace
+    # must have exactly one entry for every retained row, while dropped rows
+    # retain their code in DroppedTimingSample.
+    signature_return_codes: List[int] = field(default_factory=list)
+    signature_trace: bool = False
     # Bundle F (S1): expose raw-measurement bookkeeping so the user can
     # audit the filter pipeline from the CSV alone. Without these, "n0=10924,
     # n1=18705 from measurements=50000" gives no clue where the missing
@@ -110,12 +117,15 @@ def parse_timing_csv(text: str) -> TimingSamples:
     header = lines[0].strip()
     v1_header = "sample_id,class,cycles"
     v2_header = "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length"
-    if header not in {v1_header, v2_header}:
+    sign_v2_header = f"{v2_header},signature_return_code"
+    if header not in {v1_header, v2_header, sign_v2_header}:
         raise ValueError(f"unexpected CSV header: {lines[0]!r}")
 
-    is_v2 = header == v2_header
+    is_v2 = header in {v2_header, sign_v2_header}
+    is_signature_v2 = header == sign_v2_header
     samples = TimingSamples(
-        protocol_version=("timing-harness-v2" if is_v2 else "timing-harness-v1")
+        protocol_version=("timing-harness-v2" if is_v2 else "timing-harness-v1"),
+        signature_trace=is_signature_v2,
     )
     total = 0
     skipped_malformed = 0
@@ -126,7 +136,8 @@ def parse_timing_csv(text: str) -> TimingSamples:
     for line in lines[1:]:
         total += 1
         parts = line.strip().split(",")
-        if len(parts) != (7 if is_v2 else 3):
+        expected_parts = 8 if is_signature_v2 else (7 if is_v2 else 3)
+        if len(parts) != expected_parts:
             skipped_malformed += 1
             continue
         try:
@@ -137,10 +148,18 @@ def parse_timing_csv(text: str) -> TimingSamples:
             aux_end = int(parts[4]) if is_v2 else None
             drop_reason = parts[5] if is_v2 else ""
             output_length = int(parts[6]) if is_v2 else None
+            signature_return_code = int(parts[7]) if is_signature_v2 else None
         except ValueError:
             skipped_malformed += 1
             continue
-        if sample_id < 0 or (output_length is not None and output_length < 0):
+        if (
+            sample_id < 0
+            or (output_length is not None and output_length < 0)
+            or (
+                signature_return_code is not None
+                and not -(1 << 31) <= signature_return_code < (1 << 31)
+            )
+        ):
             skipped_malformed += 1
             continue
         if not math.isfinite(cyc):
@@ -193,6 +212,7 @@ def parse_timing_csv(text: str) -> TimingSamples:
                     aux_end,
                     drop_reason,
                     output_length,
+                    signature_return_code,
                 )
             )
             continue
@@ -213,6 +233,7 @@ def parse_timing_csv(text: str) -> TimingSamples:
                     aux_end,
                     "clock-anomaly",
                     output_length,
+                    signature_return_code,
                 )
             )
             continue
@@ -222,6 +243,8 @@ def parse_timing_csv(text: str) -> TimingSamples:
         samples.aux_start.append(aux_start)
         samples.aux_end.append(aux_end)
         samples.output_lengths.append(output_length)
+        if signature_return_code is not None:
+            samples.signature_return_codes.append(signature_return_code)
 
     samples.raw_n_total = total
     samples.malformed_count = skipped_malformed
@@ -270,6 +293,124 @@ def parse_timing_csv(text: str) -> TimingSamples:
     return samples
 
 
+def signature_trace_contract_errors(
+    samples: TimingSamples,
+    expected_contract: Optional[str] = None,
+) -> List[str]:
+    """Return fail-closed detached-signature trace contract violations.
+
+    The generated C performs the same checks before and during measurement,
+    but the report consumer independently verifies the emitted row/metadata
+    evidence.  This catches stale/custom harness binaries as well as a broken
+    generator.  ``fixed`` means exactly CRYPTO_BYTES; ``bounded`` means the
+    nonzero range through CRYPTO_BYTES recorded by the generated binary.
+    """
+
+    errors: List[str] = []
+    if not samples.signature_trace:
+        return ["signature trace lacks the signature_return_code CSV column"]
+    if expected_contract is not None and expected_contract not in {"fixed", "bounded"}:
+        return [f"unknown expected signature length contract {expected_contract!r}"]
+
+    metadata = samples.runtime_metadata
+    observed_contract = metadata.get("signature_length_contract")
+    if observed_contract not in {"fixed", "bounded"}:
+        errors.append("runtime metadata lacks a valid signature_length_contract")
+    elif expected_contract is not None and observed_contract != expected_contract:
+        errors.append(
+            "signature length contract mismatch: "
+            f"config={expected_contract} runtime={observed_contract}"
+        )
+
+    def metadata_uint(name: str) -> Optional[int]:
+        value = metadata.get(name)
+        if value is None or not value.isdigit():
+            errors.append(f"runtime metadata lacks decimal {name}")
+            return None
+        parsed = int(value)
+        if parsed > (1 << 64) - 1:
+            errors.append(f"runtime metadata {name} exceeds uint64")
+            return None
+        return parsed
+
+    length_min = metadata_uint("signature_length_min")
+    length_max = metadata_uint("signature_length_max")
+    failure_count = metadata_uint("measured_signature_contract_failures")
+    if metadata.get("signature_correctness_gate") != "passed":
+        errors.append("pre-measurement signature correctness gate did not report passed")
+    if metadata.get("signature_return_code_recorded") != "true":
+        errors.append("runtime metadata does not confirm signature return-code recording")
+    if failure_count is not None and failure_count != 0:
+        errors.append(
+            f"generated harness reported {failure_count} measured signature contract failures"
+        )
+
+    if length_min is not None and length_max is not None:
+        if length_min < 1 or length_max < length_min:
+            errors.append(f"invalid signature length range [{length_min},{length_max}]")
+        if observed_contract == "fixed" and length_min != length_max:
+            errors.append("fixed signature contract metadata has unequal min/max")
+        if observed_contract == "bounded" and length_min != 1:
+            errors.append("bounded signature contract metadata must start at one byte")
+
+    retained_count = len(samples.classes)
+    if len(samples.output_lengths) != retained_count:
+        errors.append("retained signature output-length count does not match sample count")
+    if len(samples.signature_return_codes) != retained_count:
+        errors.append("retained signature return-code count does not match sample count")
+    if samples.malformed_count:
+        errors.append(
+            f"signature trace contains {samples.malformed_count} malformed/unverifiable rows"
+        )
+    accounted = retained_count + len(samples.dropped_samples) + samples.malformed_count
+    if samples.raw_n_total != accounted:
+        errors.append(
+            "signature trace row bookkeeping mismatch: "
+            f"raw={samples.raw_n_total} accounted={accounted}"
+        )
+
+    rows: List[tuple[int, Optional[int], Optional[int]]] = []
+    for index in range(min(retained_count, len(samples.output_lengths))):
+        sample_id = samples.sample_ids[index] if index < len(samples.sample_ids) else index
+        return_code = (
+            samples.signature_return_codes[index]
+            if index < len(samples.signature_return_codes)
+            else None
+        )
+        rows.append((sample_id, samples.output_lengths[index], return_code))
+    rows.extend(
+        (item.sample_id, item.output_length, item.signature_return_code)
+        for item in samples.dropped_samples
+    )
+    for sample_id, output_length, return_code in rows:
+        if return_code is None:
+            errors.append(f"sample {sample_id} lacks a signature return code")
+        elif return_code != 0:
+            errors.append(f"sample {sample_id} signature call returned {return_code}")
+        if output_length is None:
+            errors.append(f"sample {sample_id} lacks a signature output length")
+        elif (
+            length_min is not None
+            and length_max is not None
+            and not (length_min <= output_length <= length_max)
+        ):
+            errors.append(
+                f"sample {sample_id} signature output length {output_length} "
+                f"is outside [{length_min},{length_max}]"
+            )
+
+    return list(dict.fromkeys(errors))
+
+
+def validate_signature_trace(
+    samples: TimingSamples,
+    expected_contract: Optional[str] = None,
+) -> None:
+    errors = signature_trace_contract_errors(samples, expected_contract)
+    if errors:
+        raise ValueError("signature timing contract rejected trace: " + "; ".join(errors))
+
+
 def run_timing_harness(
     binary: Path,
     workdir: Path,
@@ -278,6 +419,7 @@ def run_timing_harness(
     mode: Optional[str] = None,
     effect_ticks: int = 0,
     measurements_override: Optional[int] = None,
+    signature_length_contract: Optional[str] = None,
 ) -> TimingSamples:
     # The dudect harness emits one CSV row per measurement. Capturing that with
     # subprocess.PIPE makes the parent allocate the entire raw timing corpus in
@@ -302,6 +444,8 @@ def run_timing_harness(
         raise ValueError("effect_ticks is only valid for mode='positive'")
     if measurements_override is not None and measurements_override < 1:
         raise ValueError("measurements_override must be positive")
+    if signature_length_contract not in {None, "fixed", "bounded"}:
+        raise ValueError("signature_length_contract must be one of: fixed, bounded")
     command = [str(binary)]
     if seed_override is not None:
         command.append(str(seed_override))
@@ -344,7 +488,6 @@ def run_timing_harness(
             text = stdout_f.read().decode("utf-8", errors="replace")
     except OSError as e:
         raise RuntimeError(f"timing harness {binary} could not be executed: {e}") from e
-    samples = parse_timing_csv(text)
     # Metadata is deliberately emitted on stderr so stdout remains a strict
     # machine-readable trace.  Unknown keys are retained for forward-compatible
     # manifests; malformed metadata is ignored rather than corrupting samples.
@@ -354,5 +497,8 @@ def run_timing_harness(
             continue
         for key, value in re.findall(r"([A-Za-z0-9_-]+)=([^ ]+)", line):
             metadata[key] = value
+    samples = parse_timing_csv(text)
     samples.runtime_metadata = metadata
+    if samples.signature_trace or signature_length_contract is not None:
+        validate_signature_trace(samples, signature_length_contract)
     return samples

@@ -17,6 +17,10 @@ from ctkat.official_dudect import (
     assert_official_source_integrity,
     build_official_dudect_adapter,
 )
+from ctkat.official_dudect_verify import (
+    TimingArtifactSample,
+    recompute_pinned_official_dudect,
+)
 from ctkat.statistics import welch_t_test
 
 IS_X86 = platform.machine().lower() in {"x86_64", "amd64"}
@@ -30,6 +34,23 @@ def _samples(count: int, *, leak: int = 0) -> TimingSamples:
         for index, clazz in enumerate(classes)
     ]
     return TimingSamples(classes=classes, cycles=cycles, raw_n_total=count)
+
+
+def _artifact_samples(samples: TimingSamples) -> list[TimingArtifactSample]:
+    return [
+        TimingArtifactSample(
+            sample_id=index,
+            clazz=clazz,
+            cycles=int(cycles),
+            aux_start=0,
+            aux_end=0,
+            drop_reason="",
+            output_length=0,
+            signature_return_code=None,
+            protocol="timing-harness-v2",
+        )
+        for index, (clazz, cycles) in enumerate(zip(samples.classes, samples.cycles))
+    ]
 
 
 def test_vendored_official_header_hash_is_pinned():
@@ -108,6 +129,24 @@ def test_official_backend_executes_all_tests_and_matches_uncropped_welch(tmp_pat
     official_t = result.uncropped_test.t_score
     assert official_t is not None
     assert math.isclose(official_t, python_t, rel_tol=0.0, abs_tol=1e-9)
+
+    independent = recompute_pinned_official_dudect(
+        _artifact_samples(calibration),
+        _artifact_samples(analysis_trace),
+    )
+    assert independent.status == result.status
+    assert independent.max_test_index == result.max_test_index
+    assert len(independent.tests) == len(result.tests)
+    for expected, actual in zip(independent.tests, result.tests, strict=True):
+        assert expected.index == actual.index
+        assert expected.n0 == actual.n0
+        assert expected.n1 == actual.n1
+        assert expected.crop_threshold == actual.crop_threshold
+        if expected.t_score is None:
+            assert actual.t_score is None
+        else:
+            assert actual.t_score is not None
+            assert math.isclose(expected.t_score, actual.t_score, rel_tol=1e-12, abs_tol=1e-12)
 
 
 @pytest.mark.skipif(not IS_X86_WITH_GCC, reason="pinned official dudect C engine is x86_64-only")

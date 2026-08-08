@@ -47,8 +47,8 @@ def _load_claims() -> tuple[dict[str, Any], list[str]]:
         data = yaml.safe_load(CLAIMS.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         return {}, [f"claim matrix unreadable: {exc}"]
-    if not isinstance(data, dict) or data.get("schema_version") != 1:
-        return {}, ["claim matrix must be a schema-v1 mapping"]
+    if not isinstance(data, dict) or data.get("schema_version") != 2:
+        return {}, ["claim matrix must be a schema-v2 mapping"]
     claims = data.get("claims")
     if not isinstance(claims, list) or not claims:
         return data, ["claim matrix requires claims"]
@@ -84,13 +84,18 @@ def _load_claims() -> tuple[dict[str, Any], list[str]]:
             errors.append(f"claims[{index}] requires evidence")
         else:
             for value in claim["evidence"]:
-                path = (ROOT / str(value)).resolve()
+                raw = Path(str(value))
+                candidate = ROOT / raw
+                if raw.is_absolute() or ".." in raw.parts or candidate.is_symlink():
+                    errors.append(f"claims[{index}] evidence escapes or is a symlink")
+                    continue
+                path = candidate.resolve()
                 try:
                     path.relative_to(ROOT)
                 except ValueError:
                     errors.append(f"claims[{index}] evidence escapes repository")
                     continue
-                if not path.exists():
+                if path.is_symlink() or not path.is_file():
                     errors.append(f"claims[{index}] evidence missing: {value}")
         if not isinstance(claim["open_gates"], list):
             errors.append(f"claims[{index}] open_gates must be a list")
@@ -210,7 +215,7 @@ def build() -> tuple[dict[Path, str], dict[str, Any]]:
     markdown.append("")
 
     aggregate = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "ctkat-premeasurement-paper-artifacts",
         "corpus_pairs": len(summary),
         "corpus_state_counts": dict(sorted(overall.items())),

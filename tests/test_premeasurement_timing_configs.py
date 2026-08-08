@@ -9,8 +9,8 @@ ROOT = Path(__file__).parents[1]
 def test_every_premeasurement_timing_config_loads_through_master_campaign():
     errors, report = validate(load_manifest())
     assert errors == []
-    assert report["target_executions"] == 21
-    assert report["timing_axes"] == 25
+    assert report["target_executions"] == 26
+    assert report["timing_axes"] == 28
 
 
 def test_timing_adapters_use_seeded_interpose_not_fixed_test_vectors():

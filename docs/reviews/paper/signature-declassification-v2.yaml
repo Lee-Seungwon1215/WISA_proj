@@ -1,8 +1,9 @@
 schema_version: "2.0"
 review_id: paper-signature-declassification-v2
 status: pending
-title: ML-DSA and SPHINCS+ public-output declassification
+title: ML-DSA and SPHINCS+ conservative non-declassification
 review_phase: pre-measurement
+final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: pqclean_mldsa44, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
@@ -11,18 +12,20 @@ scope:
   - {target: pqclean_sphincs_sha2_128f_simple, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
 threat_model: Secret-dependent signing control flow or memory access observable before values become public signature state.
 secret_origin: Long-term signing key components and signing randomness.
-observed_dependency: Rejection, hint, tree, and WOTS paths previously attributed to public-output generation.
-declassification_predicate: Each dependency must be shown to occur only after the exact value is committed to the public signature transcript.
+observed_dependency: ML-DSA rejection paths consume long-term-key-derived state and rejected c/h/w1 values; the SPHINCS+ tree/WOTS public-state hypothesis lacks preserved exact-build probe evidence.
+declassification_predicate: None for the current campaign. Both finding families remain needs-analysis; any future public-output claim requires a separately versioned exact-build probe before it can change that state.
 public_transcript: Signature bytes and public verification state for the exact harness invocation.
-security_argument: Review is data-flow scoped and cannot whitelist whole functions or all parameter sets by analogy.
+security_argument: Default deny applies. The withdrawn ML-DSA registry entries and SPHINCS+ override stay needs-analysis; neither specification intent nor analogy can whitelist whole functions.
 known_limitations:
   - Specification permission alone is not a constant-time claim.
+  - A later successful signature does not declassify state from rejected iterations.
   - Legacy timing PASS rows are underpowered and remain inconclusive.
 evidence:
   - docs/reviews/rvw-mldsa-rejection-v1.yaml
   - docs/reviews/rvw-sphincs-public-state-v1.yaml
 expected_evidence:
-  - refreshed structural cells with correctness PASS
+  - refreshed ML-DSA structural cells classified needs-analysis with correctness PASS
+  - refreshed SPHINCS+ structural cell classified needs-analysis with correctness PASS
 reviewers: []
 expiry_conditions:
   - source or standard revision changes

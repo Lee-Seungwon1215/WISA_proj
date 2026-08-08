@@ -1,0 +1,42 @@
+schema_version: "1.0"
+kind: ctkat-timing-binary-instruction-contract
+contract_id: kyberslash-direct-operand-linked-binary-v2
+system: Linux
+machines: [x86_64, AMD64]
+disassembler: objdump
+file_format_pattern: '(?s)file format elf64-x86-64.*architecture: i386:x86-64'
+
+targets:
+  ks1_vulnerable: &vulnerable
+    compiler: gcc
+    cflags: &canary_cflags
+      [-std=c99, -Os, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+    comparison_group: kyberslash-ks1-direct-operand
+    evidence_boundary: >-
+      Direct public numerator-bin hardware-division canary; not a full-KEM or
+      key-recovery claim.
+    symbols:
+      ctkat_kyberslash_site_operation:
+        {division_count: 1, forbid_division_helpers: true}
+  ks1_patched: &patched
+    compiler: gcc
+    cflags: *canary_cflags
+    comparison_group: kyberslash-ks1-direct-operand
+    evidence_boundary: >-
+      Matched reciprocal-multiply negative control for the direct public
+      numerator bins; not a full-KEM claim.
+    symbols:
+      ctkat_kyberslash_site_operation:
+        {division_count: 0, forbid_division_helpers: true}
+  ks2_poly_vulnerable:
+    <<: *vulnerable
+    comparison_group: kyberslash-ks2-poly-direct-operand
+  ks2_poly_patched:
+    <<: *patched
+    comparison_group: kyberslash-ks2-poly-direct-operand
+  ks2_polyvec_vulnerable:
+    <<: *vulnerable
+    comparison_group: kyberslash-ks2-polyvec-direct-operand
+  ks2_polyvec_patched:
+    <<: *patched
+    comparison_group: kyberslash-ks2-polyvec-direct-operand

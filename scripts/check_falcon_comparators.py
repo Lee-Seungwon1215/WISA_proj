@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ctkat.config import HarnessConfig, load_config  # noqa: E402
+from ctkat.timing_binary_contract import load_timing_binary_contract  # noqa: E402
 from scripts.check_third_party import tree_sha256  # noqa: E402
 
 MANIFEST_PATH = ROOT / "docs/ground_truth/falcon/manifest.yaml"
@@ -30,6 +31,76 @@ UPSTREAM = ROOT / "examples/fndsa_prospective/upstream"
 ADAPTER = ROOT / "examples/fndsa_prospective/adapter.c"
 KAT = ROOT / "examples/fndsa_prospective/kat.c"
 DETERMINISTIC_RANDOMBYTES = ROOT / "examples/falcon_comparator_support/deterministic_randombytes.c"
+TIMING_CAMPAIGN_PATH = ROOT / "docs/measurement/falcon_native_v1.yaml"
+TIMING_BINARY_CONTRACT_PATH = (
+    ROOT / "examples/falcon_comparator_support/timing_binary_contracts_v1.yaml"
+)
+
+PQ_TIMING_CFLAGS = ["-std=c99", "-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"]
+FNDSA_TIMING_COMMON_CFLAGS = [
+    "-std=c99",
+    "-O2",
+    "-g",
+    "-fno-omit-frame-pointer",
+    "-fno-lto",
+    "-D_GNU_SOURCE",
+]
+FALCON_TIMING_TARGETS = {
+    "pqclean_falcon512_reference": {
+        "config": "examples/pqc_falcon512/ctkat.yaml",
+        "cflags": PQ_TIMING_CFLAGS,
+        "degree": "512",
+        "profile": "pqclean",
+    },
+    "pqclean_falcon1024_reference": {
+        "config": "examples/pqc_falcon1024/ctkat_timing.yaml",
+        "cflags": PQ_TIMING_CFLAGS,
+        "degree": "1024",
+        "profile": "pqclean",
+    },
+    "c_fndsa512_native_fp": {
+        "config": "examples/c_fndsa512_prospective/ctkat_timing_native.yaml",
+        "cflags": FNDSA_TIMING_COMMON_CFLAGS + ["-DCTKAT_FNDSA_LOGN=9", "-DFNDSA_AVX2=0"],
+        "degree": "512",
+        "profile": "native_fp",
+    },
+    "c_fndsa1024_native_fp": {
+        "config": "examples/c_fndsa1024_prospective/ctkat_timing_native.yaml",
+        "cflags": FNDSA_TIMING_COMMON_CFLAGS + ["-DCTKAT_FNDSA_LOGN=10", "-DFNDSA_AVX2=0"],
+        "degree": "1024",
+        "profile": "native_fp",
+    },
+    "c_fndsa512_fpr_emu": {
+        "config": "examples/c_fndsa512_prospective/ctkat_timing_fpr_emu.yaml",
+        "cflags": FNDSA_TIMING_COMMON_CFLAGS
+        + [
+            "-DCTKAT_FNDSA_LOGN=9",
+            "-DFNDSA_AVX2=0",
+            "-DFNDSA_SSE2=0",
+            "-DFNDSA_NEON=0",
+            "-DFNDSA_RV64D=0",
+            "-DFNDSA_DIV_EMU=1",
+            "-DFNDSA_SQRT_EMU=1",
+        ],
+        "degree": "512",
+        "profile": "integer_fpr",
+    },
+    "c_fndsa1024_fpr_emu": {
+        "config": "examples/c_fndsa1024_prospective/ctkat_timing_fpr_emu.yaml",
+        "cflags": FNDSA_TIMING_COMMON_CFLAGS
+        + [
+            "-DCTKAT_FNDSA_LOGN=10",
+            "-DFNDSA_AVX2=0",
+            "-DFNDSA_SSE2=0",
+            "-DFNDSA_NEON=0",
+            "-DFNDSA_RV64D=0",
+            "-DFNDSA_DIV_EMU=1",
+            "-DFNDSA_SQRT_EMU=1",
+        ],
+        "degree": "1024",
+        "profile": "integer_fpr",
+    },
+}
 
 COMMON_SOURCES = (
     "codec.c",
@@ -94,6 +165,13 @@ def load_fp_audit(path: Path = FP_AUDIT_PATH) -> dict[str, Any]:
     return data
 
 
+def load_timing_campaign(path: Path = TIMING_CAMPAIGN_PATH) -> dict[str, Any]:
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Falcon timing campaign root must be a mapping")
+    return data
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -123,6 +201,116 @@ def _flags(harness: HarnessConfig) -> set[str]:
 
 def _region_pairs(harness: HarnessConfig) -> list[tuple[str, str]]:
     return [(region.offset, region.length) for region in harness.secret_regions]
+
+
+def _exact_fp_rule(rule: dict[str, Any], count: int) -> bool:
+    return rule.get("floating_point") == {"min_count": count, "max_count": count}
+
+
+def validate_timing_campaign(
+    campaign: dict[str, Any] | None = None,
+) -> list[str]:
+    """Close the six-target native campaign over configs and linked contracts."""
+
+    errors: list[str] = []
+    campaign = load_timing_campaign() if campaign is None else campaign
+    if campaign.get("schema_version") != "1.0":
+        errors.append("Falcon timing campaign schema_version must be '1.0'")
+    if campaign.get("campaign_id") != "falcon-native-v1":
+        errors.append("Falcon timing campaign_id drifted")
+    if campaign.get("coverage_mode") != "manifest-only":
+        errors.append("Falcon timing campaign coverage_mode drifted")
+    if campaign.get("protocol", {}).get("compiler") != "gcc":
+        errors.append("Falcon timing campaign compiler must be gcc")
+
+    records = campaign.get("targets")
+    if not isinstance(records, list) or any(not isinstance(item, dict) for item in records):
+        return errors + ["Falcon timing campaign targets must be a mapping list"]
+    ids = [str(item.get("id", "")) for item in records]
+    if len(ids) != len(set(ids)):
+        errors.append("Falcon timing campaign target ids are duplicated")
+    if set(ids) != set(FALCON_TIMING_TARGETS):
+        errors.append("Falcon timing campaign target set drifted")
+
+    loaded_contract_root: dict[str, Any] | None = None
+    for record in records:
+        target = str(record.get("id", ""))
+        expected = FALCON_TIMING_TARGETS.get(target)
+        if expected is None:
+            continue
+        if record.get("config") != expected["config"]:
+            errors.append(f"{target}: timing config path drifted")
+            continue
+        if record.get("harnesses") != ["sign"] or record.get("axes") != {"sign": "sk"}:
+            errors.append(f"{target}: timing harness/axis drifted")
+
+        config_path = _repo_path(expected["config"])
+        config = load_config(config_path)
+        if config.project.name != target:
+            errors.append(f"{target}: timing config project name drifted")
+        if config.dudect is None:
+            errors.append(f"{target}: dudect config missing")
+            continue
+        if config.dudect.compiler.cc != "gcc":
+            errors.append(f"{target}: timing compiler must be gcc")
+        expected_cflags = expected["cflags"]
+        if config.dudect.compiler.cflags != expected_cflags:
+            errors.append(f"{target}: exact timing cflags drifted")
+        if len(config.dudect.harnesses) != 1 or config.dudect.harnesses[0].name != "sign":
+            errors.append(f"{target}: expected exactly one sign timing harness")
+            continue
+        harness = config.dudect.harnesses[0]
+        contract_ref = harness.binary_contract
+        if contract_ref is None:
+            errors.append(f"{target}: linked-binary contract missing")
+            continue
+        resolved_manifest = (config_path.parent / contract_ref.manifest).resolve()
+        if resolved_manifest != TIMING_BINARY_CONTRACT_PATH.resolve():
+            errors.append(f"{target}: linked-binary contract manifest drifted")
+            continue
+        if contract_ref.target != target:
+            errors.append(f"{target}: linked-binary contract target drifted")
+            continue
+
+        contract_root, rule = load_timing_binary_contract(resolved_manifest, target)
+        loaded_contract_root = contract_root
+        if rule["compiler"] != "gcc" or rule["cflags"] != expected_cflags:
+            errors.append(f"{target}: contract toolchain tuple differs from config")
+        expected_group = f"falcon-{expected['degree']}-full-sign-gcc-O2"
+        if rule.get("comparison_group") != expected_group:
+            errors.append(f"{target}: contract comparison group drifted")
+
+        symbols = rule["symbols"]
+        profile = expected["profile"]
+        if profile == "pqclean":
+            sampler = f"PQCLEAN_FALCON{expected['degree']}_CLEAN_sampler"
+            if set(symbols) != {sampler} or not _exact_fp_rule(symbols.get(sampler, {}), 0):
+                errors.append(f"{target}: PQClean software-FPR sampler contract drifted")
+        elif profile == "native_fp":
+            if set(symbols) != {"fndsa_sampler_next", "sampler_next_sse2"}:
+                errors.append(f"{target}: native sampler symbol set drifted")
+            entry = symbols.get("fndsa_sampler_next", {})
+            implementation = symbols.get("sampler_next_sse2", {})
+            if not _exact_fp_rule(entry, 0) or entry.get("required_tail_targets") != [
+                "sampler_next_sse2"
+            ]:
+                errors.append(f"{target}: native sampler entry/tail contract drifted")
+            fp_range = implementation.get("floating_point", {})
+            if fp_range.get("min_count", 0) < 1 or not isinstance(fp_range.get("max_count"), int):
+                errors.append(f"{target}: native sampler implementation FP contract drifted")
+        else:
+            if set(symbols) != {"fndsa_sampler_next", "sampler_next_sse2"}:
+                errors.append(f"{target}: integer-FPR sampler symbol set drifted")
+            if not _exact_fp_rule(symbols.get("fndsa_sampler_next", {}), 0):
+                errors.append(f"{target}: integer-FPR sampler FP contract drifted")
+            if symbols.get("sampler_next_sse2") != {"present": False}:
+                errors.append(f"{target}: integer-FPR SSE2 absence contract drifted")
+
+    if loaded_contract_root is not None and set(loaded_contract_root["targets"]) != set(
+        FALCON_TIMING_TARGETS
+    ):
+        errors.append("Falcon timing binary-contract target set drifted")
+    return errors
 
 
 def validate_static(manifest: dict[str, Any]) -> list[str]:
@@ -357,6 +545,7 @@ def validate_static(manifest: dict[str, Any]) -> list[str]:
         errors.append("physical timing must remain not-run until a native campaign is reviewed")
     if policy.get("timing_blocker") != "blocked-by-native-linux-host":
         errors.append("native timing blocker drifted")
+    errors.extend(validate_timing_campaign())
     return errors
 
 

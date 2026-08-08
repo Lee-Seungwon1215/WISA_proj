@@ -34,6 +34,7 @@ from ctkat.asm_scan import (
     extract_opt_level,
     parse_nm,
     parse_objdump,
+    parse_objdump_details,
     resolve_functions,
     scan_harness,
     triage_hint_for,
@@ -76,6 +77,21 @@ X86_DISASM = """
 
 def test_parse_objdump_finds_x86_idiv_only():
     assert parse_objdump(X86_DISASM) == [("leaky_div", "62", "idivl")]
+
+
+def test_parse_full_objdump_dsl_preserves_operand_and_instruction_text():
+    full = """
+0000000000000000 <shake128>:
+/src/common/fips202.c:697
+  10:\t48 f7 f1             \tdivq   %rcx
+  13:\t48 89 c2             \tmov    %rax,%rdx
+"""
+    hits = parse_objdump_details(full)
+    assert len(hits) == 1
+    hit = hits[0]
+    assert (hit.function, hit.addr, hit.mnemonic) == ("shake128", "10", "divq")
+    assert hit.operand_text == "%rcx"
+    assert hit.instruction_text == "divq   %rcx"
 
 
 def test_parse_objdump_excludes_reciprocal_multiply():
@@ -316,6 +332,8 @@ def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
         "function": "poly_tomsg",
         "triage_hint": "unclassified-review-required",
         "mnemonic": "div",
+        "operand_text": "",
+        "instruction_text": "",
         "count": 1,
     } in m
     assert {
@@ -325,6 +343,8 @@ def test_write_varlat_json_has_matrix_compilers_and_errors(tmp_path: Path):
         "function": "poly_tomsg",
         "triage_hint": "unclassified-review-required",
         "mnemonic": "idiv",
+        "operand_text": "",
+        "instruction_text": "",
         "count": 1,
     } in m
     gcc_opts = sorted(r["opt"] for r in m if r["compiler"] == "gcc")

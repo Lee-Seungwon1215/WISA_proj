@@ -41,11 +41,9 @@ run_target() {  # <project-dir> <family> <target> [extra build_corpus_table args
     --arch "$ARCH" --ctkat-commit "$COMMIT" "${CCV[@]}" --out-dir "$OUT" "$@"
 }
 
-# Per-target triage, review artifacts, and legacy verdict overrides (the
-# human-judgment layer that the auto-classifier cannot derive). Every reviewed
-# status names a checked docs/reviews artifact; check_corpus.py rejects stale,
-# missing, or out-of-scope references.
-SPHINCS_NOTE="sign=SPHINCS+ attribution review: treehashx1 (utilsx1.c:67 auth-path sibling check) and wots_gen_leafx1 (wotsx1.c:28 signing leaf selection, wotsx1.c:57 WOTS chain step save) are conditioned on signature/public state derived during signing, not accepted as function-wide safe names. R is computed from SK_PRF at sign.c:124 and is published in the signature; hash_message at sign.c:127 derives mhash/tree/idx_leaf from R, pk, and m. Split-taint probes show that SK_PRF, PUB_SEED, root, and full-sk taints surface the same tree/WOTS branch family, while SK_SEED-only leaves only the WOTS chain-save branch. A declassification probe that marks R, mhash, tree, idx_leaf, and intermediate roots public before tree/WOTS traversal clears the findings. This override is narrow to this harness/data flow; do not register treehashx1 or wots_gen_leafx1 wholesale."
+# Per-target triage and review artifacts form the human-judgment layer that the
+# auto-classifier cannot derive. Every non-default review status names a checked
+# docs/reviews artifact; check_corpus.py rejects stale or out-of-scope references.
 
 run_target examples/pqc_mlkem512 ML-KEM pqclean_mlkem512 \
   --triage kem_dec=public --triage kem_dec_fo=public \
@@ -76,21 +74,21 @@ run_target examples/pqc_kyber768_historical Kyber pqcrystals_kyber768_ref_a621b8
   --triage kem_dec=secret-risk \
   --review kem_dec=reviewed --review-id kem_dec=rvw-kyberslash-ground-truth-v1
 run_target examples/pqc_mldsa44 ML-DSA pqclean_mldsa44 \
-  --triage sign=public --verdict sign=accepted-variable-time \
-  --review sign=reviewed --review-id sign=rvw-mldsa-rejection-v1 \
-  --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
+  --triage sign=secret-risk \
+  --review sign=expired --review-id sign=rvw-mldsa-rejection-v1 \
+  --note "sign=prior ML-DSA rejection/public-output acceptance withdrawn: rejected iterations retain secret-derived state and never enter the final transcript; remains needs-analysis"
 run_target examples/pqc_mldsa65 ML-DSA pqclean_mldsa65 \
-  --triage sign=public --verdict sign=accepted-variable-time \
-  --review sign=reviewed --review-id sign=rvw-mldsa-rejection-v1 \
-  --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
+  --triage sign=secret-risk \
+  --review sign=expired --review-id sign=rvw-mldsa-rejection-v1 \
+  --note "sign=prior ML-DSA rejection/public-output acceptance withdrawn: rejected iterations retain secret-derived state and never enter the final transcript; remains needs-analysis"
 run_target examples/pqc_mldsa87 ML-DSA pqclean_mldsa87 \
-  --triage sign=public --verdict sign=accepted-variable-time \
-  --review sign=reviewed --review-id sign=rvw-mldsa-rejection-v1 \
-  --note "sign=debug/no-inline cells localize accepted ML-DSA rejection/public-output timing; optimized crypto_sign_signature_ctx is reviewed as coarse parent-frame attribution, not registered wholesale"
+  --triage sign=secret-risk \
+  --review sign=expired --review-id sign=rvw-mldsa-rejection-v1 \
+  --note "sign=prior ML-DSA rejection/public-output acceptance withdrawn: rejected iterations retain secret-derived state and never enter the final transcript; remains needs-analysis"
 run_target examples/pqc_sphincs_sha2_128f_simple SPHINCS+ pqclean_sphincs_sha2_128f_simple \
-  --triage sign=public --verdict sign=accepted-variable-time \
-  --review sign=reviewed --review-id sign=rvw-sphincs-public-state-v1 \
-  --note "$SPHINCS_NOTE"
+  --triage sign=mixed \
+  --review sign=expired --review-id sign=rvw-sphincs-public-state-v1 \
+  --note "sign=prior SPHINCS+ public-state attribution withdrawn because the exact-build raw declassification probe was not preserved; remains needs-analysis"
 run_target examples/pqc_falcon512 Falcon pqclean_falcon512_reference \
   --replace-target pqclean_falcon512 \
   --review sign=pending \

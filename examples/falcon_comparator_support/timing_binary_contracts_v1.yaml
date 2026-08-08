@@ -1,0 +1,111 @@
+schema_version: "1.0"
+kind: ctkat-timing-binary-instruction-contract
+contract_id: falcon-signing-linked-binary-v1
+system: Linux
+machines: [x86_64, AMD64]
+disassembler: objdump
+file_format_pattern: '(?s)file format elf64-x86-64.*architecture: i386:x86-64'
+
+targets:
+  pqclean_falcon512_reference:
+    compiler: gcc
+    cflags: &pqclean_cflags
+      [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto]
+    comparison_group: falcon-512-full-sign-gcc-O2
+    evidence_boundary: >-
+      Exact PQClean Falcon-512 reference linked binary. Its fpr type is a
+      uint64_t software representation, so the namespaced sampler must contain
+      exactly zero hardware floating-point arithmetic instructions. This is a
+      build-scope fact, not a constant-time or leakage verdict.
+    symbols:
+      PQCLEAN_FALCON512_CLEAN_sampler:
+        floating_point: {min_count: 0, max_count: 0}
+
+  pqclean_falcon1024_reference:
+    compiler: gcc
+    cflags: *pqclean_cflags
+    comparison_group: falcon-1024-full-sign-gcc-O2
+    evidence_boundary: >-
+      Exact PQClean Falcon-1024 reference linked binary. Its fpr type is a
+      uint64_t software representation, so the namespaced sampler must contain
+      exactly zero hardware floating-point arithmetic instructions. This is a
+      build-scope fact, not a constant-time or leakage verdict.
+    symbols:
+      PQCLEAN_FALCON1024_CLEAN_sampler:
+        floating_point: {min_count: 0, max_count: 0}
+
+  c_fndsa512_native_fp:
+    compiler: gcc
+    cflags: &fndsa512_native_cflags
+      [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
+       -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=9, -DFNDSA_AVX2=0]
+    comparison_group: falcon-512-full-sign-gcc-O2
+    evidence_boundary: >-
+      Exact prospective c-fn-dsa-512 native-FP linked binary. The public
+      fndsa_sampler_next entry point only marshals values and must tail-jump to
+      sampler_next_sse2; hardware FP arithmetic is required in that exact
+      implementation symbol. Opcode presence is not a leakage verdict and
+      this target has no FN-DSA conformance claim.
+    symbols:
+      fndsa_sampler_next:
+        floating_point: {min_count: 0, max_count: 0}
+        required_tail_targets: [sampler_next_sse2]
+      sampler_next_sse2:
+        floating_point: {min_count: 1, max_count: 512}
+
+  c_fndsa1024_native_fp:
+    compiler: gcc
+    cflags: &fndsa1024_native_cflags
+      [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
+       -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=10, -DFNDSA_AVX2=0]
+    comparison_group: falcon-1024-full-sign-gcc-O2
+    evidence_boundary: >-
+      Exact prospective c-fn-dsa-1024 native-FP linked binary. The public
+      fndsa_sampler_next entry point only marshals values and must tail-jump to
+      sampler_next_sse2; hardware FP arithmetic is required in that exact
+      implementation symbol. Opcode presence is not a leakage verdict and
+      this target has no FN-DSA conformance claim.
+    symbols:
+      fndsa_sampler_next:
+        floating_point: {min_count: 0, max_count: 0}
+        required_tail_targets: [sampler_next_sse2]
+      sampler_next_sse2:
+        floating_point: {min_count: 1, max_count: 512}
+
+  c_fndsa512_fpr_emu:
+    compiler: gcc
+    cflags: &fndsa512_integer_cflags
+      [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
+       -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=9, -DFNDSA_AVX2=0,
+       -DFNDSA_SSE2=0, -DFNDSA_NEON=0, -DFNDSA_RV64D=0,
+       -DFNDSA_DIV_EMU=1, -DFNDSA_SQRT_EMU=1]
+    comparison_group: falcon-512-full-sign-gcc-O2
+    evidence_boundary: >-
+      Exact prospective c-fn-dsa-512 integer-FPR linked binary. The entry
+      point must contain zero hardware FP arithmetic and the native SSE2
+      implementation symbol must be absent. This is a profile/build fact, not
+      a constant-time verdict, and this target has no FN-DSA conformance claim.
+    symbols:
+      fndsa_sampler_next:
+        floating_point: {min_count: 0, max_count: 0}
+      sampler_next_sse2:
+        present: false
+
+  c_fndsa1024_fpr_emu:
+    compiler: gcc
+    cflags: &fndsa1024_integer_cflags
+      [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
+       -D_GNU_SOURCE, -DCTKAT_FNDSA_LOGN=10, -DFNDSA_AVX2=0,
+       -DFNDSA_SSE2=0, -DFNDSA_NEON=0, -DFNDSA_RV64D=0,
+       -DFNDSA_DIV_EMU=1, -DFNDSA_SQRT_EMU=1]
+    comparison_group: falcon-1024-full-sign-gcc-O2
+    evidence_boundary: >-
+      Exact prospective c-fn-dsa-1024 integer-FPR linked binary. The entry
+      point must contain zero hardware FP arithmetic and the native SSE2
+      implementation symbol must be absent. This is a profile/build fact, not
+      a constant-time verdict, and this target has no FN-DSA conformance claim.
+    symbols:
+      fndsa_sampler_next:
+        floating_point: {min_count: 0, max_count: 0}
+      sampler_next_sse2:
+        present: false

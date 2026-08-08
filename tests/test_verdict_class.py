@@ -83,10 +83,9 @@ def test_accepted_variable_time_when_all_funcs_registered():
     assert "registry" in notes
 
 
-def test_default_registry_loads_mldsa_pack_sig_review():
+def test_default_registry_does_not_automatically_declassify_mldsa_findings():
     reg = load_registry()
-    assert "pack_sig" in reg["ML-DSA"]
-    assert "crypto_sign_signature_ctx" not in reg["ML-DSA"]
+    assert "ML-DSA" not in reg
 
 
 def test_accepted_override_does_not_claim_all_funcs_were_registered():

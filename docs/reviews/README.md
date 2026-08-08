@@ -16,6 +16,14 @@ committed packets honestly remain `pending`; `--require-pre-measurement` and
 independent from the artifact author, record a quorum decision. Partial
 sign-offs are not committed as if they were complete.
 
+The post-measurement `native-promotion-v2` packet additionally binds
+`final_evidence_root_sha256`. Generate that value with the artifact
+`verification` profile before review. The value is part of the canonical review
+contract, so changing it invalidates every reviewer's
+`evidence_manifest_sha256`. The `paper-ready` profile supplies the candidate
+root back to this checker and fails unless the completed human packet approved
+the exact same digest. Automated agents cannot populate reviewer entries.
+
 Superseded records retained only to explain frozen archive rows live under
 `archive/`; the current corpus validator intentionally loads only top-level
 review files.

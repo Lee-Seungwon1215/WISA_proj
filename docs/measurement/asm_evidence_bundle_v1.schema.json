@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ctkat.invalid/schemas/asm-evidence-bundle-v1.json",
+  "title": "CT-KAT content-addressed assembly evidence bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "campaign_id",
+    "campaign_manifest",
+    "source_revision",
+    "host",
+    "toolchain",
+    "public_scope",
+    "coverage",
+    "raw_bundle",
+    "paper_eligible",
+    "errors",
+    "cells"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "kind": {"const": "ctkat-asm-evidence-bundle"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "campaign_manifest": {"$ref": "#/$defs/hashedPath"},
+    "source_revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "clean"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "clean": {"type": "boolean"}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "machine"],
+      "properties": {
+        "system": {"type": "string", "minLength": 1},
+        "machine": {"type": "string", "minLength": 1}
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compilers", "objdump", "nm"],
+      "properties": {
+        "compilers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["gcc", "clang"],
+          "properties": {
+            "gcc": {"$ref": "#/$defs/toolIdentity"},
+            "clang": {"$ref": "#/$defs/toolIdentity"}
+          }
+        },
+        "objdump": {"$ref": "#/$defs/toolIdentity"},
+        "nm": {"$ref": "#/$defs/toolIdentity"}
+      }
+    },
+    "public_scope": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/scope"},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "expected_cells", "passed_cells", "failed_cells"],
+      "properties": {
+        "status": {"enum": ["pass", "incomplete"]},
+        "expected_cells": {"type": "integer", "minimum": 1},
+        "passed_cells": {"type": "integer", "minimum": 0},
+        "failed_cells": {"type": "integer", "minimum": 0}
+      }
+    },
+    "raw_bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "artifact_count", "artifacts"],
+      "properties": {
+        "path": {"const": "raw/sha256"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_count": {"type": "integer", "minimum": 0},
+        "artifacts": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/rawArtifact"}
+        }
+      }
+    },
+    "paper_eligible": {"type": "boolean"},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "cells": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/cell"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "hashedPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "harness"],
+      "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "harness": {"type": "string", "minLength": 1}
+      }
+    },
+    "toolIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "available",
+        "resolved_path",
+        "version",
+        "binary_sha256",
+        "identity_sha256"
+      ],
+      "properties": {
+        "command": {"type": "string", "minLength": 1},
+        "available": {"type": "boolean"},
+        "resolved_path": {"type": ["string", "null"]},
+        "version": {"type": ["string", "null"]},
+        "binary_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "identity_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rawArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^raw/sha256/[0-9a-f]{64}(\\.object|\\.objdump\\.txt|\\.nm\\.txt|\\.compile\\.stdout\\.txt|\\.compile\\.stderr\\.txt)$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell_id",
+        "target",
+        "harness",
+        "source_file",
+        "source_sha256",
+        "config",
+        "config_sha256",
+        "compiler",
+        "compiler_identity_sha256",
+        "opt",
+        "compile_argv",
+        "compile",
+        "disassembly",
+        "nm",
+        "status",
+        "candidates"
+      ],
+      "properties": {
+        "cell_id": {"$ref": "#/$defs/sha256"},
+        "target": {"type": "string", "minLength": 1},
+        "harness": {"type": "string", "minLength": 1},
+        "source_file": {"type": "string", "minLength": 1},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "config": {"type": "string", "minLength": 1},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "compiler": {"type": "string", "minLength": 1},
+        "compiler_identity_sha256": {"$ref": "#/$defs/sha256"},
+        "opt": {"enum": ["-O0", "-O1", "-O2", "-O3", "-Os"]},
+        "compile_argv": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+        "compile": {"$ref": "#/$defs/stage"},
+        "compile_stdout_artifact": {"$ref": "#/$defs/rawArtifact"},
+        "compile_stderr_artifact": {"$ref": "#/$defs/rawArtifact"},
+        "dependencies": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/dependency"}
+        },
+        "object_artifact": {"$ref": "#/$defs/rawArtifact"},
+        "object_sha256": {"$ref": "#/$defs/sha256"},
+        "object_size": {"type": "integer", "minimum": 1},
+        "disassembly": {"$ref": "#/$defs/stage"},
+        "nm": {"$ref": "#/$defs/stage"},
+        "objdump_argv": {"type": "array", "items": {"type": "string"}},
+        "nm_argv": {"type": "array", "items": {"type": "string"}},
+        "disassembly_artifact": {"$ref": "#/$defs/rawArtifact"},
+        "nm_artifact": {"$ref": "#/$defs/rawArtifact"},
+        "status": {"enum": ["pass", "compile-error", "disasm-error"]},
+        "candidates": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/candidate"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}}},
+          "then": {
+            "required": [
+              "object_sha256",
+              "object_size",
+              "object_artifact",
+              "compile_stdout_artifact",
+              "compile_stderr_artifact",
+              "dependencies",
+              "objdump_argv",
+              "nm_argv",
+              "disassembly_artifact",
+              "nm_artifact"
+            ]
+          }
+        }
+      ]
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["pass", "error", "timeout", "tool-unavailable", "not-run"]},
+        "returncode": {"type": "integer"},
+        "diagnostic": {"type": "string"},
+        "stdout_sha256": {"$ref": "#/$defs/sha256"},
+        "stderr_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}}},
+          "then": {
+            "required": ["returncode", "stdout_sha256", "stderr_sha256"],
+            "properties": {"returncode": {"const": 0}}
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["function", "addr", "mnemonic", "operand_text", "instruction_text"],
+      "properties": {
+        "function": {"type": "string", "minLength": 1},
+        "addr": {"type": "string", "pattern": "^[0-9a-fA-F]+$"},
+        "mnemonic": {"type": "string", "minLength": 1},
+        "operand_text": {"type": "string"},
+        "instruction_text": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

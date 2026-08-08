@@ -8,6 +8,7 @@ import csv
 import importlib.util
 import json
 from pathlib import Path
+from unittest import mock
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "build_corpus_table.py"
 _spec = importlib.util.spec_from_file_location("build_corpus_table", _SCRIPT)
@@ -571,3 +572,152 @@ def test_stale_asm_coverage_manifest_is_rejected(tmp_path):
         assert "does not match" in str(exc)
     else:
         raise AssertionError("stale asm coverage manifest was accepted")
+
+
+def _authoritative_asm_payload(tmp_path, cells):
+    bundle = tmp_path / "external/asm_evidence_bundle.json"
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    bundle.write_text("{}\n", encoding="utf-8")
+    return {
+        "cells": cells,
+        "bundle_path": bundle,
+        "manifest": {
+            "source_revision": {"commit": "a" * 40, "clean": True},
+            "host": {"system": "Linux", "machine": "x86_64"},
+            "campaign_manifest": {"sha256": "c" * 64},
+            "raw_bundle": {"path": "raw/sha256", "sha256": "d" * 64},
+        },
+    }
+
+
+def test_authoritative_asm_requires_every_source_in_opt_group_to_pass(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2", "PASS")],
+        [_vl("kem_dec", "gcc", "legacy_false_clean", "-O2")],
+        [],
+    )
+    evidence = _authoritative_asm_payload(
+        tmp_path,
+        [
+            {
+                "harness": "kem_dec",
+                "compiler": "gcc",
+                "opt": "-O2",
+                "source_file": "common/fips202.c",
+                "status": "pass",
+                "candidates": [{"function": "shake128"}],
+            },
+            {
+                "harness": "kem_dec",
+                "compiler": "gcc",
+                "opt": "-O2",
+                "source_file": "clean/poly.c",
+                "status": "compile-error",
+                "candidates": [],
+            },
+        ],
+    )
+    with mock.patch.object(bct, "load_target_index", return_value=evidence):
+        cells, summary = bct.build(
+            tmp_path,
+            "ML-KEM",
+            "mini",
+            {},
+            "x86_64",
+            "a" * 40,
+            {"kem_dec": "public"},
+            asm_evidence_index=tmp_path / "index.json",
+        )
+    assert cells[0]["asm_status"] == "ERROR"
+    assert "clean/poly.c=compile-error" in cells[0]["asm_error"]
+    assert cells[0]["asm_div_funcs"] == "shake128"
+    assert "legacy_false_clean" not in cells[0]["asm_div_funcs"]
+    assert summary[0]["asm"] == "error"
+    assert summary[0]["legacy_verdict_class"] == "ct-clean-asm-incomplete"
+    assert summary[0]["overall"] == "tool-error"
+
+
+def test_authoritative_asm_provenance_reaches_summary_notes(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2", "PASS")],
+        [],
+        [],
+    )
+    legacy = tmp_path / "reports/ctkat_varlat_candidates.json"
+    legacy_payload = json.loads(legacy.read_text(encoding="utf-8"))
+    legacy_payload["errors"] = [{"compiler": "gcc", "error": "stale legacy error"}]
+    legacy.write_text(json.dumps(legacy_payload), encoding="utf-8")
+    evidence = _authoritative_asm_payload(
+        tmp_path,
+        [
+            {
+                "harness": "kem_dec",
+                "compiler": "gcc",
+                "opt": "-O2",
+                "source_file": "common/fips202.c",
+                "status": "pass",
+                "candidates": [{"function": "shake128"}],
+            }
+        ],
+    )
+    with mock.patch.object(bct, "load_target_index", return_value=evidence):
+        cells, summary = bct.build(
+            tmp_path,
+            "ML-KEM",
+            "mini",
+            {},
+            "x86_64",
+            "a" * 40,
+            {"kem_dec": "public"},
+            asm_evidence_index=tmp_path / "index.json",
+        )
+    assert cells[0]["asm_status"] == "PASS"
+    assert cells[0]["asm_error"] == ""
+    notes = summary[0]["notes"]
+    assert "campaign_sha256=" + "c" * 64 in notes
+    assert "raw_sha256=" + "d" * 64 in notes
+    assert "raw/sha256" in notes
+
+
+def test_authoritative_asm_rejects_commit_or_arch_mismatch(tmp_path):
+    _write_reports(
+        tmp_path,
+        [_ctm("kem_dec", "gcc_o2", "gcc", "-O2", "PASS")],
+        [],
+        [],
+    )
+    evidence = _authoritative_asm_payload(tmp_path, [])
+    with mock.patch.object(bct, "load_target_index", return_value=evidence):
+        try:
+            bct.build(
+                tmp_path,
+                "ML-KEM",
+                "mini",
+                {},
+                "x86_64",
+                "b" * 40,
+                {},
+                asm_evidence_index=tmp_path / "index.json",
+            )
+        except ValueError as exc:
+            assert "does not match asm evidence commit" in str(exc)
+        else:
+            raise AssertionError("mismatched evidence commit was accepted")
+    with mock.patch.object(bct, "load_target_index", return_value=evidence):
+        try:
+            bct.build(
+                tmp_path,
+                "ML-KEM",
+                "mini",
+                {},
+                "arm64",
+                "a" * 40,
+                {},
+                asm_evidence_index=tmp_path / "index.json",
+            )
+        except ValueError as exc:
+            assert "does not match asm evidence host" in str(exc)
+        else:
+            raise AssertionError("mismatched evidence architecture was accepted")

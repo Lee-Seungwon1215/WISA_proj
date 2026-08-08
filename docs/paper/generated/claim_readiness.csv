@@ -1,7 +1,7 @@
 claim_id,status,scope,evidence_items,open_gates,prohibited_wording
 fail-closed-evidence-fold,implemented-premeasurement,evidence schema and committed corpus migration,4,0,constant-time proof
 build-matrix-sensitivity,implemented-premeasurement,committed screening corpus only,2,0,universal tool accuracy
-kyberslash-attribution,pending-independent-review,ML-KEM/Kyber-768 frozen variants,3,2,every division candidate leaks
-falcon-comparator,pending-independent-review,Falcon/FN-DSA 512 and 1024 comparators,3,3,FIPS 206 conformance
+kyberslash-attribution,pending-independent-review,ML-KEM/Kyber-768 frozen variants,4,2,full attack or key recovery reproduced
+falcon-comparator,pending-independent-review,Falcon/FN-DSA 512 and 1024 comparators,4,3,FIPS 206 conformance
 diverse-upstream-builds,implemented-premeasurement,"provenance and source/build evidence, not timing",3,2,four from-scratch independent implementations
-native-timing-results,pending-physical-measurement,25 predeclared timing axes plus same-corpus baselines,3,3,no finding means proven constant-time
+native-timing-results,pending-physical-measurement,28 predeclared timing axes plus all three same-corpus baseline tools,3,3,no finding means proven constant-time

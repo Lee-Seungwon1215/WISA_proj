@@ -214,12 +214,16 @@ def test_kem_render_invalid_decapsulation_flips_ciphertext_and_witnesses_path():
             "extra_headers": [],
             "secret_regions": [],
             "kem_decapsulation": "invalid",
+            "rejection_oracle_function": "TEST_kyber_shake256_rkprf",
+            "rejection_seed_offset": "TEST_CRYPTO_SECRETKEYBYTES - 32",
         },
     )
     assert "ct[0] ^= 0x01u;" in out
     assert "CTKAT-KEM-INVALID-PATH-NOT-EXERCISED" in out
     assert "CTKAT-KEM-DECAPSULATION: invalid" in out
     assert "crypto_kem_dec(ss_actual, ct, sk);" in out
+    assert "TEST_kyber_shake256_rkprf(" in out
+    assert "ss_actual[i] == ss_reject[i]" in out
 
 
 def _sign_ctx(**overrides):

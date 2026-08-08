@@ -47,6 +47,30 @@
 #define CTKAT_SS_BYTES {{ prefix }}CRYPTO_BYTES
 #define CTKAT_SLOT(pool, index, width) ((pool) + ((index) * (width)))
 
+{% if leak_target | default("sk") == "chosen_ct" -%}
+typedef char ctkat_chosen_ct_must_have_two_halves[(CTKAT_CT_BYTES >= 2) ? 1 : -1];
+
+static void ctkat_digest_hex(char out[65], const uint8_t digest[32]) {
+    static const char alphabet[] = "0123456789abcdef";
+    for (size_t i = 0; i < 32; i++) {
+        out[2 * i] = alphabet[digest[i] >> 4];
+        out[2 * i + 1] = alphabet[digest[i] & 15U];
+    }
+    out[64] = '\0';
+}
+{% elif leak_target | default("sk") == "operand_bin" -%}
+/* The direct canary ABI stores a public coefficient in ct[0:2].  Class 0
+ * freezes coefficients 0..63 and class 1 freezes 3265..3328.  The canary
+ * converts those coefficients to the site-specific KyberSlash numerator.
+ * This is deliberately NOT a full-KEM secret-leak claim. */
+typedef char ctkat_operand_ct_must_hold_u16[(CTKAT_CT_BYTES >= 2) ? 1 : -1];
+
+static void ctkat_store_u16_le(uint8_t *out, uint16_t value) {
+    out[0] = (uint8_t)value;
+    out[1] = (uint8_t)(value >> 8);
+}
+{% endif %}
+
 static int ctkat_alloc(uint8_t **out, size_t count, size_t width) {
     if (width != 0 && count > SIZE_MAX / width) return -1;
     *out = (uint8_t *)malloc(count * width);
@@ -64,7 +88,13 @@ int main(int argc, char **argv) {
         );
         return 2;
     }
+{% if leak_target | default("sk") in ("chosen_ct", "operand_bin") -%}
+    /* Freeze key/ciphertext pools to the preregistered compile-time seed.
+     * Runtime seeds only change labels and selection order below. */
+    ctkat_prng_init(CTKAT_SEED);
+{% else -%}
     ctkat_prng_init(options.seed);
+{% endif %}
 
     uint8_t *pool0_sk = NULL;
     uint8_t *pool1_sk = NULL;
@@ -88,6 +118,14 @@ int main(int argc, char **argv) {
     uint8_t ct_fixed[CTKAT_CT_BYTES];
     uint8_t ct_tmp[CTKAT_CT_BYTES];
     uint8_t ss_tmp[CTKAT_SS_BYTES];
+{% if leak_target | default("sk") in ("fo", "chosen_ct") -%}
+    uint8_t ss_check[CTKAT_SS_BYTES];
+    uint8_t ss_reject[CTKAT_SS_BYTES];
+{% endif %}
+{% if leak_target | default("sk") == "chosen_ct" -%}
+    uint8_t sk_digest[32], class0_digest[32], class1_digest[32];
+    char sk_digest_hex[65], class0_digest_hex[65], class1_digest_hex[65];
+{% endif %}
 
     {{ prefix }}crypto_kem_keypair(pk_fixed, sk_fixed);
     {{ prefix }}crypto_kem_enc(ct_fixed, ss_tmp, pk_fixed);
@@ -107,17 +145,95 @@ int main(int argc, char **argv) {
         memcpy(CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES), ct_fixed, CTKAT_CT_BYTES);
         {{ prefix }}crypto_kem_enc(ct_tmp, ss_tmp, pk_fixed);
         memcpy(CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), ct_tmp, CTKAT_CT_BYTES);
+{% elif leak_target | default("sk") == "chosen_ct" %}
+        /* Both classes hold the exact same fixed secret key.  Each pair starts
+         * from one deterministic public encapsulation, then receives a
+         * nonzero public mutation in disjoint ciphertext halves.  The exact
+         * configured rejection-key oracle proves that both decapsulations
+         * select implicit rejection before any measurement. */
+        memcpy(CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
+        memcpy(CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
+        if ({{ prefix }}crypto_kem_enc(ct_tmp, ss_tmp, pk_fixed) != 0) {
+            fprintf(stderr, "timing-harness-v2: chosen-ct encapsulation failed\n");
+            free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
+            return 4;
+        }
+        memcpy(CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES), ct_tmp, CTKAT_CT_BYTES);
+        memcpy(CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), ct_tmp, CTKAT_CT_BYTES);
+        size_t class0_offset = p % (CTKAT_CT_BYTES / 2U);
+        size_t class1_offset = CTKAT_CT_BYTES - 1U - (p % (CTKAT_CT_BYTES / 2U));
+        uint8_t mutation = (uint8_t)(1U << (p & 7U));
+        CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES)[class0_offset] ^= mutation;
+        CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)[class1_offset] ^= mutation;
+        {{ rejection_oracle_function }}(
+            ss_reject,
+            sk_fixed + ({{ rejection_seed_offset }}),
+            CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES)
+        );
+        if ({{ prefix }}crypto_kem_dec(
+                ss_check, CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES), sk_fixed
+            ) != 0 || memcmp(ss_check, ss_reject, CTKAT_SS_BYTES) != 0) {
+            fprintf(stderr, "timing-harness-v2: chosen-ct rejection witness failed\n");
+            free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
+            return 5;
+        }
+        {{ rejection_oracle_function }}(
+            ss_reject,
+            sk_fixed + ({{ rejection_seed_offset }}),
+            CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)
+        );
+        if ({{ prefix }}crypto_kem_dec(
+                ss_check, CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), sk_fixed
+            ) != 0 || memcmp(ss_check, ss_reject, CTKAT_SS_BYTES) != 0) {
+            fprintf(stderr, "timing-harness-v2: chosen-ct rejection witness failed\n");
+            free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
+            return 5;
+        }
+{% elif leak_target | default("sk") == "operand_bin" %}
+        memcpy(CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
+        memcpy(CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
+        memcpy(CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES), ct_fixed, CTKAT_CT_BYTES);
+        memcpy(CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), ct_fixed, CTKAT_CT_BYTES);
+        ctkat_store_u16_le(
+            CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES),
+            (uint16_t)(p % 64U)
+        );
+        ctkat_store_u16_le(
+            CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES),
+            (uint16_t)(3265U + (p % 64U))
+        );
 {% else %}
         memcpy(CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
         memcpy(CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
         {{ prefix }}crypto_kem_enc(ct_tmp, ss_tmp, pk_fixed);
         memcpy(CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES), ct_tmp, CTKAT_CT_BYTES);
         memcpy(CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), ct_tmp, CTKAT_CT_BYTES);
-        /* A deterministic corruption gives a paired invalid ciphertext. */
+        /* Mutate class 1, then prove its implicit-rejection output exactly. */
         CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)[p % CTKAT_CT_BYTES] ^=
             (uint8_t)(1U + (p & 0x7fU));
+        {{ rejection_oracle_function }}(
+            ss_reject,
+            sk_fixed + ({{ rejection_seed_offset }}),
+            CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)
+        );
+        if ({{ prefix }}crypto_kem_dec(
+                ss_check, CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), sk_fixed
+            ) != 0 || memcmp(ss_check, ss_reject, CTKAT_SS_BYTES) != 0) {
+            fprintf(stderr, "timing-harness-v2: FO rejection witness failed\n");
+            free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
+            return 5;
+        }
 {% endif %}
     }
+
+{% if leak_target | default("sk") == "chosen_ct" -%}
+    sha3_256(sk_digest, sk_fixed, CTKAT_SK_BYTES);
+    sha3_256(class0_digest, pool0_ct, CTKAT_POOL_SIZE * CTKAT_CT_BYTES);
+    sha3_256(class1_digest, pool1_ct, CTKAT_POOL_SIZE * CTKAT_CT_BYTES);
+    ctkat_digest_hex(sk_digest_hex, sk_digest);
+    ctkat_digest_hex(class0_digest_hex, class0_digest);
+    ctkat_digest_hex(class1_digest_hex, class1_digest);
+{% endif %}
 
     uint8_t sk_work[CTKAT_SK_BYTES];
     uint8_t ct_work[CTKAT_CT_BYTES];
@@ -138,6 +254,11 @@ int main(int argc, char **argv) {
         (void){{ prefix }}crypto_kem_dec(ss_work, ct_work, sk_work);
     }
     uint64_t setup_rng_calls = ctkat_randombytes_calls;
+{% if leak_target | default("sk") in ("chosen_ct", "operand_bin") -%}
+    /* Preserve the frozen corpus above while domain-separating only the
+     * runtime label/slot order for independent process repeats. */
+    ctkat_prng_init(options.seed);
+{% endif %}
 
     for (size_t i = 0; i < options.measurements; i++) {
         int cls = (int)((ctkat_label_next() >> 32) & 1ULL);
@@ -182,6 +303,29 @@ int main(int argc, char **argv) {
     }
 
     ctkat_emit_trace(options.measurements);
+{% if leak_target | default("sk") == "chosen_ct" -%}
+    fprintf(
+        stderr,
+        "CTKAT-HARNESS-META axis=chosen_ct key_policy=fixed "
+        "class_contract=paired-invalid-public-chosen-ciphertexts "
+        "rejection_witness=exact-rkprf-output "
+        "corpus_seed=%llu fixed_sk_sha3_256=%s "
+        "class0_ct_sha3_256=%s class1_ct_sha3_256=%s\n",
+        (unsigned long long)CTKAT_SEED,
+        sk_digest_hex,
+        class0_digest_hex,
+        class1_digest_hex
+    );
+{% elif leak_target | default("sk") == "operand_bin" -%}
+    fprintf(
+        stderr,
+        "CTKAT-HARNESS-META axis=operand_bin key_policy=fixed "
+        "class_contract=frozen-public-coefficient-bins "
+        "class0_coefficients=0-63 class1_coefficients=3265-3328 "
+        "corpus_seed=%llu\n",
+        (unsigned long long)CTKAT_SEED
+    );
+{% endif %}
     ctkat_emit_metadata(&options, setup_rng_calls);
     free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
     return 0;

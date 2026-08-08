@@ -2,8 +2,8 @@
 
 Status: **internally frozen before physical measurement**
 
-Freeze date: 2026-08-07
-Machine-readable plan: `paper_native_campaign_v1.yaml`
+Freeze date: 2026-08-08
+Machine-readable plan: `paper_native_campaign_v2.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
@@ -15,11 +15,16 @@ external registry.
 1. **Corpus refresh.** Does a paper-grade timing-harness-v2 campaign preserve
    or overturn each legacy timing row when setup is excluded, process repeats
    are independent, and physical controls pass? No direction is assumed.
-2. **KyberSlash attribution.** On affected x86_64 CPUs, the historical and
-   restored division variants are expected to show a larger secret-key timing
-   signal than stock ML-KEM-768. KS1-only and KS2-only are analysed separately;
-   the combined variant is not used to infer either component's individual
-   effect.
+2. **KyberSlash contrasts.** The full-ML-KEM layer holds one secret key fixed
+   and compares frozen, publicly mutated ciphertext pools. Before timing, each
+   member must produce the exact independently computed ML-KEM rejection key;
+   a mutation or mismatch with the original shared secret alone is not
+   accepted as an invalidity witness. This remains a non-directional
+   chosen-input comparison and cannot establish secret attribution. In the
+   separate direct-operand layer, each vulnerable
+   KS1/KS2 site is expected to show a larger coefficient-bin timing signal than
+   its matched reciprocal-multiply implementation. These canaries establish
+   operand-dependent hardware latency only, not a full attack or key recovery.
 3. **Falcon comparator.** Reference Falcon, c-fn-dsa native floating point,
    and c-fn-dsa integer-FPR profiles may differ in timing leakage. This is a
    non-directional comparison. It is not an FN-DSA conformance experiment.
@@ -60,7 +65,8 @@ Secondary endpoints are:
 
 - signed and absolute Welch statistics for the predeclared analysis tests;
 - effect direction and repeat consistency across process seeds and hosts;
-- control-derived minimum detectable effect and achieved power;
+- the observed detection fraction at each predeclared injected delay, plus an
+  A/A-noise-derived nominal sensitivity diagnostic;
 - for signature harnesses, output-length distribution and time/length
   association, reported separately from the primary full-API timing verdict;
 - pairwise contrasts within KyberSlash and Falcon groups;
@@ -76,10 +82,20 @@ declassify a risk finding.
 - Each target binary runs three process repeats, A/A, setup-only placebo, and a
   three-point positive-control curve. Effects are fixed in the component
   manifests and cannot be selected after observing a target trace.
-- The positive-control curve must demonstrate power at or below the declared
-  target MDE; all A/A runs must stay within the frozen limit. AUX/core migration,
-  truncated traces, RNG interposition failure, malformed output lengths, or
-  artifact-hash mismatch invalidate that unit.
+- The largest predeclared injected delay must be detected in at least
+  `ceil(target_power * process_repeats)` repeats; with the frozen three repeats
+  and `target_power=0.8`, this means three detections. This observed fraction is
+  an acceptance control, not a precise achieved-power estimate. The separately
+  reported normal-approximation value is derived from A/A noise and is only a
+  nominal sensitivity diagnostic; it does not bound the target trace. All A/A
+  runs must stay within the frozen limit. AUX/core migration, truncated traces,
+  RNG interposition failure, malformed output lengths, or artifact-hash mismatch
+  invalidate that unit.
+- Every axis with a linked-binary contract must preserve the exact measured
+  binary, generated source, compiler/config/source hashes, and full
+  disassembly. The validator reparses that disassembly; a missing or
+  unexpected division/FP instruction contract invalidates the unit before
+  timing interpretation.
 - Requested counts are not reported as retained counts. Dropped and retained
   counts are preserved in the artifact and tables use the latter.
 
@@ -106,8 +122,9 @@ the frozen official analysis owns its filtering and percentile tests.
 - Primary claims are axis-specific. No single aggregate "accuracy" or global
   clean percentage is computed across unlike algorithms and threat models.
 - Families of pairwise secondary comparisons use Holm adjustment within the
-  KyberSlash family, Falcon-512 family, Falcon-1024 family, mlkem-native family,
-  and mldsa-native family. Both raw and adjusted values are retained.
+  full-ML-KEM chosen-ciphertext family; each of the three vulnerable/patched
+  operand-site pairs; Falcon-512; Falcon-1024; mlkem-native; and mldsa-native.
+  Both raw and adjusted values are retained.
 - Host heterogeneity is reported explicitly. A leak on either valid host keeps
   the combined result at risk; disagreement cannot be averaged into clean.
 - Absence of a threshold crossing is worded `no finding observed under this
@@ -120,11 +137,13 @@ corpus. Promotion requires:
 
 1. complete artifacts and recorded SHA-256 hashes from both hosts;
 2. passing controls and schema checks;
-3. two independent reviewers, with no self-review, recorded in
+3. passing automated engineering audits, which are provenance-bearing checks
+   but never count as human approval;
+4. two independent human reviewers, with no self-review, recorded in
    `docs/reviews/paper/`;
-4. unanimous approval for a clean/declassification change. A reviewer reject
+5. unanimous approval for a clean/declassification change. A reviewer reject
    makes the packet disputed; missing review keeps it pending;
-5. an explicit, reviewed corpus update commit.
+6. an explicit, reviewed corpus update commit.
 
 OpenSSL 3.5 is retained as a provider-API integration/build case only. It is
 not included in the timing lineage comparison unless a separately versioned

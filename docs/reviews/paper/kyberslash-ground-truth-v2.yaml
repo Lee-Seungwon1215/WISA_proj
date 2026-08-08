@@ -1,8 +1,9 @@
 schema_version: "2.0"
 review_id: paper-kyberslash-ground-truth-v2
 status: pending
-title: KyberSlash stock, KS1, KS2, combined, and historical attribution
+title: KyberSlash fixed-key chosen-ciphertext and operand-canary attribution
 review_phase: pre-measurement
+final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: pqclean_mlkem768_kyberslash1, harness: kem_dec, build_scope: frozen-ground-truth-matrix}
@@ -17,12 +18,18 @@ public_transcript: Ciphertext and public key are public, but they do not declass
 security_argument: Stock, isolated variants, combined variant, historical source, and patched control must remain distinguishable.
 known_limitations:
   - Operand attribution is not physical latency evidence.
+  - Chosen-ciphertext timing is a public-input contrast and does not by itself attribute a secret dependency.
+  - Direct operand canaries isolate instruction latency and are not a full decapsulation attack.
   - Full key recovery is outside the pre-measurement claim.
 evidence:
   - docs/ground_truth/kyberslash/ground_truth.yaml
   - docs/reviews/rvw-kyberslash-ground-truth-v1.yaml
+  - docs/measurement/kyberslash_native_v2.yaml
+  - docs/measurement/KYBERSLASH_NATIVE_V2.md
+  - examples/pqc_mlkem768/kyberslash_binary_contracts_v2.yaml
 expected_evidence:
-  - native paired latency report
+  - linked-binary contract reports for every frozen target
+  - paired native reports from two distinct physical CPU models
 reviewers: []
 expiry_conditions:
   - ground-truth patch hash changes

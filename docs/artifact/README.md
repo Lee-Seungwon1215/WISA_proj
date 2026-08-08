@@ -18,8 +18,8 @@ The command runs the full tests, recompiles and verifies all nine deterministic
 API-roundtrip correctness snapshots, and executes every corpus, provenance,
 campaign, review, ablation, and generated-table static gate. It writes the
 complete command stdout/stderr, tracked-file hashes, commit/worktree metadata,
-and `SHA256SUMS`. It requires a clean worktree; `--allow-dirty` exists only for
-development and is recorded in the output.
+and `SHA256SUMS`. Every profile requires a clean committed worktree so the
+source manifest and automated-audit provenance cannot diverge.
 
 This preparation profile deliberately succeeds when well-formed review packets
 are still pending, while recording `pre_measurement_ready=false`. After six
@@ -32,24 +32,70 @@ uv run ./scripts/reproduce_artifact.sh \
   --output-root artifact_runs/measurement-ready
 ```
 
-`measurement-ready` reruns the preparation profile and then fails closed unless
-all premeasurement packets have the required independent-review quorum.
+`measurement-ready` reruns the engineering checks and timing-backend
+calibration, then fails closed unless all premeasurement packets have the
+required independent-review quorum.
+
+On each final host, render the complete frozen execution matrix only after
+choosing the host label, pinned logical CPU, and absolute exact-patched TIMECOP
+prefix:
+
+```bash
+uv run --frozen python scripts/check_paper_campaign.py \
+  --print-commands \
+  --host-id host-a \
+  --cpu 2 \
+  --timecop-prefix /opt/ctkat/valgrind-3.22.0-timecop
+```
+
+The command validates the campaign first and then prints exactly seven
+placeholder-free, hash-locked commands: four native components followed by
+official dudect, TIMECOP, and MicroWalk. Repeat with the other host label and
+CPU. Execute every printed line; none of the three same-corpus tools is optional.
 
 Final two-host evidence uses a filled copy of
-`measurement_bundle_template.yaml`:
+`measurement_bundle_template.yaml`. First create a review candidate; this stage
+does not require or fabricate the post-measurement approval:
 
 ```bash
 uv run ./scripts/reproduce_artifact.sh \
-  --profile final \
+  --profile verification \
   --bundle /path/to/bundle/measurement_bundle.yaml \
-  --output-root artifact_runs/final
+  --output-root artifact_runs/verification-candidate
 ```
 
-The final profile reruns all premeasurement gates, verifies two distinct
-physical non-virtualized CPU models, validates every component campaign and
-same-corpus result, requires the blind-unblinding record, and finally requires
-all two-person review packets. It does not promote results into the curated
-corpus.
+`verification` reruns the measurement-ready gates, verifies two distinct
+physical non-virtualized CPU models, validates every component, same-corpus,
+assembly, and blind/unblinding artifact, and emits deterministic named results.
+It then writes `final_evidence_manifest.json`. Its canonical root binds the
+measurement bundle, both host `SHA256SUMS` files, the unblinding record, the
+assembly bundle, and the exact blinded and named output file sets. Machine-local
+paths and wall-clock time are not inputs to that root. The output contract is
+documented by `final-evidence-root-v1.schema.json`.
+
+Copy `final_evidence_root_sha256` from that manifest into only
+`docs/reviews/paper/native-promotion-v2.yaml` and commit that pending packet as
+review-contract commit R0. Two independent humans review the candidate and the
+exact clean R0 packet, then record approval hashes calculated over that
+contract. The packet keeps an empty reviewer list until the full quorum is
+available. Each `reviewed_commit` names R0; the later R1 commit contains only
+the completed packet and avoids a self-referential signature. Then run:
+
+```bash
+uv run ./scripts/reproduce_artifact.sh \
+  --profile paper-ready \
+  --bundle /path/to/bundle/measurement_bundle.yaml \
+  --candidate-root artifact_runs/verification-candidate \
+  --output-root artifact_runs/paper-ready
+```
+
+`paper-ready` recomputes the canonical root, regenerates both blinded and named
+analysis in check mode, and requires the post-measurement reviewers to have
+approved that same root. The review commit may descend from the candidate's
+verification commit only when `docs/reviews/paper/native-promotion-v2.yaml` is
+the sole changed file. The legacy
+`final` profile name is an alias for `paper-ready`. Neither stage promotes
+results into the curated corpus.
 
 Before and after transfer, hash a raw evidence tree without following symlinks:
 

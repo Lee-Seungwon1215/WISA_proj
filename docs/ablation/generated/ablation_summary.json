@@ -7,8 +7,8 @@
   ],
   "schema_version": 1,
   "source_sha256": {
-    "cells": "8c64abf7ce48ea71fc51b6084902b37d0eb18491010a74ea7890dfda9ada2d80",
-    "summary": "4fa3189320da55debabd10a396937eeb1bd3d4cd9921c70cce9a96c9790f5d55"
+    "cells": "d4df2886c177cf6934716d37cc58e81b5d2a9fc4e49d6e39b6ffb1e4f1ace5ec",
+    "summary": "fc3c9dd81d2b3929eda60221bcbc21150c3da9040e631ac8c8be856c3ca66d6b"
   },
   "stages": [
     {
@@ -30,7 +30,7 @@
       "asm_candidate_pairs": 0,
       "build_sensitive_pairs": 2,
       "candidate_pairs": 13,
-      "cells": 204,
+      "cells": 206,
       "ct_finding_pairs": 13,
       "inconclusive_pairs": "",
       "needs_review_pairs": "",
@@ -45,7 +45,7 @@
       "asm_candidate_pairs": 16,
       "build_sensitive_pairs": 2,
       "candidate_pairs": 22,
-      "cells": 204,
+      "cells": 206,
       "ct_finding_pairs": 13,
       "inconclusive_pairs": "",
       "needs_review_pairs": "",
@@ -60,12 +60,12 @@
       "asm_candidate_pairs": 16,
       "build_sensitive_pairs": 2,
       "candidate_pairs": "",
-      "cells": 204,
+      "cells": 206,
       "ct_finding_pairs": 13,
       "inconclusive_pairs": 10,
       "needs_review_pairs": 5,
       "no_finding_pairs": 4,
-      "note": "reviewed=16; pending=6; fold is fail-closed",
+      "note": "reviewed=12; pending=6; fold is fail-closed",
       "pairs": 25,
       "risk_detected_pairs": 6,
       "stage": "reviewed-evidence-fold",

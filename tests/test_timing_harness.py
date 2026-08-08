@@ -203,6 +203,8 @@ def _kem_ctx(**overrides):
         "warmup": 10,
         "seed": 0xC0FFEE,
         "clock": "monotonic",
+        "rejection_oracle_function": "TEST_kyber_shake256_rkprf",
+        "rejection_seed_offset": "TEST_CRYPTO_SECRETKEYBYTES - 32",
     }
     ctx.update(overrides)
     return ctx
@@ -350,6 +352,8 @@ def test_kem_fo_mode_uses_random_ct_for_class_1():
     out = render_timing_harness("kem", _kem_ctx(leak_target="fo"))
     # Class 1 is a paired deterministic corruption of the valid ciphertext.
     assert "CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)[p % CTKAT_CT_BYTES] ^=" in out
+    assert "TEST_kyber_shake256_rkprf(" in out
+    assert "FO rejection witness failed" in out
 
 
 def test_kem_fo_mode_measured_dec_uses_sk_fixed():
@@ -535,7 +539,8 @@ def test_sign_placebo_normalizes_the_common_work_buffers():
     assert "msg_placebo" not in out
     assert "memcpy(sk_work, sk_fixed, CTKAT_SK_BYTES)" in out
     assert "memcpy(msg_work, msg_fixed, CTKAT_SIGN_MSG_LEN)" in out
-    assert out.count("TEST_crypto_sign_signature(") == 2  # warmup + measured call
+    # fixed-key gate + per-pool round-trip gate + warmup + measured call
+    assert out.count("TEST_crypto_sign_signature(") == 4
 
 
 def test_sign_fixed_vs_fresh_sk_axis():
@@ -593,7 +598,9 @@ def test_sign_msg_len_is_overridable_define():
 def test_sign_msg_axis_uses_fixed_key_and_two_message_pools():
     out = render_timing_harness("sign", _sign_ctx(sign_leak_target="msg"))
     assert "CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES), sk_fixed" in out
-    assert "ctkat_rand_bytes(CTKAT_SLOT(pool1_msg" in out
+    assert "uint8_t *pool_msg = CTKAT_SLOT(pool1_msg" in out
+    assert "ctkat_rand_bytes(pool_msg, CTKAT_SIGN_MSG_LEN)" in out
+    assert "message-pool verification gate failed" in out
     assert "crypto_sign_keypair(pk_tmp, sk_tmp)" not in out
 
 
@@ -602,6 +609,34 @@ def test_sign_reports_output_length_and_full_api_scope():
     assert "output_length" in out
     assert "siglen" in out
     assert "full crypto_sign_signature API" in out
+
+
+def test_sign_round_trip_gate_precedes_warmup_and_measurement():
+    out = render_timing_harness("sign", _sign_ctx())
+    gate_sign = out.index("gate_sign_rc = TEST_crypto_sign_signature")
+    gate_verify = out.index("gate_verify_rc = TEST_crypto_sign_verify")
+    warmup = out.index("i < CTKAT_WARMUP")
+    measured = out.index("i < options.measurements")
+    assert gate_sign < gate_verify < warmup < measured
+    assert "signature_correctness_gate=passed" in out
+
+
+def test_sign_measured_rows_record_and_fail_on_return_code_or_length():
+    out = render_timing_harness("sign", _sign_ctx())
+    assert "signature_return_code" in out
+    assert "ctkat_store_timing(i, cls, t0, t1, aux0, aux1, siglen, sig_rc)" in out
+    assert "ctkat_signature_result_valid(sig_rc, siglen)" in out
+    assert "measured_signature_contract_failures++" in out
+    assert "measured_signature_contract_failures=0" not in out
+
+
+def test_sign_fixed_and_bounded_length_contracts_render_distinct_bounds():
+    fixed = render_timing_harness("sign", _sign_ctx(signature_length_contract="fixed"))
+    bounded = render_timing_harness("sign", _sign_ctx(signature_length_contract="bounded"))
+    assert "#define CTKAT_SIG_LENGTH_MIN CTKAT_SIG_BYTES" in fixed
+    assert "signature_length_contract=fixed" in fixed
+    assert "#define CTKAT_SIG_LENGTH_MIN 1U" in bounded
+    assert "signature_length_contract=bounded" in bounded
 
 
 def test_sign_v2_stub_compiles_and_runs_all_control_modes(tmp_path):
@@ -624,6 +659,8 @@ def test_sign_v2_stub_compiles_and_runs_all_control_modes(tmp_path):
 int TEST_crypto_sign_keypair(uint8_t *, uint8_t *);
 int TEST_crypto_sign_signature(uint8_t *, size_t *, const uint8_t *, size_t,
                                const uint8_t *);
+int TEST_crypto_sign_verify(const uint8_t *, size_t, const uint8_t *, size_t,
+                            const uint8_t *);
 """,
         encoding="utf-8",
     )
@@ -646,6 +683,15 @@ int TEST_crypto_sign_signature(uint8_t *sig, size_t *siglen,
         sig[i] = (uint8_t)(sk[i & 15] ^ msg[i % msglen]);
     return 0;
 }
+int TEST_crypto_sign_verify(const uint8_t *sig, size_t siglen,
+                            const uint8_t *msg, size_t msglen,
+                            const uint8_t *pk) {
+    size_t expected_len = 16 + (pk[0] & 1U);
+    if (siglen != expected_len) return -1;
+    for (size_t i = 0; i < siglen; i++)
+        if (sig[i] != (uint8_t)(pk[i & 15] ^ msg[i % msglen])) return -1;
+    return 0;
+}
 """,
         encoding="utf-8",
     )
@@ -655,6 +701,7 @@ int TEST_crypto_sign_signature(uint8_t *sig, size_t *siglen,
         pool_size=4,
         randombytes_header=None,
         sign_leak_target="msg",
+        signature_length_contract="bounded",
     )
     generated = generate_and_compile_timing(
         name="sign-v2",
@@ -687,3 +734,103 @@ int TEST_crypto_sign_signature(uint8_t *sig, size_t *siglen,
         assert samples.protocol_version == "timing-harness-v2"
         assert samples.runtime_metadata["mode"] == mode
         assert all(length in {16, 17} for length in samples.output_lengths)
+        all_return_codes = [
+            *samples.signature_return_codes,
+            *(drop.signature_return_code for drop in samples.dropped_samples),
+        ]
+        assert all_return_codes == [0] * 16
+        assert samples.runtime_metadata["signature_correctness_gate"] == "passed"
+
+
+def test_sign_v2_fails_closed_when_measured_signing_call_fails(tmp_path):
+    import shutil
+
+    from ctkat.dudect_runner import run_timing_harness
+    from ctkat.timing_harness_generator import generate_and_compile_timing
+
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if cc is None:
+        pytest.skip("no C compiler available")
+
+    (tmp_path / "api.h").write_text(
+        """
+#include <stddef.h>
+#include <stdint.h>
+#define TEST_CRYPTO_PUBLICKEYBYTES 16
+#define TEST_CRYPTO_SECRETKEYBYTES 16
+#define TEST_CRYPTO_BYTES 32
+int TEST_crypto_sign_keypair(uint8_t *, uint8_t *);
+int TEST_crypto_sign_signature(uint8_t *, size_t *, const uint8_t *, size_t,
+                               const uint8_t *);
+int TEST_crypto_sign_verify(const uint8_t *, size_t, const uint8_t *, size_t,
+                            const uint8_t *);
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "stub.c").write_text(
+        """
+#include "api.h"
+#include <string.h>
+static unsigned sign_calls;
+int TEST_crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
+    memset(pk, 1, 16);
+    memset(sk, 1, 16);
+    return 0;
+}
+int TEST_crypto_sign_signature(uint8_t *sig, size_t *siglen,
+                               const uint8_t *msg, size_t msglen,
+                               const uint8_t *sk) {
+    (void)msg;
+    (void)msglen;
+    (void)sk;
+    sign_calls++;
+    if (sign_calls >= 5) {
+        *siglen = 0;
+        return -1;
+    }
+    memset(sig, 7, 32);
+    *siglen = 32;
+    return 0;
+}
+int TEST_crypto_sign_verify(const uint8_t *sig, size_t siglen,
+                            const uint8_t *msg, size_t msglen,
+                            const uint8_t *pk) {
+    (void)sig;
+    (void)msg;
+    (void)msglen;
+    (void)pk;
+    return siglen == 32 ? 0 : -1;
+}
+""",
+        encoding="utf-8",
+    )
+    context = _sign_ctx(
+        measurements=2,
+        warmup=1,
+        pool_size=2,
+        randombytes_header=None,
+        sign_leak_target="msg",
+        signature_length_contract="fixed",
+    )
+    generated = generate_and_compile_timing(
+        name="sign-v2-failure",
+        template="sign",
+        context=context,
+        output_dir=tmp_path / "generated",
+        sources=[tmp_path / "stub.c"],
+        include_dirs=[tmp_path],
+        cflags=["-std=c99", "-O2", "-fno-lto", "-Wall", "-Wextra", "-Werror"],
+        cc=cc,
+        workdir=tmp_path,
+        timeout=30,
+    )
+    with pytest.raises(RuntimeError, match="measured_signature_contract_failures=2"):
+        run_timing_harness(
+            generated.binary_path,
+            tmp_path,
+            timeout=30,
+            seed_override=123,
+            mode="target",
+            measurements_override=2,
+            signature_length_contract="fixed",
+        )

@@ -3,6 +3,7 @@ review_id: paper-native-promotion-v2
 status: pending
 title: Final native timing promotion review
 review_phase: post-measurement
+final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: paper-native-campaign, harness: all-frozen-axes, build_scope: two-bare-metal-x86_64-microarchitectures}
@@ -13,13 +14,14 @@ declassification_predicate: A result is promotable only if A/A, placebo, power, 
 public_transcript: Per-target public inputs and outputs declared in the frozen measurement manifest.
 security_argument: Raw PASS is non-decisional unless timing_validity is valid and the complete artifact bundle is independently reviewed.
 known_limitations:
-  - A no-signal result is bounded by the reported MDE and selected hosts.
+  - A no-signal result is limited to the selected hosts and input distributions; the reported A/A-noise-derived nominal sensitivity diagnostic is not a bound on the target effect.
   - The campaign is not a formal constant-time proof.
 evidence:
   - docs/measurement/native_timing_v2_campaign.yaml
 expected_evidence:
-  - immutable native artifacts from two accepted hosts
-  - merged promotion candidates and paper tables
+  - canonical final_evidence_manifest.json from the verification profile
+  - immutable native artifacts from two accepted hosts bound by their SHA256SUMS files
+  - byte-deterministic blinded and named analysis outputs bound by final_evidence_root_sha256
 reviewers: []
 expiry_conditions:
   - source, manifest, compiler, host policy, or backend revision changes

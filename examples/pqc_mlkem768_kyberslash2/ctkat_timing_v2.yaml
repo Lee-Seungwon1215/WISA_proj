@@ -1,0 +1,46 @@
+project:
+  name: pqclean_mlkem768_kyberslash2
+  language: c
+  root: ..
+
+build: {argv: ["true"], workdir: .}
+
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 10000
+  warmup: 200
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  generated_dir: ./_generated_kyberslash_v2
+  compiler:
+    cc: gcc
+    cflags: [-std=c99, -Os, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: kem_dec_chosen_ct
+      template: kem
+      leak_target: chosen_ct
+      header: api.h
+      extra_headers: [fips202.h, params.h, symmetric.h]
+      randombytes_header: randombytes.h
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      rejection_oracle_function: PQCLEAN_MLKEM768_CLEAN_kyber_shake256_rkprf
+      rejection_seed_offset: KYBER_SECRETKEYBYTES - KYBER_SYMBYTES
+      binary_contract:
+        manifest: ../pqc_mlkem768/kyberslash_binary_contracts_v2.yaml
+        target: ks2
+      include_dirs: [../pqc_mlkem768/clean, ../pqc_mlkem768/common]
+      sources:
+        - ../pqc_mlkem768/clean/kem.c
+        - ../pqc_mlkem768/clean/indcpa.c
+        - ../pqc_mlkem768/clean_kyberslash2/poly.c
+        - ../pqc_mlkem768/clean_kyberslash2/polyvec.c
+        - ../pqc_mlkem768/clean/ntt.c
+        - ../pqc_mlkem768/clean/reduce.c
+        - ../pqc_mlkem768/clean/cbd.c
+        - ../pqc_mlkem768/clean/symmetric-shake.c
+        - ../pqc_mlkem768/clean/verify.c
+        - ../pqc_mlkem768/common/fips202.c
+
+report: {output_dir: ./reports}

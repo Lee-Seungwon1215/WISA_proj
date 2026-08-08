@@ -41,8 +41,10 @@ ct:
       template: kem
       kem_decapsulation: invalid
       header: api.h
-      extra_headers: [params.h]
+      extra_headers: [params.h, symmetric.h]
       prefix: "PQCLEAN_MLKEM512_CLEAN_"
+      rejection_oracle_function: PQCLEAN_MLKEM512_CLEAN_kyber_shake256_rkprf
+      rejection_seed_offset: KYBER_SECRETKEYBYTES - KYBER_SYMBYTES
       secret_regions:
         - {offset: "0", length: "KYBER_INDCPA_SECRETKEYBYTES",
            comment: "indcpa secret polynomial s"}

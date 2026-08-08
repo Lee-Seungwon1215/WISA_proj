@@ -11,8 +11,8 @@
   "targets": [
     {
       "config": "examples/pqc_mlkem512/ctkat.yaml",
-      "config_sha256": "4849381e2336d0bada79d375063693edf022122652b1ae35ed22ccf91fbc8e99",
-      "input_set_sha256": "4c32abe3e5708153e2b0ac885b034142dfa1b9c3aef87bf46ba7fbcec757a1a0",
+      "config_sha256": "bad1c257b9b9f4910d6326fc0e4e9f826db9237d634323f3658df0ef92946d85",
+      "input_set_sha256": "4b2cdcea9c4c36dfa06bc50e1e82300bca8dfd19994b205f89046456786195d8",
       "status": "pass",
       "summary_harnesses": [
         "kem_dec",
@@ -25,8 +25,8 @@
     },
     {
       "config": "examples/pqc_mlkem768/ctkat.yaml",
-      "config_sha256": "0289653f531fa6dea230c9a6494aa2ff46d1b5ee53b10dd17c09a7a520b02c4e",
-      "input_set_sha256": "392cade2909af8cf92001a8f380024bbcf392ecc60d4a7bac3294415665ec08b",
+      "config_sha256": "9cde8667de8623e25de2ae8ef696448900550d05093c5ba91ca4ce3b51905dd1",
+      "input_set_sha256": "2e66a138f9cc981abd2a25cacb628fe7ace5b9af83a41c2b96b8f606fba255df",
       "status": "pass",
       "summary_harnesses": [
         "kem_dec",
@@ -40,8 +40,8 @@
     },
     {
       "config": "examples/pqc_mlkem1024/ctkat.yaml",
-      "config_sha256": "dfe1d336a3ee4205d68d8e5f50af89ae6c5f603e1a835d2749007ea521851080",
-      "input_set_sha256": "96ed2141bbedac1c535016918995f2e67c0cd9f5106bd6568aaaea3fece0d665",
+      "config_sha256": "c7ee6bfcc30d2bb4397d99cff33ac5c1d400b8fd78435354d0dc9789c9869d04",
+      "input_set_sha256": "1cb66cda8c7af7fbf768dee047d7b96baf49bf0e8241882215f70d6f1d630c3a",
       "status": "pass",
       "summary_harnesses": [
         "kem_dec",
@@ -106,8 +106,8 @@
     },
     {
       "config": "examples/pqc_falcon512/ctkat.yaml",
-      "config_sha256": "4ed052de71f5cb9051ae960d1e09957dfe243693348cf1fdbb1420c49b3d01eb",
-      "input_set_sha256": "15812777506eb2613264f4e55ef1ee5344a47cc1dedb286645deb82e3ac9a9a7",
+      "config_sha256": "ab83780c284ba4d02f61f97ce0752b301fc81ecba55581efc37b330b2db78184",
+      "input_set_sha256": "3203fca6cb1196191df72acc2e087132df6f1f0f333a3576a6610cd4e9b44242",
       "status": "pass",
       "summary_harnesses": [
         "sign"

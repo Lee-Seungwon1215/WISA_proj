@@ -3,6 +3,7 @@ review_id: paper-same-corpus-baseline-v2
 status: pending
 title: Same-corpus TIMECOP, MicroWalk, and official dudect comparison
 review_phase: pre-measurement
+final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: toy_kem_ct_leak, harness: leaky, build_scope: common-positive-control}

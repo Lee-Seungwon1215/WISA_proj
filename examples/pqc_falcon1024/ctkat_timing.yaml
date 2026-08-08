@@ -23,6 +23,10 @@ dudect:
       header: api.h
       randombytes_header: randombytes.h
       prefix: "PQCLEAN_FALCON1024_CLEAN_"
+      signature_length_contract: bounded
+      binary_contract:
+        manifest: ../falcon_comparator_support/timing_binary_contracts_v1.yaml
+        target: pqclean_falcon1024_reference
       include_dirs: [clean, ../pqc_mlkem768/common]
       sources:
         - clean/codec.c

@@ -1,0 +1,26 @@
+project: {name: kyberslash_operand_ks1_vulnerable, language: c, root: .}
+build: {argv: ["true"], workdir: .}
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 10000
+  warmup: 200
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  generated_dir: ./_generated/ks1_vulnerable
+  compiler: &compiler
+    cc: gcc
+    cflags: [-std=c99, -Os, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - &harness
+      name: operand_bin
+      template: kem
+      leak_target: operand_bin
+      header: api.h
+      randombytes_header: null
+      prefix: "CTKAT_KS_"
+      binary_contract: {manifest: binary_contracts_v2.yaml, target: ks1_vulnerable}
+      include_dirs: [.]
+      sources: [operand_kem.c, ks1_vulnerable.c]
+report: {output_dir: ./reports}

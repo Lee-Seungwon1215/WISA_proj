@@ -1,7 +1,7 @@
 schema_version: "1.0"
 review_id: rvw-sphincs-public-state-v1
-status: reviewed
-title: SPHINCS+ public signature-state attribution
+status: expired
+title: Withdrawn SPHINCS+ public signature-state attribution
 reviewed_at: "2026-07-30"
 reviewers:
   - id: project-maintainer
@@ -9,12 +9,14 @@ reviewers:
 scope:
   - {target: pqclean_sphincs_sha2_128f_simple, harness: sign}
 decision:
-  - The reviewed treehash/WOTS branches are conditioned on signature-visible state
-    for this harness and are not accepted as function-wide safe names.
+  - The earlier public-state hypothesis lacks a preserved exact-build raw
+    declassification probe and is withdrawn from acceptance.
+  - The treehash/WOTS findings remain needs-analysis and are not accepted as
+    function-wide safe names.
   - The 3,000-measurement timing PASS is insufficient-power and non-decisional.
 evidence:
   - examples/pqc_sphincs_sha2_128f_simple/triage.yaml
   - docs/corpus/archive/v1.2/corpus_summary.csv
 limitations:
-  - Narrow harness/data-flow decision; no global function declassification.
+  - Retained as superseded decision history; it is not promotion evidence.
   - One maintainer review only.

@@ -1,0 +1,69 @@
+schema_version: "1.0"
+kind: ctkat-timing-binary-instruction-contract
+contract_id: kyberslash-full-kem-linked-binary-v2
+system: Linux
+machines: [x86_64, AMD64]
+disassembler: objdump
+file_format_pattern: '(?s)file format elf64-x86-64.*architecture: i386:x86-64'
+
+targets:
+  stock:
+    compiler: gcc
+    cflags: &full_kem_cflags
+      [-std=c99, -Os, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+    comparison_group: pqclean-mlkem768-gcc-Os-fixed-sk-chosen-ct
+    evidence_boundary: >-
+      Exact stock linked binary; absence of div/idiv at the three named sites
+      is a build fact, not a universal constant-time proof.
+    symbols:
+      PQCLEAN_MLKEM768_CLEAN_poly_tomsg:
+        {division_count: 0, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_poly_compress:
+        {division_count: 0, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_polyvec_compress:
+        {division_count: 0, forbid_division_helpers: true}
+
+  ks1:
+    compiler: gcc
+    cflags: *full_kem_cflags
+    comparison_group: pqclean-mlkem768-gcc-Os-fixed-sk-chosen-ct
+    evidence_boundary: >-
+      Exact KS1 linked binary; one surviving div/idiv in poly_tomsg is required
+      before any timing sample is collected.
+    symbols:
+      PQCLEAN_MLKEM768_CLEAN_poly_tomsg:
+        {division_count: 1, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_poly_compress:
+        {division_count: 0, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_polyvec_compress:
+        {division_count: 0, forbid_division_helpers: true}
+
+  ks2:
+    compiler: gcc
+    cflags: *full_kem_cflags
+    comparison_group: pqclean-mlkem768-gcc-Os-fixed-sk-chosen-ct
+    evidence_boundary: >-
+      Exact KS2 linked binary; one surviving div/idiv in each compression site
+      is required before any timing sample is collected.
+    symbols:
+      PQCLEAN_MLKEM768_CLEAN_poly_tomsg:
+        {division_count: 0, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_poly_compress:
+        {division_count: 1, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_polyvec_compress:
+        {division_count: 1, forbid_division_helpers: true}
+
+  ks1_ks2:
+    compiler: gcc
+    cflags: *full_kem_cflags
+    comparison_group: pqclean-mlkem768-gcc-Os-fixed-sk-chosen-ct
+    evidence_boundary: >-
+      Exact combined linked binary; all three named KyberSlash sites must each
+      retain one div/idiv before timing begins.
+    symbols:
+      PQCLEAN_MLKEM768_CLEAN_poly_tomsg:
+        {division_count: 1, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_poly_compress:
+        {division_count: 1, forbid_division_helpers: true}
+      PQCLEAN_MLKEM768_CLEAN_polyvec_compress:
+        {division_count: 1, forbid_division_helpers: true}

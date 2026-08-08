@@ -1411,11 +1411,12 @@ def test_v2_report_preserves_dropped_rows_and_all_protocol_traces(tmp_path):
     from ctkat.statistics import WelchResult
 
     trace = parse_timing_csv(
-        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length\n"
-        "0,0,100,7,7,,32\n"
-        "1,1,200,7,8,cpu-migration,33\n"
-        "2,1,110,7,7,,34\n"
-        "3,0,105,7,7,,32\n"
+        "sample_id,class,cycles,aux_start,aux_end,drop_reason,output_length,"
+        "signature_return_code\n"
+        "0,0,100,7,7,,32,0\n"
+        "1,1,200,7,8,cpu-migration,33,0\n"
+        "2,1,110,7,7,,34,0\n"
+        "3,0,105,7,7,,32,0\n"
     )
     trace.protocol_traces = [
         TimingProtocolTrace("aa", 0, 123, trace),
@@ -1441,11 +1442,11 @@ def test_v2_report_preserves_dropped_rows_and_all_protocol_traces(tmp_path):
     _emit_dudect_report("p", tmp_path, [("h", trace, result, [])])
 
     raw = (tmp_path / "dudect_raw_timings.csv").read_text().splitlines()
-    assert raw[0].endswith("drop_reason,output_length,protocol")
-    assert any(",1,1,200.0,7,8,cpu-migration,33,timing-harness-v2" in row for row in raw)
+    assert raw[0].endswith("drop_reason,output_length,signature_return_code,protocol")
+    assert any(",1,1,200.0,7,8,cpu-migration,33,0,timing-harness-v2" in row for row in raw)
     protocol = (tmp_path / "dudect_protocol_timings.csv").read_text().splitlines()
     assert len(protocol) == 5
-    assert any(",aa,0,123,0,1,1,200.0,7,8,cpu-migration,33," in row for row in protocol)
+    assert any(",aa,0,123,0,1,1,200.0,7,8,cpu-migration,33,0," in row for row in protocol)
     payload = json.loads((tmp_path / "dudect_backend_report.json").read_text())
     assert payload["schema_version"] == "2.0"
     assert payload["protocol_trace_sha256"]
@@ -2426,7 +2427,9 @@ def test_ct_kem_caveat_when_fo_harness_present_says_covered(monkeypatch, tmp_pat
         dudect:
           enabled: false
           harnesses:
-            - {name: kd_fo, template: kem, header: api.h, prefix: "P_", leak_target: fo}
+            - {name: kd_fo, template: kem, header: api.h, prefix: "P_", leak_target: fo,
+               rejection_oracle_function: P_rkprf,
+               rejection_seed_offset: P_CRYPTO_SECRETKEYBYTES - 32}
     """)
     )
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
@@ -2447,7 +2450,9 @@ def test_ct_kem_invalid_structural_harness_says_fo_is_valgrind_covered(monkeypat
         ct:
           harnesses:
             - {name: kd, template: kem, header: api.h, prefix: "P_"}
-            - {name: kd_fo, template: kem, header: api.h, prefix: "P_", kem_decapsulation: invalid}
+            - {name: kd_fo, template: kem, header: api.h, prefix: "P_", kem_decapsulation: invalid,
+               rejection_oracle_function: P_rkprf,
+               rejection_seed_offset: P_CRYPTO_SECRETKEYBYTES - 32}
     """)
     )
     result = CliRunner().invoke(app, ["ct", "--config", str(cfg)])
@@ -2484,6 +2489,7 @@ def test_dudect_context_sign_passes_header_and_prefix():
     assert ctx["warmup"] == 10
     assert ctx["seed"] == 0xC0FFEE
     assert ctx["clock"] == "monotonic"
+    assert ctx["signature_length_contract"] == "fixed"
     # sign fixes its fixed-sk/fresh-sk axis in-template, so no kem leak_target
     # and no generic-only keys should bleed into the context.
     assert "leak_target" not in ctx

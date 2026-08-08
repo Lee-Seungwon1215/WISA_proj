@@ -1,7 +1,7 @@
 schema_version: "1.0"
 review_id: rvw-mldsa-rejection-v1
-status: reviewed
-title: ML-DSA rejection and public-output attribution
+status: expired
+title: Withdrawn ML-DSA rejection/public-output attribution
 reviewed_at: "2026-07-30"
 reviewers:
   - id: project-maintainer
@@ -11,15 +11,15 @@ scope:
   - {target: pqclean_mldsa65, harness: sign}
   - {target: pqclean_mldsa87, harness: sign}
 decision:
-  - Registered rejection-sampling and public-signature packing findings are accepted
-    only at their reviewed source locations.
-  - crypto_sign_signature_ctx is a coarse optimized parent frame and is not accepted
-    as a function-wide registry entry.
+  - The prior acceptance is withdrawn; rejected iterations contain secret-derived
+    state that never enters the final public transcript.
+  - poly_chknorm, poly_challenge, make_hint, pack_sig, and
+    crypto_sign_signature_ctx remain needs-analysis and are not registry entries.
   - Legacy timing PASS rows remain insufficient-power until calibrated controls exist.
 evidence:
   - docs/accepted_variable_time.md
   - examples/pqc_mldsa65/triage.yaml
   - docs/corpus/archive/v1.2/corpus_summary.csv
 limitations:
-  - The review is narrow to these clean PQClean harnesses and build cells.
+  - This superseded one-maintainer artifact is retained only as decision history.
   - One maintainer review only.

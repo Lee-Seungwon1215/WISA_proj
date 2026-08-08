@@ -1,8 +1,10 @@
 schema_version: "1.0"
 campaign_id: kyberslash-native-v1
 description: >-
-  Frozen stock/KS1/KS2/combined/historical ML-KEM-768 timing comparison.
-  Results remain promotion candidates until independent review.
+  EXPLORATORY legacy stock/KS1/KS2/combined/historical ML-KEM-768 timing
+  comparison. Its sk class changes both the secret key and matching public
+  ciphertext, and its GCC -O2 cell strength-reduces the frozen KyberSlash
+  divisions. It must not be promoted as KyberSlash leakage evidence; use v2.
 coverage_mode: manifest-only
 
 host: &host

@@ -1,6 +1,6 @@
 # CT-KAT 리젝 복구 및 프로젝트 완성 로드맵
 
-기준일: 2026-07-29
+기준일: 2026-08-08
 
 기준 커밋: `b1ccd4d`
 
@@ -70,6 +70,15 @@
   blind rerun·one-command artifact·dependency/action/container pin을 구현했다.
   남은 것은 사람 2인의 premeasurement review와 native 장비 2대 실행,
   postmeasurement review 및 명시적 corpus promotion뿐이다.
+- **M6 / paper campaign v2 engineering freeze 완료 (2026-08-08, `0.12.0a1`)** — 기존
+  KyberSlash `sk` 비교의 입력·구현 혼입을 폐기하고 fixed-key
+  chosen-ciphertext 4축과 vulnerable/patched operand canary 6축으로 다시
+  동결했다. linked binary/disassembly 계약, Falcon 서명 길이·반환값 계약,
+  ML-KEM 660-cell assembly 원문 증거, 두-host blinded analysis, 자동화된 4관점
+  engineering audit를 추가했다. 현재 v2 범위는 4 component/26 target
+  execution/28 timing axis, host당 8,220,000 protocol row다. 자동 audit는 사람
+  리뷰로 세지 않으며, 두 명의 독립 human review와 서로 다른 CPU model의 두
+  physical host final run은 그대로 승격 차단 조건이다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -433,7 +442,7 @@ KEM 축:
 
 - `sk`: fixed-vs-random key content, valid ciphertext, common address
 - `ct`: fixed-vs-random valid ciphertext, fixed key
-- `fo`: valid-vs-invalid ciphertext, fixed key
+- `fo`: valid-vs-mutated ciphertext, fixed key, exact rejection-key witness
 - setup-only placebo 축을 추가해 keygen/cache 잔류 효과 확인
 
 signature 축:
@@ -443,12 +452,12 @@ signature 축:
 - randomness/nonce policy를 target별 manifest에 기록
 - variable-length signature encoding cost와 core signing cost를 분리
 
-### `POWER-001` PASS 대신 검출 한계 보고
+### `POWER-001` PASS 대신 control 민감도 진단 보고
 
-- target/run별 minimum detectable effect와 목표 power 사전 계산
+- A/A-noise 기반 nominal sensitivity와 injected-delay 검출 비율 사전 등록
 - 3,000회 SPHINCS+를 자동 PASS로 두지 않음
 - 여러 seed/process의 consistency 필요
-- A/A false-alarm budget과 A/B power curve 공개
+- A/A false-alarm budget과 injected-delay detection curve 공개
 - host가 조건을 만족하지 않으면 `environment-rejected`
 
 M2 종료 조건:
@@ -457,14 +466,15 @@ M2 종료 조건:
 - [x] 기존 ML-KEM `|t|=145.316`은 `confounded`로 migration됨
 - [x] 미실행 asm cell과 근거 없는 summary-only layer가 clean으로 승격되지 않음
 - [ ] A/A control이 사전 false-alarm budget을 만족
-- [ ] seeded effect가 목표 power로 반복 검출
+- [ ] largest seeded effect가 목표 repeat 검출 비율을 만족
 - [x] backend-only synthetic A/A false-alarm budget과 injected-effect curve 존재
 - [x] official/custom uncropped same-trace parity report 존재
 
 앞의 미완료 두 항목은 실제 target/physical host 기준이다.
 `timing-harness-v2` 구현 완료만으로 슬쩍 체크 처리하지 않는다. 다음 단계에서
 native single-CPU로 corpus를 재실행하고 A/A false alarm, setup-placebo,
-positive power curve, MDE를 target별로 커밋한 뒤에만 체크한다.
+injected-delay detection curve와 A/A nominal sensitivity를 target별로 커밋한
+뒤에만 체크한다.
 
 ### `TIME-002` native corpus campaign
 
@@ -964,10 +974,11 @@ M5 종료 조건:
 9. ~~**독립 upstream source/build corpus 확장**~~ — 완료 (`0.10.0a1`):
    mlkem-native → mldsa-native → OpenSSL 3.5.7 production integration,
    240 build cell/24 upstream KAT/120 equivalence pair CI gate
-10. ~~**측정 전 paper campaign/artifact 동결**~~ — 완료 (`0.11.0a1`):
-    4 component/25 axis, ablation, two-person packets, preregistration,
-    generated tables, blind rerun, lock/pin, one-command gate
-11. native 장비 확보 즉시 두 host에서 동결 campaign과 same-corpus dudect를
+10. ~~**측정 전 paper campaign/artifact 동결**~~ — v2로 갱신 완료:
+    4 component/26 target execution/28 axis, binary/assembly evidence,
+    automated engineering audits, ablation, two-person packets,
+    preregistration, generated tables, blind rerun, lock/pin, one-command gate
+11. native 장비 확보 즉시 두 host에서 v2 campaign과 same-corpus 세 도구를
     실행하고, postmeasurement 2인 review 뒤 별도 commit으로 재분류
 
 첫 구현 batch의 완료 기준:

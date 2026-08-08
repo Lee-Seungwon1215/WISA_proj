@@ -8,8 +8,8 @@
     ],
     "schema_version": 1,
     "source_sha256": {
-      "cells": "8c64abf7ce48ea71fc51b6084902b37d0eb18491010a74ea7890dfda9ada2d80",
-      "summary": "4fa3189320da55debabd10a396937eeb1bd3d4cd9921c70cce9a96c9790f5d55"
+      "cells": "d4df2886c177cf6934716d37cc58e81b5d2a9fc4e49d6e39b6ffb1e4f1ace5ec",
+      "summary": "fc3c9dd81d2b3929eda60221bcbc21150c3da9040e631ac8c8be856c3ca66d6b"
     },
     "stages": [
       {
@@ -31,7 +31,7 @@
         "asm_candidate_pairs": 0,
         "build_sensitive_pairs": 2,
         "candidate_pairs": 13,
-        "cells": 204,
+        "cells": 206,
         "ct_finding_pairs": 13,
         "inconclusive_pairs": "",
         "needs_review_pairs": "",
@@ -46,7 +46,7 @@
         "asm_candidate_pairs": 16,
         "build_sensitive_pairs": 2,
         "candidate_pairs": 22,
-        "cells": 204,
+        "cells": 206,
         "ct_finding_pairs": 13,
         "inconclusive_pairs": "",
         "needs_review_pairs": "",
@@ -61,12 +61,12 @@
         "asm_candidate_pairs": 16,
         "build_sensitive_pairs": 2,
         "candidate_pairs": "",
-        "cells": 204,
+        "cells": 206,
         "ct_finding_pairs": 13,
         "inconclusive_pairs": 10,
         "needs_review_pairs": 5,
         "no_finding_pairs": 4,
-        "note": "reviewed=16; pending=6; fold is fail-closed",
+        "note": "reviewed=12; pending=6; fold is fail-closed",
         "pairs": 25,
         "risk_detected_pairs": 6,
         "stage": "reviewed-evidence-fold",
@@ -108,15 +108,15 @@
     },
     {
       "claim_id": "kyberslash-attribution",
-      "evidence_items": 3,
+      "evidence_items": 4,
       "open_gates": 2,
-      "prohibited_wording": "every division candidate leaks",
+      "prohibited_wording": "full attack or key recovery reproduced",
       "scope": "ML-KEM/Kyber-768 frozen variants",
       "status": "pending-independent-review"
     },
     {
       "claim_id": "falcon-comparator",
-      "evidence_items": 3,
+      "evidence_items": 4,
       "open_gates": 3,
       "prohibited_wording": "FIPS 206 conformance",
       "scope": "Falcon/FN-DSA 512 and 1024 comparators",
@@ -135,7 +135,7 @@
       "evidence_items": 3,
       "open_gates": 3,
       "prohibited_wording": "no finding means proven constant-time",
-      "scope": "25 predeclared timing axes plus same-corpus baselines",
+      "scope": "28 predeclared timing axes plus all three same-corpus baseline tools",
       "status": "pending-physical-measurement"
     }
   ],
@@ -148,32 +148,32 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v1",
+    "campaign_id": "ctkat-paper-native-v2",
     "component_count": 4,
     "components": [
       {
         "campaign_id": "corpus-native-timing-v2",
         "coverage_mode": "committed-timing-rows",
         "id": "committed-corpus-refresh",
-        "protocol_rows": 1500000,
+        "protocol_rows": 2220000,
         "static_ok": true,
         "targets": 6,
         "timing_axes": 8
       },
       {
-        "campaign_id": "kyberslash-native-v1",
+        "campaign_id": "kyberslash-native-v2",
         "coverage_mode": "manifest-only",
         "id": "kyberslash-contrast",
-        "protocol_rows": 1680000,
+        "protocol_rows": 3300000,
         "static_ok": true,
-        "targets": 5,
-        "timing_axes": 7
+        "targets": 10,
+        "timing_axes": 10
       },
       {
         "campaign_id": "falcon-native-v1",
         "coverage_mode": "manifest-only",
         "id": "falcon-contrast",
-        "protocol_rows": 990000,
+        "protocol_rows": 1530000,
         "static_ok": true,
         "targets": 6,
         "timing_axes": 6
@@ -182,7 +182,7 @@
         "campaign_id": "diverse-native-v1",
         "coverage_mode": "manifest-only",
         "id": "diverse-lineages",
-        "protocol_rows": 810000,
+        "protocol_rows": 1170000,
         "static_ok": true,
         "targets": 4,
         "timing_axes": 4
@@ -190,11 +190,11 @@
     ],
     "errors": [],
     "physical_hosts_required": 2,
-    "protocol_rows_all_hosts": 9960000,
-    "protocol_rows_per_host": 4980000,
+    "protocol_rows_all_hosts": 16440000,
+    "protocol_rows_per_host": 8220000,
     "status": "static-plan-valid",
-    "target_executions": 21,
-    "timing_axes": 25
+    "target_executions": 26,
+    "timing_axes": 28
   },
   "review_readiness": {
     "minimum_reviewers": 2,
@@ -262,5 +262,5 @@
       "pending": 7
     }
   },
-  "schema_version": 1
+  "schema_version": 2
 }

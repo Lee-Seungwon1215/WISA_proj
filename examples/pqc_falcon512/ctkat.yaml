@@ -66,6 +66,10 @@ dudect:
       template: sign
       header: api.h
       prefix: "PQCLEAN_FALCON512_CLEAN_"
+      signature_length_contract: bounded
+      binary_contract:
+        manifest: ../falcon_comparator_support/timing_binary_contracts_v1.yaml
+        target: pqclean_falcon512_reference
       include_dirs: [clean, ../pqc_mlkem768/common]
       sources:
         # randombytes source omitted → timing template's seeded weak override.

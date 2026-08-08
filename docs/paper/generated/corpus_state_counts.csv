@@ -5,9 +5,10 @@ overall,no-finding-observed,4
 overall,risk-detected,6
 correctness,not-run,4
 correctness,pass,21
+review,expired,4
 review,not-needed,3
 review,pending,6
-review,reviewed,16
+review,reviewed,12
 family,Falcon,6
 family,Kyber,1
 family,ML-DSA,3

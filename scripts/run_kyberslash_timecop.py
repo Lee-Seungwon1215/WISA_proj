@@ -166,9 +166,20 @@ def _serialize_finding(finding: Finding) -> dict[str, Any]:
 
 
 def _find_backend(valgrind_arg: str, prefix_arg: Path | None) -> tuple[Path, Path]:
-    executable_value = (
-        shutil.which(valgrind_arg) if not Path(valgrind_arg).is_absolute() else valgrind_arg
-    )
+    requested = Path(valgrind_arg)
+    if prefix_arg is not None:
+        prefix = prefix_arg.resolve()
+        if requested.is_absolute():
+            candidate = requested.resolve()
+            if not candidate.is_relative_to(prefix):
+                raise RuntimeError("explicit Valgrind executable escapes --prefix")
+        else:
+            candidate = prefix / "bin" / requested.name
+        executable_value = str(candidate) if candidate.is_file() else None
+    else:
+        executable_value = (
+            shutil.which(valgrind_arg) if not requested.is_absolute() else valgrind_arg
+        )
     if not executable_value:
         raise RuntimeError(f"Valgrind executable not found: {valgrind_arg}")
     executable = Path(executable_value).resolve()
@@ -178,13 +189,14 @@ def _find_backend(valgrind_arg: str, prefix_arg: Path | None) -> tuple[Path, Pat
     env_prefix = os.environ.get("CTKAT_TIMECOP_PREFIX")
     if env_prefix:
         candidates.append(Path(env_prefix).resolve() / "include")
-    candidates.extend(
-        [
-            executable.parent.parent / "include",
-            Path("/usr/local/include"),
-            Path("/usr/include"),
-        ]
-    )
+    if prefix_arg is None:
+        candidates.extend(
+            [
+                executable.parent.parent / "include",
+                Path("/usr/local/include"),
+                Path("/usr/include"),
+            ]
+        )
     for include_dir in candidates:
         header = include_dir / "valgrind/memcheck.h"
         if header.is_file() and "VALGRIND_ENABLE_TIMECOP_MODE" in header.read_text(

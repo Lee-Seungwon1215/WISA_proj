@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
 from pathlib import Path
@@ -26,6 +27,50 @@ def _linux_microcode() -> str:
     return ""
 
 
+def _linux_cpu_model() -> str:
+    """Return the exact kernel-reported CPU model used for host identity checks."""
+
+    try:
+        text = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for field in ("model name", "hardware", "processor"):
+        for line in text.splitlines():
+            if line.lower().startswith(field) and ":" in line:
+                value = line.split(":", 1)[1].strip()
+                if value and not value.isdigit():
+                    return value
+    return ""
+
+
+def _linux_machine_id_sha256() -> str:
+    value = _read_first("/etc/machine-id")
+    if not value:
+        return ""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _linux_boot_id_sha256() -> str:
+    value = _read_first("/proc/sys/kernel/random/boot_id")
+    if not value:
+        return ""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _linux_timing_cpu_flags() -> dict[str, bool]:
+    required = ("constant_tsc", "nonstop_tsc", "rdtscp")
+    try:
+        text = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {name: False for name in required}
+    flags: set[str] = set()
+    for line in text.splitlines():
+        if line.lower().startswith(("flags", "features")) and ":" in line:
+            flags.update(line.split(":", 1)[1].strip().split())
+            break
+    return {name: name in flags for name in required}
+
+
 def collect_timing_environment(*, emulated: bool, clock: str) -> dict[str, Any]:
     """Capture what can be observed without privileged host mutation.
 
@@ -43,8 +88,9 @@ def collect_timing_environment(*, emulated: bool, clock: str) -> dict[str, Any]:
             affinity = []
 
     system = platform.system()
+    governor_cpu = affinity[0] if len(affinity) == 1 else 0
     governor = (
-        _read_first("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+        _read_first(f"/sys/devices/system/cpu/cpu{governor_cpu}/cpufreq/scaling_governor")
         if system == "Linux"
         else ""
     )
@@ -66,6 +112,11 @@ def collect_timing_environment(*, emulated: bool, clock: str) -> dict[str, Any]:
         "machine": platform.machine(),
         "kernel": platform.release(),
         "processor": platform.processor(),
+        "cpu_model": _linux_cpu_model() or platform.processor() or None,
+        "hostname": platform.node() or None,
+        "machine_id_sha256": _linux_machine_id_sha256() or None,
+        "boot_id_sha256": _linux_boot_id_sha256() or None,
+        "timing_cpu_flags": _linux_timing_cpu_flags() if system == "Linux" else None,
         "clock": clock,
         "emulated": emulated,
         "cpu_affinity": affinity,

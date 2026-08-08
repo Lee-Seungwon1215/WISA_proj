@@ -1,0 +1,50 @@
+schema_version: "1.0"
+kind: ctkat-asm-evidence-campaign
+campaign_id: mlkem-public-asm-evidence-v1
+status: premeasurement-frozen
+description: >-
+  Complete source-by-compiler-by-optimization disassembly evidence for every
+  active ML-KEM corpus row whose assembly candidates are attributed public.
+
+source_revision_policy: exact-clean-git-head
+host:
+  system: Linux
+  architecture: x86_64
+
+tools:
+  objdump: objdump
+  nm: nm
+  full_disassembly_argv: [-dSl]
+
+compilers: [gcc, clang]
+optimization_levels: [-O0, -O1, -O2, -O3, -Os]
+
+corpus:
+  path: docs/corpus/corpus_summary.csv
+  family: ML-KEM
+  attribution: public
+  review: docs/reviews/paper/mlkem-public-attribution-v2.yaml
+
+attribution_policy:
+  allowed_source_suffixes: [common/fips202.c]
+  allowed_functions: [shake128, shake256]
+  required_functions_per_harness: [shake128, shake256]
+
+targets:
+  - id: pqclean_mlkem512
+    config: examples/pqc_mlkem512/ctkat.yaml
+    harnesses: [kem_dec, kem_dec_fo]
+  - id: pqclean_mlkem768
+    config: examples/pqc_mlkem768/ctkat.yaml
+    harnesses: [kem_dec, kem_dec_fo]
+  - id: pqclean_mlkem1024
+    config: examples/pqc_mlkem1024/ctkat.yaml
+    harnesses: [kem_dec, kem_dec_fo]
+
+artifact:
+  schema: docs/measurement/asm_evidence_bundle_v1.schema.json
+  schema_sha256: bedc63cf9985628d62fefdec505adebf1a019a2f3dbfa7b25dd0a173a5a30831
+  manifest_name: asm_evidence_bundle.json
+  raw_directory: raw/sha256
+  raw_content_addressed: true
+  commit_raw_to_git: false

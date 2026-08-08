@@ -22,7 +22,7 @@ source_snapshot:
     sha256: 3b0c86fad24a632ac115b95dd29c86a406f63c66a80511eca150c675888f87c6
   implementation:
     path: examples/toy_kem_ct_leak/src/toy_kem.c
-    sha256: 9c33d235ba40924b74be737c81efef8b5353eb784e9bdc3e2b2edf87bf6d2193
+    sha256: dd190550909787b1a772f6c45070b75f40c741a545c10ed06248be20fe6c0e2f
 
 testcase_protocol:
   id: toy-kem-ciphertext-16x32-v1
@@ -42,9 +42,9 @@ cases:
     harness: leaky
     function: LEAKY_crypto_kem_dec
     known_issue:
-      id: toy-ct0-secret-dependent-slow-path
+      id: toy-ct0-input-dependent-slow-path
       state: present
-      class: secret-dependent-control-flow-and-time
+      class: controlled-input-dependent-control-flow-and-time
   - id: toy-kem-ct-safe
     harness: safe
     function: SAFE_crypto_kem_dec
@@ -52,6 +52,7 @@ cases:
       id: toy-fixed-work-negative-control
       state: absent
       class: negative-control
+      source_equivalence: same-macro-as-leaky-with-compile-time-leak-toggle-disabled
 
 tools:
   official_dudect:
@@ -71,7 +72,7 @@ tools:
         The selected official adapter and RDTSCP campaign are x86_64 profiles;
         emulation or a virtual timing host is retained but environment-rejected.
     adapter:
-      command: [python, scripts/run_same_corpus_baselines.py, --run-dudect]
+      command: [python, scripts/run_same_corpus_baselines.py, --run-dudect, --run-kind, engineering]
       configuration_files: [examples/toy_kem_ct_leak/ctkat.yaml]
       implementation_files: []
       file_sha256:
@@ -93,12 +94,14 @@ tools:
       evidence_gate: structural-or-operand-attribution-only
       unsupported_reason: patched Valgrind executable and headers are required
     adapter:
-      command: [python, scripts/run_same_corpus_baselines.py, --run-timecop]
+      command: [python, scripts/run_same_corpus_baselines.py, --run-timecop, --run-kind, engineering]
       configuration_files: [examples/toy_kem_ct_leak/ctkat.yaml]
-      implementation_files: []
+      implementation_files: [scripts/run_same_corpus_baselines.py]
       file_sha256:
         examples/toy_kem_ct_leak/ctkat.yaml:
           8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+        scripts/run_same_corpus_baselines.py:
+          d4c3d14084c926de8e740458238bddde0e636d478cc57fb10b396f5849d7c095
 
   microwalk_pin:
     display_name: MicroWalk PinTracer
@@ -118,7 +121,7 @@ tools:
         This frozen baseline selects MicroWalk's PinTracer. AArch64 is an
         explicit unsupported capability row, not a failed analysis.
     adapter:
-      command: [python, scripts/run_same_corpus_baselines.py, --run-microwalk]
+      command: [python, scripts/run_same_corpus_baselines.py, --run-microwalk, --run-kind, engineering]
       configuration_files:
         - examples/toy_kem_ct_leak/microwalk/config.yml
       implementation_files:

@@ -1,0 +1,19 @@
+schema_version: "1.0"
+kind: ctkat-analysis-unblinding-record
+bundle_id: replace-with-final-bundle-id
+scope: result-analyst-label-blinding
+custodian_id: replace-with-custodian-id
+analyst_id: replace-with-independent-analyst-id
+blinded_at: replace-with-ISO-8601-time
+blinded_analysis_completed_at: replace-with-ISO-8601-time
+blinded_analysis_manifest_sha256: replace-with-sha256
+unblinded_at: replace-with-later-ISO-8601-time
+label_map:
+  - {opaque_label: replace-A001, component: replace-component, target: replace-target}
+host_transfers:
+  - {host_id: host-a, hash_manifest_sha256: replace-with-sha256, received_at: replace-with-ISO-8601-time, verified: true}
+  - {host_id: host-b, hash_manifest_sha256: replace-with-sha256, received_at: replace-with-ISO-8601-time, verified: true}
+attestations:
+  custodian_created_opaque_labels_before_analysis: true
+  analyst_saw_only_opaque_labels_before_unblinding: true
+  unblinding_happened_after_frozen_analysis_completed: true

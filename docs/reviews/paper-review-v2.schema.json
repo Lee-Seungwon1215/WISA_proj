@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schema_version", "review_id", "status", "title", "review_phase",
+    "final_evidence_root_sha256",
     "source_revision_policy", "scope", "threat_model", "secret_origin",
     "observed_dependency", "declassification_predicate", "public_transcript",
     "security_argument", "known_limitations", "evidence", "expected_evidence",
@@ -17,6 +18,13 @@
     "status": {"enum": ["pending", "reviewed", "disputed", "expired"]},
     "title": {"type": "string", "minLength": 1},
     "review_phase": {"enum": ["pre-measurement", "post-measurement"]},
+    "final_evidence_root_sha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      ],
+      "description": "Canonical final-evidence root approved by a post-measurement packet. It remains null before a candidate bundle exists; each reviewer evidence-manifest digest binds this field."
+    },
     "source_revision_policy": {"const": "exact-clean-git-head-at-review"},
     "scope": {
       "type": "array", "minItems": 1,
@@ -43,12 +51,24 @@
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "independent_from_artifact_author", "decision", "reviewed_at", "notes"],
+        "required": [
+          "id", "human_reviewer", "affiliation_or_role",
+          "independent_from_artifact_author", "decision", "reviewed_at",
+          "reviewed_commit", "evidence_manifest_sha256", "notes"
+        ],
         "properties": {
           "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+          "human_reviewer": {"const": true},
+          "affiliation_or_role": {"type": "string", "minLength": 1},
           "independent_from_artifact_author": {"const": true},
           "decision": {"enum": ["approve", "reject", "abstain"]},
-          "reviewed_at": {"type": "string", "minLength": 1},
+          "reviewed_at": {"type": "string", "format": "date-time"},
+          "reviewed_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "evidence_manifest_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 of the canonical packet policy (excluding status/reviewers) and every evidence file's path/hash."
+          },
           "notes": {"type": "string", "minLength": 1}
         }
       }

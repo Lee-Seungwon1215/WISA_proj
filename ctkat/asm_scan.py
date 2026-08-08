@@ -38,6 +38,7 @@ the real `_func` — the symbol table has the real name at the same address.
 from __future__ import annotations
 
 import bisect
+import json
 import re
 import subprocess as _sp
 import tempfile
@@ -58,6 +59,10 @@ DEFAULT_OPT_LEVELS: Tuple[str, ...] = ("-O0", "-O1", "-O2", "-O3", "-Os")
 # matter: without `$`, `div` would also swallow SSE/x87 FP divides
 # (`divss`/`divsd`) — those are excluded on purpose, as is mul/imul.
 _DIV_RE = re.compile(r"^(?:i?div[bwlq]?|[su]div|divu?w?|remu?w?)$")
+_DIV_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?P<mnemonic>(?:i?div[bwlq]?|[su]div|divu?w?|remu?w?))"
+    r"(?![A-Za-z0-9_])"
+)
 
 # objdump function label, e.g. `0000000000000050 <PQCLEAN_..._poly_tomsg>:`
 _FUNC_RE = re.compile(r"^[0-9a-fA-F]+ <(?P<name>.+)>:$")
@@ -78,6 +83,21 @@ class Occurrence:
     opt: str
     addr: str  # objdump hex, e.g. "222"
     mnemonic: str
+    # Exact text after the mnemonic and the complete mnemonic+operand slice.
+    # Defaults preserve source compatibility for callers constructing legacy
+    # three-field Occurrence values while real scans retain reviewer-visible
+    # operand evidence instead of reducing a hit to just ``idiv``/``div``.
+    operand_text: str = ""
+    instruction_text: str = ""
+
+
+@dataclass(frozen=True)
+class DisassemblyHit:
+    function: str
+    addr: str
+    mnemonic: str
+    operand_text: str
+    instruction_text: str
 
 
 @dataclass
@@ -112,6 +132,21 @@ class VarLatCandidate:
         # one entry per unique (opt, addr), sorted, e.g. "-O2@0x47;-Os@0x222"
         uniq = sorted({(o.opt, o.addr) for o in self.occurrences})
         return ";".join(f"{opt}@0x{addr}" for opt, addr in uniq)
+
+    @property
+    def operands_json(self) -> str:
+        rows = [
+            {"opt": o.opt, "addr": f"0x{o.addr}", "text": o.operand_text} for o in self.occurrences
+        ]
+        return json.dumps(rows, sort_keys=True, separators=(",", ":"))
+
+    @property
+    def instructions_json(self) -> str:
+        rows = [
+            {"opt": o.opt, "addr": f"0x{o.addr}", "text": o.instruction_text}
+            for o in self.occurrences
+        ]
+        return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
     @property
     def triage_hint(self) -> str:
@@ -160,14 +195,17 @@ def _strip_opt(cflags: List[str]) -> List[str]:
     return [f for f in cflags if not re.fullmatch(r"-O\S*", f)]
 
 
-def parse_objdump(text: str) -> List[Tuple[str, str, str]]:
-    """Pure text -> [(label, address, mnemonic)] for every division-family
-    instruction in `objdump -d --no-show-raw-insn` output. `label` is whatever
-    symbol objdump attributed the code to (often correct on ELF, a linker-temp
-    on Mach-O — callers remap it via the symbol table). Split out from the
-    subprocess wrapper so the mnemonic whitelist can be unit-tested against
-    canned GNU/LLVM objdump text without a compiler in the loop."""
-    hits: List[Tuple[str, str, str]] = []
+def parse_objdump_details(text: str) -> List[DisassemblyHit]:
+    """Retain division mnemonic *and* exact operand/instruction text.
+
+    This parser accepts both ``--no-show-raw-insn`` output and full ``-dSl``
+    output.  In the latter, raw opcode bytes precede the mnemonic; searching
+    for the anchored division token within the instruction field avoids
+    architecture-specific byte-column heuristics while preserving everything
+    from the mnemonic onward verbatim (modulo surrounding whitespace).
+    """
+
+    hits: List[DisassemblyHit] = []
     current = "?"
     for line in text.splitlines():
         fm = _FUNC_RE.match(line)
@@ -177,11 +215,28 @@ def parse_objdump(text: str) -> List[Tuple[str, str, str]]:
         im = _INSN_RE.match(line)
         if not im:
             continue
-        mnem = im.group("rest").split()[0]
-        if _DIV_RE.match(mnem):
-            addr = line.strip().split(":", 1)[0].strip()
-            hits.append((current, addr, mnem))
+        rest = im.group("rest")
+        match = _DIV_TOKEN_RE.search(rest)
+        if not match:
+            continue
+        mnemonic = match.group("mnemonic")
+        if not _DIV_RE.fullmatch(mnemonic):
+            continue
+        addr = line.strip().split(":", 1)[0].strip()
+        instruction_text = rest[match.start() :].strip()
+        operand_text = rest[match.end() :].strip()
+        hits.append(DisassemblyHit(current, addr, mnemonic, operand_text, instruction_text))
     return hits
+
+
+def parse_objdump(text: str) -> List[Tuple[str, str, str]]:
+    """Pure text -> [(label, address, mnemonic)] for every division-family
+    instruction in `objdump -d --no-show-raw-insn` output. `label` is whatever
+    symbol objdump attributed the code to (often correct on ELF, a linker-temp
+    on Mach-O — callers remap it via the symbol table). Split out from the
+    subprocess wrapper so the mnemonic whitelist can be unit-tested against
+    canned GNU/LLVM objdump text without a compiler in the loop."""
+    return [(hit.function, hit.addr, hit.mnemonic) for hit in parse_objdump_details(text)]
 
 
 def _is_temp_symbol(name: str) -> bool:
@@ -254,6 +309,29 @@ def resolve_functions(
     return out
 
 
+def resolve_disassembly_hits(
+    hits: List[DisassemblyHit],
+    symbols: List[Tuple[int, str]],
+) -> List[DisassemblyHit]:
+    """Detailed counterpart of :func:`resolve_functions`.
+
+    Operand and full instruction text survive Mach-O symbol recovery exactly;
+    only the enclosing function label is replaced.
+    """
+
+    resolved = resolve_functions([(hit.function, hit.addr, hit.mnemonic) for hit in hits], symbols)
+    return [
+        DisassemblyHit(
+            function=function,
+            addr=hit.addr,
+            mnemonic=hit.mnemonic,
+            operand_text=hit.operand_text,
+            instruction_text=hit.instruction_text,
+        )
+        for hit, (function, _addr, _mnemonic) in zip(hits, resolved)
+    ]
+
+
 def _function_symbols(obj_path: Path, nm: str, *, timeout: float) -> List[Tuple[int, str]]:
     """Best-effort symbol table via `nm -n`. Returns [] (caller falls back to
     objdump labels) if nm is missing or fails — this is a warn-only probe."""
@@ -268,7 +346,7 @@ def _function_symbols(obj_path: Path, nm: str, *, timeout: float) -> List[Tuple[
 
 def _disasm_divisions(
     obj_path: Path, objdump: str, nm: str, *, timeout: float
-) -> List[Tuple[str, str, str]]:
+) -> List[DisassemblyHit]:
     """objdump the object, find division-family instructions, and resolve their
     function names via the symbol table. Raises AsmScanError if objdump fails."""
     cmd = [objdump, "-d", "--no-show-raw-insn", str(obj_path)]
@@ -285,14 +363,14 @@ def _disasm_divisions(
         raise AsmScanError(f"objdump could not run ({' '.join(cmd)}): {e}") from e
     if proc.returncode != 0:
         raise AsmScanError(f"objdump failed ({' '.join(cmd)}):\n{proc.stderr or proc.stdout}")
-    hits = parse_objdump(proc.stdout)
+    hits = parse_objdump_details(proc.stdout)
     if not hits:
         return []
     # Only pay for the `nm` call when objdump gave us an unhelpful label
     # (Mach-O linker temps); on ELF the disassembly labels are already correct.
-    if not any(_label_needs_resolution(label) for label, _a, _m in hits):
+    if not any(_label_needs_resolution(hit.function) for hit in hits):
         return hits
-    return resolve_functions(hits, _function_symbols(obj_path, nm, timeout=timeout))
+    return resolve_disassembly_hits(hits, _function_symbols(obj_path, nm, timeout=timeout))
 
 
 def scan_harness(
@@ -358,8 +436,16 @@ def scan_harness(
                     continue
                 compiled += 1
                 scanned_sources.add(disp)
-                for func, addr, mnem in _disasm_divisions(obj, objdump, nm, timeout=timeout):
-                    agg.setdefault((disp, func), []).append(Occurrence(opt, addr, mnem))
+                for hit in _disasm_divisions(obj, objdump, nm, timeout=timeout):
+                    agg.setdefault((disp, hit.function), []).append(
+                        Occurrence(
+                            opt,
+                            hit.addr,
+                            hit.mnemonic,
+                            hit.operand_text,
+                            hit.instruction_text,
+                        )
+                    )
 
     # Q(N2): a source we were told to scan that compiled at ZERO opt levels is a
     # BLIND SPOT — we never disassembled it, so we cannot honestly claim it is
@@ -407,6 +493,8 @@ VARLAT_CSV_FIELDS = [
     "opt_levels",
     "count",
     "addresses",
+    "operand_texts_json",
+    "instructions_json",
     "note",
 ]
 
@@ -443,6 +531,8 @@ def candidate_to_row(c: VarLatCandidate) -> Dict[str, str]:
         "opt_levels": ";".join(c.opt_levels),
         "count": str(c.count),
         "addresses": c.addresses_display,
+        "operand_texts_json": c.operands_json,
+        "instructions_json": c.instructions_json,
         "note": _note_for(c),
     }
 
@@ -464,10 +554,18 @@ def build_matrix(candidates: List[VarLatCandidate]) -> List[Dict[str, object]]:
     opt level kept a division alive* without parsing the `;`-joined CSV columns.
     The human-readable cross-opt `note` lives only on the aggregated CSV rows /
     `candidates`; this matrix is the machine-diff surface."""
-    agg: Dict[Tuple[str, str, str, str, str], int] = {}
+    agg: Dict[Tuple[str, str, str, str, str, str, str], int] = {}
     for c in candidates:
         for o in c.occurrences:
-            key = (c.compiler, o.opt, c.source_file, c.function, o.mnemonic)
+            key = (
+                c.compiler,
+                o.opt,
+                c.source_file,
+                c.function,
+                o.mnemonic,
+                o.operand_text,
+                o.instruction_text,
+            )
             agg[key] = agg.get(key, 0) + 1
     rows = [
         {
@@ -477,12 +575,21 @@ def build_matrix(candidates: List[VarLatCandidate]) -> List[Dict[str, object]]:
             "function": fn,
             "triage_hint": triage_hint_for(sf, fn),
             "mnemonic": mn,
+            "operand_text": operands,
+            "instruction_text": instruction,
             "count": n,
         }
-        for (comp, opt, sf, fn, mn), n in agg.items()
+        for (comp, opt, sf, fn, mn, operands, instruction), n in agg.items()
     ]
     rows.sort(
-        key=lambda r: (r["compiler"], r["opt"], r["source_file"], r["function"], r["mnemonic"])
+        key=lambda r: (
+            r["compiler"],
+            r["opt"],
+            r["source_file"],
+            r["function"],
+            r["mnemonic"],
+            r["operand_text"],
+        )
     )
     return rows
 

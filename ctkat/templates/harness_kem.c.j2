@@ -20,8 +20,8 @@
  * `kem_decapsulation` selects which decapsulation path is structurally
  * exercised:
  *   - valid:   dec is called on a ciphertext from enc (normal path).
- *   - invalid: that ciphertext is mutated before dec, forcing the
- *              implicit-rejection / Fujisaki-Okamoto path for ML-KEM-like KEMs.
+ *   - invalid: that ciphertext is mutated before dec, and an exact configured
+ *              rejection-key oracle verifies the implicit-rejection output.
  *
  * `prefix` lets us match PQClean-style namespaced APIs such as
  * PQCLEAN_MLKEM768_CLEAN_crypto_kem_dec without changing the template.
@@ -33,15 +33,17 @@ int main(void) {
     uint8_t ct[{{ prefix }}CRYPTO_CIPHERTEXTBYTES];
     uint8_t ss_seed[{{ prefix }}CRYPTO_BYTES];
     uint8_t ss_actual[{{ prefix }}CRYPTO_BYTES];
+{% if kem_decapsulation | default("valid") == "invalid" %}
+    uint8_t ss_reject[{{ prefix }}CRYPTO_BYTES];
+{% endif %}
 
     {{ prefix }}crypto_kem_keypair(pk, sk);
     {{ prefix }}crypto_kem_enc(ct, ss_seed, pk);
 {% if kem_decapsulation | default("valid") == "invalid" %}
     /*
-     * Force an invalid-ciphertext decapsulation. Starting from enc()+bit-flip
-     * keeps the buffer shape realistic while making the re-encryption check
-     * fail for FO-style KEMs. The witness check after dec fails closed if this
-     * unexpectedly behaves like the valid encapsulation.
+     * Start from enc()+bit-flip, then use the configured scheme-specific
+     * rejection-key oracle after decapsulation.  A mutation plus disagreement
+     * with the original shared secret is not, by itself, an invalidity proof.
      */
     ct[0] ^= 0x01u;
 {% endif %}
@@ -75,16 +77,21 @@ int main(void) {
 
 {% if kem_decapsulation | default("valid") == "invalid" %}
     /*
-     * Path witness: on an invalid ciphertext, ML-KEM decapsulation should not
-     * return the shared secret produced by the original encapsulation. This is
-     * not a KAT round-trip check; it prevents an invalid-path harness from
-     * silently analyzing the valid path after a bad mutation or scheme mismatch.
+     * Exact path witness: independently compute the implicit-rejection output
+     * from z and the mutated public ciphertext, then require decapsulation to
+     * return those bytes.  This is untimed and runs after all secret taint has
+     * been removed, so it cannot create a structural finding of its own.
      */
+    {{ rejection_oracle_function }}(
+        ss_reject,
+        sk + ({{ rejection_seed_offset }}),
+        ct
+    );
     uint8_t ctkat_same = 0xffu;
     for (size_t i = 0; i < sizeof(ss_actual); i++) {
-        ctkat_same &= (uint8_t)(ss_actual[i] == ss_seed[i]);
+        ctkat_same &= (uint8_t)(ss_actual[i] == ss_reject[i]);
     }
-    if (ctkat_same) {
+    if (!ctkat_same) {
         fprintf(stderr, "CTKAT-KEM-INVALID-PATH-NOT-EXERCISED\n");
         return 7;
     }

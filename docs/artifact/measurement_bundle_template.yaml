@@ -1,28 +1,46 @@
-schema_version: 1
+schema_version: 4
 bundle_id: replace-with-final-bundle-id
-ctkat_commit: replace-with-40-hex-commit
+measurement_commit: replace-with-40-hex-measurement-commit
+verification_commit: replace-with-40-hex-postmeasurement-verification-commit
 hosts:
   - id: host-a
     cpu_model: replace-with-exact-cpu-model
     physical: true
     virtualization_detected: false
+    artifact_root: replace/host-a
+    hash_manifest: replace/host-a/SHA256SUMS
     components:
       committed-corpus-refresh: replace/host-a/committed-corpus
       kyberslash-contrast: replace/host-a/kyberslash
       falcon-contrast: replace/host-a/falcon
       diverse-lineages: replace/host-a/diverse
-    same_corpus_result: replace/host-a/same-corpus/same-corpus-result.json
+    same_corpus_results:
+      official_dudect: replace/host-a/same-corpus/official_dudect/baseline_report.json
+      timecop: replace/host-a/same-corpus/timecop/baseline_report.json
+      microwalk_pin: replace/host-a/same-corpus/microwalk_pin/baseline_report.json
   - id: host-b
     cpu_model: replace-with-different-exact-cpu-model
     physical: true
     virtualization_detected: false
+    artifact_root: replace/host-b
+    hash_manifest: replace/host-b/SHA256SUMS
     components:
       committed-corpus-refresh: replace/host-b/committed-corpus
       kyberslash-contrast: replace/host-b/kyberslash
       falcon-contrast: replace/host-b/falcon
       diverse-lineages: replace/host-b/diverse
-    same_corpus_result: replace/host-b/same-corpus/same-corpus-result.json
+    same_corpus_results:
+      official_dudect: replace/host-b/same-corpus/official_dudect/baseline_report.json
+      timecop: replace/host-b/same-corpus/timecop/baseline_report.json
+      microwalk_pin: replace/host-b/same-corpus/microwalk_pin/baseline_report.json
+assembly_evidence:
+  mlkem_public_attribution:
+    host_id: host-a
+    bundle: replace/host-a/asm-evidence/asm_evidence_bundle.json
 blind_rerun:
+  scope: result-analyst-label-blinding
   operator_did_not_see_other_host_results: true
-  target_labels_blinded_during_execution: true
-  unblinding_record: replace/UNBLINDING.md
+  analyst_did_not_access_raw_named_artifacts_before_unblinding: true
+  blinded_analysis_root: replace/analysis/blinded
+  blinded_analysis_manifest: replace/analysis/blinded/analysis_manifest.json
+  unblinding_record: replace/UNBLINDING.yaml

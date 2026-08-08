@@ -15,7 +15,9 @@ import resource
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,11 +32,23 @@ from ctkat.config import load_config  # noqa: E402
 from ctkat.ct_runner import classify_valgrind_run  # noqa: E402
 from ctkat.harness_generator import compile_harness, render_harness  # noqa: E402
 from ctkat.official_dudect import OFFICIAL_DUDECT_REVISION  # noqa: E402
+from ctkat.official_dudect_verify import (  # noqa: E402
+    OfficialDudectProtocolContract,
+    verify_official_dudect_artifacts,
+)
 from ctkat.qemu_detect import detect_qemu_emulation  # noqa: E402
+from ctkat.timing_environment import collect_timing_environment  # noqa: E402
 from ctkat.valgrind_parser import Finding, FindingType, parse_valgrind_log_with_stats  # noqa: E402
 from ctkat.valgrind_runner import ValgrindResult  # noqa: E402
 from scripts.run_kyberslash_timecop import CANARY_SOURCE, _find_backend  # noqa: E402
-from scripts.run_native_timing_campaign import _detect_virtualization  # noqa: E402
+from scripts.run_native_timing_campaign import (  # noqa: E402
+    CampaignError,
+    _detect_virtualization,
+    _git_state,
+    _human_premeasurement_gate,
+    _validate_human_premeasurement_gate,
+    pin_current_process,
+)
 
 DEFAULT_MANIFEST = ROOT / "docs/baselines/same_corpus_v1.yaml"
 DEFAULT_SCHEMA = ROOT / "docs/baselines/baseline-result-v1.schema.json"
@@ -57,6 +71,7 @@ MICROWALK_MARKERS = (
     "PinNotifyStackPointer",
     "PinNotifyAllocation",
 )
+RUN_KINDS = ("engineering", "pilot", "final")
 
 
 class BaselineError(RuntimeError):
@@ -376,7 +391,7 @@ def validate_static(
         errors.append(f"baseline result schema unreadable: {exc}")
     else:
         check(
-            schema.get("properties", {}).get("schema_version", {}).get("const") == "1.0",
+            schema.get("properties", {}).get("schema_version", {}).get("const") == "2.0",
             "result schema version mismatch",
         )
 
@@ -421,6 +436,10 @@ def _host(*, timing_evidence: bool) -> dict[str, Any]:
         emulated = detect_qemu_emulation()
     except OSError:
         emulated = False
+    environment = collect_timing_environment(
+        emulated=emulated,
+        clock="rdtsc" if timing_evidence else "not-applicable",
+    )
     return {
         "system": platform.system(),
         "machine": platform.machine(),
@@ -428,6 +447,14 @@ def _host(*, timing_evidence: bool) -> dict[str, Any]:
         "python": sys.version.split()[0],
         "emulated": emulated,
         "timing_evidence": timing_evidence,
+        "cpu_model": environment.get("cpu_model"),
+        "hostname": environment.get("hostname"),
+        "machine_id_sha256": environment.get("machine_id_sha256"),
+        "boot_id_sha256": environment.get("boot_id_sha256"),
+        "timing_cpu_flags": environment.get("timing_cpu_flags"),
+        "cpu_affinity": environment.get("cpu_affinity"),
+        "governor": environment.get("governor"),
+        "virtualization": _detect_virtualization(),
     }
 
 
@@ -503,11 +530,14 @@ def _record(
     tool_id: str,
     rows: list[dict[str, Any]],
     *,
+    run_kind: str,
+    review_gate: dict[str, Any] | None = None,
     timing_evidence: bool,
     backend: dict[str, Any] | None = None,
     errors: list[str] | None = None,
 ) -> dict[str, Any]:
     actual_errors = errors or []
+    commit, dirty = _git_state()
     expected = _coverage_map(manifest)
     complete = all(
         row["capability"]["status"] == "supported"
@@ -516,17 +546,24 @@ def _record(
         for row in rows
     )
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "kind": "ctkat-same-corpus-baseline",
         "suite_id": manifest["suite_id"],
         "created_at": _utc_now(),
         "manifest": str(manifest_path.resolve().relative_to(ROOT)),
         "manifest_sha256": _sha256(manifest_path),
+        "ctkat_commit": commit,
+        "git_dirty": dirty,
+        "run_id": uuid.uuid4().hex,
+        "run_kind": run_kind,
+        "human_review_gate": review_gate,
         "tool_id": tool_id,
         "host": _host(timing_evidence=timing_evidence),
         "rows": rows,
-        "promotion_ready": complete
+        "promotion_ready": run_kind == "final"
+        and complete
         and not actual_errors
+        and not dirty
         and all(
             row["outcome"] == expected[(row["case_id"], row["tool_id"])]["expected_outcome"]
             for row in rows
@@ -536,11 +573,392 @@ def _record(
     }
 
 
+def _checked_artifact(root: Path, relative: Path, errors: list[str]) -> Path | None:
+    if relative.is_absolute() or ".." in relative.parts:
+        errors.append(f"unsafe artifact path: {relative}")
+        return None
+    resolved_root = root.resolve()
+    candidate = resolved_root / relative
+    if candidate.is_symlink() or any(
+        parent.is_symlink()
+        for parent in candidate.parents
+        if parent != resolved_root and parent.is_relative_to(resolved_root)
+    ):
+        errors.append(f"artifact path contains a symlink: {relative}")
+        return None
+    if not candidate.is_file():
+        errors.append(f"artifact is missing: {relative}")
+        return None
+    return candidate
+
+
+def _check_hash_field(
+    root: Path,
+    relative: Path,
+    expected: Any,
+    errors: list[str],
+) -> Path | None:
+    path = _checked_artifact(root, relative, errors)
+    if path is not None and (
+        not isinstance(expected, str)
+        or SHA256_RE.fullmatch(expected) is None
+        or _sha256(path) != expected
+    ):
+        errors.append(f"artifact hash mismatch: {relative}")
+        return None
+    return path
+
+
+def _current_compiler_from_identity(
+    value: Any,
+    errors: list[str],
+) -> tuple[Path, Path] | None:
+    label = "TIMECOP compiler identity"
+    required = {
+        "schema_version",
+        "requested",
+        "invocation_path",
+        "resolved_path",
+        "sha256",
+        "version_argv",
+        "version_returncode",
+        "version_stdout",
+        "version_stderr",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        errors.append(f"{label} field set is malformed")
+        return None
+    requested = value.get("requested")
+    invocation_raw = value.get("invocation_path")
+    resolved_raw = value.get("resolved_path")
+    if (
+        value.get("schema_version") != "1.0"
+        or not isinstance(requested, str)
+        or not requested
+        or not isinstance(invocation_raw, str)
+        or not Path(invocation_raw).is_absolute()
+        or not isinstance(resolved_raw, str)
+        or not Path(resolved_raw).is_absolute()
+    ):
+        errors.append(f"{label} paths/request are malformed")
+        return None
+    invocation = Path(invocation_raw).absolute()
+    resolved = Path(resolved_raw).resolve()
+    current = shutil.which(requested)
+    if current is None or Path(current).absolute() != invocation:
+        errors.append(f"{label} requested command no longer resolves to the recorded path")
+    if not invocation.is_file() or invocation.resolve() != resolved or not resolved.is_file():
+        errors.append(f"{label} executable path is missing or resolved differently")
+        return None
+    expected_hash = value.get("sha256")
+    if (
+        not isinstance(expected_hash, str)
+        or SHA256_RE.fullmatch(expected_hash) is None
+        or _sha256(resolved) != expected_hash
+    ):
+        errors.append(f"{label} executable hash drift")
+    expected_argv = [str(resolved), "--version"]
+    if value.get("version_argv") != expected_argv:
+        errors.append(f"{label} version argv drift")
+    try:
+        version = subprocess.run(
+            expected_argv,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        errors.append(f"{label} version probe failed: {exc}")
+        return None
+    if (
+        value.get("version_returncode") != version.returncode
+        or value.get("version_stdout") != version.stdout
+        or value.get("version_stderr") != version.stderr
+        or version.returncode != 0
+    ):
+        errors.append(f"{label} full version transcript drift")
+    return invocation, resolved
+
+
+def _fresh_timecop_reproduction_errors(
+    *,
+    root: Path,
+    rows: list[Any],
+    manifest: dict[str, Any],
+    source_config: Any,
+    backend: dict[str, Any],
+    executable: Path,
+    patched_include: Path,
+) -> list[str]:
+    """Rebuild and rerun final TIMECOP evidence instead of trusting its logs."""
+
+    errors: list[str] = []
+    compiler_paths = _current_compiler_from_identity(backend.get("compiler_identity"), errors)
+    if compiler_paths is None:
+        return errors
+    compiler_invocation, compiler_resolved = compiler_paths
+    if source_config.ct is None:
+        return [*errors, "TIMECOP frozen config has no CT harnesses"]
+    config_path = _repo_path(
+        manifest["source_snapshot"]["config"]["path"],
+        "source_snapshot.config",
+    )
+    config_dir = config_path.parent.resolve()
+    configured = {harness.name: harness for harness in source_config.ct.harnesses}
+
+    with tempfile.TemporaryDirectory(prefix="ctkat-timecop-final-") as temporary_raw:
+        temporary = Path(temporary_raw)
+        canary = backend.get("canary")
+        if isinstance(canary, dict):
+            canary_source = root / "backend_canary/canary.c"
+            canary_binary = root / "backend_canary/canary"
+            canary_flags = ["-std=c99", "-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"]
+            expected_canary_argv = _compile_argv_contract(
+                compiler=compiler_invocation,
+                source=canary_source,
+                binary=canary_binary,
+                sources=[],
+                include_dirs=[patched_include],
+                cflags=canary_flags,
+            )
+            if canary.get("compile_argv") != expected_canary_argv:
+                errors.append("TIMECOP canary compile argv differs from frozen inputs")
+            fresh_canary_source = temporary / "canary.c"
+            fresh_canary_binary = temporary / "canary"
+            fresh_canary_log = temporary / "canary.valgrind.log"
+            fresh_canary_source.write_text(CANARY_SOURCE, encoding="utf-8")
+            try:
+                compile_harness(
+                    fresh_canary_source,
+                    fresh_canary_binary,
+                    [],
+                    [patched_include],
+                    canary_flags,
+                    ROOT,
+                    timeout=600,
+                    cc=str(compiler_resolved),
+                )
+                fresh_canary, _argv, _seconds = _run_valgrind(
+                    executable,
+                    fresh_canary_binary,
+                    fresh_canary_log,
+                    timeout=600,
+                )
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                errors.append(f"TIMECOP fresh canary rebuild/rerun failed: {exc}")
+            else:
+                fresh_classified = classify_valgrind_run(fresh_canary, fresh_canary_log)
+                fresh_variable_latency = [
+                    finding
+                    for finding in fresh_classified.findings
+                    if finding.type == FindingType.SECRET_DEPENDENT_VARIABLE_LATENCY
+                ]
+                fresh_passed = (
+                    not fresh_canary.timed_out
+                    and fresh_canary.returncode == 99
+                    and fresh_classified.status == "FAIL"
+                    and bool(fresh_variable_latency)
+                    and "CTKAT-TIMECOP-CANARY:" in fresh_canary.stdout
+                )
+                if not fresh_passed:
+                    errors.append("TIMECOP fresh canary did not reproduce the positive control")
+                preserved_log = _checked_artifact(
+                    root,
+                    Path("backend_canary/canary.valgrind.log"),
+                    errors,
+                )
+                preserved_stdout = _checked_artifact(
+                    root,
+                    Path("backend_canary/canary.stdout"),
+                    errors,
+                )
+                preserved_stderr = _checked_artifact(
+                    root,
+                    Path("backend_canary/canary.stderr"),
+                    errors,
+                )
+                if preserved_log is None or preserved_stdout is None or preserved_stderr is None:
+                    errors.append("TIMECOP fresh canary lacks preserved raw process artifacts")
+                else:
+                    preserved_returncode = canary.get("returncode")
+                    if isinstance(preserved_returncode, bool) or not isinstance(
+                        preserved_returncode, int
+                    ):
+                        errors.append("TIMECOP canary returncode cannot be freshly reproduced")
+                    else:
+                        preserved_result = ValgrindResult(
+                            returncode=preserved_returncode,
+                            log_path=preserved_log,
+                            stdout=preserved_stdout.read_text(encoding="utf-8", errors="replace"),
+                            stderr=preserved_stderr.read_text(encoding="utf-8", errors="replace"),
+                            timed_out=canary.get("timed_out") is True,
+                        )
+                        preserved_classified = classify_valgrind_run(
+                            preserved_result,
+                            preserved_log,
+                        )
+                        preserved_signatures = _stable_finding_signatures(
+                            preserved_classified.findings
+                        )
+                        fresh_signatures = _stable_finding_signatures(fresh_classified.findings)
+                        if canary.get("finding_signatures") != preserved_signatures:
+                            errors.append(
+                                "TIMECOP canary stable finding signatures mismatch raw log"
+                            )
+                        if fresh_signatures != preserved_signatures:
+                            errors.append(
+                                "TIMECOP fresh canary findings differ from preserved raw log"
+                            )
+
+        cases = _case_map(manifest)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            case_id = str(row.get("case_id", ""))
+            case = cases.get(case_id)
+            harness_name = case.get("harness") if isinstance(case, dict) else None
+            harness = configured.get(str(harness_name))
+            evidence = row.get("evidence")
+            if harness is None or not isinstance(evidence, dict):
+                errors.append(f"{case_id}: TIMECOP fresh reproduction lacks a frozen harness")
+                continue
+            case_root = root / case_id
+            source_path = case_root / f"harness_{harness.name}.c"
+            binary_path = case_root / f"harness_{harness.name}"
+            expected_source = render_harness(
+                harness.template or "",
+                _template_context(harness, source_config.ct.seed, timecop_mode=True),
+            )
+            source_artifact = _check_hash_field(
+                root,
+                Path(case_id) / source_path.name,
+                evidence.get("source_sha256"),
+                errors,
+            )
+            if (
+                source_artifact is not None
+                and source_artifact.read_text(encoding="utf-8") != expected_source
+            ):
+                errors.append(f"{case_id}: TIMECOP preserved harness source is not reproducible")
+            includes = [
+                patched_include,
+                *((config_dir / path).resolve() for path in harness.include_dirs),
+            ]
+            sources = [(config_dir / path).resolve() for path in harness.sources]
+            cflags = list(harness.cflags if harness.cflags is not None else source_config.ct.cflags)
+            if evidence.get("linked_sources") != _linked_source_records(sources):
+                errors.append(f"{case_id}: TIMECOP tracked linked-source hashes drift")
+            expected_compile_argv = _compile_argv_contract(
+                compiler=compiler_invocation,
+                source=source_path,
+                binary=binary_path,
+                sources=sources,
+                include_dirs=includes,
+                cflags=cflags,
+            )
+            if evidence.get("compile_argv") != expected_compile_argv:
+                errors.append(f"{case_id}: TIMECOP compile argv differs from frozen inputs")
+            if evidence.get("compile_workdir") != str(config_dir.relative_to(ROOT)):
+                errors.append(f"{case_id}: TIMECOP compile workdir differs from frozen config")
+            preserved_log = _checked_artifact(
+                root,
+                Path(case_id) / "timecop.valgrind.log",
+                errors,
+            )
+            preserved_stdout = _checked_artifact(
+                root,
+                Path(case_id) / "timecop.stdout",
+                errors,
+            )
+            preserved_stderr = _checked_artifact(
+                root,
+                Path(case_id) / "timecop.stderr",
+                errors,
+            )
+            if preserved_log is None or preserved_stdout is None or preserved_stderr is None:
+                errors.append(f"{case_id}: TIMECOP fresh reproduction lacks raw process files")
+                continue
+            preserved_returncode = evidence.get("returncode")
+            if isinstance(preserved_returncode, bool) or not isinstance(preserved_returncode, int):
+                errors.append(f"{case_id}: TIMECOP returncode cannot be freshly reproduced")
+                continue
+            preserved_result = ValgrindResult(
+                returncode=preserved_returncode,
+                log_path=preserved_log,
+                stdout=preserved_stdout.read_text(encoding="utf-8", errors="replace"),
+                stderr=preserved_stderr.read_text(encoding="utf-8", errors="replace"),
+                timed_out=evidence.get("timed_out") is True,
+            )
+            preserved_classified = classify_valgrind_run(
+                preserved_result,
+                preserved_log,
+                lookup_patterns=source_config.ct.lookup_function_patterns,
+            )
+            preserved_signatures = _stable_finding_signatures(preserved_classified.findings)
+            if evidence.get("finding_signatures") != preserved_signatures:
+                errors.append(f"{case_id}: TIMECOP stable finding signatures mismatch raw log")
+
+            fresh_case = temporary / case_id
+            fresh_case.mkdir()
+            fresh_source = fresh_case / source_path.name
+            fresh_binary = fresh_case / binary_path.name
+            fresh_log = fresh_case / "timecop.valgrind.log"
+            fresh_source.write_text(expected_source, encoding="utf-8")
+            try:
+                compile_harness(
+                    fresh_source,
+                    fresh_binary,
+                    sources,
+                    includes,
+                    cflags,
+                    config_dir,
+                    timeout=source_config.ct.compile_timeout,
+                    cc=str(compiler_resolved),
+                )
+                fresh_result, _argv, _seconds = _run_valgrind(
+                    executable,
+                    fresh_binary,
+                    fresh_log,
+                    timeout=source_config.ct.valgrind_timeout,
+                )
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                errors.append(f"{case_id}: TIMECOP fresh rebuild/rerun failed: {exc}")
+                continue
+            fresh_classified = classify_valgrind_run(
+                fresh_result,
+                fresh_log,
+                lookup_patterns=source_config.ct.lookup_function_patterns,
+            )
+            fresh_signatures = _stable_finding_signatures(fresh_classified.findings)
+            if fresh_signatures != preserved_signatures:
+                errors.append(f"{case_id}: TIMECOP fresh findings differ from preserved raw log")
+            if (
+                fresh_result.returncode != preserved_result.returncode
+                or fresh_result.timed_out != preserved_result.timed_out
+                or fresh_classified.status != preserved_classified.status
+            ):
+                errors.append(f"{case_id}: TIMECOP fresh process outcome differs from raw process")
+            fresh_outcome = (
+                "inconclusive"
+                if fresh_result.timed_out or fresh_classified.status == "ERROR"
+                else "finding"
+                if fresh_classified.findings
+                else "no-finding"
+            )
+            if fresh_outcome != row.get("outcome"):
+                errors.append(f"{case_id}: TIMECOP fresh normalized outcome mismatch")
+    return errors
+
+
 def validate_result(
     value: dict[str, Any],
     manifest: dict[str, Any],
     *,
     manifest_path: Path = DEFAULT_MANIFEST,
+    expected_commit: str | None = None,
+    expected_run_kind: str | None = None,
+    artifact_root: Path | None = None,
 ) -> list[str]:
     errors: list[str] = []
 
@@ -555,6 +973,11 @@ def validate_result(
         "created_at",
         "manifest",
         "manifest_sha256",
+        "ctkat_commit",
+        "git_dirty",
+        "run_id",
+        "run_kind",
+        "human_review_gate",
         "tool_id",
         "host",
         "rows",
@@ -563,7 +986,7 @@ def validate_result(
         "backend",
     }
     check(set(value) == required, "result top-level field set mismatch")
-    check(value.get("schema_version") == "1.0", "result schema_version mismatch")
+    check(value.get("schema_version") == "2.0", "result schema_version mismatch")
     check(value.get("kind") == "ctkat-same-corpus-baseline", "result kind mismatch")
     check(value.get("suite_id") == manifest.get("suite_id"), "result suite_id mismatch")
     created_at = value.get("created_at")
@@ -589,6 +1012,44 @@ def validate_result(
         value.get("manifest_sha256") == _sha256(expected_manifest_path),
         "result was produced from a different manifest revision",
     )
+    check(
+        isinstance(value.get("ctkat_commit"), str)
+        and REVISION_RE.fullmatch(value["ctkat_commit"]) is not None,
+        "result ctkat_commit malformed",
+    )
+    if expected_commit is not None:
+        check(
+            value.get("ctkat_commit") == expected_commit,
+            "result ctkat_commit differs from the expected frozen commit",
+        )
+    check(isinstance(value.get("git_dirty"), bool), "result git_dirty must be boolean")
+    run_id = value.get("run_id")
+    check(
+        isinstance(run_id, str) and re.fullmatch(r"[0-9a-f]{32}", run_id) is not None,
+        "result run_id malformed",
+    )
+    run_kind = value.get("run_kind")
+    check(run_kind in RUN_KINDS, "result run_kind invalid")
+    if expected_run_kind is not None:
+        check(run_kind == expected_run_kind, "result run_kind differs from expected kind")
+    review_gate = value.get("human_review_gate")
+    if run_kind == "final":
+        result_commit = value.get("ctkat_commit")
+        if not isinstance(result_commit, str) or REVISION_RE.fullmatch(result_commit) is None:
+            errors.append("final result cannot validate a malformed CT-KAT commit")
+        else:
+            try:
+                errors.extend(
+                    _validate_human_premeasurement_gate(
+                        review_gate,
+                        expected_commit=result_commit,
+                        allow_review_only_head=True,
+                    )
+                )
+            except CampaignError as exc:
+                errors.append(f"final result human review gate is invalid: {exc}")
+    else:
+        check(review_gate is None, "non-final result must not claim a human review gate")
     tool_id = value.get("tool_id")
     check(tool_id in {*TOOL_ORDER, "capability_probe"}, "result tool_id invalid")
     check(isinstance(value.get("promotion_ready"), bool), "promotion_ready must be boolean")
@@ -607,6 +1068,33 @@ def validate_result(
         check(isinstance(host.get("system"), str), "host.system missing")
         check(isinstance(host.get("machine"), str), "host.machine missing")
         check(isinstance(host.get("timing_evidence"), bool), "host.timing_evidence missing")
+        check(
+            isinstance(host.get("cpu_model"), str) and bool(host.get("cpu_model", "").strip()),
+            "host.cpu_model missing",
+        )
+        check(
+            isinstance(host.get("machine_id_sha256"), str)
+            and SHA256_RE.fullmatch(host.get("machine_id_sha256", "")) is not None,
+            "host.machine_id_sha256 missing",
+        )
+        check(
+            isinstance(host.get("boot_id_sha256"), str)
+            and SHA256_RE.fullmatch(host.get("boot_id_sha256", "")) is not None,
+            "host.boot_id_sha256 missing",
+        )
+        affinity = host.get("cpu_affinity")
+        check(
+            isinstance(affinity, list)
+            and all(isinstance(item, int) and not isinstance(item, bool) for item in affinity),
+            "host.cpu_affinity malformed",
+        )
+        virtualization = host.get("virtualization")
+        check(
+            isinstance(virtualization, dict)
+            and set(virtualization) == {"vm", "container"}
+            and all(isinstance(virtualization.get(key), str) for key in ("vm", "container")),
+            "host.virtualization malformed",
+        )
 
     rows = value.get("rows")
     check(isinstance(rows, list), "rows must be a list")
@@ -724,7 +1212,9 @@ def validate_result(
     check(observed_pairs == expected_pairs, "result row coverage mismatch")
     recomputed_promotion = (
         bool(rows)
+        and run_kind == "final"
         and not value.get("errors")
+        and value.get("git_dirty") is False
         and all(
             isinstance(row, dict)
             and row.get("capability", {}).get("status") == "supported"
@@ -732,7 +1222,9 @@ def validate_result(
             and row.get("known_issue_match") is True
             and (row.get("case_id"), row.get("tool_id")) in expected_coverage
             and row.get("outcome")
-            == expected_coverage[(row.get("case_id"), row.get("tool_id"))]["expected_outcome"]
+            == expected_coverage[(str(row.get("case_id")), str(row.get("tool_id")))][
+                "expected_outcome"
+            ]
             for row in rows
         )
     )
@@ -745,6 +1237,620 @@ def validate_result(
             isinstance(host, dict) and host.get("timing_evidence") is True,
             "official dudect promotion requires physical timing evidence",
         )
+        if isinstance(host, dict):
+            check(
+                host.get("cpu_affinity") is not None and len(host.get("cpu_affinity", [])) == 1,
+                "official dudect promotion requires one pinned logical CPU",
+            )
+            check(
+                host.get("governor") == "performance",
+                "official dudect promotion requires the performance governor",
+            )
+            virtualization = host.get("virtualization")
+            check(
+                isinstance(virtualization, dict)
+                and not virtualization.get("vm")
+                and not virtualization.get("container"),
+                "official dudect promotion requires a non-virtualized host",
+            )
+        if artifact_root is None:
+            errors.append("official dudect promotion requires its raw artifact root")
+        else:
+            backend = value.get("backend")
+            if not isinstance(backend, dict):
+                errors.append("official dudect promotion requires backend metadata")
+            else:
+                raw_value = backend.get("raw_report")
+                raw_sha256 = backend.get("raw_report_sha256")
+                if (
+                    not isinstance(raw_value, str)
+                    or not raw_value
+                    or Path(raw_value).is_absolute()
+                    or ".." in Path(raw_value).parts
+                ):
+                    errors.append("official dudect raw_report path is unsafe")
+                else:
+                    root = artifact_root.resolve()
+                    raw_path = root / raw_value
+                    if raw_path.is_symlink() or any(
+                        parent.is_symlink()
+                        for parent in raw_path.parents
+                        if parent != root and parent.is_relative_to(root)
+                    ):
+                        errors.append("official dudect raw_report path contains a symlink")
+                    elif not raw_path.is_file():
+                        errors.append("official dudect raw_report artifact is missing")
+                    elif not isinstance(raw_sha256, str) or _sha256(raw_path) != raw_sha256:
+                        errors.append("official dudect raw_report hash mismatch")
+                    else:
+                        try:
+                            raw_report = json.loads(raw_path.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError) as exc:
+                            errors.append(f"official dudect raw_report is unreadable: {exc}")
+                        else:
+                            if (
+                                not isinstance(raw_report, dict)
+                                or raw_report.get("schema_version") != "2.0"
+                                or raw_report.get("kind") != "timing-backend-report"
+                            ):
+                                errors.append("official dudect raw_report identity/schema mismatch")
+                            if isinstance(raw_report, dict):
+                                source_config = load_config(
+                                    _repo_path(
+                                        manifest["source_snapshot"]["config"]["path"],
+                                        "source_snapshot.config",
+                                    )
+                                )
+                                assert source_config.dudect is not None
+                                frozen_dudect = source_config.dudect
+                                seed_value = frozen_dudect.seed
+                                if seed_value is None:
+                                    raise BaselineError("frozen dudect seed is missing")
+                                frozen_seed: int = seed_value
+                                if raw_report.get("project") != source_config.project.name:
+                                    errors.append("official dudect raw_report project mismatch")
+                                if (
+                                    raw_report.get("official_dudect_revision")
+                                    != OFFICIAL_DUDECT_REVISION
+                                ):
+                                    errors.append("official dudect raw_report revision mismatch")
+                                harness_index = {
+                                    item.get("harness"): item
+                                    for item in raw_report.get("harnesses", [])
+                                    if isinstance(item, dict)
+                                }
+                                cases = _case_map(manifest)
+                                for row in rows:
+                                    if not isinstance(row, dict):
+                                        continue
+                                    case = cases.get(str(row.get("case_id")))
+                                    harness_name = case.get("harness") if case else None
+                                    raw_harness = harness_index.get(harness_name)
+                                    evidence = row.get("evidence")
+                                    if not isinstance(raw_harness, dict) or not isinstance(
+                                        evidence, dict
+                                    ):
+                                        errors.append(
+                                            f"official dudect raw harness missing for {row.get('case_id')}"
+                                        )
+                                        continue
+                                    for result_field, raw_field in (
+                                        ("raw_status", "raw_status"),
+                                        ("timing_validity", "timing_validity"),
+                                        ("abs_t_score", "abs_t_score"),
+                                        ("n0", "n0"),
+                                        ("n1", "n1"),
+                                        ("analysis_seed", "analysis_seed"),
+                                    ):
+                                        if evidence.get(result_field) != raw_harness.get(raw_field):
+                                            errors.append(
+                                                "official dudect normalized row differs from raw "
+                                                f"harness {harness_name} in {result_field}"
+                                            )
+                            verified_trace_paths: dict[str, Path] = {}
+                            for filename, field in (
+                                ("dudect_raw_timings.csv", "raw_trace_sha256"),
+                                (
+                                    "dudect_calibration_timings.csv",
+                                    "calibration_trace_sha256",
+                                ),
+                                ("dudect_protocol_timings.csv", "protocol_trace_sha256"),
+                            ):
+                                trace_path = raw_path.parent / filename
+                                expected_hash = (
+                                    raw_report.get(field) if isinstance(raw_report, dict) else None
+                                )
+                                if trace_path.is_symlink() or not trace_path.is_file():
+                                    errors.append(
+                                        f"official dudect artifact is missing: {filename}"
+                                    )
+                                elif (
+                                    not isinstance(expected_hash, str)
+                                    or _sha256(trace_path) != expected_hash
+                                ):
+                                    errors.append(
+                                        f"official dudect artifact hash mismatch: {filename}"
+                                    )
+                                else:
+                                    verified_trace_paths[filename] = trace_path
+                            required_trace_names = {
+                                "dudect_raw_timings.csv",
+                                "dudect_calibration_timings.csv",
+                                "dudect_protocol_timings.csv",
+                            }
+                            if (
+                                isinstance(raw_report, dict)
+                                and set(verified_trace_paths) == required_trace_names
+                            ):
+                                expected_harnesses = {
+                                    str(case["harness"]) for case in cases.values()
+                                }
+                                independent = verify_official_dudect_artifacts(
+                                    raw_path=verified_trace_paths["dudect_raw_timings.csv"],
+                                    calibration_path=verified_trace_paths[
+                                        "dudect_calibration_timings.csv"
+                                    ],
+                                    protocol_path=verified_trace_paths[
+                                        "dudect_protocol_timings.csv"
+                                    ],
+                                    backend_report=raw_report,
+                                    expected_project=source_config.project.name,
+                                    expected_harnesses=expected_harnesses,
+                                    protocol_contract=OfficialDudectProtocolContract(
+                                        base_seed=frozen_seed,
+                                        process_repeats=(
+                                            frozen_dudect.timing_protocol.process_repeats
+                                        ),
+                                        target_measurements=frozen_dudect.measurements,
+                                        control_measurements=(
+                                            frozen_dudect.timing_protocol.control_measurements
+                                            or frozen_dudect.measurements
+                                        ),
+                                        positive_effects=tuple(
+                                            frozen_dudect.timing_protocol.positive_control_effects
+                                        ),
+                                        aa_abs_t_limit=(
+                                            frozen_dudect.timing_protocol.aa_abs_t_limit
+                                        ),
+                                        positive_abs_t_threshold=(
+                                            frozen_dudect.timing_protocol.positive_abs_t_threshold
+                                        ),
+                                        aa_max_failures=(
+                                            frozen_dudect.timing_protocol.aa_max_failures
+                                        ),
+                                        target_power=(frozen_dudect.timing_protocol.target_power),
+                                        power_alpha=(frozen_dudect.timing_protocol.power_alpha),
+                                    ),
+                                )
+                                errors.extend(
+                                    "official dudect independent verification: " + error
+                                    for error in independent.errors
+                                )
+                                for row in rows:
+                                    if not isinstance(row, dict):
+                                        continue
+                                    case = cases.get(str(row.get("case_id")))
+                                    harness_name = case.get("harness") if case else None
+                                    analysis = independent.analyses.get(str(harness_name))
+                                    trace = independent.analysis_traces.get(str(harness_name))
+                                    if analysis is None or trace is None:
+                                        continue
+                                    if analysis.status not in {"PASS", "FAIL"}:
+                                        errors.append(
+                                            f"{row.get('case_id')}: independently recomputed "
+                                            f"official dudect status is {analysis.status}"
+                                        )
+                                        continue
+                                    derived_outcome = (
+                                        "finding" if analysis.status == "FAIL" else "no-finding"
+                                    )
+                                    pair = (row.get("case_id"), "official_dudect")
+                                    derived_match = (
+                                        pair in expected_coverage
+                                        and derived_outcome
+                                        == expected_coverage[pair]["expected_outcome"]
+                                    )
+                                    if row.get("outcome") != derived_outcome:
+                                        errors.append(
+                                            f"{row.get('case_id')}: official dudect outcome "
+                                            "differs from independently recomputed raw trace"
+                                        )
+                                    if row.get("known_issue_match") is not derived_match:
+                                        errors.append(
+                                            f"{row.get('case_id')}: official dudect "
+                                            "known_issue_match differs from raw trace"
+                                        )
+                                    expected_candidates = 1 if analysis.status == "FAIL" else 0
+                                    if row.get("candidate_count") != expected_candidates:
+                                        errors.append(
+                                            f"{row.get('case_id')}: official dudect candidate "
+                                            "count differs from raw trace"
+                                        )
+                                    evidence = row.get("evidence")
+                                    if not isinstance(evidence, dict) or evidence.get(
+                                        "raw_sample_count"
+                                    ) != len(trace.rows):
+                                        errors.append(
+                                            f"{row.get('case_id')}: official dudect raw sample "
+                                            "count differs from parsed artifact"
+                                        )
+    if tool_id == "timecop" and value.get("promotion_ready"):
+        if artifact_root is None:
+            errors.append("TIMECOP promotion requires its raw artifact root")
+        else:
+            root = artifact_root.resolve()
+            source_config = load_config(
+                _repo_path(
+                    manifest["source_snapshot"]["config"]["path"],
+                    "source_snapshot.config",
+                )
+            )
+            lookup_patterns = (
+                source_config.ct.lookup_function_patterns if source_config.ct is not None else []
+            )
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                case_id = str(row.get("case_id", ""))
+                harness = "leaky" if case_id.endswith("leaky") else "safe"
+                evidence = row.get("evidence")
+                if not isinstance(evidence, dict):
+                    errors.append(f"{case_id}: TIMECOP evidence is malformed")
+                    continue
+                case_root = Path(case_id)
+                _check_hash_field(
+                    root,
+                    case_root / f"harness_{harness}",
+                    evidence.get("binary_sha256"),
+                    errors,
+                )
+                log_path = _check_hash_field(
+                    root,
+                    case_root / "timecop.valgrind.log",
+                    evidence.get("log_sha256"),
+                    errors,
+                )
+                stdout_path = _check_hash_field(
+                    root,
+                    case_root / "timecop.stdout",
+                    evidence.get("stdout_sha256"),
+                    errors,
+                )
+                stderr_path = _check_hash_field(
+                    root,
+                    case_root / "timecop.stderr",
+                    evidence.get("stderr_sha256"),
+                    errors,
+                )
+                returncode = evidence.get("returncode")
+                timed_out = evidence.get("timed_out")
+                if isinstance(returncode, bool) or not isinstance(returncode, int):
+                    errors.append(f"{case_id}: TIMECOP returncode metadata is malformed")
+                    continue
+                if not isinstance(timed_out, bool):
+                    errors.append(f"{case_id}: TIMECOP timeout metadata is malformed")
+                    continue
+                if timed_out != (returncode == 124):
+                    errors.append(f"{case_id}: TIMECOP returncode/timeout metadata conflicts")
+                argv = evidence.get("argv")
+                if (
+                    not isinstance(argv, list)
+                    or not argv
+                    or any(not isinstance(item, str) for item in argv)
+                    or "--tool=memcheck" not in argv
+                    or "--error-exitcode=99" not in argv
+                    or Path(argv[-1]).name != f"harness_{harness}"
+                ):
+                    errors.append(f"{case_id}: TIMECOP argv metadata is malformed")
+                if log_path is not None and stdout_path is not None and stderr_path is not None:
+                    raw_result = ValgrindResult(
+                        returncode=returncode,
+                        log_path=log_path,
+                        stdout=stdout_path.read_text(encoding="utf-8", errors="replace"),
+                        stderr=stderr_path.read_text(encoding="utf-8", errors="replace"),
+                        timed_out=timed_out,
+                    )
+                    classified = classify_valgrind_run(
+                        raw_result,
+                        log_path,
+                        lookup_patterns=lookup_patterns,
+                    )
+                    serialized = [_serialize_finding(item) for item in classified.findings]
+                    if evidence.get("findings") != serialized:
+                        errors.append(f"{case_id}: TIMECOP normalized findings mismatch raw log")
+                    if evidence.get("dropped_valgrind_messages") != classified.dropped:
+                        errors.append(f"{case_id}: TIMECOP dropped-message count mismatch")
+                    if timed_out:
+                        derived_execution = "timeout"
+                        derived_outcome = "inconclusive"
+                        derived_count = None
+                        derived_match = None
+                    elif classified.status == "ERROR":
+                        derived_execution = "error"
+                        derived_outcome = "inconclusive"
+                        derived_count = None
+                        derived_match = None
+                    else:
+                        derived_execution = "completed"
+                        derived_outcome = "finding" if classified.findings else "no-finding"
+                        derived_count = len(classified.findings)
+                        pair = (case_id, "timecop")
+                        derived_match = (
+                            pair in expected_coverage
+                            and derived_outcome == expected_coverage[pair]["expected_outcome"]
+                        )
+                    if row.get("execution_status") != derived_execution:
+                        errors.append(f"{case_id}: TIMECOP execution status mismatch raw process")
+                    if row.get("outcome") != derived_outcome:
+                        errors.append(f"{case_id}: TIMECOP outcome mismatch raw findings")
+                    if row.get("known_issue_match") is not derived_match:
+                        errors.append(f"{case_id}: TIMECOP known_issue_match mismatch raw findings")
+                    if row.get("candidate_count") != derived_count:
+                        errors.append(f"{case_id}: TIMECOP candidate count mismatch")
+            backend = value.get("backend")
+            backend_map = backend if isinstance(backend, dict) else {}
+            canary = backend_map.get("canary")
+            resolved_final_backend: tuple[Path, Path] | None = None
+            if value.get("run_kind") == "final":
+                prefix_value = backend_map.get("prefix")
+                executable_value = backend_map.get("executable")
+                include_value = backend_map.get("patched_include")
+                if (
+                    not isinstance(prefix_value, str)
+                    or not Path(prefix_value).is_absolute()
+                    or not isinstance(executable_value, str)
+                    or not isinstance(include_value, str)
+                    or not Path(executable_value)
+                    .resolve()
+                    .is_relative_to(Path(prefix_value).resolve())
+                    or not Path(include_value)
+                    .resolve()
+                    .is_relative_to(Path(prefix_value).resolve())
+                ):
+                    errors.append(
+                        "TIMECOP final result must bind executable/include to an "
+                        "explicit exact-pinned prefix"
+                    )
+                else:
+                    try:
+                        current_executable, current_include = _find_backend(
+                            Path(executable_value).name,
+                            Path(prefix_value),
+                        )
+                    except (OSError, RuntimeError) as exc:
+                        errors.append(f"TIMECOP final backend cannot be re-resolved: {exc}")
+                    else:
+                        resolved_final_backend = (current_executable, current_include)
+                        if current_executable != Path(executable_value).resolve():
+                            errors.append("TIMECOP final executable path drift")
+                        if current_include != Path(include_value).resolve():
+                            errors.append("TIMECOP final patched include path drift")
+                        if backend_map.get("executable_sha256") != _sha256(current_executable):
+                            errors.append("TIMECOP final executable hash drift")
+                        header = current_include / "valgrind/memcheck.h"
+                        if not header.is_file() or backend_map.get(
+                            "patched_header_sha256"
+                        ) != _sha256(header):
+                            errors.append("TIMECOP final patched header hash drift")
+                        version = subprocess.run(
+                            [str(current_executable), "--version"],
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        if version.returncode != 0 or version.stdout.strip() != backend_map.get(
+                            "version"
+                        ):
+                            errors.append("TIMECOP final executable version drift")
+            if not isinstance(canary, dict):
+                errors.append("TIMECOP final result lacks backend canary metadata")
+            else:
+                canary_root = Path("backend_canary")
+                canary_source = _check_hash_field(
+                    root,
+                    canary_root / "canary.c",
+                    canary.get("source_sha256"),
+                    errors,
+                )
+                canary_binary = _check_hash_field(
+                    root,
+                    canary_root / "canary",
+                    canary.get("binary_sha256"),
+                    errors,
+                )
+                canary_log = _check_hash_field(
+                    root,
+                    canary_root / "canary.valgrind.log",
+                    canary.get("log_sha256"),
+                    errors,
+                )
+                canary_stdout = _check_hash_field(
+                    root,
+                    canary_root / "canary.stdout",
+                    canary.get("stdout_sha256"),
+                    errors,
+                )
+                canary_stderr = _check_hash_field(
+                    root,
+                    canary_root / "canary.stderr",
+                    canary.get("stderr_sha256"),
+                    errors,
+                )
+                if (
+                    canary_source is not None
+                    and canary_source.read_text(encoding="utf-8") != CANARY_SOURCE
+                ):
+                    errors.append("TIMECOP canary source differs from the pinned canary")
+                returncode = canary.get("returncode")
+                timed_out = canary.get("timed_out")
+                argv = canary.get("argv")
+                if isinstance(returncode, bool) or not isinstance(returncode, int):
+                    errors.append("TIMECOP canary returncode metadata is malformed")
+                if not isinstance(timed_out, bool):
+                    errors.append("TIMECOP canary timeout metadata is malformed")
+                if (
+                    not isinstance(argv, list)
+                    or not argv
+                    or any(not isinstance(item, str) for item in argv)
+                    or "--tool=memcheck" not in argv
+                    or "--error-exitcode=99" not in argv
+                    or Path(argv[-1]).name != "canary"
+                ):
+                    errors.append("TIMECOP canary argv metadata is malformed")
+                if (
+                    isinstance(returncode, int)
+                    and not isinstance(returncode, bool)
+                    and isinstance(timed_out, bool)
+                    and canary_log is not None
+                    and canary_stdout is not None
+                    and canary_stderr is not None
+                    and canary_binary is not None
+                ):
+                    raw_canary = ValgrindResult(
+                        returncode=returncode,
+                        log_path=canary_log,
+                        stdout=canary_stdout.read_text(encoding="utf-8", errors="replace"),
+                        stderr=canary_stderr.read_text(encoding="utf-8", errors="replace"),
+                        timed_out=timed_out,
+                    )
+                    classified_canary = classify_valgrind_run(raw_canary, canary_log)
+                    variable_latency = [
+                        finding
+                        for finding in classified_canary.findings
+                        if finding.type == FindingType.SECRET_DEPENDENT_VARIABLE_LATENCY
+                    ]
+                    derived_passed = (
+                        not timed_out
+                        and returncode == 99
+                        and classified_canary.status == "FAIL"
+                        and bool(variable_latency)
+                        and "CTKAT-TIMECOP-CANARY:" in raw_canary.stdout
+                    )
+                    if canary.get("passed") is not derived_passed or not derived_passed:
+                        errors.append("TIMECOP canary pass flag differs from raw process/findings")
+                    if canary.get("finding_count") != len(variable_latency):
+                        errors.append("TIMECOP canary finding count mismatch raw log")
+                    if canary.get("dropped_valgrind_messages") != classified_canary.dropped:
+                        errors.append("TIMECOP canary dropped-message count mismatch")
+            if (
+                value.get("run_kind") == "final"
+                and isinstance(backend, dict)
+                and resolved_final_backend is not None
+            ):
+                errors.extend(
+                    _fresh_timecop_reproduction_errors(
+                        root=root,
+                        rows=rows,
+                        manifest=manifest,
+                        source_config=source_config,
+                        backend=backend_map,
+                        executable=resolved_final_backend[0],
+                        patched_include=resolved_final_backend[1],
+                    )
+                )
+    if tool_id == "microwalk_pin" and value.get("promotion_ready"):
+        if artifact_root is None:
+            errors.append("MicroWalk promotion requires its raw artifact root")
+        else:
+            root = artifact_root.resolve()
+            expected_payloads = _testcase_payloads()
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                case_id = str(row.get("case_id", ""))
+                harness = "leaky" if case_id.endswith("leaky") else "safe"
+                target_name = f"target-toy-kem-{harness}"
+                evidence = row.get("evidence")
+                if not isinstance(evidence, dict):
+                    errors.append(f"{case_id}: MicroWalk evidence is malformed")
+                    continue
+                case_root = Path(case_id)
+                _check_hash_field(
+                    root,
+                    case_root / target_name,
+                    evidence.get("binary_sha256"),
+                    errors,
+                )
+                _check_hash_field(
+                    root,
+                    case_root / f"{target_name}.map",
+                    evidence.get("map_sha256"),
+                    errors,
+                )
+                result_path = _check_hash_field(
+                    root,
+                    case_root / "results" / "call-stacks.txt",
+                    evidence.get("result_sha256"),
+                    errors,
+                )
+                testcase_records = evidence.get("testcases")
+                if not isinstance(testcase_records, list) or len(testcase_records) != len(
+                    expected_payloads
+                ):
+                    errors.append(f"{case_id}: MicroWalk testcase index is malformed")
+                else:
+                    for index, (record, payload) in enumerate(
+                        zip(testcase_records, expected_payloads, strict=True)
+                    ):
+                        relative = case_root / "testcases" / f"t{index:02d}.testcase"
+                        path = _check_hash_field(
+                            root,
+                            relative,
+                            record.get("sha256") if isinstance(record, dict) else None,
+                            errors,
+                        )
+                        if (
+                            not isinstance(record, dict)
+                            or record.get("name") != f"t{index:02d}.testcase"
+                            or record.get("ct0") != payload[0]
+                            or path is None
+                            or path.read_bytes() != payload
+                        ):
+                            errors.append(f"{case_id}: MicroWalk testcase {index} drift")
+                for stem, hashes in (
+                    ("build", evidence.get("build_streams")),
+                    ("markers", evidence.get("marker_streams")),
+                    ("map", evidence.get("map_streams")),
+                    ("microwalk", evidence.get("run_streams")),
+                ):
+                    if not isinstance(hashes, dict):
+                        errors.append(f"{case_id}: MicroWalk {stem} stream index is malformed")
+                        continue
+                    for suffix, field in (
+                        ("stdout", "stdout_sha256"),
+                        ("stderr", "stderr_sha256"),
+                        ("timeout", "timeout_sha256"),
+                    ):
+                        _check_hash_field(
+                            root,
+                            case_root / f"{stem}.{suffix}",
+                            hashes.get(field),
+                            errors,
+                        )
+                if result_path is not None:
+                    candidate_count = _microwalk_candidates(result_path)
+                    if row.get("candidate_count") != candidate_count:
+                        errors.append(f"{case_id}: MicroWalk candidate count mismatch")
+                    derived_outcome = "finding" if candidate_count else "no-finding"
+                    pair = (case_id, "microwalk_pin")
+                    derived_match = (
+                        pair in expected_coverage
+                        and derived_outcome == expected_coverage[pair]["expected_outcome"]
+                    )
+                    if row.get("execution_status") != "completed":
+                        errors.append(
+                            f"{case_id}: MicroWalk completed raw result conflicts "
+                            "with execution status"
+                        )
+                    if row.get("outcome") != derived_outcome:
+                        errors.append(f"{case_id}: MicroWalk outcome mismatch raw result")
+                    if row.get("known_issue_match") is not derived_match:
+                        errors.append(f"{case_id}: MicroWalk known_issue_match mismatch raw result")
+                    if evidence.get("returncode") != 0:
+                        errors.append(
+                            f"{case_id}: MicroWalk completed raw result lacks returncode 0"
+                        )
     return errors
 
 
@@ -755,7 +1861,13 @@ def _write_result(
     *,
     manifest_path: Path = DEFAULT_MANIFEST,
 ) -> None:
-    errors = validate_result(record, manifest, manifest_path=manifest_path)
+    errors = validate_result(
+        record,
+        manifest,
+        manifest_path=manifest_path,
+        expected_commit=record.get("ctkat_commit"),
+        artifact_root=path.parent,
+    )
     if errors:
         raise BaselineError("result validation failed: " + "; ".join(errors))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -792,6 +1904,7 @@ def probe(
         manifest_path,
         "capability_probe",
         rows,
+        run_kind="engineering",
         timing_evidence=False,
     )
 
@@ -811,6 +1924,83 @@ def _serialize_finding(finding: Finding) -> dict[str, Any]:
         "message": finding.message,
         "frames": [frame(item) for item in finding.frames],
         "origin_frames": [frame(item) for item in finding.origin_frames],
+    }
+
+
+def _stable_finding_signature(finding: Finding) -> dict[str, Any]:
+    """Discard PID/ASLR/path-prefix noise while retaining semantic attribution."""
+
+    def frame(item: Any) -> dict[str, Any]:
+        return {
+            "function": item.function,
+            "file": Path(item.file).name if item.file else None,
+            "line": item.line,
+        }
+
+    return {
+        "type": finding.type.value,
+        "severity": finding.severity.value,
+        "message": finding.message,
+        "frames": [frame(item) for item in finding.frames],
+        "origin_frames": [frame(item) for item in finding.origin_frames],
+    }
+
+
+def _stable_finding_signatures(findings: list[Finding]) -> list[dict[str, Any]]:
+    return [_stable_finding_signature(finding) for finding in findings]
+
+
+def _compile_argv_contract(
+    *,
+    compiler: Path,
+    source: Path,
+    binary: Path,
+    sources: list[Path],
+    include_dirs: list[Path],
+    cflags: list[str],
+) -> list[str]:
+    return [
+        str(compiler),
+        *cflags,
+        *(f"-I{path}" for path in include_dirs),
+        str(source),
+        *(str(path) for path in sources),
+        "-o",
+        str(binary),
+    ]
+
+
+def _linked_source_records(sources: list[Path]) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    for source in sources:
+        resolved = source.resolve()
+        records.append({"path": str(resolved.relative_to(ROOT)), "sha256": _sha256(resolved)})
+    return records
+
+
+def _compiler_identity(requested: str, executable: Path) -> dict[str, Any]:
+    invocation_path = executable.absolute()
+    resolved_path = invocation_path.resolve()
+    version_argv = [str(resolved_path), "--version"]
+    version = subprocess.run(
+        version_argv,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if version.returncode != 0 or not version.stdout.strip():
+        raise BaselineError(f"compiler version probe failed: {version.stderr.strip()}")
+    return {
+        "schema_version": "1.0",
+        "requested": requested,
+        "invocation_path": str(invocation_path),
+        "resolved_path": str(resolved_path),
+        "sha256": _sha256(resolved_path),
+        "version_argv": version_argv,
+        "version_returncode": version.returncode,
+        "version_stdout": version.stdout,
+        "version_stderr": version.stderr,
     }
 
 
@@ -872,16 +2062,22 @@ def run_timecop(
     valgrind_arg: str,
     prefix: Path | None,
     output_root: Path,
+    run_kind: str = "engineering",
+    review_gate: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     capability = _capability("timecop", valgrind=valgrind_arg, prefix=prefix)
     output_dir = _new_output_dir(output_root, "timecop")
     if capability[0] == "unsupported":
-        rows = [_base_row(manifest, case_id, "timecop", capability) for case_id in CASE_ORDER]
+        unsupported_rows = [
+            _base_row(manifest, case_id, "timecop", capability) for case_id in CASE_ORDER
+        ]
         record = _record(
             manifest,
             manifest_path,
             "timecop",
-            rows,
+            unsupported_rows,
+            run_kind=run_kind,
+            review_gate=review_gate,
             timing_evidence=False,
         )
         report_path = output_dir / "baseline_report.json"
@@ -905,6 +2101,8 @@ def run_timecop(
     compiler = shutil.which(compiler_name)
     if compiler is None:
         raise BaselineError(f"C compiler not found: {compiler_name}")
+    compiler_path = Path(compiler).absolute()
+    compiler_identity = _compiler_identity(compiler_name, compiler_path)
 
     canary_dir = output_dir / "backend_canary"
     canary_dir.mkdir()
@@ -912,15 +2110,16 @@ def run_timecop(
     canary_binary = canary_dir / "canary"
     canary_log = canary_dir / "canary.valgrind.log"
     canary_source.write_text(CANARY_SOURCE, encoding="utf-8")
-    compile_harness(
+    canary_cflags = ["-std=c99", "-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"]
+    canary_compile_command = compile_harness(
         canary_source,
         canary_binary,
         [],
         [patched_include],
-        ["-std=c99", "-O2", "-g", "-fno-omit-frame-pointer", "-fno-lto"],
+        canary_cflags,
         ROOT,
         timeout=600,
-        cc=compiler,
+        cc=str(compiler_path),
     )
     _make_artifact_readable(canary_binary)
     canary_result, canary_argv, canary_seconds = _run_valgrind(
@@ -994,7 +2193,7 @@ def run_timecop(
             cflags,
             config_dir,
             timeout=config.ct.compile_timeout,
-            cc=compiler,
+            cc=str(compiler_path),
         )
         _make_artifact_readable(binary_path)
         setup_seconds = time.monotonic() - setup_started
@@ -1035,14 +2234,27 @@ def run_timecop(
         row["artifact_bytes"] = _tree_bytes(case_dir)
         row["evidence"] = {
             "compile_command": compile_command,
+            "compile_argv": _compile_argv_contract(
+                compiler=compiler_path,
+                source=source_path,
+                binary=binary_path,
+                sources=sources,
+                include_dirs=includes,
+                cflags=list(cflags),
+            ),
+            "compile_workdir": str(config_dir.relative_to(ROOT)),
+            "source_sha256": _sha256(source_path),
+            "linked_sources": _linked_source_records(sources),
             "argv": argv,
             "returncode": run_result.returncode,
+            "timed_out": run_result.timed_out,
             "binary_sha256": _sha256(binary_path),
             "log_sha256": _sha256(log_path) if log_path.is_file() else None,
             "stdout_sha256": _sha256(stdout_path),
             "stderr_sha256": _sha256(stderr_path),
             "dropped_valgrind_messages": classified.dropped,
             "findings": [_serialize_finding(item) for item in classified.findings],
+            "finding_signatures": _stable_finding_signatures(classified.findings),
             "evidence_boundary": "dynamic taint/operand evidence; never physical timing",
             "peak_memory_scope": "runner child-process upper bound",
         }
@@ -1050,27 +2262,38 @@ def run_timecop(
     if not canary_passed:
         errors.append("TIMECOP backend canary failed")
 
-    compiler_version = subprocess.run(
-        [compiler, "--version"],
-        text=True,
-        capture_output=True,
-        timeout=30,
-    ).stdout.splitlines()[0]
+    compiler_version = str(compiler_identity["version_stdout"]).splitlines()[0]
     backend = {
+        "prefix": str(prefix.resolve()) if prefix is not None else None,
         "executable": str(executable),
         "executable_sha256": _sha256(executable),
         "version": version_result.stdout.strip(),
         "patched_include": str(patched_include),
+        "patched_header_sha256": _sha256(patched_include / "valgrind/memcheck.h"),
         "patch_sha256": manifest["tools"]["timecop"]["patch"]["sha256"],
-        "compiler": compiler,
+        "compiler": str(compiler_path),
         "compiler_version": compiler_version,
+        "compiler_identity": compiler_identity,
         "canary": {
             "passed": canary_passed,
+            "compile_command": canary_compile_command,
+            "compile_argv": _compile_argv_contract(
+                compiler=compiler_path,
+                source=canary_source,
+                binary=canary_binary,
+                sources=[],
+                include_dirs=[patched_include],
+                cflags=canary_cflags,
+            ),
             "argv": canary_argv,
             "runtime_seconds": canary_seconds,
             "returncode": canary_result.returncode,
+            "timed_out": canary_result.timed_out,
             "finding_count": len(variable_latency),
             "dropped_valgrind_messages": canary_dropped,
+            "finding_signatures": _stable_finding_signatures(canary_findings),
+            "source_sha256": _sha256(canary_source),
+            "binary_sha256": _sha256(canary_binary),
             "log_sha256": _sha256(canary_log),
             "stdout_sha256": _sha256(canary_stdout),
             "stderr_sha256": _sha256(canary_stderr),
@@ -1081,6 +2304,8 @@ def run_timecop(
         manifest_path,
         "timecop",
         rows,
+        run_kind=run_kind,
+        review_gate=review_gate,
         timing_evidence=False,
         backend=backend,
         errors=errors,
@@ -1095,18 +2320,22 @@ def run_dudect(
     manifest_path: Path,
     *,
     output_root: Path,
+    run_kind: str = "engineering",
+    review_gate: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     capability = _capability("official_dudect")
     output_dir = _new_output_dir(output_root, "official_dudect")
     if capability[0] == "unsupported":
-        rows = [
+        unsupported_rows = [
             _base_row(manifest, case_id, "official_dudect", capability) for case_id in CASE_ORDER
         ]
         record = _record(
             manifest,
             manifest_path,
             "official_dudect",
-            rows,
+            unsupported_rows,
+            run_kind=run_kind,
+            review_gate=review_gate,
             timing_evidence=False,
         )
         report_path = output_dir / "baseline_report.json"
@@ -1133,12 +2362,31 @@ def run_dudect(
     runtime_seconds = time.monotonic() - started
     _emit_dudect_report(config.project.name, raw_dir, results)
 
+    emulated = detect_qemu_emulation()
     virtualization = _detect_virtualization()
     virtualized = bool(virtualization["vm"] or virtualization["container"])
-    physical_eligible = (
-        not detect_qemu_emulation()
-        and not virtualized
-        and all(result.timing_validity == "valid" for _, _, result, _ in results)
+    timing_environment = collect_timing_environment(emulated=emulated, clock="rdtsc")
+    _commit, git_dirty = _git_state()
+    affinity = timing_environment.get("cpu_affinity")
+    cpu_model = timing_environment.get("cpu_model")
+    governor = timing_environment.get("governor")
+    host_reasons: list[str] = []
+    if emulated:
+        host_reasons.append("emulated x86 timing host")
+    if virtualized:
+        host_reasons.append("virtualized timing host")
+    if not isinstance(affinity, list) or len(affinity) != 1:
+        host_reasons.append("process is not pinned to exactly one logical CPU")
+    if governor != "performance":
+        host_reasons.append("selected CPU governor is not performance")
+    if not isinstance(cpu_model, str) or not cpu_model.strip():
+        host_reasons.append("exact CPU model metadata is unavailable")
+    if not isinstance(timing_environment.get("machine_id_sha256"), str):
+        host_reasons.append("hashed physical host identity is unavailable")
+    if git_dirty:
+        host_reasons.append("git worktree is dirty")
+    physical_eligible = not host_reasons and all(
+        result.timing_validity == "valid" for _, _, result, _ in results
     )
     result_map = {name: (samples, result) for name, samples, result, _ in results}
     cases = _case_map(manifest)
@@ -1188,18 +2436,25 @@ def run_dudect(
         }
         rows.append(row)
     if not physical_eligible:
-        errors.append("official dudect run did not clear the physical-host validity gate")
+        errors.append(
+            "official dudect run did not clear the physical-host validity gate"
+            + (f": {'; '.join(host_reasons)}" if host_reasons else "")
+        )
 
     record = _record(
         manifest,
         manifest_path,
         "official_dudect",
         rows,
+        run_kind=run_kind,
+        review_gate=review_gate,
         timing_evidence=physical_eligible,
         backend={
             "official_dudect_revision": OFFICIAL_DUDECT_REVISION,
             "virtualization": virtualization,
+            "timing_environment": timing_environment,
             "raw_report": str((raw_dir / "dudect_backend_report.json").relative_to(output_dir)),
+            "raw_report_sha256": _sha256(raw_dir / "dudect_backend_report.json"),
         },
         errors=errors,
     )
@@ -1301,16 +2556,22 @@ def run_microwalk(
     *,
     output_root: Path,
     timeout: int,
+    run_kind: str = "engineering",
+    review_gate: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     capability = _capability("microwalk_pin")
     output_dir = _new_output_dir(output_root, "microwalk_pin")
     if capability[0] == "unsupported":
-        rows = [_base_row(manifest, case_id, "microwalk_pin", capability) for case_id in CASE_ORDER]
+        unsupported_rows = [
+            _base_row(manifest, case_id, "microwalk_pin", capability) for case_id in CASE_ORDER
+        ]
         record = _record(
             manifest,
             manifest_path,
             "microwalk_pin",
-            rows,
+            unsupported_rows,
+            run_kind=run_kind,
+            review_gate=review_gate,
             timing_evidence=False,
         )
         report_path = output_dir / "baseline_report.json"
@@ -1608,6 +2869,8 @@ def run_microwalk(
         manifest_path,
         "microwalk_pin",
         rows,
+        run_kind=run_kind,
+        review_gate=review_gate,
         timing_evidence=False,
         backend={
             "execution_image": image,
@@ -1636,6 +2899,21 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--valgrind", default="valgrind")
     parser.add_argument("--prefix", type=Path)
+    parser.add_argument("--cpu", type=int, help="pin official-dudect and all children to this CPU")
+    parser.add_argument(
+        "--expected-commit",
+        help="require a validated result to match this frozen 40-hex CT-KAT commit",
+    )
+    parser.add_argument(
+        "--run-kind",
+        choices=RUN_KINDS,
+        help="required for executable adapters; only final results are promotable",
+    )
+    parser.add_argument(
+        "--expected-run-kind",
+        choices=RUN_KINDS,
+        help="require a validated result to have this run kind",
+    )
     parser.add_argument("--microwalk-timeout", type=int, default=1800)
     args = parser.parse_args()
 
@@ -1657,11 +2935,87 @@ def main() -> int:
                 _mapping(value, "result"),
                 manifest,
                 manifest_path=manifest_path,
+                expected_commit=args.expected_commit,
+                expected_run_kind=args.expected_run_kind,
+                artifact_root=args.validate_result.resolve().parent,
             )
             if result_errors:
                 raise BaselineError("result validation failed: " + "; ".join(result_errors))
             print(f"[same-corpus] valid result: {args.validate_result}")
             return 0
+        if args.cpu is not None and not args.run_dudect:
+            parser.error("--cpu is only valid with --run-dudect")
+        executing = args.run_timecop or args.run_dudect or args.run_microwalk
+        if executing and args.run_kind is None:
+            parser.error("executable adapters require --run-kind")
+        if args.run_timecop and args.run_kind == "final" and args.prefix is None:
+            parser.error("final TIMECOP execution requires an explicit --prefix")
+        review_gate = None
+        if executing and args.run_kind == "final":
+            commit, _dirty = _git_state()
+            review_gate = _human_premeasurement_gate(commit)
+        if executing and args.run_kind in {"pilot", "final"}:
+            environment = collect_timing_environment(
+                emulated=detect_qemu_emulation(),
+                clock="rdtsc" if args.run_dudect else "not-applicable",
+            )
+            virtualization = _detect_virtualization()
+            _commit, dirty = _git_state()
+            host_errors: list[str] = []
+            if platform.system() != "Linux" or platform.machine() not in {"x86_64", "AMD64"}:
+                host_errors.append("Linux/x86_64 host is required")
+            if environment.get("emulated") is not False:
+                host_errors.append("emulation detected")
+            if virtualization["vm"] or virtualization["container"]:
+                host_errors.append("virtualization detected")
+            if not environment.get("cpu_model"):
+                host_errors.append("exact CPU model metadata is required")
+            if not environment.get("machine_id_sha256"):
+                host_errors.append("hashed physical host identity is required")
+            if not environment.get("boot_id_sha256"):
+                host_errors.append("hashed boot identity is required")
+            if dirty:
+                host_errors.append("clean git worktree is required")
+            if host_errors:
+                raise BaselineError(
+                    f"{args.run_kind} host preflight failed: " + "; ".join(host_errors)
+                )
+        if args.run_dudect:
+            if args.cpu is not None:
+                pin_current_process(args.cpu)
+            environment = collect_timing_environment(
+                emulated=detect_qemu_emulation(),
+                clock="rdtsc",
+            )
+            virtualization = _detect_virtualization()
+            _commit, dirty = _git_state()
+            readiness_errors: list[str] = []
+            if environment.get("emulated") is not False:
+                readiness_errors.append("emulation detected")
+            if virtualization["vm"] or virtualization["container"]:
+                readiness_errors.append("virtualization detected")
+            if len(environment.get("cpu_affinity") or []) != 1:
+                readiness_errors.append("exactly one pinned logical CPU is required")
+            if environment.get("governor") != "performance":
+                readiness_errors.append("performance governor is required")
+            if not environment.get("cpu_model"):
+                readiness_errors.append("exact CPU model metadata is required")
+            if not environment.get("machine_id_sha256"):
+                readiness_errors.append("hashed physical host identity is required")
+            if not environment.get("boot_id_sha256"):
+                readiness_errors.append("hashed boot identity is required")
+            timing_flags = environment.get("timing_cpu_flags")
+            if not isinstance(timing_flags, dict) or any(
+                timing_flags.get(flag) is not True
+                for flag in ("constant_tsc", "nonstop_tsc", "rdtscp")
+            ):
+                readiness_errors.append("invariant-TSC/RDTSCP capability is required")
+            if dirty:
+                readiness_errors.append("clean git worktree is required")
+            if readiness_errors and args.run_kind in {"pilot", "final"}:
+                raise BaselineError(
+                    "official dudect host preflight failed: " + "; ".join(readiness_errors)
+                )
         if args.probe:
             record = probe(
                 manifest,
@@ -1687,12 +3041,16 @@ def main() -> int:
                 valgrind_arg=args.valgrind,
                 prefix=args.prefix,
                 output_root=args.output_root,
+                run_kind=str(args.run_kind),
+                review_gate=review_gate,
             )
         elif args.run_dudect:
             record, report = run_dudect(
                 manifest,
                 manifest_path,
                 output_root=args.output_root,
+                run_kind=str(args.run_kind),
+                review_gate=review_gate,
             )
         else:
             record, report = run_microwalk(
@@ -1700,14 +3058,22 @@ def main() -> int:
                 manifest_path,
                 output_root=args.output_root,
                 timeout=args.microwalk_timeout,
+                run_kind=str(args.run_kind),
+                review_gate=review_gate,
             )
         print(f"[same-corpus] report: {report}")
         print(f"[same-corpus] promotion_ready={record['promotion_ready']}")
         for error in record["errors"]:
             print(f"[same-corpus] ERROR: {error}", file=sys.stderr)
+        if args.run_kind != "final":
+            complete = not record["errors"] and all(
+                row.get("execution_status") == "completed" for row in record["rows"]
+            )
+            return 0 if complete else 1
         return 0 if record["promotion_ready"] else 1
     except (
         BaselineError,
+        CampaignError,
         json.JSONDecodeError,
         OSError,
         subprocess.SubprocessError,

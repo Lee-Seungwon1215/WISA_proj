@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,12 +43,33 @@ from ctkat.official_dudect import (  # noqa: E402
     OFFICIAL_DUDECT_THRESHOLD_LABEL,
     build_official_dudect_adapter,
 )
+from ctkat.official_dudect_verify import (  # noqa: E402
+    OfficialDudectProtocolContract,
+    verify_official_dudect_artifacts,
+)
 from ctkat.qemu_detect import detect_qemu_emulation  # noqa: E402
+from ctkat.timing_binary_contract import (  # noqa: E402
+    TimingBinaryContractError,
+    evaluate_disassembly,
+    load_timing_binary_contract,
+)
 from ctkat.timing_environment import collect_timing_environment  # noqa: E402
 
 DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v2_campaign.yaml"
 CORPUS_SUMMARY = ROOT / "docs" / "corpus" / "corpus_summary.csv"
 OFFICIAL_TIMING_THRESHOLD = OFFICIAL_DUDECT_THRESHOLD_LABEL
+RUN_KINDS = ("engineering", "pilot", "final")
+TARGET_ATTESTATION = "run_attestation.json"
+MEASUREMENT_CRITICAL_PATHS = (
+    "ctkat",
+    "scripts",
+    "examples",
+    "docs/measurement",
+    "docs/baselines",
+    "docs/ground_truth",
+    "pyproject.toml",
+    "uv.lock",
+)
 REQUIRED_ARTIFACTS = (
     "dudect_raw_timings.csv",
     "dudect_calibration_timings.csv",
@@ -87,6 +109,7 @@ PROTOCOL_HEADER = [
     "aux_end",
     "drop_reason",
     "output_length",
+    "signature_return_code",
     "protocol",
 ]
 UPDATE_FIELDS = [
@@ -386,10 +409,13 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
         if set(axes_raw) != set(harnesses_raw):
             raise CampaignError(f"targets[{index}].axes keys must exactly match harnesses")
         if any(
-            not isinstance(axis, str) or axis not in {"sk", "ct", "fo", "msg"}
+            not isinstance(axis, str)
+            or axis not in {"sk", "ct", "fo", "msg", "chosen_ct", "operand_bin"}
             for axis in axes_raw.values()
         ):
-            raise CampaignError(f"targets[{index}].axes values must be one of sk/ct/fo/msg")
+            raise CampaignError(
+                f"targets[{index}].axes values must be one of sk/ct/fo/msg/chosen_ct/operand_bin"
+            )
         effects_raw = _require_list(
             data.get("positive_control_effects"),
             f"targets[{index}].positive_control_effects",
@@ -543,7 +569,7 @@ def static_check(campaign: CampaignSpec) -> list[str]:
                 f"{target.id}: compiler drift: manifest={protocol.compiler!r}, "
                 f"config={dudect.compiler.cc!r}"
             )
-        required_cflags = {"-O2", "-fno-lto", "-fno-omit-frame-pointer"}
+        required_cflags = {"-fno-lto", "-fno-omit-frame-pointer"}
         actual_cflags = set(dudect.compiler.cflags)
         if not required_cflags <= actual_cflags:
             errors.append(
@@ -557,11 +583,8 @@ def static_check(campaign: CampaignSpec) -> list[str]:
         optimization_flags = [
             flag for flag in dudect.compiler.cflags if re.fullmatch(r"-O\S*", flag)
         ]
-        if optimization_flags != ["-O2"]:
-            errors.append(
-                f"{target.id}: timing compiler must have exactly one -O2 "
-                f"optimization flag, got {optimization_flags}"
-            )
+        if len(optimization_flags) != 1:
+            errors.append(f"{target.id}: timing compiler must have one optimization flag")
         configured = tuple(harness.name for harness in dudect.harnesses)
         if configured != target.harnesses:
             errors.append(
@@ -585,6 +608,29 @@ def static_check(campaign: CampaignSpec) -> list[str]:
                     f"{target.id}/{harness.name}: timing axis drift: "
                     f"manifest={frozen_axis!r}, config={configured_axis!r}"
                 )
+            if harness.binary_contract is None:
+                if optimization_flags != ["-O2"]:
+                    errors.append(
+                        f"{target.id}/{harness.name}: timing compiler must use exactly -O2 "
+                        "unless an exact linked-binary contract freezes another cell"
+                    )
+            else:
+                contract_path = _resolve_from_config(
+                    target.config,
+                    harness.binary_contract.manifest,
+                )
+                try:
+                    _contract_root, contract_rule = load_timing_binary_contract(
+                        contract_path,
+                        harness.binary_contract.target,
+                    )
+                except (OSError, TimingBinaryContractError) as exc:
+                    errors.append(f"{target.id}/{harness.name}: binary contract cannot load: {exc}")
+                else:
+                    if contract_rule.get("compiler") != dudect.compiler.cc:
+                        errors.append(f"{target.id}/{harness.name}: binary contract compiler drift")
+                    if contract_rule.get("cflags") != dudect.compiler.cflags:
+                        errors.append(f"{target.id}/{harness.name}: binary contract cflags drift")
             if any(Path(source).name == "randombytes.c" for source in harness.sources):
                 errors.append(
                     f"{target.id}/{harness.name}: strong randombytes.c would shadow "
@@ -647,8 +693,26 @@ def _command_version(command: str) -> str:
     return result.stdout.splitlines()[0].strip() if result.stdout else ""
 
 
+def _detect_container_marker() -> str:
+    if Path("/.dockerenv").is_file():
+        return "docker"
+    if Path("/run/.containerenv").is_file():
+        return "podman"
+    cgroup = _read_text(Path("/proc/1/cgroup")).lower()
+    for marker, label in (
+        ("docker", "docker"),
+        ("kubepods", "kubernetes"),
+        ("containerd", "containerd"),
+        ("libpod", "podman"),
+        ("lxc", "lxc"),
+    ):
+        if marker in cgroup:
+            return label
+    return ""
+
+
 def _detect_virtualization() -> dict[str, str]:
-    result = {"vm": "", "container": ""}
+    result = {"vm": "", "container": _detect_container_marker()}
     detector = shutil.which("systemd-detect-virt")
     if detector:
         for kind, option in (("vm", "--vm"), ("container", "--container")):
@@ -689,6 +753,18 @@ def _detect_virtualization() -> dict[str, str]:
         if needle in dmi:
             result["vm"] = label
             break
+    if not result["vm"]:
+        cpuinfo = _read_text(Path("/proc/cpuinfo")).lower()
+        if any(
+            " hypervisor " in f" {line.strip()} "
+            for line in cpuinfo.splitlines()
+            if line.lstrip().startswith(("flags", "features"))
+        ):
+            result["vm"] = "cpuid-hypervisor"
+    if not result["vm"]:
+        hypervisor_type = _read_text(Path("/sys/hypervisor/type")).lower()
+        if hypervisor_type:
+            result["vm"] = hypervisor_type
     return result
 
 
@@ -722,6 +798,18 @@ def _git_state() -> tuple[str, bool]:
     except (OSError, subprocess.SubprocessError) as exc:
         raise CampaignError(f"cannot resolve git provenance: {exc}") from exc
     return commit, dirty
+
+
+def _compiler_executable_identity(command: str) -> dict[str, str] | None:
+    executable = shutil.which(command)
+    if executable is None:
+        return None
+    resolved = Path(executable).resolve()
+    try:
+        digest = _sha256(resolved)
+    except OSError:
+        return None
+    return {"resolved_path": str(resolved), "sha256": digest}
 
 
 def pin_current_process(cpu: int) -> None:
@@ -759,6 +847,26 @@ def preflight(
     affinity = environment.get("cpu_affinity") or []
     if campaign.host.get("require_single_cpu_affinity", True) and len(affinity) != 1:
         errors.append(f"requires exactly one eligible CPU, got {affinity or 'unavailable'}")
+    cpu_model = environment.get("cpu_model")
+    if not isinstance(cpu_model, str) or not cpu_model.strip():
+        errors.append("exact CPU model metadata is unavailable")
+    machine_id_sha256 = environment.get("machine_id_sha256")
+    if not isinstance(machine_id_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", machine_id_sha256
+    ):
+        errors.append("hashed physical host identity is unavailable")
+    boot_id_sha256 = environment.get("boot_id_sha256")
+    if not isinstance(boot_id_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", boot_id_sha256):
+        errors.append("hashed boot identity is unavailable")
+    timing_cpu_flags = environment.get("timing_cpu_flags")
+    required_timing_flags = ("constant_tsc", "nonstop_tsc", "rdtscp")
+    if not isinstance(timing_cpu_flags, dict) or any(
+        timing_cpu_flags.get(flag) is not True for flag in required_timing_flags
+    ):
+        errors.append(
+            "invariant-TSC/RDTSCP capability is unavailable "
+            f"(requires {', '.join(required_timing_flags)})"
+        )
 
     virtualization = _detect_virtualization()
     virtualized = bool(virtualization["vm"] or virtualization["container"])
@@ -781,7 +889,8 @@ def preflight(
             errors.append(message)
 
     compiler = _command_version("gcc")
-    if not compiler:
+    compiler_executable = _compiler_executable_identity("gcc")
+    if not compiler or compiler_executable is None:
         errors.append("gcc is unavailable")
     selected_cpu = affinity[0] if len(affinity) == 1 else None
     governor = ""
@@ -810,7 +919,10 @@ def preflight(
         except Exception as exc:
             errors.append(f"official dudect adapter preflight failed: {exc}")
 
-    paper_eligible = not errors and not emulated and not virtualized and not dirty
+    governor_eligible = not recommended or governor == recommended
+    paper_eligible = (
+        not errors and not emulated and not virtualized and not dirty and governor_eligible
+    )
     return {
         "checked_at": _utc_now(),
         "ok": not errors,
@@ -820,6 +932,7 @@ def preflight(
         "git_commit": commit,
         "git_dirty": dirty,
         "compiler": compiler or None,
+        "compiler_executable": compiler_executable,
         "official_adapter_built": adapter_ok,
         "virtualization": virtualization,
         "environment": environment,
@@ -846,6 +959,16 @@ def validate_preflight_report(
         dirty = True
     if not isinstance(report.get("compiler"), str) or not report.get("compiler"):
         errors.append("host preflight compiler identity is missing")
+    compiler_executable = report.get("compiler_executable")
+    if (
+        not isinstance(compiler_executable, dict)
+        or set(compiler_executable) != {"resolved_path", "sha256"}
+        or not isinstance(compiler_executable.get("resolved_path"), str)
+        or not Path(compiler_executable.get("resolved_path", "")).is_absolute()
+        or not isinstance(compiler_executable.get("sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", compiler_executable.get("sha256", ""))
+    ):
+        errors.append("host preflight compiler executable identity is missing")
     if report.get("official_adapter_built") is not True:
         errors.append("host preflight did not build the official adapter")
 
@@ -871,6 +994,23 @@ def validate_preflight_report(
             errors.append("host preflight clock differs from the campaign")
         if environment.get("emulated") is not False:
             errors.append("host preflight reports emulation")
+        cpu_model = environment.get("cpu_model")
+        if not isinstance(cpu_model, str) or not cpu_model.strip():
+            errors.append("host preflight exact CPU model is missing")
+        machine_id_sha256 = environment.get("machine_id_sha256")
+        if not isinstance(machine_id_sha256, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", machine_id_sha256
+        ):
+            errors.append("host preflight hashed physical identity is missing")
+        boot_id_sha256 = environment.get("boot_id_sha256")
+        if not isinstance(boot_id_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", boot_id_sha256):
+            errors.append("host preflight hashed boot identity is missing")
+        timing_cpu_flags = environment.get("timing_cpu_flags")
+        required_timing_flags = ("constant_tsc", "nonstop_tsc", "rdtscp")
+        if not isinstance(timing_cpu_flags, dict) or any(
+            timing_cpu_flags.get(flag) is not True for flag in required_timing_flags
+        ):
+            errors.append("host preflight lacks invariant-TSC/RDTSCP capability")
         affinity = environment.get("cpu_affinity")
         if (
             not isinstance(affinity, list)
@@ -892,7 +1032,13 @@ def validate_preflight_report(
     if virtualized and not any("engineering-only override" in warning for warning in warnings):
         errors.append("virtualized-host override is not recorded in warnings")
 
-    recomputed_eligible = not errors and not dirty and not virtualized
+    selected_governor = report.get("governor_selected_cpu")
+    recommended_governor = str(campaign.host.get("recommended_governor", ""))
+    governor_eligible = not recommended_governor or selected_governor == recommended_governor
+    if not governor_eligible and not any("governor" in warning for warning in warnings):
+        errors.append("non-performance governor is not recorded in warnings")
+
+    recomputed_eligible = not errors and not dirty and not virtualized and governor_eligible
     if report.get("paper_eligible") is not recomputed_eligible:
         errors.append("host preflight paper_eligible does not match recorded host facts")
         recomputed_eligible = False
@@ -959,11 +1105,13 @@ def _validate_protocol_csv(
     path: Path,
     campaign: CampaignSpec,
     target: TargetSpec,
+    configured_harnesses: dict[str, Any],
 ) -> list[str]:
     errors: list[str] = []
     reported: set[str] = set()
     actual: dict[tuple[str, str, int, int], int] = {}
     seeds: dict[tuple[str, str, int, int], int] = {}
+    signature_lengths: dict[str, set[int]] = {}
 
     def report_once(category: str, message: str) -> None:
         if category not in reported:
@@ -993,6 +1141,34 @@ def _validate_protocol_csv(
                     f"{path.name}:{number}: invalid numeric protocol field",
                 )
                 continue
+            configured = configured_harnesses.get(row["harness"])
+            signature_return_code = row["signature_return_code"]
+            if configured is not None and configured.template == "sign":
+                signature_lengths.setdefault(row["harness"], set()).add(output_length)
+                if output_length < 1:
+                    report_once(
+                        "signature-output-length",
+                        f"{path.name}:{number}: signature output length must be positive",
+                    )
+                try:
+                    parsed_signature_return_code = int(signature_return_code)
+                except (TypeError, ValueError):
+                    report_once(
+                        "signature-return-code",
+                        f"{path.name}:{number}: signature row lacks an integer return code",
+                    )
+                else:
+                    if parsed_signature_return_code != 0:
+                        report_once(
+                            "signature-failure",
+                            f"{path.name}:{number}: signing returned "
+                            f"{parsed_signature_return_code}, expected 0",
+                        )
+            elif signature_return_code != "":
+                report_once(
+                    "non-sign-return-code",
+                    f"{path.name}:{number}: non-sign row has a signature return code",
+                )
             if row["project"] != target.id:
                 report_once(
                     "project",
@@ -1053,6 +1229,13 @@ def _validate_protocol_csv(
                     f"{path.name}:{number}: cpu-migration row has unchanged AUX",
                 )
             actual[key] = actual.get(key, 0) + 1
+    for harness_name, lengths in signature_lengths.items():
+        configured = configured_harnesses[harness_name]
+        if configured.signature_length_contract == "fixed" and len(lengths) != 1:
+            errors.append(
+                f"{path.name}: {harness_name} fixed signature contract has lengths "
+                f"{sorted(lengths)}"
+            )
     expected = _expected_protocol_counts(campaign, target)
     for harness in target.harnesses:
         harness_seeds = [seed for key, seed in seeds.items() if key[0] == harness]
@@ -1095,12 +1278,454 @@ def _load_summary(path: Path) -> tuple[dict[str, dict[str, str]], list[str]]:
     return by_harness, errors
 
 
+def _nested_artifact(root: Path, relative: Any, label: str) -> Path:
+    if not isinstance(relative, str) or not relative:
+        raise CampaignError(f"{label} must be a non-empty relative path")
+    raw = Path(relative)
+    if raw.is_absolute() or ".." in raw.parts:
+        raise CampaignError(f"{label} is not a safe relative path: {relative!r}")
+    resolved_root = root.resolve()
+    candidate = resolved_root / raw
+    if candidate.is_symlink() or any(
+        parent.is_symlink()
+        for parent in candidate.parents
+        if parent != resolved_root and parent.is_relative_to(resolved_root)
+    ):
+        raise CampaignError(f"{label} contains a symlink: {relative!r}")
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(resolved_root) or not resolved.is_file():
+        raise CampaignError(f"{label} is missing or escapes its artifact root: {relative!r}")
+    return resolved
+
+
+def _recorded_sha256(value: Any, label: str, errors: list[str]) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        errors.append(f"{label} is not a SHA-256 digest")
+        return ""
+    return value
+
+
+def _run_offline_tool(
+    command: list[str],
+    *,
+    label: str,
+    errors: list[str],
+) -> subprocess.CompletedProcess[str] | None:
+    """Run an operator-selected local tool without trusting report-supplied argv."""
+
+    try:
+        return subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        errors.append(f"{label} could not execute: {exc}")
+        return None
+
+
+def _current_tool_matching_record(
+    *,
+    requested_command: Any,
+    record: Any,
+    recorded_version: Any,
+    label: str,
+    errors: list[str],
+) -> Path | None:
+    """Resolve a trusted current tool and require exact recorded provenance.
+
+    The executable path embedded in an artifact is untrusted input and is never
+    executed directly.  PATH resolution starts from the committed contract;
+    the resulting regular file must then match the recorded absolute path,
+    SHA-256, byte size, and first ``--version`` line.
+    """
+
+    start_error_count = len(errors)
+    if not isinstance(requested_command, str) or not requested_command:
+        errors.append(f"{label} requested command is missing")
+        return None
+    if not isinstance(record, dict):
+        errors.append(f"{label} executable provenance is missing")
+        return None
+    resolved_value = shutil.which(requested_command)
+    if not resolved_value:
+        errors.append(f"{label} is unavailable: {requested_command}")
+        return None
+    current = Path(resolved_value).resolve()
+    if current.is_symlink() or not current.is_file():
+        errors.append(f"{label} current executable is not a regular file: {current}")
+        return None
+
+    recorded_path = record.get("path")
+    if not isinstance(recorded_path, str) or not Path(recorded_path).is_absolute():
+        errors.append(f"{label} recorded path is not absolute")
+    elif recorded_path != str(current):
+        errors.append(
+            f"{label} current path differs from recorded provenance: "
+            f"current={current}, recorded={recorded_path}"
+        )
+    recorded_hash = _recorded_sha256(record.get("sha256"), f"{label} executable", errors)
+    if recorded_hash and _sha256(current) != recorded_hash:
+        errors.append(f"{label} current executable hash differs from recorded provenance")
+    recorded_bytes = record.get("bytes")
+    if (
+        isinstance(recorded_bytes, bool)
+        or not isinstance(recorded_bytes, int)
+        or recorded_bytes < 1
+    ):
+        errors.append(f"{label} recorded executable byte size is invalid")
+    elif current.stat().st_size != recorded_bytes:
+        errors.append(f"{label} current executable size differs from recorded provenance")
+
+    if not isinstance(recorded_version, str) or not recorded_version.strip():
+        errors.append(f"{label} recorded version is missing")
+    version_command = [str(current), "--version"]
+    recorded_version_command = record.get("version_command")
+    if recorded_version_command != version_command:
+        errors.append(f"{label} recorded version command drift")
+    version_proc = _run_offline_tool(version_command, label=f"{label} --version", errors=errors)
+    if version_proc is None:
+        return None
+    if version_proc.returncode != 0 or not version_proc.stdout.strip():
+        errors.append(f"{label} --version failed: {version_proc.stderr.strip()}")
+    else:
+        current_version = version_proc.stdout.splitlines()[0]
+        if current_version != recorded_version:
+            errors.append(
+                f"{label} current version differs from recorded provenance: "
+                f"current={current_version!r}, recorded={recorded_version!r}"
+            )
+    if len(errors) != start_error_count:
+        return None
+    return current
+
+
+def _canonical_objdump_output(text: str) -> str:
+    """Normalize only the artifact-local filename in GNU objdump headings."""
+
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    for index, line in enumerate(lines):
+        marker = re.search(r":\s+file format\s+", line)
+        if marker is not None:
+            lines[index] = "<preserved-binary>" + line[marker.start() :]
+            break
+    return "\n".join(lines).rstrip()
+
+
+def _fresh_objdump(
+    *,
+    contract_root: dict[str, Any],
+    binary_path: Path,
+    binary_record: Any,
+    disassembly: dict[str, Any],
+    label: str,
+    errors: list[str],
+) -> tuple[str, str] | None:
+    """Re-run the recorded objdump identity over the preserved binary."""
+
+    tool_record = disassembly.get("tool")
+    recorded_version = tool_record.get("version") if isinstance(tool_record, dict) else None
+    objdump = _current_tool_matching_record(
+        requested_command=contract_root.get("disassembler"),
+        record=tool_record,
+        recorded_version=recorded_version,
+        label=f"{label} objdump",
+        errors=errors,
+    )
+    if objdump is None:
+        return None
+
+    recorded_binary_path = binary_record.get("path") if isinstance(binary_record, dict) else None
+    recorded_tool_path = tool_record.get("path") if isinstance(tool_record, dict) else None
+    for command_field, flag in (("file_header_command", "-f"), ("command", "-d")):
+        expected = [recorded_tool_path, flag, recorded_binary_path]
+        if disassembly.get(command_field) != expected:
+            errors.append(f"{label} recorded {command_field} drift")
+
+    header_command = [str(objdump), "-f", str(binary_path)]
+    disassembly_command = [str(objdump), "-d", str(binary_path)]
+    header_proc = _run_offline_tool(
+        header_command,
+        label=f"{label} fresh objdump -f",
+        errors=errors,
+    )
+    full_proc = _run_offline_tool(
+        disassembly_command,
+        label=f"{label} fresh objdump -d",
+        errors=errors,
+    )
+    if header_proc is None or full_proc is None:
+        return None
+    if header_proc.returncode != 0 or not header_proc.stdout.strip():
+        errors.append(f"{label} fresh objdump -f failed: {header_proc.stderr.strip()}")
+    if full_proc.returncode != 0 or not full_proc.stdout.strip():
+        errors.append(f"{label} fresh objdump -d failed: {full_proc.stderr.strip()}")
+    if header_proc.returncode != 0 or not header_proc.stdout.strip():
+        return None
+    if full_proc.returncode != 0 or not full_proc.stdout.strip():
+        return None
+    return header_proc.stdout, full_proc.stdout
+
+
+def _validate_binary_contract_artifacts(
+    *,
+    target: TargetSpec,
+    harness: Any,
+    protocol: dict[str, Any],
+    report_dir: Path,
+    artifact_sha256: dict[str, str],
+) -> list[str]:
+    """Reparse and bind every post-link contract artifact.
+
+    The backend JSON is not trusted as a self-attestation.  This validator
+    resolves the nested files without symlinks, hashes the measured binary and
+    generated source, reloads the committed contract, then runs the exact
+    recorded compiler/objdump identities locally and compares fresh ``-f`` and
+    ``-d`` output with both the preserved text and semantic observations.
+    """
+
+    errors: list[str] = []
+    reference = harness.binary_contract
+    metadata = protocol.get("binary_contract")
+    label = f"{target.id}/{harness.name}: binary contract"
+    if reference is None:
+        if metadata is not None:
+            errors.append(f"{label} metadata is present without a configured contract")
+        return errors
+    if not isinstance(metadata, dict):
+        return [f"{label} metadata is missing"]
+    expected_metadata = {
+        "passed",
+        "contract_id",
+        "contract_target",
+        "report",
+        "report_sha256",
+        "binary_sha256",
+        "full_disassembly_sha256",
+    }
+    if set(metadata) != expected_metadata:
+        errors.append(f"{label} metadata field set drift")
+    if metadata.get("passed") is not True:
+        errors.append(f"{label} did not pass before measurement")
+    expected_report = f"binary_contract/timing_{harness.name}.binary-contract.json"
+    if metadata.get("report") != expected_report:
+        errors.append(
+            f"{label} report path={metadata.get('report')!r}, expected={expected_report!r}"
+        )
+    try:
+        report_path = _nested_artifact(report_dir, metadata.get("report"), label)
+    except CampaignError as exc:
+        errors.append(str(exc))
+        return errors
+    report_relative = str(report_path.relative_to(report_dir.resolve()))
+    report_hash = _sha256(report_path)
+    artifact_sha256[report_relative] = report_hash
+    recorded_report_hash = _recorded_sha256(
+        metadata.get("report_sha256"), f"{label} report_sha256", errors
+    )
+    if recorded_report_hash and report_hash != recorded_report_hash:
+        errors.append(f"{label} report hash mismatch")
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"{label} report is unreadable: {exc}")
+        return errors
+    if not isinstance(payload, dict):
+        return [*errors, f"{label} report root must be an object"]
+    if payload.get("schema_version") != "1.0" or payload.get("kind") != (
+        "ctkat-timing-binary-contract-report"
+    ):
+        errors.append(f"{label} report identity/schema mismatch")
+    if payload.get("passed") is not True or payload.get("errors") != []:
+        errors.append(f"{label} report does not record an error-free pass")
+
+    contract_path = _resolve_from_config(target.config, reference.manifest)
+    try:
+        contract_root, contract_rule = load_timing_binary_contract(
+            contract_path,
+            reference.target,
+        )
+    except (OSError, TimingBinaryContractError) as exc:
+        errors.append(f"{label} committed manifest cannot load: {exc}")
+        return errors
+    if payload.get("contract_id") != contract_root.get("contract_id"):
+        errors.append(f"{label} contract_id drift")
+    if payload.get("contract_target") != reference.target:
+        errors.append(f"{label} contract target drift")
+    if metadata.get("contract_id") != contract_root.get("contract_id"):
+        errors.append(f"{label} backend contract_id drift")
+    if metadata.get("contract_target") != reference.target:
+        errors.append(f"{label} backend contract target drift")
+    manifest_record = payload.get("contract_manifest")
+    if not isinstance(manifest_record, dict) or manifest_record.get("sha256") != _sha256(
+        contract_path
+    ):
+        errors.append(f"{label} committed manifest hash mismatch")
+
+    compiler = payload.get("compiler")
+    if not isinstance(compiler, dict):
+        errors.append(f"{label} compiler provenance is missing")
+    else:
+        if compiler.get("requested_command") != contract_rule.get("compiler"):
+            errors.append(f"{label} compiler command drift")
+        if compiler.get("cflags") != contract_rule.get("cflags"):
+            errors.append(f"{label} compiler flags drift")
+        if not isinstance(compiler.get("version"), str) or not compiler["version"].strip():
+            errors.append(f"{label} compiler version is missing")
+        if (
+            not isinstance(compiler.get("compile_command"), str)
+            or not compiler["compile_command"].strip()
+        ):
+            errors.append(f"{label} compile command is missing")
+        executable = compiler.get("executable")
+        if not isinstance(executable, dict):
+            errors.append(f"{label} compiler executable record is missing")
+        else:
+            _recorded_sha256(executable.get("sha256"), f"{label} compiler executable", errors)
+            _current_tool_matching_record(
+                requested_command=contract_rule.get("compiler"),
+                record=executable,
+                recorded_version=compiler.get("version"),
+                label=f"{label} compiler",
+                errors=errors,
+            )
+
+    config_record = payload.get("config")
+    if not isinstance(config_record, dict) or config_record.get("sha256") != _sha256(target.config):
+        errors.append(f"{label} config hash is missing or mismatched")
+    linked_records = payload.get("linked_sources")
+    if not isinstance(linked_records, list) or len(linked_records) != len(harness.sources):
+        errors.append(f"{label} linked source index drift")
+    else:
+        for index, (record, source) in enumerate(zip(linked_records, harness.sources, strict=True)):
+            resolved_source = _resolve_from_config(target.config, source)
+            if not isinstance(record, dict) or record.get("sha256") != _sha256(resolved_source):
+                errors.append(f"{label} linked_sources[{index}] hash mismatch")
+
+    generated_root = report_dir.parent / "generated"
+    generated_records = (
+        ("binary", payload.get("binary"), f"timing_{harness.name}"),
+        ("generated_source", payload.get("generated_source"), f"timing_{harness.name}.c"),
+    )
+    preserved_binary: Path | None = None
+    binary_record = payload.get("binary")
+    for record_field, record, expected_name in generated_records:
+        if not isinstance(record, dict) or Path(str(record.get("path", ""))).name != expected_name:
+            errors.append(f"{label} {record_field} record/name drift")
+            continue
+        try:
+            path = _nested_artifact(generated_root, expected_name, f"{label} {record_field}")
+        except CampaignError as exc:
+            errors.append(str(exc))
+            continue
+        actual_hash = _sha256(path)
+        artifact_sha256[f"generated/{expected_name}"] = actual_hash
+        if record.get("sha256") != actual_hash:
+            errors.append(f"{label} {record_field} hash mismatch")
+        if record_field == "binary" and metadata.get("binary_sha256") != actual_hash:
+            errors.append(f"{label} backend binary hash mismatch")
+        if record_field == "binary":
+            preserved_binary = path
+
+    disassembly = payload.get("disassembly")
+    if not isinstance(disassembly, dict):
+        errors.append(f"{label} disassembly provenance is missing")
+        return errors
+    nested_records = (
+        (
+            "full_artifact",
+            "full_sha256",
+            metadata.get("full_disassembly_sha256"),
+        ),
+        ("file_header_artifact", "file_header_sha256", None),
+    )
+    full_text = ""
+    header_text = ""
+    for artifact_field, hash_field, backend_hash in nested_records:
+        artifact_name = disassembly.get(artifact_field)
+        if not isinstance(artifact_name, str) or Path(artifact_name).name != artifact_name:
+            errors.append(f"{label} {artifact_field} is unsafe")
+            continue
+        relative = f"binary_contract/{artifact_name}"
+        try:
+            artifact = _nested_artifact(report_dir, relative, f"{label} {artifact_field}")
+        except CampaignError as exc:
+            errors.append(str(exc))
+            continue
+        actual_hash = _sha256(artifact)
+        artifact_sha256[relative] = actual_hash
+        if disassembly.get(hash_field) != actual_hash:
+            errors.append(f"{label} {hash_field} mismatch")
+        if backend_hash is not None and backend_hash != actual_hash:
+            errors.append(f"{label} backend disassembly hash mismatch")
+        if artifact_field == "full_artifact":
+            full_text = artifact.read_text(encoding="utf-8", errors="replace")
+        else:
+            header_text = artifact.read_text(encoding="utf-8", errors="replace")
+    stored_observations: dict[str, Any] | None = None
+    if full_text:
+        observations, disassembly_errors = evaluate_disassembly(
+            full_text,
+            contract_rule["symbols"],
+        )
+        stored_observations = observations
+        if disassembly_errors:
+            errors.extend(f"{label} reparse: {error}" for error in disassembly_errors)
+        if observations != disassembly.get("symbols"):
+            errors.append(f"{label} recorded symbol observations differ from reparse")
+    if preserved_binary is None:
+        errors.append(f"{label} preserved binary is unavailable for fresh disassembly")
+        return errors
+
+    fresh = _fresh_objdump(
+        contract_root=contract_root,
+        binary_path=preserved_binary,
+        binary_record=binary_record,
+        disassembly=disassembly,
+        label=label,
+        errors=errors,
+    )
+    if fresh is None:
+        return errors
+    fresh_header, fresh_full = fresh
+    post_objdump_binary_hash = _sha256(preserved_binary)
+    if post_objdump_binary_hash != artifact_sha256.get(f"generated/{preserved_binary.name}"):
+        errors.append(f"{label} preserved binary changed during fresh disassembly")
+    if isinstance(binary_record, dict) and binary_record.get("sha256") != post_objdump_binary_hash:
+        errors.append(f"{label} post-objdump binary hash differs from recorded report")
+    if metadata.get("binary_sha256") != post_objdump_binary_hash:
+        errors.append(f"{label} post-objdump binary hash differs from backend metadata")
+    format_pattern = str(contract_root.get("file_format_pattern", ""))
+    if re.search(format_pattern, fresh_header) is None:
+        errors.append(f"{label} fresh file header does not match /{format_pattern}/")
+    if header_text and _canonical_objdump_output(fresh_header) != _canonical_objdump_output(
+        header_text
+    ):
+        errors.append(f"{label} fresh file header differs from recorded artifact")
+    if full_text and _canonical_objdump_output(fresh_full) != _canonical_objdump_output(full_text):
+        errors.append(f"{label} fresh disassembly differs from recorded artifact")
+    fresh_observations, fresh_errors = evaluate_disassembly(
+        fresh_full,
+        contract_rule["symbols"],
+    )
+    if fresh_errors:
+        errors.extend(f"{label} fresh reparse: {error}" for error in fresh_errors)
+    if fresh_observations != disassembly.get("symbols"):
+        errors.append(f"{label} fresh symbol observations differ from recorded report")
+    if stored_observations is not None and fresh_observations != stored_observations:
+        errors.append(f"{label} fresh symbol observations differ from recorded artifact")
+    return errors
+
+
 def validate_target_artifacts(
     campaign: CampaignSpec,
     target: TargetSpec,
     report_dir: Path,
     *,
     host_paper_eligible: bool,
+    run_kind: str = "final",
 ) -> TargetValidation:
     result = TargetValidation(target=target, report_dir=report_dir)
     cfg = load_config(target.config)
@@ -1110,7 +1735,7 @@ def validate_target_artifacts(
     configured_harnesses = {harness.name: harness for harness in cfg.dudect.harnesses}
     for name in REQUIRED_ARTIFACTS:
         path = report_dir / name
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             result.errors.append(f"missing artifact: {path}")
         else:
             result.artifact_sha256[name] = _sha256(path)
@@ -1178,7 +1803,31 @@ def validate_target_artifacts(
             report_dir / "dudect_protocol_timings.csv",
             campaign,
             target,
+            configured_harnesses,
         )
+    )
+    independent_dudect = verify_official_dudect_artifacts(
+        raw_path=report_dir / "dudect_raw_timings.csv",
+        calibration_path=report_dir / "dudect_calibration_timings.csv",
+        protocol_path=report_dir / "dudect_protocol_timings.csv",
+        backend_report=backend,
+        expected_project=target.id,
+        expected_harnesses=expected_harnesses,
+        protocol_contract=OfficialDudectProtocolContract(
+            base_seed=campaign.protocol.seed,
+            process_repeats=campaign.protocol.process_repeats,
+            target_measurements=target.target_measurements,
+            control_measurements=target.control_measurements,
+            positive_effects=target.positive_control_effects,
+            aa_abs_t_limit=campaign.protocol.aa_abs_t_limit,
+            positive_abs_t_threshold=campaign.protocol.positive_abs_t_threshold,
+            aa_max_failures=campaign.protocol.aa_max_failures,
+            target_power=campaign.protocol.target_power,
+            power_alpha=campaign.protocol.power_alpha,
+        ),
+    )
+    result.errors.extend(
+        f"official dudect independent verification: {error}" for error in independent_dudect.errors
     )
 
     for harness_name in target.harnesses:
@@ -1251,6 +1900,61 @@ def validate_target_artifacts(
                 harness_errors.append(
                     f"harness_protocol.{key}={protocol.get(key)!r}, expected={expected!r}"
                 )
+        signature_contract = protocol.get("signature_call_contract")
+        if configured_harness.template == "sign":
+            if not isinstance(signature_contract, dict):
+                harness_errors.append("signature_call_contract must be an object")
+            else:
+                expected_signature_contract = {
+                    "configured": configured_harness.signature_length_contract,
+                    "return_code_column": "signature_return_code",
+                    "return_code_success": 0,
+                    "return_codes_recorded": True,
+                    "correctness_round_trip_gate": True,
+                    "measured_contract_failures": 0,
+                    "traces_validated": (
+                        campaign.protocol.process_repeats
+                        * (4 + len(target.positive_control_effects))
+                    ),
+                    "passed": True,
+                }
+                for key, expected in expected_signature_contract.items():
+                    if signature_contract.get(key) != expected:
+                        harness_errors.append(
+                            f"signature_call_contract.{key}="
+                            f"{signature_contract.get(key)!r}, expected={expected!r}"
+                        )
+                resolved_min = signature_contract.get("resolved_min")
+                resolved_max = signature_contract.get("resolved_max")
+                if (
+                    isinstance(resolved_min, bool)
+                    or not isinstance(resolved_min, int)
+                    or isinstance(resolved_max, bool)
+                    or not isinstance(resolved_max, int)
+                    or resolved_min < 1
+                    or resolved_max < resolved_min
+                ):
+                    harness_errors.append("signature_call_contract resolved range is invalid")
+                elif (
+                    configured_harness.signature_length_contract == "fixed"
+                    and resolved_min != resolved_max
+                ):
+                    harness_errors.append("fixed signature contract resolved range is not fixed")
+                elif (
+                    configured_harness.signature_length_contract == "bounded" and resolved_min != 1
+                ):
+                    harness_errors.append("bounded signature contract must resolve from length 1")
+        elif signature_contract is not None:
+            harness_errors.append("non-sign harness unexpectedly claims signature_call_contract")
+        harness_errors.extend(
+            _validate_binary_contract_artifacts(
+                target=target,
+                harness=configured_harness,
+                protocol=protocol,
+                report_dir=report_dir,
+                artifact_sha256=result.artifact_sha256,
+            )
+        )
         curve = protocol.get("positive_power_curve")
         if not isinstance(curve, list) or any(not isinstance(item, dict) for item in curve):
             harness_errors.append("positive_power_curve must be a list of objects")
@@ -1373,6 +2077,8 @@ def validate_target_artifacts(
             blockers.append("target timing environment rejected")
         if not host_paper_eligible:
             blockers.append("campaign host is engineering-only")
+        if run_kind != "final":
+            blockers.append(f"run_kind={run_kind} is non-promotable")
         blockers = list(dict.fromkeys(blockers))
         result.blockers.extend(f"{harness_name}: {blocker}" for blocker in blockers)
         result.harnesses.append(
@@ -1407,6 +2113,86 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _host_fingerprint(preflight_report: dict[str, Any]) -> str:
+    environment = preflight_report.get("environment")
+    virtualization = preflight_report.get("virtualization")
+    if not isinstance(environment, dict) or not isinstance(virtualization, dict):
+        raise CampaignError("cannot fingerprint malformed host preflight")
+    identity = {
+        "system": environment.get("system"),
+        "machine": environment.get("machine"),
+        "kernel": environment.get("kernel"),
+        "cpu_model": environment.get("cpu_model"),
+        "machine_id_sha256": environment.get("machine_id_sha256"),
+        "boot_id_sha256": environment.get("boot_id_sha256"),
+        "microcode": environment.get("microcode"),
+        "cpu_affinity": environment.get("cpu_affinity"),
+        "clock": environment.get("clock"),
+        "timing_cpu_flags": environment.get("timing_cpu_flags"),
+        "compiler": preflight_report.get("compiler"),
+        "compiler_executable": preflight_report.get("compiler_executable"),
+        "governor": preflight_report.get("governor_selected_cpu"),
+        "virtualization": virtualization,
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _target_attestation_payload(
+    *,
+    campaign: CampaignSpec,
+    target: TargetSpec,
+    validation: TargetValidation,
+    run_id: str,
+    run_kind: str,
+    commit: str,
+    host_fingerprint_sha256: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": "1.0",
+        "kind": "native-target-run-attestation",
+        "campaign_id": campaign.campaign_id,
+        "manifest_sha256": campaign.manifest_sha256,
+        "target_id": target.id,
+        "ctkat_commit": commit,
+        "run_id": run_id,
+        "run_kind": run_kind,
+        "host_fingerprint_sha256": host_fingerprint_sha256,
+        "artifact_sha256": dict(sorted(validation.artifact_sha256.items())),
+    }
+
+
+def _validate_target_attestation(
+    path: Path,
+    *,
+    campaign: CampaignSpec,
+    target: TargetSpec,
+    validation: TargetValidation,
+    run_id: str,
+    run_kind: str,
+    commit: str,
+    host_fingerprint_sha256: str,
+) -> tuple[str | None, list[str]]:
+    if path.is_symlink() or not path.is_file():
+        return None, [f"{target.id}: target run attestation is missing"]
+    try:
+        actual = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, [f"{target.id}: target run attestation is unreadable: {exc}"]
+    expected = _target_attestation_payload(
+        campaign=campaign,
+        target=target,
+        validation=validation,
+        run_id=run_id,
+        run_kind=run_kind,
+        commit=commit,
+        host_fingerprint_sha256=host_fingerprint_sha256,
+    )
+    if actual != expected:
+        return None, [f"{target.id}: target run attestation does not match this run"]
+    return _sha256(path), []
 
 
 def _updates(validations: Iterable[TargetValidation]) -> list[dict[str, Any]]:
@@ -1539,6 +2325,142 @@ def _select_targets(campaign: CampaignSpec, selected: list[str]) -> tuple[Target
     return tuple(target for target in campaign.targets if target.id in set(selected))
 
 
+def _human_premeasurement_gate_material(
+    expected_commit: str,
+    *,
+    allow_review_only_head: bool = False,
+) -> dict[str, Any]:
+    from scripts.check_paper_reviews import DEFAULT_MANIFEST as REVIEW_MANIFEST
+    from scripts.check_paper_reviews import evaluate_manifest
+
+    current_commit, dirty = _git_state()
+    if dirty:
+        raise CampaignError("human review gate requires a clean git worktree")
+    if current_commit != expected_commit:
+        if not allow_review_only_head:
+            raise CampaignError(
+                "human review gate expected commit differs from current git HEAD: "
+                f"{expected_commit} != {current_commit}"
+            )
+        try:
+            ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", expected_commit, current_commit],
+                cwd=ROOT,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            )
+            if ancestor.returncode != 0:
+                raise CampaignError(
+                    "measurement commit is not an ancestor of the validation checkout"
+                )
+            drift = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--name-only",
+                    f"{expected_commit}..{current_commit}",
+                    "--",
+                    *MEASUREMENT_CRITICAL_PATHS,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise CampaignError(f"cannot validate review-only commit drift: {exc}") from exc
+        if drift:
+            raise CampaignError(
+                "measurement-critical source changed after the recorded run: "
+                + ", ".join(drift.splitlines())
+            )
+    review_report, review_errors = evaluate_manifest(REVIEW_MANIFEST)
+    if review_errors:
+        raise CampaignError("paper review packets are invalid: " + "; ".join(review_errors))
+    if review_report.get("pre_measurement_ready") is not True:
+        raise CampaignError(
+            "human premeasurement review is incomplete; use --run-kind engineering "
+            "until the real reviewer quorum is recorded"
+        )
+    reviewed_source_commits = review_report.get("pre_measurement_reviewed_source_commits")
+    if (
+        not isinstance(reviewed_source_commits, list)
+        or len(reviewed_source_commits) != 1
+        or not isinstance(reviewed_source_commits[0], str)
+    ):
+        raise CampaignError("human premeasurement packets must bind one frozen source commit")
+    packet_hashes: dict[str, str] = {}
+    for packet in review_report.get("packets", []):
+        if not isinstance(packet, dict) or packet.get("required_before_measurement") is not True:
+            continue
+        value = packet.get("path")
+        if not isinstance(value, str):
+            raise CampaignError("paper review report contains a malformed packet path")
+        path = (ROOT / value).resolve()
+        if not path.is_file() or path.is_symlink():
+            raise CampaignError(f"paper review packet is not a regular file: {value}")
+        packet_hashes[value] = _sha256(path)
+    return {
+        "schema_version": "1.0",
+        "kind": "human-premeasurement-review-gate",
+        "ready": True,
+        "ctkat_commit": expected_commit,
+        "reviewed_source_commit": reviewed_source_commits[0],
+        "plan_id": review_report.get("plan_id"),
+        "minimum_reviewers": review_report.get("minimum_reviewers"),
+        "review_manifest": _display_path(REVIEW_MANIFEST),
+        "review_manifest_sha256": _sha256(REVIEW_MANIFEST),
+        "packet_sha256": dict(sorted(packet_hashes.items())),
+    }
+
+
+def _human_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
+    return {
+        **_human_premeasurement_gate_material(expected_commit),
+        "checked_at": _utc_now(),
+    }
+
+
+def _validate_human_premeasurement_gate(
+    gate: Any,
+    *,
+    expected_commit: str,
+    allow_review_only_head: bool = False,
+) -> list[str]:
+    if not isinstance(gate, dict):
+        return ["final campaign lacks a human premeasurement review gate"]
+    expected_material = _human_premeasurement_gate_material(
+        expected_commit,
+        allow_review_only_head=allow_review_only_head,
+    )
+    expected_keys = set(expected_material) | {"checked_at"}
+    if set(gate) != expected_keys:
+        return ["final campaign human review gate field set drift"]
+    checked_at = gate.get("checked_at")
+    if not isinstance(checked_at, str):
+        return ["final campaign human review gate timestamp is missing"]
+    try:
+        parsed = datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+    except ValueError:
+        return ["final campaign human review gate timestamp is malformed"]
+    if parsed.tzinfo is None:
+        return ["final campaign human review gate timestamp lacks a timezone"]
+    expected = {
+        **expected_material,
+        "checked_at": checked_at,
+    }
+    if gate != expected:
+        return [
+            "final campaign human review gate no longer matches the exact current "
+            "reviewed commit and packet hashes"
+        ]
+    return []
+
+
 def _print_static_plan(campaign: CampaignSpec) -> None:
     print(
         f"[native-timing] OK: {campaign.campaign_id}, "
@@ -1567,10 +2489,16 @@ def execute_campaign(
     targets: tuple[TargetSpec, ...],
     *,
     preflight_report: dict[str, Any],
+    run_kind: str,
+    review_gate: dict[str, Any] | None,
     resume: bool,
     continue_on_error: bool,
 ) -> int:
     output_root = _safe_output_root(output_root)
+    if run_kind not in RUN_KINDS:
+        raise CampaignError(f"invalid run_kind={run_kind!r}")
+    if run_kind == "final" and resume:
+        raise CampaignError("final runs cannot use --resume; start a fresh output root")
     commit = preflight_report.get("git_commit")
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise CampaignError("preflight report must contain a full git commit")
@@ -1581,36 +2509,54 @@ def execute_campaign(
     )
     if host_errors:
         raise CampaignError("preflight report is invalid: " + "; ".join(host_errors))
+    if run_kind in {"pilot", "final"} and not host_paper_eligible:
+        raise CampaignError(f"{run_kind} requires a paper-eligible physical host")
+    if run_kind == "final":
+        gate_errors = _validate_human_premeasurement_gate(
+            review_gate,
+            expected_commit=commit,
+        )
+        if gate_errors:
+            raise CampaignError(
+                "final execution requires the human premeasurement review gate: "
+                + "; ".join(gate_errors)
+            )
+    elif review_gate is not None:
+        raise CampaignError("human review_gate is only valid for a final run")
+    host_fingerprint_sha256 = _host_fingerprint(preflight_report)
     if output_root.exists() and any(output_root.iterdir()) and not resume:
         raise CampaignError(f"output root is non-empty; use --resume: {output_root}")
     output_root.mkdir(parents=True, exist_ok=True)
     report_path = output_root / "campaign_report.json"
-    report: dict[str, Any] = {
-        "schema_version": "1.0",
-        "kind": "native-timing-campaign-report",
-        "campaign_id": campaign.campaign_id,
-        "manifest": _display_path(campaign.manifest_path),
-        "manifest_sha256": campaign.manifest_sha256,
-        "ctkat_commit": commit,
-        "started_at": _utc_now(),
-        "finished_at": None,
-        "status": "running",
-        "selected_targets": [target.id for target in targets],
-        "host_preflight": preflight_report,
-        "targets": {},
-    }
-    if resume and report_path.is_file():
+    if resume:
+        if not report_path.is_file() or report_path.is_symlink():
+            raise CampaignError("cannot resume without an existing regular campaign report")
         try:
             previous = json.loads(report_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise CampaignError(f"cannot resume: campaign report unreadable: {exc}") from exc
         if not isinstance(previous, dict):
             raise CampaignError("cannot resume: campaign report root must be an object")
+        if previous.get("schema_version") != "2.0":
+            raise CampaignError("cannot resume: campaign report schema is not 2.0")
+        if previous.get("kind") != "native-timing-campaign-report":
+            raise CampaignError("cannot resume: campaign report kind changed")
+        if previous.get("campaign_id") != campaign.campaign_id:
+            raise CampaignError("cannot resume: campaign id changed")
         if previous.get("manifest_sha256") != campaign.manifest_sha256:
             raise CampaignError("cannot resume: campaign manifest hash changed")
         if previous.get("ctkat_commit") != preflight_report["git_commit"]:
             raise CampaignError("cannot resume: CT-KAT commit changed")
-        report["started_at"] = previous.get("started_at") or report["started_at"]
+        if previous.get("run_kind") != run_kind:
+            raise CampaignError("cannot resume: run kind changed")
+        run_id = previous.get("run_id")
+        if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise CampaignError("cannot resume: run id is malformed")
+        if previous.get("host_fingerprint_sha256") != host_fingerprint_sha256:
+            raise CampaignError("cannot resume: host or boot identity changed")
+        report = previous
+        report["status"] = "running"
+        report["finished_at"] = None
         previous_selected = previous.get("selected_targets") or []
         if not isinstance(previous_selected, list) or any(
             not isinstance(value, str) for value in previous_selected
@@ -1635,6 +2581,27 @@ def execute_campaign(
         if not set(previous_targets) <= known_targets:
             raise CampaignError("cannot resume: campaign target index contains unknown targets")
         report["targets"] = previous_targets
+    else:
+        run_id = uuid.uuid4().hex
+        report = {
+            "schema_version": "2.0",
+            "kind": "native-timing-campaign-report",
+            "campaign_id": campaign.campaign_id,
+            "manifest": _display_path(campaign.manifest_path),
+            "manifest_sha256": campaign.manifest_sha256,
+            "ctkat_commit": commit,
+            "run_id": run_id,
+            "run_kind": run_kind,
+            "host_fingerprint_sha256": host_fingerprint_sha256,
+            "started_at": _utc_now(),
+            "finished_at": None,
+            "status": "running",
+            "paper_promotion_ready": False,
+            "selected_targets": [target.id for target in targets],
+            "human_review_gate": review_gate,
+            "host_preflight": preflight_report,
+            "targets": {},
+        }
     _write_json_atomic(report_path, report)
 
     validations: list[TargetValidation] = []
@@ -1649,11 +2616,37 @@ def execute_campaign(
                 target,
                 report_dir,
                 host_paper_eligible=host_paper_eligible,
+                run_kind=run_kind,
             )
             if existing.complete:
+                attestation_hash, attestation_errors = _validate_target_attestation(
+                    target_root / TARGET_ATTESTATION,
+                    campaign=campaign,
+                    target=target,
+                    validation=existing,
+                    run_id=run_id,
+                    run_kind=run_kind,
+                    commit=commit,
+                    host_fingerprint_sha256=host_fingerprint_sha256,
+                )
+                previous_record = report["targets"].get(target.id)
+                if not isinstance(previous_record, dict):
+                    attestation_errors.append(
+                        f"{target.id}: target is absent from the prior campaign index"
+                    )
+                elif previous_record.get("run_attestation_sha256") != attestation_hash:
+                    attestation_errors.append(
+                        f"{target.id}: campaign index attestation hash mismatch"
+                    )
+                if attestation_errors:
+                    raise CampaignError(
+                        f"cannot resume {target.id}: " + "; ".join(attestation_errors)
+                    )
                 print(f"[native-timing] resume: {target.id} artifacts already complete")
                 validations.append(existing)
-                report["targets"][target.id] = existing.as_dict()
+                record = existing.as_dict()
+                record["run_attestation_sha256"] = attestation_hash
+                report["targets"][target.id] = record
                 _write_json_atomic(report_path, report)
                 continue
             raise CampaignError(
@@ -1674,12 +2667,14 @@ def execute_campaign(
                 target.config.parent,
                 cfg.project.name,
                 report_dir,
+                config_path=target.config,
             )
             validation = validate_target_artifacts(
                 campaign,
                 target,
                 report_dir,
                 host_paper_eligible=host_paper_eligible,
+                run_kind=run_kind,
             )
         except BaseException as exc:
             if isinstance(exc, KeyboardInterrupt):
@@ -1690,7 +2685,25 @@ def execute_campaign(
             validation = TargetValidation(target=target, report_dir=report_dir)
             validation.errors.append(f"execution failed: {exc}")
         validations.append(validation)
-        report["targets"][target.id] = validation.as_dict()
+        attestation_hash = None
+        if validation.complete:
+            attestation_path = target_root / TARGET_ATTESTATION
+            _write_json_atomic(
+                attestation_path,
+                _target_attestation_payload(
+                    campaign=campaign,
+                    target=target,
+                    validation=validation,
+                    run_id=run_id,
+                    run_kind=run_kind,
+                    commit=commit,
+                    host_fingerprint_sha256=host_fingerprint_sha256,
+                ),
+            )
+            attestation_hash = _sha256(attestation_path)
+        record = validation.as_dict()
+        record["run_attestation_sha256"] = attestation_hash
+        report["targets"][target.id] = record
         _write_json_atomic(report_path, report)
         write_updates(
             output_root / "corpus_timing_updates.csv",
@@ -1714,17 +2727,21 @@ def execute_campaign(
             )
 
     report["finished_at"] = _utc_now()
-    if execution_failed:
-        report["status"] = "failed"
-    elif any(target_id not in report["targets"] for target_id in report["selected_targets"]):
-        report["status"] = "partial"
-    elif all(
+    all_complete = all(
+        bool(report["targets"].get(target_id, {}).get("complete"))
+        for target_id in report["selected_targets"]
+    )
+    paper_promotion_ready = all_complete and all(
         bool(report["targets"][target_id].get("promotion_ready"))
         for target_id in report["selected_targets"]
-    ):
-        report["status"] = "complete"
+    )
+    report["paper_promotion_ready"] = paper_promotion_ready
+    if execution_failed:
+        report["status"] = "failed"
+    elif not all_complete:
+        report["status"] = "partial"
     else:
-        report["status"] = "complete-nonpromotable"
+        report["status"] = "complete"
     _write_json_atomic(report_path, report)
     write_updates(
         output_root / "corpus_timing_updates.csv",
@@ -1733,13 +2750,18 @@ def execute_campaign(
     )
     if execution_failed:
         return 1
-    return 0 if all(validation.promotion_ready for validation in validations) else 2
+    if run_kind != "final":
+        return 0 if all_complete else 1
+    return 0 if paper_promotion_ready else 2
 
 
 def validate_run(
     campaign: CampaignSpec,
     output_root: Path,
     selected: tuple[TargetSpec, ...],
+    *,
+    expected_commit: str | None = None,
+    expected_run_kind: str | None = None,
 ) -> int:
     output_root = _safe_output_root(output_root)
     report_path = output_root / "campaign_report.json"
@@ -1751,12 +2773,20 @@ def validate_run(
         raise CampaignError(f"campaign report unreadable: {exc}") from exc
     if not isinstance(report, dict):
         raise CampaignError("campaign report root must be an object")
-    if report.get("schema_version") != "1.0" or report.get("campaign_id") != campaign.campaign_id:
+    if report.get("schema_version") != "2.0" or report.get("campaign_id") != campaign.campaign_id:
         raise CampaignError("campaign report identity/schema mismatch")
     if report.get("kind") != "native-timing-campaign-report":
         raise CampaignError("campaign report kind mismatch")
     if report.get("manifest_sha256") != campaign.manifest_sha256:
         raise CampaignError("campaign report manifest hash does not match current manifest")
+    run_kind = report.get("run_kind")
+    if run_kind not in RUN_KINDS:
+        raise CampaignError("campaign report run_kind is invalid")
+    if expected_run_kind is not None and run_kind != expected_run_kind:
+        raise CampaignError("campaign report run_kind differs from expected kind")
+    run_id = report.get("run_id")
+    if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
+        raise CampaignError("campaign report run_id is malformed")
     recorded_selected = report.get("selected_targets")
     if not isinstance(recorded_selected, list) or any(
         not isinstance(value, str) for value in recorded_selected
@@ -1774,6 +2804,8 @@ def validate_run(
     report_commit = report.get("ctkat_commit")
     if not isinstance(report_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", report_commit):
         raise CampaignError("campaign report ctkat_commit must be a full git hash")
+    if expected_commit is not None and report_commit != expected_commit:
+        raise CampaignError("campaign report ctkat_commit differs from expected frozen commit")
     host_eligible, host_errors = validate_preflight_report(
         campaign,
         host_preflight,
@@ -1781,15 +2813,55 @@ def validate_run(
     )
     if host_errors:
         raise CampaignError("campaign host preflight is invalid: " + "; ".join(host_errors))
+    host_fingerprint_sha256 = _host_fingerprint(host_preflight)
+    if report.get("host_fingerprint_sha256") != host_fingerprint_sha256:
+        raise CampaignError("campaign host fingerprint does not match its preflight")
+    if run_kind == "final":
+        gate = report.get("human_review_gate")
+        gate_errors = _validate_human_premeasurement_gate(
+            gate,
+            expected_commit=report_commit,
+            allow_review_only_head=True,
+        )
+        if gate_errors:
+            raise CampaignError("; ".join(gate_errors))
+    elif report.get("human_review_gate") is not None:
+        raise CampaignError("non-final campaign must not claim a human review gate")
     validations = [
         validate_target_artifacts(
             campaign,
             target,
             output_root / target.id / "reports",
             host_paper_eligible=host_eligible,
+            run_kind=run_kind,
         )
         for target in selected
     ]
+    attestation_errors: list[str] = []
+    for target, validation in zip(selected, validations, strict=True):
+        attestation_hash, current_errors = _validate_target_attestation(
+            output_root / target.id / TARGET_ATTESTATION,
+            campaign=campaign,
+            target=target,
+            validation=validation,
+            run_id=run_id,
+            run_kind=run_kind,
+            commit=report_commit,
+            host_fingerprint_sha256=host_fingerprint_sha256,
+        )
+        attestation_errors.extend(current_errors)
+        recorded = target_index.get(target.id)
+        if not isinstance(recorded, dict):
+            attestation_errors.append(f"{target.id}: campaign target index entry is missing")
+            continue
+        if recorded.get("run_attestation_sha256") != attestation_hash:
+            attestation_errors.append(f"{target.id}: recorded target attestation hash mismatch")
+        if recorded.get("artifact_sha256") != validation.artifact_sha256:
+            attestation_errors.append(f"{target.id}: recorded artifact hashes mismatch")
+        if recorded.get("complete") is not validation.complete:
+            attestation_errors.append(f"{target.id}: recorded completeness mismatch")
+        if recorded.get("promotion_ready") is not validation.promotion_ready:
+            attestation_errors.append(f"{target.id}: recorded promotion state mismatch")
     update_errors = validate_updates(
         output_root / "corpus_timing_updates.csv",
         validations,
@@ -1809,11 +2881,25 @@ def validate_run(
             )
     if any(validation.errors for validation in validations):
         return 1
+    for error in attestation_errors:
+        print(f"[native-timing] ERROR: {error}", file=sys.stderr)
+    if attestation_errors:
+        return 1
     for error in update_errors:
         print(f"[native-timing] ERROR: {error}", file=sys.stderr)
     if update_errors:
         return 1
-    return 0 if all(validation.promotion_ready for validation in validations) else 2
+    all_complete = all(validation.complete for validation in validations)
+    promotion_ready = all_complete and all(validation.promotion_ready for validation in validations)
+    if report.get("status") != "complete":
+        print("[native-timing] ERROR: campaign report status is not complete", file=sys.stderr)
+        return 1
+    if report.get("paper_promotion_ready") is not promotion_ready:
+        print("[native-timing] ERROR: campaign promotion state mismatch", file=sys.stderr)
+        return 1
+    if run_kind != "final":
+        return 0 if all_complete else 1
+    return 0 if promotion_ready else 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1836,6 +2922,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--allow-virtualized", action="store_true")
+    parser.add_argument(
+        "--expected-commit",
+        help="require --validate-run evidence to match this frozen 40-hex commit",
+    )
+    parser.add_argument(
+        "--run-kind",
+        choices=RUN_KINDS,
+        help="required for execution; engineering and pilot runs are never promotable",
+    )
+    parser.add_argument(
+        "--expected-run-kind",
+        choices=RUN_KINDS,
+        help="require --validate-run evidence to have this run kind",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -1852,7 +2952,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.cpu is not None:
             pin_current_process(args.cpu)
         if args.validate_run is not None:
-            return validate_run(campaign, args.validate_run, selected)
+            if args.expected_commit is not None and not re.fullmatch(
+                r"[0-9a-f]{40}", args.expected_commit
+            ):
+                parser.error("--expected-commit must be a full lowercase 40-hex commit")
+            return validate_run(
+                campaign,
+                args.validate_run,
+                selected,
+                expected_commit=args.expected_commit,
+                expected_run_kind=args.expected_run_kind,
+            )
 
         host = preflight(
             campaign,
@@ -1867,11 +2977,20 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.output_root is None:
             parser.error("--execute requires --output-root")
+        if args.run_kind is None:
+            parser.error("--execute requires --run-kind")
+        review_gate = (
+            _human_premeasurement_gate(str(host["git_commit"]))
+            if args.run_kind == "final"
+            else None
+        )
         return execute_campaign(
             campaign,
             args.output_root,
             selected,
             preflight_report=host,
+            run_kind=args.run_kind,
+            review_gate=review_gate,
             resume=args.resume,
             continue_on_error=args.continue_on_error,
         )
