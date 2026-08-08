@@ -1,0 +1,130 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v1
+status: complete
+title: Automated adversarial audit of signature timing harness and declassification contracts
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-falcon-audit
+audited_at: "2026-08-08T06:52:00Z"
+audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+scope:
+  - detached-signature API return-code, length, and verification correctness gates
+  - fixed versus bounded signature output contracts
+  - ML-DSA rejection-path and SPHINCS public-state declassification claims
+  - Falcon and c-fn-dsa full-API timing scope and floating-point comparator evidence
+  - duration-versus-output-length secondary analysis and human review boundary
+findings:
+  - finding_id: shc-001
+    severity: critical
+    title: Signing failures could be reported as valid timing rows
+    description: The timing harness computed the signing return code but ignored it, returned success, and did not verify that the measured API produced a valid detached signature.
+    evidence_ids: [shc-template, shc-parser, shc-cli]
+  - finding_id: shc-002
+    severity: critical
+    title: Signature output-length contract was not fail closed
+    description: Nonzero or malformed lengths could survive as paper-eligible rows and fixed versus bounded encodings were not distinguished per adapter.
+    evidence_ids: [shc-template, shc-parser, shc-cli]
+  - finding_id: shc-003
+    severity: critical
+    title: ML-DSA rejection-path declassification exceeded the final public transcript
+    description: Rejected iterations depend on secret polynomial state that does not enter the final signature, so the prior broad public-output argument was unsound.
+    evidence_ids: [shc-variable-time, shc-review-packet]
+  - finding_id: shc-004
+    severity: high
+    title: Falcon pairwise and duration-length secondary analyses were not implemented
+    description: The preregistration promised length association and multiplicity-adjusted comparator contrasts but only min/max/unique length summaries existed.
+    evidence_ids: [shc-analysis]
+  - finding_id: shc-005
+    severity: high
+    title: SPHINCS declassification and Falcon floating-point evidence remain incomplete
+    description: Source arguments existed without a fully bound native probe for every claimed path and without exact measured-binary FP evidence on both hosts.
+    evidence_ids: [shc-variable-time, shc-review-packet]
+  - finding_id: shc-006
+    severity: critical
+    title: Automated signature review cannot approve the human declassification packet
+    description: Correct code and an automated adversarial pass do not replace two independent humans reviewing the exact source revision and evidence hashes.
+    evidence_ids: [shc-review-packet]
+  - finding_id: shc-007
+    severity: critical
+    title: Falcon measured-binary instruction claims could be self-attested
+    description: A backend report could claim the expected native-FP or software-FPR instruction profile while preserving only derived counts or stale disassembly rather than freshly reproducing the exact linked binary.
+    evidence_ids: [shc-binary-contract, shc-falcon-contracts, shc-binary-tests]
+dispositions:
+  - finding_id: shc-001
+    status: addressed
+    rationale: Every signature row records signature_return_code, any nonzero call invalidates the trace, and an untimed sign-then-verify gate must pass before measurement.
+    blocker: ""
+    evidence_ids: [shc-template, shc-parser, shc-cli]
+  - finding_id: shc-002
+    status: addressed
+    rationale: Each adapter declares fixed or bounded output length; parser, runtime metadata, backend protocol, and native campaign validator independently reject contract failures.
+    blocker: ""
+    evidence_ids: [shc-template, shc-parser, shc-cli]
+  - finding_id: shc-003
+    status: addressed
+    rationale: The source policy and paper packet now keep secret-dependent ML-DSA rejection paths in needs-analysis and limit any public declassification to exact successful final-transcript paths.
+    blocker: ""
+    evidence_ids: [shc-variable-time, shc-review-packet]
+  - finding_id: shc-004
+    status: addressed
+    rationale: The two-host analyzer computes output-length association, repeat-level comparator contrasts, family-local Holm adjustment, and explicit host heterogeneity without overriding primary findings.
+    blocker: ""
+    evidence_ids: [shc-analysis]
+  - finding_id: shc-005
+    status: accepted-with-blocker
+    rationale: Exact linked-binary contracts and fresh objdump reproduction make the engineering harness safe to execute, but unmeasured native SPHINCS and Falcon comparator claims remain blocked from final promotion.
+    blocker: Produce exact native evidence for each SPHINCS public-state claim and bind Falcon/c-fn-dsa FP audits to the measured binaries on both hosts, then obtain human review.
+    evidence_ids: [shc-variable-time, shc-review-packet]
+  - finding_id: shc-006
+    status: accepted-with-blocker
+    rationale: The automated audit is deliberately stored outside docs/reviews and grants no human-review credit.
+    blocker: Two independent humans must complete the signature declassification packet at the frozen review commit and evidence manifest hash.
+    evidence_ids: [shc-review-packet]
+  - finding_id: shc-007
+    status: addressed
+    rationale: The validator hashes the measured binary and generated/linked sources, verifies the exact compiler and objdump executables, reparses preserved disassembly, reruns objdump over the preserved binary, and compares the fresh semantic observations and canonical transcript.
+    blocker: ""
+    evidence_ids: [shc-binary-contract, shc-falcon-contracts, shc-binary-tests]
+evidence:
+  - evidence_id: shc-template
+    path: ctkat/templates/timing_sign.c.j2
+    sha256: a1f4c5704f98c63fe716739cf0ff4d51c440318bb348530984d0bdd33fcdd4f1
+    purpose: Untimed correctness gate and per-row return-code and output-length contract enforcement.
+  - evidence_id: shc-parser
+    path: ctkat/dudect_runner.py
+    sha256: 136dd79b83314ab3f3b3d4177220d4d5947e37cb93c1ba7c016a175f585e29f7
+    purpose: Signature return-code retention and fail-closed trace contract parser.
+  - evidence_id: shc-cli
+    path: ctkat/cli.py
+    sha256: 7407d99cbfe78fab34ceea311dc012081d65e4ae9e7bbce2e1e29b9af397e20a
+    purpose: Protocol-wide signature metadata aggregation and timing-validity gate.
+  - evidence_id: shc-variable-time
+    path: docs/accepted_variable_time.md
+    sha256: 4001257f1c3365e608c84e4c311f9d9c94a6068b4637b9958397891daffa35cf
+    purpose: Conservative variable-time policy and algorithm-specific claim boundaries.
+  - evidence_id: shc-review-packet
+    path: docs/reviews/paper/signature-declassification-v2.yaml
+    sha256: b7209e3b25df0b426977d2bc10008e3f178827daf4ca8f0e9d2a5ddfed110689
+    purpose: Separate pending human-review packet with exact evidence and expiry requirements.
+  - evidence_id: shc-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 9188b16a40ad92c58f41247dbe16c073b04299336900848f26ca2ceb5f11c2fc
+    purpose: Signature call-contract validation, output-length association, Holm contrasts, and host heterogeneity.
+  - evidence_id: shc-binary-contract
+    path: ctkat/timing_binary_contract.py
+    sha256: e3c2ce0d6d99039cdab245cd67644a7febd321c692a4a0a22c1a212266f05ff4
+    purpose: Exact linked-binary compiler/source/disassembly capture and semantic contract evaluation.
+  - evidence_id: shc-falcon-contracts
+    path: examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
+    sha256: 80836994eea332d2b2621495630e3ed6a0683a8edd9a43c8f34b69801aac8718
+    purpose: Frozen Falcon and c-fn-dsa native-FP versus software-FPR symbol/instruction contracts.
+  - evidence_id: shc-binary-tests
+    path: tests/test_timing_binary_contract.py
+    sha256: 99f9a4acdfe4bd181b41d13da543f6dfe6da76fdb673faadf6e5a671c2c6c2ca
+    purpose: Fresh objdump, compiler identity, hash, source, and semantic tamper rejection tests.
+limitations:
+  - This automated audit is not cryptographic approval of any public-state declassification.
+  - Full-API signature timing includes encoding and randomness effects unless a separately frozen core harness is measured.
+  - Evidence hashes expire on any referenced-file change.
+human_gate_effect: none

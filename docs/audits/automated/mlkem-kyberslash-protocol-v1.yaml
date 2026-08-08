@@ -1,0 +1,174 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v1
+status: complete
+title: Automated adversarial audit of ML-KEM attribution and KyberSlash timing protocol
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyber-audit
+audited_at: "2026-08-08T06:51:00Z"
+audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+scope:
+  - same-corpus toy ML-KEM class axis and defined C arithmetic
+  - exact-binary ML-KEM public instruction attribution
+  - KyberSlash fixed-secret chosen-ciphertext contrast
+  - direct vulnerable-versus-patched operand-bin latency canaries
+  - compiler optimization and linked-binary div/idiv contracts
+findings:
+  - finding_id: mkp-001
+    severity: critical
+    title: Toy same-corpus class contract did not match its claimed secret axis
+    description: The branch consumed ciphertext while the evidence narrative attributed it to a secret-key byte, and signed multiplication could overflow with undefined behavior.
+    evidence_ids: [mkp-toy-source, mkp-baseline-manifest]
+  - finding_id: mkp-002
+    severity: critical
+    title: Public ML-KEM instruction attribution lacked exact clean-head binary evidence
+    description: Name-derived corpus rows could not substitute for complete source-by-compiler disassembly with raw content-addressed evidence.
+    evidence_ids: [mkp-asm-checker]
+  - finding_id: mkp-003
+    severity: critical
+    title: KyberSlash full-KEM class changed both secret key and matching ciphertext
+    description: A timing difference could not be causally attributed to the secret, public transcript, or their interaction.
+    evidence_ids: [mkp-v2-plan, mkp-v2-config]
+  - finding_id: mkp-004
+    severity: critical
+    title: GCC O2 removed the division the v1 campaign intended to measure
+    description: The old campaign could time a reciprocal-multiply binary while presenting it as a KyberSlash division contrast.
+    evidence_ids: [mkp-v2-plan, mkp-binary-contract]
+  - finding_id: mkp-005
+    severity: high
+    title: Native disassembly and two-host timing artifacts do not yet exist
+    description: Frozen builders and contracts are preparation, not evidence that an affected CPU reproduced operand-dependent division latency.
+    evidence_ids: [mkp-v2-doc, mkp-asm-checker]
+  - finding_id: mkp-006
+    severity: critical
+    title: Official-dudect controls and power fields could be self-attested
+    description: A structurally plausible backend JSON could claim passing A/A, placebo, positive controls, and protocol rows without independently recomputing every pinned statistic from the three raw CSV artifacts.
+    evidence_ids: [mkp-dudect-verifier, mkp-dudect-tests]
+  - finding_id: mkp-007
+    severity: critical
+    title: ASM evidence did not close dependency and rebuild provenance
+    description: Object hashes alone could omit untracked include dependencies, compiler transcripts, schema drift, or an independent rebuild of the complete 660-cell matrix.
+    evidence_ids: [mkp-asm-builder, mkp-asm-schema, mkp-asm-checker]
+  - finding_id: mkp-008
+    severity: critical
+    title: TIMECOP final logs could be replaced by self-consistent synthetic evidence
+    description: A fake ELF and matching hand-written logs could satisfy hash and classifier fields unless the final validator rebuilt the frozen source and reran the exact patched backend.
+    evidence_ids: [mkp-baseline-runner, mkp-baseline-schema, mkp-baseline-tests]
+  - finding_id: mkp-009
+    severity: high
+    title: Ciphertext mutation was mislabeled as a proved rejection path
+    description: A nonzero bit mutation plus disagreement with the original encapsulated secret does not prove ML-KEM implicit rejection because a different valid ciphertext would also disagree.
+    evidence_ids: [mkp-timing-template, mkp-v2-config, mkp-v2-doc]
+dispositions:
+  - finding_id: mkp-001
+    status: addressed
+    rationale: The toy source now aligns its class-controlled operand with the declared axis and uses defined-width arithmetic; the same-corpus manifest binds the corrected case.
+    blocker: ""
+    evidence_ids: [mkp-toy-source, mkp-baseline-manifest]
+  - finding_id: mkp-002
+    status: accepted-with-blocker
+    rationale: A fail-closed exact-binary evidence builder/checker and frozen compiler matrix now exist, but the required native raw artifact is deliberately absent before execution.
+    blocker: Run the exact-clean-head ML-KEM assembly evidence campaign on native Linux x86_64, preserve its content-addressed raw disassembly, and have humans review the public attribution packet.
+    evidence_ids: [mkp-asm-checker]
+  - finding_id: mkp-003
+    status: addressed
+    rationale: V2 holds the secret key fixed, freezes paired public chosen-ciphertext pools, emits input digests, and limits the full-KEM result to a public chosen-input contrast.
+    blocker: ""
+    evidence_ids: [mkp-v2-plan, mkp-v2-config, mkp-v2-doc]
+  - finding_id: mkp-004
+    status: addressed
+    rationale: V2 freezes GCC Os and rejects a timing binary unless exact target symbols contain the preregistered div/idiv count, with matched zero-division patched controls.
+    blocker: ""
+    evidence_ids: [mkp-v2-plan, mkp-binary-contract, mkp-v2-doc]
+  - finding_id: mkp-005
+    status: accepted-with-blocker
+    rationale: The engineering protocol is complete enough to execute, while all result claims remain blocked until both native hosts produce valid artifacts.
+    blocker: Execute vulnerable and patched canaries plus fixed-key public contrasts on both accepted CPU models; do not claim a full attack or key recovery.
+    evidence_ids: [mkp-v2-plan, mkp-v2-doc]
+  - finding_id: mkp-006
+    status: addressed
+    rationale: The independent verifier reparses calibration, target, and complete protocol CSVs, reconstructs all frozen seeds and 102 dudect tests, and recomputes every control, detection-fraction, nominal-sensitivity, and timing-validity field.
+    blocker: ""
+    evidence_ids: [mkp-dudect-verifier, mkp-dudect-tests]
+  - finding_id: mkp-007
+    status: addressed
+    rationale: ASM bundles now pin the JSON Schema hash, full compiler identity/argv/transcripts, tracked dependency closure, exact objdump/nm bytes, and an isolated source rebuild for every required cell.
+    blocker: ""
+    evidence_ids: [mkp-asm-builder, mkp-asm-schema, mkp-asm-checker]
+  - finding_id: mkp-008
+    status: addressed
+    rationale: Final TIMECOP validation checks tracked source and compiler bytes, rebuilds the canary and both harnesses in isolation, reruns the exact pinned Valgrind, and compares normalized findings and process outcomes with preserved raw logs.
+    blocker: ""
+    evidence_ids: [mkp-baseline-runner, mkp-baseline-schema, mkp-baseline-tests]
+  - finding_id: mkp-009
+    status: addressed
+    rationale: Every FO and fixed-key chosen-ciphertext pool now has an untimed scheme-specific rkprf(z, ct) witness; measurement aborts unless decapsulation returns the exact independently computed rejection key.
+    blocker: ""
+    evidence_ids: [mkp-timing-template, mkp-v2-config, mkp-v2-doc]
+evidence:
+  - evidence_id: mkp-toy-source
+    path: examples/toy_kem_ct_leak/src/toy_kem.c
+    sha256: dd190550909787b1a772f6c45070b75f40c741a545c10ed06248be20fe6c0e2f
+    purpose: Corrected same-corpus class-controlled branch and defined arithmetic.
+  - evidence_id: mkp-baseline-manifest
+    path: docs/baselines/same_corpus_v1.yaml
+    sha256: 846fd3c8da31e9bc6959f7b48f2d3bef3734d9dd80282b8ed65b05a9df1e0185
+    purpose: Frozen same-corpus source, cases, coverage, and tool execution contract.
+  - evidence_id: mkp-v2-plan
+    path: docs/measurement/kyberslash_native_v2.yaml
+    sha256: 88775f553fdb3137aaafdb9dacfb5b5efd6a4a13512adc5a5da7e40b0187899f
+    purpose: Frozen fixed-key chosen-ciphertext and direct-operand v2 campaign.
+  - evidence_id: mkp-v2-doc
+    path: docs/measurement/KYBERSLASH_NATIVE_V2.md
+    sha256: 31efaca5a4418729ccdbe074381825b6707280a868d59bb9b062ee479a5f47b5
+    purpose: Threat-model separation and claim boundary for the v2 evidence layers.
+  - evidence_id: mkp-v2-config
+    path: examples/pqc_mlkem768/ctkat_timing_kyberslash_v2.yaml
+    sha256: 48548a25593f2675875473a8e5bccf2c188d887be4dad91f25fbcbf2df303900
+    purpose: Stock fixed-secret public chosen-ciphertext timing adapter, exact rejection witness, and binary contract.
+  - evidence_id: mkp-binary-contract
+    path: examples/kyberslash_operand_latency/binary_contracts_v2.yaml
+    sha256: 9f1a370f645288347d3c907f3e401ec35b8e693e27bb074759a98d5953e07c6e
+    purpose: Exact linked-binary vulnerable and patched div/idiv instruction counts.
+  - evidence_id: mkp-asm-checker
+    path: scripts/check_asm_evidence.py
+    sha256: 3ecd417c67afc7c67f46e95954e91447fa5262c767f1d5dd1ca837e4d4375cba
+    purpose: Fail-closed complete-cell and content-addressed ML-KEM assembly evidence validation.
+  - evidence_id: mkp-dudect-verifier
+    path: ctkat/official_dudect_verify.py
+    sha256: 5f6791945df6ec4b866b825a2d5a95d3a8f9cda498347f689aa4893e17dd5427
+    purpose: Independent raw-CSV protocol, seed-domain, control, and 102-test recomputation.
+  - evidence_id: mkp-dudect-tests
+    path: tests/test_official_dudect_verify.py
+    sha256: 4bf48c949bfa3356ce3eac61682551470b9fa5dce50ebad908e8ce0defbbb3d4
+    purpose: Positive recomputation and forged-control/raw-protocol rejection tests.
+  - evidence_id: mkp-asm-builder
+    path: ctkat/asm_evidence.py
+    sha256: 30924e46738594d09775699ad6aaa4f29346d439bb9f95a07613a46bd072671a
+    purpose: Content-addressed dependency closure, transcript capture, raw-tree validation, and isolated rebuild.
+  - evidence_id: mkp-asm-schema
+    path: docs/measurement/asm_evidence_bundle_v1.schema.json
+    sha256: bedc63cf9985628d62fefdec505adebf1a019a2f3dbfa7b25dd0a173a5a30831
+    purpose: Runtime-validated frozen ML-KEM assembly evidence bundle contract.
+  - evidence_id: mkp-baseline-runner
+    path: scripts/run_same_corpus_baselines.py
+    sha256: d4c3d14084c926de8e740458238bddde0e636d478cc57fb10b396f5849d7c095
+    purpose: Final TIMECOP source/compiler verification, isolated rebuild, and fresh backend rerun.
+  - evidence_id: mkp-baseline-schema
+    path: docs/baselines/baseline-result-v1.schema.json
+    sha256: 17e3929826c5fc0042c703245897cb2ab41769adab374b7e0bffb5091184e2ce
+    purpose: Same-corpus compiler provenance, compile argv, linked-source, raw-log, and normalized-finding fields.
+  - evidence_id: mkp-baseline-tests
+    path: tests/test_same_corpus_baselines.py
+    sha256: 27a7e6cfee486b4735fd2e88ca236c0fd12370c0ee9dd670e0c92b5be33294bf
+    purpose: Fake-ELF, forged-log, source-tamper, compiler-tamper, and final fresh-rerun regression tests.
+  - evidence_id: mkp-timing-template
+    path: ctkat/templates/timing_kem.c.j2
+    sha256: f4dd82efab433b9fd398b1f7f183fe1870d115a550bd83b00387210a019b5b41
+    purpose: Untimed exact rejection-key witness for FO and fixed-key chosen-ciphertext pools.
+limitations:
+  - This automated audit cannot establish public attribution or exploitability without human cryptographic review.
+  - Chosen-ciphertext and direct-operand axes are intentionally not described as secret-key leakage or key recovery.
+  - Evidence hashes expire on any referenced-file change.
+human_gate_effect: none

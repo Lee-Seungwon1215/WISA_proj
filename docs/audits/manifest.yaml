@@ -1,0 +1,17 @@
+schema_version: "1.0"
+plan_id: ctkat-automated-engineering-audits-v1
+engineering_ready_rule: all-critical-and-high-addressed-or-accepted-with-blocker
+human_review_boundary: no-automated-audit-satisfies-paper-human-review
+audits:
+  - path: docs/audits/automated/artifact-blind-integrity-v1.yaml
+    perspective: artifact-blind-integrity
+    required_for_engineering: true
+  - path: docs/audits/automated/mlkem-kyberslash-protocol-v1.yaml
+    perspective: mlkem-kyberslash-protocol
+    required_for_engineering: true
+  - path: docs/audits/automated/signature-harness-contracts-v1.yaml
+    perspective: signature-harness-contracts
+    required_for_engineering: true
+  - path: docs/audits/automated/native-analysis-statistics-v1.yaml
+    perspective: native-analysis-statistics
+    required_for_engineering: true

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ctkat.invalid/schemas/automated-audit-v1.schema.json",
+  "title": "CT-KAT automated adversarial engineering audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "audit_id", "status", "title", "perspective",
+    "automated_agent", "human_reviewer", "automated_agent_id",
+    "audited_at", "audited_commit", "scope", "findings", "dispositions",
+    "evidence", "limitations", "human_gate_effect"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "audit_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "status": {"const": "complete"},
+    "title": {"type": "string", "minLength": 1},
+    "perspective": {
+      "enum": [
+        "artifact-blind-integrity", "mlkem-kyberslash-protocol",
+        "signature-harness-contracts", "native-analysis-statistics"
+      ]
+    },
+    "automated_agent": {"const": true},
+    "human_reviewer": {"const": false},
+    "automated_agent_id": {
+      "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+    },
+    "audited_at": {"type": "string", "format": "date-time"},
+    "audited_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "scope": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "findings": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["finding_id", "severity", "title", "description", "evidence_ids"],
+        "properties": {
+          "finding_id": {
+            "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+          },
+          "severity": {"enum": ["critical", "high", "medium", "low"]},
+          "title": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "evidence_ids": {
+            "type": "array", "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "dispositions": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["finding_id", "status", "rationale", "blocker", "evidence_ids"],
+        "properties": {
+          "finding_id": {
+            "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+          },
+          "status": {"enum": ["addressed", "accepted-with-blocker", "open"]},
+          "rationale": {"type": "string", "minLength": 1},
+          "blocker": {"type": "string"},
+          "evidence_ids": {
+            "type": "array", "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["evidence_id", "path", "sha256", "purpose"],
+        "properties": {
+          "evidence_id": {
+            "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+          },
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "purpose": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "limitations": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "human_gate_effect": {"const": "none"}
+  }
+}

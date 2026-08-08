@@ -1,0 +1,152 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v1
+status: complete
+title: Automated contract audit of two-host native timing analysis and statistics
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: paper-analysis-automated-self-audit
+audited_at: "2026-08-08T06:53:00Z"
+audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+scope:
+  - exact component, target, host, commit, and input-hash provenance
+  - conservative primary two-host risk folding
+  - preregistered pairwise Welch contrasts and family-local Holm adjustment
+  - Cochran Q and I-squared host heterogeneity
+  - signature duration-output-length association and failed-call invalidation
+  - deterministic blinded and unblinded JSON, CSV, Markdown, and manifest parity
+findings:
+  - finding_id: nas-001
+    severity: critical
+    title: Analysis could trust user-entered host and target identities
+    description: Without cross-layer component, manifest, backend, protocol, machine, and commit checks, a result from another host or campaign could enter the paper tables.
+    evidence_ids: [nas-analysis, nas-spec]
+  - finding_id: nas-002
+    severity: critical
+    title: Host disagreement could be averaged into an apparent clean result
+    description: A combined statistic without a conservative risk fold could conceal a valid finding observed on one CPU model.
+    evidence_ids: [nas-analysis, nas-tests]
+  - finding_id: nas-003
+    severity: high
+    title: Preregistered pairwise multiplicity and host heterogeneity were absent
+    description: Family-local contrasts, Holm adjustment, and explicit between-host disagreement metrics needed frozen executable definitions before measurement.
+    evidence_ids: [nas-analysis, nas-spec, nas-tests]
+  - finding_id: nas-004
+    severity: critical
+    title: Failed signing and output-length variation could corrupt secondary analysis
+    description: Duration-length association is uninterpretable if failed API calls, malformed length contracts, or constant-length rows are silently treated as valid variation.
+    evidence_ids: [nas-analysis, nas-tests]
+  - finding_id: nas-005
+    severity: critical
+    title: Named artifacts could be exposed before the analyst completed frozen analysis
+    description: Honest analyst-label blinding requires opaque output and a byte-identical post-unblinding reproduction, not a retrospective checkbox.
+    evidence_ids: [nas-analysis, nas-spec, nas-bundle]
+  - finding_id: nas-006
+    severity: high
+    title: No final two-host dataset or independent statistical review exists yet
+    description: Synthetic tests establish implementation behavior but cannot establish empirical findings or independent methodological approval.
+    evidence_ids: [nas-tests]
+  - finding_id: nas-007
+    severity: critical
+    title: Statistical controls could be copied from backend self-attestation
+    description: Final analysis could consume reported A/A, placebo, detection, nominal-sensitivity, and validity fields without independently deriving them from complete raw protocol rows.
+    evidence_ids: [nas-dudect-verifier, nas-analysis]
+  - finding_id: nas-008
+    severity: high
+    title: Postmeasurement review commit created an impossible promotion gate
+    description: Combining premeasurement M and postmeasurement R0 into one reviewed-commit set caused validators requiring exactly one premeasurement commit to reject every correctly completed two-phase review.
+    evidence_ids: [nas-review-checker, nas-review-tests]
+  - finding_id: nas-009
+    severity: high
+    title: Power and MDE prose exceeded the implemented estimands
+    description: Three-repeat injected-delay detection was described as achieved power, while an A/A-noise-derived normal approximation was described as a bound on the unobserved target effect.
+    evidence_ids: [nas-preregistration, nas-cli]
+dispositions:
+  - finding_id: nas-001
+    status: addressed
+    rationale: The analyzer fail-closes on schema, run kind, exact commits, manifest and artifact hashes, host and boot identities, target sets, backend/protocol agreement, and promotion state.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-spec]
+  - finding_id: nas-002
+    status: addressed
+    rationale: A valid FAIL on either host always yields combined risk-detected; secondary statistics are machine-marked non-overriding.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-tests]
+  - finding_id: nas-003
+    status: addressed
+    rationale: The frozen analyzer implements repeat-level two-sided Welch contrasts, Holm within each preregistered family, and Q/I-squared warnings with deterministic output.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-spec, nas-tests]
+  - finding_id: nas-004
+    status: addressed
+    rationale: Every signature row must have return code zero and consistent runtime contracts; constant lengths yield explicit null association rather than a fabricated coefficient.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-tests]
+  - finding_id: nas-005
+    status: addressed
+    rationale: Blinded mode removes real component, target, family, axis, and input labels; unblinded mode verifies every blinded byte, and the canonical final-evidence root binds both output sets before postmeasurement approval.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-spec, nas-bundle, nas-tests]
+  - finding_id: nas-006
+    status: accepted-with-blocker
+    rationale: Synthetic fixtures and deterministic checks make the implementation engineering-ready, while empirical and human claims remain explicitly unavailable.
+    blocker: Run both accepted physical hosts under the final campaign, freeze the blinded outputs before unblinding, and obtain independent human statistical/artifact review.
+    evidence_ids: [nas-analysis, nas-spec, nas-tests]
+  - finding_id: nas-007
+    status: addressed
+    rationale: The independent official-dudect verifier reconstructs the pinned seed domains and recomputes the target tests, A/A, placebo, injected-delay detection fraction, A/A nominal sensitivity, and final timing validity from raw CSV artifacts before analysis can promote them.
+    blocker: ""
+    evidence_ids: [nas-dudect-verifier, nas-analysis]
+  - finding_id: nas-008
+    status: addressed
+    rationale: Review readiness now reports premeasurement and postmeasurement reviewed commits separately; execution and same-corpus gates consume only the exact single premeasurement commit while preserving the union for reporting.
+    blocker: ""
+    evidence_ids: [nas-review-checker, nas-review-tests]
+  - finding_id: nas-009
+    status: addressed
+    rationale: The preregistration and promotion packet now identify the largest-delay repeat detection fraction and A/A-noise-derived nominal sensitivity as diagnostics, explicitly forbidding their use as a precise achieved-power estimate or target-effect bound.
+    blocker: ""
+    evidence_ids: [nas-preregistration, nas-cli]
+evidence:
+  - evidence_id: nas-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 9188b16a40ad92c58f41247dbe16c073b04299336900848f26ca2ceb5f11c2fc
+    purpose: Fail-closed provenance, primary fold, secondary statistics, deterministic output, and blinding parity implementation.
+  - evidence_id: nas-spec
+    path: docs/measurement/PAPER_NATIVE_ANALYSIS_V1.md
+    sha256: 84e5117dd7a950f920c0683552faf1a0c013c5b0b0dbce5f221f6d2ca2471233
+    purpose: Premeasurement statistical methods, thresholds, output contract, and claim boundary.
+  - evidence_id: nas-tests
+    path: tests/test_paper_native_analysis.py
+    sha256: c753c1512faec51d7dc3eecaf7a6baee09eeea05c402afa5bd42024e81dd88c6
+    purpose: Synthetic risk-fold, p-value, Holm, signature, provenance, determinism, and blinded-parity regression tests.
+  - evidence_id: nas-bundle
+    path: docs/artifact/measurement_bundle_template.yaml
+    sha256: 32b8e5e525d201c30e549f889c8d3a9dfbcb43ea1af94361ebd2ae698988cb40
+    purpose: Schema-v4 measurement/verification commits, two-host artifacts, ASM evidence, and frozen blinded-analysis paths.
+  - evidence_id: nas-dudect-verifier
+    path: ctkat/official_dudect_verify.py
+    sha256: 5f6791945df6ec4b866b825a2d5a95d3a8f9cda498347f689aa4893e17dd5427
+    purpose: Independent raw protocol and statistical-field reconstruction.
+  - evidence_id: nas-review-checker
+    path: scripts/check_paper_reviews.py
+    sha256: 03ed2511880924c9564646f71993c18445a2e74c3c55032f983082b158470d69
+    purpose: Phase-specific human review commit and final-root reporting.
+  - evidence_id: nas-review-tests
+    path: tests/test_paper_reviews.py
+    sha256: 8eb0721b241338c4ad51ff684939be87bc8d1fabc364fa00d8fafb8da5cbd762
+    purpose: Distinct pre/post review commit success and split-precommit rejection tests.
+  - evidence_id: nas-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 7f6a11d76e9a2665f5221d25c622e77c7a0661ab4fab5a7338fc73ccdd81da0b
+    purpose: Frozen estimand definitions and conservative power/nominal-sensitivity interpretation.
+  - evidence_id: nas-cli
+    path: ctkat/cli.py
+    sha256: 7407d99cbfe78fab34ceea311dc012081d65e4ae9e7bbce2e1e29b9af397e20a
+    purpose: Repeat detection-fraction gate and A/A-noise-derived nominal sensitivity computation.
+limitations:
+  - The same automated agent implemented and self-audited this analysis contract; this is not independent review.
+  - P-values are secondary diagnostics and cannot declassify an official-dudect finding.
+  - Synthetic fixtures do not predict native effect sizes or validate the two target CPU models.
+  - Evidence hashes expire on any referenced-file change.
+human_gate_effect: none

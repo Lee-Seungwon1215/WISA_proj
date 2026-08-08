@@ -1,0 +1,139 @@
+schema_version: "1.0"
+audit_id: automated-artifact-blind-integrity-v1
+status: complete
+title: Automated adversarial audit of final-artifact and analyst-blinding integrity
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-blind-audit
+audited_at: "2026-08-08T06:50:00Z"
+audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+scope:
+  - final two-host bundle provenance, host identity, hashes, run identity, and artifact reuse
+  - resume and run-kind separation for engineering, pilot, and final campaigns
+  - result-analyst label blinding, transfer records, unblinding order, and byte parity
+  - separation between automated engineering audits and independent human review
+findings:
+  - finding_id: abi-001
+    severity: critical
+    title: Final bundle trusted self-declared host and component provenance
+    description: CPU, physical-host identity, commit, component roots, and artifact reuse were not all cross-checked against immutable component reports.
+    evidence_ids: [abi-bundle, abi-reproducer]
+  - finding_id: abi-002
+    severity: critical
+    title: Resume could reuse artifacts across run kinds or changed host state
+    description: A resumed final campaign could skip completed targets without a unique run identity and preserved host/run-kind contract.
+    evidence_ids: [abi-native-runner]
+  - finding_id: abi-003
+    severity: critical
+    title: Same-corpus evidence was not sufficiently bound to raw artifacts and host identity
+    description: Promotion relied on reported result fields without a complete exact-commit, raw-hash, and physical-host cross-check across tools.
+    evidence_ids: [abi-baseline-runner]
+  - finding_id: abi-004
+    severity: critical
+    title: Blind rerun claims were checkboxes rather than an enforceable analyst workflow
+    description: Real target names and an unstructured unblinding note could be exposed before analysis with no frozen byte-parity record.
+    evidence_ids: [abi-unblinding-schema, abi-analysis]
+  - finding_id: abi-005
+    severity: high
+    title: Execution was not inseparably tied to the premeasurement human-review gate
+    description: A final-looking execution could begin with pending human packets and still create promotable-looking artifacts.
+    evidence_ids: [abi-native-runner, abi-reproducer]
+  - finding_id: abi-006
+    severity: critical
+    title: Independent human review is still external and incomplete
+    description: Automated adversarial audits can reduce engineering mistakes but cannot supply the two independent human approvals required for final paper promotion.
+    evidence_ids: [abi-human-manifest]
+  - finding_id: abi-007
+    severity: critical
+    title: Postmeasurement approval was not bound to one canonical evidence root
+    description: A reviewer could approve a bundle or analysis description without cryptographically binding every host hash manifest, ASM bundle, unblinding record, and blinded/named output byte.
+    evidence_ids: [abi-final-root, abi-reproducer, abi-review-checker]
+  - finding_id: abi-008
+    severity: critical
+    title: Paper-ready descendants could mutate evidence-critical files
+    description: A broadly defined review-only descendant could change code, manifests, or analysis after verification while retaining an apparently valid postmeasurement approval.
+    evidence_ids: [abi-reproducer, abi-review-checker]
+dispositions:
+  - finding_id: abi-001
+    status: addressed
+    rationale: Bundle schema v4 cross-checks exact CPU and machine identity, non-overlapping host roots, per-host SHA256SUMS, component commit, unique run IDs, run kinds, and final promotion state.
+    blocker: ""
+    evidence_ids: [abi-bundle, abi-reproducer]
+  - finding_id: abi-002
+    status: addressed
+    rationale: Native reports now bind run_kind and run_id, forbid final resume, preserve host fingerprints, and validate the expected commit and run kind.
+    blocker: ""
+    evidence_ids: [abi-native-runner]
+  - finding_id: abi-003
+    status: addressed
+    rationale: Same-corpus schema v2 validates exact commit, final run kind, raw evidence hashes, tool capability, unique run identity, and the same physical host across all required tools.
+    blocker: ""
+    evidence_ids: [abi-baseline-runner, abi-reproducer]
+  - finding_id: abi-004
+    status: addressed
+    rationale: Structured label maps, host-transfer hashes, ordered timestamps, an opaque analysis manifest, and blinded-to-unblinded byte parity replace the old checkbox claim.
+    blocker: ""
+    evidence_ids: [abi-unblinding-schema, abi-analysis, abi-reproducer]
+  - finding_id: abi-005
+    status: addressed
+    rationale: Final run creation and final-bundle reproduction require a recorded ready human premeasurement gate; engineering and pilot runs remain nonpromotable.
+    blocker: ""
+    evidence_ids: [abi-native-runner, abi-reproducer]
+  - finding_id: abi-006
+    status: accepted-with-blocker
+    rationale: The engineering workflow explicitly preserves this as a final external gate and grants no reviewer credit to any automated audit.
+    blocker: Two independent named humans must review the exact frozen source/evidence hashes and complete every required paper packet before final execution and promotion.
+    evidence_ids: [abi-human-manifest]
+  - finding_id: abi-007
+    status: addressed
+    rationale: Verification emits a canonical final-evidence manifest whose root binds the bundle, both host hash manifests, ASM evidence, unblinding record, and exact blinded/named output sets; postmeasurement reviewers must approve that root.
+    blocker: ""
+    evidence_ids: [abi-final-root, abi-reproducer, abi-review-checker]
+  - finding_id: abi-008
+    status: addressed
+    rationale: Between verification C and review completion R1, the sole permitted changed path is the native-promotion packet; both reproduction and analysis validators independently reject any other descendant change.
+    blocker: ""
+    evidence_ids: [abi-reproducer, abi-review-checker]
+evidence:
+  - evidence_id: abi-bundle
+    path: docs/artifact/measurement_bundle_template.yaml
+    sha256: 32b8e5e525d201c30e549f889c8d3a9dfbcb43ea1af94361ebd2ae698988cb40
+    purpose: Schema-v4 host, component, same-corpus, ASM, and blinded-analysis bundle contract.
+  - evidence_id: abi-unblinding-schema
+    path: docs/artifact/unblinding-record-v1.schema.json
+    sha256: 3d859f67455fe3386b7d4ef742eee08e0ff2b6989e4ea02dce0a632ecd488c35
+    purpose: Structured custodian, analyst, transfer, timestamp, label-map, and blinded-manifest contract.
+  - evidence_id: abi-reproducer
+    path: scripts/reproduce_artifact.py
+    sha256: 0bbcba9569a38886413f0ab8ea1b8c482a42a59f4644032c813d41f5ed393bd3
+    purpose: Final bundle, hash, host identity, run reuse, human gate, and unblinding validation.
+  - evidence_id: abi-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 6b378cf41b05438bf975cbecd3dc87369366891f986cf13f6155d6598d5fe448
+    purpose: Run-kind, final-resume, run identity, preflight, and promotion behavior.
+  - evidence_id: abi-baseline-runner
+    path: scripts/run_same_corpus_baselines.py
+    sha256: d4c3d14084c926de8e740458238bddde0e636d478cc57fb10b396f5849d7c095
+    purpose: Exact-commit final same-corpus evidence, fresh TIMECOP reproduction, and physical-host validation for all tools.
+  - evidence_id: abi-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 9188b16a40ad92c58f41247dbe16c073b04299336900848f26ca2ceb5f11c2fc
+    purpose: Opaque-label output, deterministic manifest, and unblinded byte-parity enforcement.
+  - evidence_id: abi-human-manifest
+    path: docs/reviews/paper/manifest.yaml
+    sha256: 3bcbe02022d1231f03a2764c1577cd8db45bfd30bd1920f210cd97aac35ca0fd
+    purpose: Separate independent-human review packet index that remains outside automated audits.
+  - evidence_id: abi-final-root
+    path: docs/artifact/final-evidence-root-v1.schema.json
+    sha256: 7d873f6ae813f88c8e11f9b05284e55e0025dae90854bf0554e1823d50b54e2f
+    purpose: Canonical postmeasurement evidence-root field and artifact-index contract.
+  - evidence_id: abi-review-checker
+    path: scripts/check_paper_reviews.py
+    sha256: 03ed2511880924c9564646f71993c18445a2e74c3c55032f983082b158470d69
+    purpose: Phase-separated human-review commit and final-evidence-root validation.
+limitations:
+  - This audit was performed by an automated agent and is not an independent human review.
+  - Human access ordering is supported by hashes and attestations but cannot be proven solely by software.
+  - Evidence hashes expire on any referenced-file change and require a fresh automated audit disposition.
+human_gate_effect: none
