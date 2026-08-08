@@ -6,14 +6,15 @@ perspective: mlkem-kyberslash-protocol
 automated_agent: true
 human_reviewer: false
 automated_agent_id: mlkem-kyber-audit
-audited_at: "2026-08-08T06:51:00Z"
-audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+audited_at: "2026-08-08T07:37:08Z"
+audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
 scope:
   - same-corpus toy ML-KEM class axis and defined C arithmetic
   - exact-binary ML-KEM public instruction attribution
   - KyberSlash fixed-secret chosen-ciphertext contrast
   - direct vulnerable-versus-patched operand-bin latency canaries
   - compiler optimization and linked-binary div/idiv contracts
+  - raw-derived directional positive-control detection and sensitivity diagnostics
 findings:
   - finding_id: mkp-001
     severity: critical
@@ -44,7 +45,7 @@ findings:
     severity: critical
     title: Official-dudect controls and power fields could be self-attested
     description: A structurally plausible backend JSON could claim passing A/A, placebo, positive controls, and protocol rows without independently recomputing every pinned statistic from the three raw CSV artifacts.
-    evidence_ids: [mkp-dudect-verifier, mkp-dudect-tests]
+    evidence_ids: [mkp-dudect-producer, mkp-dudect-verifier, mkp-dudect-tests, mkp-producer-control-tests, mkp-control-tests]
   - finding_id: mkp-007
     severity: critical
     title: ASM evidence did not close dependency and rebuild provenance
@@ -88,9 +89,9 @@ dispositions:
     evidence_ids: [mkp-v2-plan, mkp-v2-doc]
   - finding_id: mkp-006
     status: addressed
-    rationale: The independent verifier reparses calibration, target, and complete protocol CSVs, reconstructs all frozen seeds and 102 dudect tests, and recomputes every control, detection-fraction, nominal-sensitivity, and timing-validity field.
+    rationale: The independent verifier reparses calibration, target, and complete protocol CSVs, reconstructs all frozen seeds and 102 dudect tests, and recomputes every control, detection fraction, threshold-aligned sensitivity diagnostic, and timing-validity field. Positive controls now pass only when the raw class-1 delay has the preregistered positive mean delta and negative t-score direction; integral means are normalized to floats solely to match the producer's JSON number domain.
     blocker: ""
-    evidence_ids: [mkp-dudect-verifier, mkp-dudect-tests]
+    evidence_ids: [mkp-dudect-producer, mkp-dudect-verifier, mkp-dudect-tests, mkp-producer-control-tests, mkp-control-tests]
   - finding_id: mkp-007
     status: addressed
     rationale: ASM bundles now pin the JSON Schema hash, full compiler identity/argv/transcripts, tracked dependency closure, exact objdump/nm bytes, and an isolated source rebuild for every required cell.
@@ -137,12 +138,24 @@ evidence:
     purpose: Fail-closed complete-cell and content-addressed ML-KEM assembly evidence validation.
   - evidence_id: mkp-dudect-verifier
     path: ctkat/official_dudect_verify.py
-    sha256: 5f6791945df6ec4b866b825a2d5a95d3a8f9cda498347f689aa4893e17dd5427
-    purpose: Independent raw-CSV protocol, seed-domain, control, and 102-test recomputation.
+    sha256: 27ee104d90be08b5a6f664422adfe335bba7969e7081e01cbb4de68818f1f2e3
+    purpose: Independent raw-CSV protocol, seed-domain, directional-control, sensitivity, and 102-test recomputation.
+  - evidence_id: mkp-dudect-producer
+    path: ctkat/cli.py
+    sha256: 9bda3c2e7e74293e31c96fed0313cc1225a8b4bc7cae8281a04eaadab0d2e6cb
+    purpose: Producer-side class-1-slower positive-control gate and threshold-aligned A/A sensitivity diagnostic.
   - evidence_id: mkp-dudect-tests
     path: tests/test_official_dudect_verify.py
     sha256: 4bf48c949bfa3356ce3eac61682551470b9fa5dce50ebad908e8ce0defbbb3d4
     purpose: Positive recomputation and forged-control/raw-protocol rejection tests.
+  - evidence_id: mkp-producer-control-tests
+    path: tests/test_cli.py
+    sha256: 0ed972dca3bd072c78c9d3913c20348934871401e78a015ea26af690f72ee7ea
+    purpose: Producer-side reversed-direction rejection and threshold-aligned sensitivity regression tests.
+  - evidence_id: mkp-control-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: 2f3d8f9c5d233a70818cf97857affc9a1231019d3f6138ab64fe4c252c489018
+    purpose: Independent directional-gate, integral-mean float-normalization, and complete artifact-validation regressions.
   - evidence_id: mkp-asm-builder
     path: ctkat/asm_evidence.py
     sha256: 30924e46738594d09775699ad6aaa4f29346d439bb9f95a07613a46bd072671a
@@ -170,5 +183,6 @@ evidence:
 limitations:
   - This automated audit cannot establish public attribution or exploitability without human cryptographic review.
   - Chosen-ciphertext and direct-operand axes are intentionally not described as secret-key leakage or key recovery.
+  - Integral-to-float normalization is representational only; finite statistics remain raw-derived and tolerance-checked, while degenerate non-finite control statistics fail closed.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none

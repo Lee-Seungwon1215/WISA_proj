@@ -6,11 +6,13 @@ perspective: signature-harness-contracts
 automated_agent: true
 human_reviewer: false
 automated_agent_id: signature-falcon-audit
-audited_at: "2026-08-08T06:52:00Z"
-audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+audited_at: "2026-08-08T07:36:15Z"
+audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
 scope:
   - detached-signature API return-code, length, and verification correctness gates
   - fixed versus bounded signature output contracts
+  - signature timing physical controls, directional seeded-delay power gate, and sensitivity diagnostics
+  - producer-versus-independent-verifier numeric serialization and raw-protocol binding
   - ML-DSA rejection-path and SPHINCS public-state declassification claims
   - Falcon and c-fn-dsa full-API timing scope and floating-point comparator evidence
   - duration-versus-output-length secondary analysis and human review boundary
@@ -50,6 +52,21 @@ findings:
     title: Falcon measured-binary instruction claims could be self-attested
     description: A backend report could claim the expected native-FP or software-FPR instruction profile while preserving only derived counts or stale disassembly rather than freshly reproducing the exact linked binary.
     evidence_ids: [shc-binary-contract, shc-falcon-contracts, shc-binary-tests]
+  - finding_id: shc-008
+    severity: high
+    title: Integral control means could make valid signature artifacts unverifiable
+    description: The producer serialized timing means from float samples while the independent protocol parser restored integer cycle counts; an exactly integral mean was then misclassified as an integer schema field and rejected despite numerical equality.
+    evidence_ids: [shc-cli, shc-dudect-verifier, shc-native-tests]
+  - finding_id: shc-009
+    severity: critical
+    title: Positive-control power accepted effects in the wrong direction
+    description: Counting only absolute t-score exceedances allowed a reversed class-0-slower effect to satisfy the sensitivity gate even though the seeded control contract injects a class-1 delay.
+    evidence_ids: [shc-cli, shc-dudect-verifier, shc-control-tests, shc-native-tests, shc-timing-contract]
+  - finding_id: shc-010
+    severity: medium
+    title: Sensitivity output did not quantify the actual directional positive-control gate
+    description: The existing alpha-based A/A nominal-sensitivity field did not report the effect implied by the frozen positive t threshold and target-power rule, which could mislead experiment planning if treated as the gate's detectable effect.
+    evidence_ids: [shc-cli, shc-dudect-verifier, shc-control-tests, shc-native-tests, shc-timing-contract]
 dispositions:
   - finding_id: shc-001
     status: addressed
@@ -86,6 +103,21 @@ dispositions:
     rationale: The validator hashes the measured binary and generated/linked sources, verifies the exact compiler and objdump executables, reparses preserved disassembly, reruns objdump over the preserved binary, and compares the fresh semantic observations and canonical transcript.
     blocker: ""
     evidence_ids: [shc-binary-contract, shc-falcon-contracts, shc-binary-tests]
+  - finding_id: shc-008
+    status: addressed
+    rationale: The independent verifier now normalizes recomputed statistical means to floats while retaining strict integer typing for counts and seeds; the campaign regression exercises the exact integral-mean JSON round trip.
+    blocker: ""
+    evidence_ids: [shc-dudect-verifier, shc-native-tests]
+  - finding_id: shc-009
+    status: addressed
+    rationale: Both the producer and independent verifier now require mean_delta greater than zero and t_score at or below the negative frozen threshold; focused tests reject reversed and sub-threshold controls, and the frozen contract documents the direction.
+    blocker: ""
+    evidence_ids: [shc-cli, shc-dudect-verifier, shc-control-tests, shc-native-tests, shc-timing-contract, shc-native-campaign]
+  - finding_id: shc-010
+    status: addressed
+    rationale: Producer and verifier now record and independently reconstruct positive_detection_effects_at_target_power as (positive_abs_t_threshold + z(target_power)) times the A/A standard error, separately from the legacy alpha-based nominal diagnostic and without treating either value as a target-effect bound.
+    blocker: ""
+    evidence_ids: [shc-cli, shc-dudect-verifier, shc-control-tests, shc-native-tests, shc-timing-contract]
 evidence:
   - evidence_id: shc-template
     path: ctkat/templates/timing_sign.c.j2
@@ -97,8 +129,28 @@ evidence:
     purpose: Signature return-code retention and fail-closed trace contract parser.
   - evidence_id: shc-cli
     path: ctkat/cli.py
-    sha256: 7407d99cbfe78fab34ceea311dc012081d65e4ae9e7bbce2e1e29b9af397e20a
-    purpose: Protocol-wide signature metadata aggregation and timing-validity gate.
+    sha256: 9bda3c2e7e74293e31c96fed0313cc1225a8b4bc7cae8281a04eaadab0d2e6cb
+    purpose: Protocol-wide signature metadata aggregation, directional positive-control gate, and sensitivity diagnostics.
+  - evidence_id: shc-dudect-verifier
+    path: ctkat/official_dudect_verify.py
+    sha256: 27ee104d90be08b5a6f664422adfe335bba7969e7081e01cbb4de68818f1f2e3
+    purpose: Independent raw-protocol reconstruction, numeric normalization, directional detection, and diagnostic comparison.
+  - evidence_id: shc-control-tests
+    path: tests/test_cli.py
+    sha256: 0ed972dca3bd072c78c9d3913c20348934871401e78a015ea26af690f72ee7ea
+    purpose: Producer-side reversed-direction, threshold, and positive-detection-effect regression tests.
+  - evidence_id: shc-native-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: 2f3d8f9c5d233a70818cf97857affc9a1231019d3f6138ab64fe4c252c489018
+    purpose: Independent-verifier direction, integral-mean serialization, and complete artifact-bundle regressions.
+  - evidence_id: shc-timing-contract
+    path: docs/TIMING_HARNESS_V2.md
+    sha256: 8f45c0111950a6038bd0c9bf820faae4b41d8706b102336580977a63336f277e
+    purpose: Frozen directional positive-control rule and non-claim boundary for both A/A-derived diagnostics.
+  - evidence_id: shc-native-campaign
+    path: docs/measurement/native_timing_v2_campaign.yaml
+    sha256: 256e70f1aa6b5cd4192e53ef14b83b03a5e10be59093a90d23a484dd5685f8e5
+    purpose: Frozen signature control effects and timing thresholds used by the corpus-wide native campaign.
   - evidence_id: shc-variable-time
     path: docs/accepted_variable_time.md
     sha256: 4001257f1c3365e608c84e4c311f9d9c94a6068b4637b9958397891daffa35cf
@@ -126,5 +178,6 @@ evidence:
 limitations:
   - This automated audit is not cryptographic approval of any public-state declassification.
   - Full-API signature timing includes encoding and randomness effects unless a separately frozen core harness is measured.
+  - Directional positive-control power and its A/A-derived diagnostics do not bound an unobserved target effect or estimate achieved target power.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none

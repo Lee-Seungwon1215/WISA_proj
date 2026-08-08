@@ -6,8 +6,8 @@ perspective: native-analysis-statistics
 automated_agent: true
 human_reviewer: false
 automated_agent_id: paper-analysis-automated-self-audit
-audited_at: "2026-08-08T06:53:00Z"
-audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+audited_at: "2026-08-08T07:36:45Z"
+audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
 scope:
   - exact component, target, host, commit, and input-hash provenance
   - conservative primary two-host risk folding
@@ -15,6 +15,8 @@ scope:
   - Cochran Q and I-squared host heterogeneity
   - signature duration-output-length association and failed-call invalidation
   - deterministic blinded and unblinded JSON, CSV, Markdown, and manifest parity
+  - directional seeded positive-control acceptance and independent recomputation
+  - threshold-based A/A planning diagnostics and frozen ML-DSA control curves
 findings:
   - finding_id: nas-001
     severity: critical
@@ -61,6 +63,16 @@ findings:
     title: Power and MDE prose exceeded the implemented estimands
     description: Three-repeat injected-delay detection was described as achieved power, while an A/A-noise-derived normal approximation was described as a bound on the unobserved target effect.
     evidence_ids: [nas-preregistration, nas-cli]
+  - finding_id: nas-010
+    severity: high
+    title: An absolute-value canary gate could accept a reversed seeded effect
+    description: The positive control injects delay only into class 1, so a large class-0-slower result is a contradiction or confound rather than evidence that the intended canary was detected; accepting either t-score direction could incorrectly validate an experiment.
+    evidence_ids: [nas-cli, nas-dudect-verifier, nas-control-tests, nas-campaign-tests]
+  - finding_id: nas-011
+    severity: high
+    title: ML-DSA positive-control effects were not scaled to the actual detection rule
+    description: Selecting a signature canary curve without relating its largest delay to the frozen t-score threshold and observed A/A standard error can make an otherwise operating harness predictably fail the validity gate.
+    evidence_ids: [nas-cli, nas-primary-campaign, nas-diverse-campaign, nas-campaign-tests]
 dispositions:
   - finding_id: nas-001
     status: addressed
@@ -104,9 +116,19 @@ dispositions:
     evidence_ids: [nas-review-checker, nas-review-tests]
   - finding_id: nas-009
     status: addressed
-    rationale: The preregistration and promotion packet now identify the largest-delay repeat detection fraction and A/A-noise-derived nominal sensitivity as diagnostics, explicitly forbidding their use as a precise achieved-power estimate or target-effect bound.
+    rationale: The preregistration now identifies the largest-delay repeat fraction as an acceptance control rather than achieved power, retains the legacy alpha-based A/A diagnostic only with explicit caveats, and separately reports the actual directional-threshold planning effect as (positive_abs_t_threshold + z(target_power)) times the A/A standard error.
     blocker: ""
-    evidence_ids: [nas-preregistration, nas-cli]
+    evidence_ids: [nas-preregistration, nas-cli, nas-dudect-verifier, nas-control-tests]
+  - finding_id: nas-010
+    status: addressed
+    rationale: The producer and independent verifier now count a positive-control detection only when class 1 is slower and t is at or below the negative frozen threshold; focused tests reject both a sub-threshold result and an equally large reversed result.
+    blocker: ""
+    evidence_ids: [nas-cli, nas-dudect-verifier, nas-control-tests, nas-campaign-tests]
+  - finding_id: nas-011
+    status: addressed
+    rationale: The artifacts expose an A/A-derived effect for the actual directional gate, and both primary and diverse-native manifests freeze a wide pre-final ML-DSA curve of 65,536, 262,144, and 1,048,576 clock ticks; tests pin the campaign override and independent diagnostic reconstruction.
+    blocker: ""
+    evidence_ids: [nas-cli, nas-dudect-verifier, nas-primary-campaign, nas-diverse-campaign, nas-campaign-tests]
 evidence:
   - evidence_id: nas-analysis
     path: scripts/analyze_paper_native_results.py
@@ -126,8 +148,8 @@ evidence:
     purpose: Schema-v4 measurement/verification commits, two-host artifacts, ASM evidence, and frozen blinded-analysis paths.
   - evidence_id: nas-dudect-verifier
     path: ctkat/official_dudect_verify.py
-    sha256: 5f6791945df6ec4b866b825a2d5a95d3a8f9cda498347f689aa4893e17dd5427
-    purpose: Independent raw protocol and statistical-field reconstruction.
+    sha256: 27ee104d90be08b5a6f664422adfe335bba7969e7081e01cbb4de68818f1f2e3
+    purpose: Independent raw protocol, directional canary, and statistical-field reconstruction.
   - evidence_id: nas-review-checker
     path: scripts/check_paper_reviews.py
     sha256: 03ed2511880924c9564646f71993c18445a2e74c3c55032f983082b158470d69
@@ -138,15 +160,33 @@ evidence:
     purpose: Distinct pre/post review commit success and split-precommit rejection tests.
   - evidence_id: nas-preregistration
     path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
-    sha256: 7f6a11d76e9a2665f5221d25c622e77c7a0661ab4fab5a7338fc73ccdd81da0b
-    purpose: Frozen estimand definitions and conservative power/nominal-sensitivity interpretation.
+    sha256: d8730fb7b8840e378eac5c40d88b28d6a29078e38c50aaaea492ae54fad6d16d
+    purpose: Frozen estimand definitions, directional canary rule, and conservative planning-diagnostic interpretation.
   - evidence_id: nas-cli
     path: ctkat/cli.py
-    sha256: 7407d99cbfe78fab34ceea311dc012081d65e4ae9e7bbce2e1e29b9af397e20a
-    purpose: Repeat detection-fraction gate and A/A-noise-derived nominal sensitivity computation.
+    sha256: 9bda3c2e7e74293e31c96fed0313cc1225a8b4bc7cae8281a04eaadab0d2e6cb
+    purpose: Directional repeat-detection gate and A/A-noise-derived nominal and actual-threshold planning diagnostics.
+  - evidence_id: nas-control-tests
+    path: tests/test_cli.py
+    sha256: 0ed972dca3bd072c78c9d3913c20348934871401e78a015ea26af690f72ee7ea
+    purpose: Focused reversed-effect rejection and actual-threshold planning-formula regression tests.
+  - evidence_id: nas-campaign-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: 2f3d8f9c5d233a70818cf97857affc9a1231019d3f6138ab64fe4c252c489018
+    purpose: Independent canary-rule reconstruction, diagnostic parity, and frozen campaign-effect regression tests.
+  - evidence_id: nas-primary-campaign
+    path: docs/measurement/native_timing_v2_campaign.yaml
+    sha256: 256e70f1aa6b5cd4192e53ef14b83b03a5e10be59093a90d23a484dd5685f8e5
+    purpose: Frozen primary ML-DSA positive-control curve for the pre-final native campaign.
+  - evidence_id: nas-diverse-campaign
+    path: docs/measurement/diverse_native_v1.yaml
+    sha256: 78036e094fab28501f99c78d171e700b12070573b382ac3df4e0eb3c660c07a1
+    purpose: Matching frozen ML-DSA curve for portable versus x86_64-native comparison.
 limitations:
   - The same automated agent implemented and self-audited this analysis contract; this is not independent review.
   - P-values are secondary diagnostics and cannot declassify an official-dudect finding.
   - Synthetic fixtures do not predict native effect sizes or validate the two target CPU models.
+  - The threshold-based effect value is an A/A normal approximation for planning, not achieved power or a bound on target leakage.
+  - The revised ML-DSA curve still requires successful engineering calibration and final execution on both accepted physical hosts.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none

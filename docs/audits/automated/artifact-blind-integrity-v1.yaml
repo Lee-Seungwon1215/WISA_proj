@@ -6,8 +6,8 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-blind-audit
-audited_at: "2026-08-08T06:50:00Z"
-audited_commit: 7a12927d0634e350ea7559d128d7eb8d2c8f4880
+audited_at: "2026-08-08T07:35:59Z"
+audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
 scope:
   - final two-host bundle provenance, host identity, hashes, run identity, and artifact reuse
   - resume and run-kind separation for engineering, pilot, and final campaigns
