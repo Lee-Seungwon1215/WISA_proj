@@ -6,14 +6,16 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-blind-audit
-audited_at: "2026-08-10T09:20:29Z"
-audited_commit: 48791fc170e65bf117d029eae80bb3397e2198e5
+audited_at: "2026-08-10T11:43:02Z"
+audited_commit: 55f1bf0f0eda949edd52cf36e04ca3a81de780ba
 scope:
   - final two-host bundle provenance, host identity, hashes, run identity, and artifact reuse
   - resume and run-kind separation for engineering, pilot, and final campaigns
   - result-analyst label blinding, transfer records, unblinding order, and byte parity
   - separation between automated engineering audits and independent human review
-  - versioned separation of Falcon v1 engineering calibration from Falcon v2 final evidence
+  - paper v4 routing and isolated output roots for core v3, Falcon v2, and diverse v2 replacement evidence
+  - prohibition on reusing Falcon/diverse v1 or committed-corpus v2 engineering artifacts in replacement final campaigns
+  - mixed ML-KEM valid-tuple attribution limits, independent machine validation, and the dedicated pending human-review packet
 findings:
   - finding_id: abi-001
     severity: critical
@@ -59,7 +61,22 @@ findings:
     severity: critical
     title: Falcon v1 engineering calibration could be reused after the v2 protocol amendment
     description: Without a versioned manifest, paper-campaign, and preregistration boundary, the nonpromotable v1 calibration traces could be relabeled or incorporated into v2 final evidence even though the positive-control ladder changed after the engineering run.
-    evidence_ids: [abi-falcon-v2-manifest, abi-paper-campaign-v3, abi-preregistration, abi-reproducer, abi-analysis]
+    evidence_ids: [abi-falcon-v2-manifest, abi-paper-campaign-v4, abi-preregistration, abi-reproducer, abi-analysis]
+  - finding_id: abi-010
+    severity: critical
+    title: Replacement campaigns could collide with or accept legacy engineering artifact roots
+    description: Paper v4 needs distinct core-v3 and diverse-v2 roots, fresh final execution, and exact manifest identity checks so v1 diverse or v2 committed-corpus engineering traces cannot be resumed, relabeled, or substituted.
+    evidence_ids: [abi-paper-campaign-v4, abi-paper-checker, abi-core-v3-manifest, abi-diverse-v2-manifest, abi-bundle, abi-native-runner, abi-reproducer, abi-analysis, abi-preregistration]
+  - finding_id: abi-011
+    severity: critical
+    title: Mixed valid-tuple timing could be over-attributed to secret-key material
+    description: Fixed-versus-fresh valid tuples vary the secret key, matching ciphertext, and embedded public-key material together, so artifact metadata or a timing signal cannot identify a secret-only cause.
+    evidence_ids: [abi-input-contract, abi-core-v3-manifest, abi-diverse-v2-manifest, abi-paper-campaign-v4, abi-valid-tuple-review, abi-claim-matrix, abi-native-runner, abi-analysis]
+  - finding_id: abi-012
+    severity: critical
+    title: Two-host final timing and blinded evidence do not yet exist
+    description: The audited commit contains frozen schemas, validators, and pending review packets but no final runs from two distinct physical hosts, completed blinding record, named analysis, or canonical final-evidence root.
+    evidence_ids: [abi-paper-campaign-v4, abi-bundle, abi-human-manifest, abi-claim-matrix, abi-reproducer, abi-final-root]
 dispositions:
   - finding_id: abi-001
     status: addressed
@@ -89,8 +106,8 @@ dispositions:
   - finding_id: abi-006
     status: accepted-with-blocker
     rationale: The engineering workflow explicitly preserves this as a final external gate and grants no reviewer credit to any automated audit.
-    blocker: Two independent named humans must review the exact frozen source/evidence hashes and complete every required paper packet before final execution and promotion.
-    evidence_ids: [abi-human-manifest]
+    blocker: Two independent named humans must review the exact frozen source/evidence hashes, including the new ML-KEM valid-tuple packet, and complete every required paper packet before final execution and promotion.
+    evidence_ids: [abi-human-manifest, abi-valid-tuple-review, abi-review-checker]
   - finding_id: abi-007
     status: addressed
     rationale: Verification emits a canonical final-evidence manifest whose root binds the bundle, both host hash manifests, ASM evidence, unblinding record, and exact blinded/named output sets; postmeasurement reviewers must approve that root.
@@ -103,38 +120,61 @@ dispositions:
     evidence_ids: [abi-reproducer, abi-review-checker]
   - finding_id: abi-009
     status: addressed
-    rationale: Falcon v2, paper campaign v3, and the amended preregistration classify every v1 trace as engineering calibration only, require fresh final output roots on both hosts, and forbid artifact reuse or final resume. The reproducer and analysis loader now bind the Falcon component to the exact falcon-native-v2 manifest and campaign identity, so a falcon-native-v1 report cannot satisfy the v2 final boundary.
+    rationale: Falcon v2, paper campaign v4, and the amended preregistration classify every v1 trace as engineering calibration only, require fresh final output roots on both hosts, and forbid artifact reuse or final resume. The reproducer and analysis loader bind the Falcon component to the exact falcon-native-v2 manifest and campaign identity, so a falcon-native-v1 report cannot satisfy the v2 final boundary.
     blocker: ""
-    evidence_ids: [abi-falcon-v2-manifest, abi-paper-campaign-v3, abi-preregistration, abi-reproducer, abi-analysis]
+    evidence_ids: [abi-falcon-v2-manifest, abi-paper-campaign-v4, abi-preregistration, abi-reproducer, abi-analysis]
+  - finding_id: abi-010
+    status: addressed
+    rationale: The paper-v4 checker pins core v3 to committed-corpus-v3 and diverse v2 to diverse-v2. Final runs reject resume and non-empty roots; reports bind campaign ID, manifest hash, commit, run ID, final run kind, and the human gate. Bundle, reproducer, and analyzer require the exact v3/v2 manifests and reject overlapping host/component paths and reused run identities, so legacy engineering reports cannot satisfy the replacement boundary.
+    blocker: ""
+    evidence_ids: [abi-paper-campaign-v4, abi-paper-checker, abi-core-v3-manifest, abi-diverse-v2-manifest, abi-bundle, abi-native-runner, abi-reproducer, abi-analysis, abi-preregistration]
+  - finding_id: abi-011
+    status: accepted-with-blocker
+    rationale: Core v3 and diverse v2 use the machine axis valid_tuple, and both runner and analyzer reconstruct every preserved trace contract fail closed with secret_attribution_permitted=false. Paper v4 and the claim matrix prohibit secret attribution, while the dedicated review packet keeps the scientific interpretation gate external to automation.
+    blocker: Two independent named humans must approve paper-mlkem-valid-tuple-v1 for the exact frozen source commit before any final valid-tuple measurement can start; a later signal must still be reported only as a mixed public-and-secret contrast.
+    evidence_ids: [abi-input-contract, abi-core-v3-manifest, abi-diverse-v2-manifest, abi-paper-campaign-v4, abi-valid-tuple-review, abi-claim-matrix, abi-native-runner, abi-analysis, abi-review-checker]
+  - finding_id: abi-012
+    status: accepted-with-blocker
+    rationale: The repository honestly marks the paper campaign premeasurement-frozen, all human packets pending, and the timing claim pending physical measurement. The bundle, analyzer, reproducer, and final-root schema are preparation contracts rather than evidence that execution occurred.
+    blocker: Collect fresh final artifacts at the audited/reviewed commit on two distinct non-virtualized physical x86_64 hosts, complete the frozen blinding and unblinding workflow, generate the canonical final-evidence root, and obtain postmeasurement human approval of that exact root.
+    evidence_ids: [abi-paper-campaign-v4, abi-bundle, abi-human-manifest, abi-claim-matrix, abi-reproducer, abi-final-root]
 evidence:
   - evidence_id: abi-bundle
     path: docs/artifact/measurement_bundle_template.yaml
-    sha256: 32b8e5e525d201c30e549f889c8d3a9dfbcb43ea1af94361ebd2ae698988cb40
-    purpose: Schema-v4 host, component, same-corpus, ASM, and blinded-analysis bundle contract.
+    sha256: 0cbbbea090d68589e772f76ba66c66f0a55ca1878061335c688ba2f494a1d0de
+    purpose: Schema-v4 two-host bundle routing with distinct committed-corpus-v3 and diverse-v2 component roots plus same-corpus, ASM, and blinded-analysis indexes.
   - evidence_id: abi-unblinding-schema
     path: docs/artifact/unblinding-record-v1.schema.json
     sha256: 3d859f67455fe3386b7d4ef742eee08e0ff2b6989e4ea02dce0a632ecd488c35
     purpose: Structured custodian, analyst, transfer, timestamp, label-map, and blinded-manifest contract.
   - evidence_id: abi-reproducer
     path: scripts/reproduce_artifact.py
-    sha256: 5117c50109d65dc647ca8f03d6ea3552df5e5c3d4de8ff858332fa31cee08aa9
-    purpose: Final bundle, hash, host identity, run reuse, human gate, and unblinding validation.
+    sha256: c420ad95f74df9b2358273d626cca979a745ec3a1394c20e87b1338144155fee
+    purpose: Exact v3/v2 component validation, non-overlapping artifact roots, final run identity, human gates, blinded parity, and canonical final-evidence-root reproduction.
   - evidence_id: abi-native-runner
     path: scripts/run_native_timing_campaign.py
-    sha256: 6b378cf41b05438bf975cbecd3dc87369366891f986cf13f6155d6598d5fe448
-    purpose: Run-kind, final-resume, run identity, preflight, and promotion behavior.
+    sha256: 4c2667217aee3c79c8008514d8335b8ffc0fa3008cf95a6c87804f6d93479f7e
+    purpose: Fresh final-root, no-final-resume, run identity, preflight, human gate, exact manifest, and valid-tuple contract enforcement.
   - evidence_id: abi-baseline-runner
     path: scripts/run_same_corpus_baselines.py
     sha256: d4c3d14084c926de8e740458238bddde0e636d478cc57fb10b396f5849d7c095
     purpose: Exact-commit final same-corpus evidence, fresh TIMECOP reproduction, and physical-host validation for all tools.
   - evidence_id: abi-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: d28f8946f7afa1ea528f4b97b15351fdd1edccc80cc741c98d987a3e9632a754
-    purpose: Opaque-label output, deterministic manifest, and unblinded byte-parity enforcement.
+    sha256: c13bda8ada23bf7d532a361800865bae41e3f2b1a50cd51660fd0fbe0e6b021d
+    purpose: Independent v3/v2 manifest and valid-tuple validation, opaque-label output, deterministic manifest, and unblinded byte-parity enforcement.
   - evidence_id: abi-human-manifest
     path: docs/reviews/paper/manifest.yaml
-    sha256: 3bcbe02022d1231f03a2764c1577cd8db45bfd30bd1920f210cd97aac35ca0fd
-    purpose: Separate independent-human review packet index that remains outside automated audits.
+    sha256: e38338005a88f526e5f5dcd7ee0d73b389137b371e407364e4b89a2eeb8bf800
+    purpose: Separate independent-human packet index, including the required premeasurement valid-tuple review, that remains pending and outside automated audits.
+  - evidence_id: abi-valid-tuple-review
+    path: docs/reviews/paper/mlkem-valid-tuple-v1.yaml
+    sha256: 7da8650336d8564e2d57ed2d5f0c5bf2d1b9e53a3f952a17035755d153fd22b8
+    purpose: Pending two-person review of the mixed-input construction, no-secret-attribution boundary, exact v3/v2 routing, and runtime contract.
+  - evidence_id: abi-claim-matrix
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: c20350035e4602b8afe67db80e80c375cb891ce9af8bb788967a2e35bd0a8885
+    purpose: Pending-physical-measurement claim with explicit valid-tuple attribution prohibition and two-host, hash, blind-review, and promotion gates.
   - evidence_id: abi-final-root
     path: docs/artifact/final-evidence-root-v1.schema.json
     sha256: 7d873f6ae813f88c8e11f9b05284e55e0025dae90854bf0554e1823d50b54e2f
@@ -147,16 +187,34 @@ evidence:
     path: docs/measurement/falcon_native_v2.yaml
     sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
     purpose: Versioned Falcon final protocol that replaces the underpowered v1 engineering-control ladder without reusing its traces.
-  - evidence_id: abi-paper-campaign-v3
-    path: docs/measurement/paper_native_campaign_v3.yaml
-    sha256: 01f7ed2278e5651353bf9f1014b215a74e5839adfd55966900540b6e824ae067
-    purpose: Frozen final campaign policy that forbids engineering promotion, cross-component artifact reuse, and final resume.
+  - evidence_id: abi-paper-campaign-v4
+    path: docs/measurement/paper_native_campaign_v4.yaml
+    sha256: a4e904229163b1df097bf646ff2fb3a9fb84c0e81c63e88fdbb52e281147496f
+    purpose: Frozen paper-v4 routing, isolated replacement roots, no legacy artifact reuse, two-host final policy, and explicit mixed-input claim limits.
+  - evidence_id: abi-paper-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 7f7cfc381ac8eb953addbf7cc3a142573ba0c73236f3cc13d4092cff34d5f1fa
+    purpose: Fail-closed check of paper-v4 component manifests, exact output-root commands, final-only policy, and valid-tuple claim limits.
+  - evidence_id: abi-core-v3-manifest
+    path: docs/measurement/native_timing_v3_campaign.yaml
+    sha256: 582bab151ba44395dbd95fea942d758c512b7a566c81294efd6a478050255194
+    purpose: Committed-corpus replacement manifest that changes the historical kem_dec machine axis from sk to valid_tuple and forbids v2 engineering reuse.
+  - evidence_id: abi-diverse-v2-manifest
+    path: docs/measurement/diverse_native_v2.yaml
+    sha256: 33c42ce5ca87ea156d86eba246c5965e802d24b57da2cd0890b03ed44b950413
+    purpose: Diverse replacement manifest with explicit valid-tuple axes and v1 engineering calibration boundary.
   - evidence_id: abi-preregistration
     path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
-    sha256: 45bbeec7ad6be2af31f544f3f4aad8c4992ba4eb97b2167f028089d91a265813
-    purpose: Disclosed v3 amendment and fresh-root boundary separating v1 calibration from v2 final measurements.
+    sha256: 4df9c388f71ad63c5244c7b1a0ab4a3bf2e38bded4bf325a2eab9c0668337376
+    purpose: Disclosed Falcon and valid-tuple amendments, fresh-root requirement, legacy engineering nonreuse, and no-secret-attribution boundary.
+  - evidence_id: abi-input-contract
+    path: ctkat/timing_input_contract.py
+    sha256: 9c648e137f30520065105c5e27d83a07d76f6398685b21dae9cc21e8bb1fd9c4
+    purpose: Canonical construction and independent reconstruction of all valid-tuple target, calibration, and control trace metadata with secret attribution disabled.
 limitations:
   - This audit was performed by an automated agent and is not an independent human review.
   - Human access ordering is supported by hashes and attestations but cannot be proven solely by software.
+  - No two-host final timing corpus, completed unblinding record, named final analysis, or canonical final-evidence root exists in the audited commit.
+  - Valid-tuple metadata authenticates the declared mixed-input contract but cannot turn that mixed contrast into causal secret attribution.
   - Evidence hashes expire on any referenced-file change and require a fresh automated audit disposition.
 human_gate_effect: none

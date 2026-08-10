@@ -6,8 +6,8 @@ perspective: signature-harness-contracts
 automated_agent: true
 human_reviewer: false
 automated_agent_id: signature-falcon-audit
-audited_at: "2026-08-10T09:20:25Z"
-audited_commit: 48791fc170e65bf117d029eae80bb3397e2198e5
+audited_at: "2026-08-10T11:42:33Z"
+audited_commit: 55f1bf0f0eda949edd52cf36e04ca3a81de780ba
 scope:
   - detached-signature API return-code, length, and verification correctness gates
   - fixed versus bounded signature output contracts
@@ -16,6 +16,9 @@ scope:
   - ML-DSA rejection-path and SPHINCS public-state declassification claims
   - Falcon and c-fn-dsa full-API timing scope and floating-point comparator evidence
   - Falcon v2 control-ladder isolation from signature and linked-binary contracts
+  - ML-DSA native verifier API and domain-separation compatibility across portable and x86 generated full-link harnesses
+  - ML-DSA x86 arithmetic and FIPS202 backend-header selection and assembly-source closure
+  - paper v4 routing of Falcon v2 and repaired mldsa-native profiles without engineering-artifact promotion
   - duration-versus-output-length secondary analysis and human review boundary
 findings:
   - finding_id: shc-001
@@ -73,6 +76,21 @@ findings:
     title: Falcon v2 control recalibration required signature-contract drift isolation
     description: A versioned control-ladder amendment could accidentally change the measured signing API, output-length policy, correctness gate, or linked-binary profile and thereby make the replacement campaign incomparable to Falcon v1.
     evidence_ids: [shc-falcon-v1-campaign, shc-falcon-v2-campaign, shc-fndsa1024-fpr-config, shc-template, shc-parser, shc-falcon-contracts, shc-falcon-checker, shc-falcon-tests]
+  - finding_id: shc-012
+    severity: critical
+    title: ML-DSA generated signature harnesses lacked the required verifier adapter
+    description: The common sign template unconditionally calls the configured detached-signature verifier before timing, but the mldsa-native adapter and API header exposed only keypair and signature functions, so neither portable nor x86 generated harnesses could link or enforce the sign-to-verify gate.
+    evidence_ids: [shc-template, shc-mldsa-adapter, shc-mldsa-api, shc-mldsa-upstream-api, shc-mldsa-upstream-verify, shc-mldsa-portable-config, shc-mldsa-x86-config, shc-premeasurement-tests]
+  - finding_id: shc-013
+    severity: high
+    title: ML-DSA x86 native backend selection omitted mandatory header macros
+    description: The x86 profile enabled native arithmetic and FIPS202 backends without naming their backend metadata headers, causing the pinned monolithic build to fail before the assembly implementation could be linked.
+    evidence_ids: [shc-mldsa-x86-config, shc-mldsa-upstream-config, shc-premeasurement-tests]
+  - finding_id: shc-014
+    severity: high
+    title: Paper v4 remediation routing could bypass repaired signature profiles
+    description: Replacing the mixed ML-KEM campaigns could have silently routed final execution back to Falcon v1 or the unrepaired diverse-lineage manifests, invalidating the Falcon isolation and mldsa-native correctness prerequisites.
+    evidence_ids: [shc-falcon-v1-campaign, shc-falcon-v2-campaign, shc-diverse-v2-campaign, shc-paper-v4-campaign, shc-paper-checker, shc-paper-tests, shc-premeasurement-tests, shc-analysis]
 dispositions:
   - finding_id: shc-001
     status: addressed
@@ -129,6 +147,21 @@ dispositions:
     rationale: Independent structural comparison confirms that Falcon v2 preserves the host, protocol, six target identities, configs, sign/sk axes, sample counts, timeouts, and every target record except c_fndsa1024_fpr_emu positive_control_effects; its unchanged config still requires a fixed signature length and the same c_fndsa1024_fpr_emu binary contract, while the common template and parser retain return-code recording and the untimed sign-then-verify gate.
     blocker: ""
     evidence_ids: [shc-falcon-v1-campaign, shc-falcon-v2-campaign, shc-fndsa1024-fpr-config, shc-template, shc-parser, shc-falcon-contracts, shc-falcon-checker, shc-falcon-tests]
+  - finding_id: shc-012
+    status: addressed
+    rationale: The adapter now exposes the exact five-argument verifier ABI expected by the generated template and delegates to the pinned public mldsa-native verifier with an empty context. The upstream verifier constructs the same pure-ML-DSA 0x00,0x00 prefix used by the signing wrapper, and generated portable and architecture-gated x86 regressions require two successful fixed-length signatures and a passed untimed verification gate.
+    blocker: ""
+    evidence_ids: [shc-template, shc-mldsa-adapter, shc-mldsa-api, shc-mldsa-upstream-api, shc-mldsa-upstream-verify, shc-mldsa-portable-config, shc-mldsa-x86-config, shc-premeasurement-tests]
+  - finding_id: shc-013
+    status: addressed
+    rationale: The x86 profile explicitly pins native/meta.h and fips202/native/auto.h, retains the AVX2/BMI2 flags and monolithic assembly source, and the x86-only generated-harness regression performs the full compile, link, and sign-to-verify execution rather than a header-only probe.
+    blocker: ""
+    evidence_ids: [shc-mldsa-x86-config, shc-mldsa-upstream-config, shc-premeasurement-tests]
+  - finding_id: shc-014
+    status: addressed
+    rationale: Paper v4 pins Falcon v2 and diverse v2, diverse v2 changes only the ML-KEM attribution/config records while retaining both repaired mldsa-native sign targets, the analyzer consumes those same replacement manifests, and static checker plus regression tests reject component or command drift. The campaign still forbids engineering or pilot promotion and requires two final physical hosts and human review.
+    blocker: ""
+    evidence_ids: [shc-falcon-v1-campaign, shc-falcon-v2-campaign, shc-diverse-v2-campaign, shc-paper-v4-campaign, shc-paper-checker, shc-paper-tests, shc-premeasurement-tests, shc-analysis]
 evidence:
   - evidence_id: shc-template
     path: ctkat/templates/timing_sign.c.j2
@@ -140,28 +173,28 @@ evidence:
     purpose: Signature return-code retention and fail-closed trace contract parser.
   - evidence_id: shc-cli
     path: ctkat/cli.py
-    sha256: 9bda3c2e7e74293e31c96fed0313cc1225a8b4bc7cae8281a04eaadab0d2e6cb
+    sha256: dba4a501df724c74c4d4be9410a4cfe644fb3005a657c0ddbf2b8e0f3efef506
     purpose: Protocol-wide signature metadata aggregation, directional positive-control gate, and sensitivity diagnostics.
   - evidence_id: shc-dudect-verifier
     path: ctkat/official_dudect_verify.py
-    sha256: 27ee104d90be08b5a6f664422adfe335bba7969e7081e01cbb4de68818f1f2e3
+    sha256: 62bfbaf0a660663fee7cd1c53e388edb847ccf6c9554941913da4721fecfd613
     purpose: Independent raw-protocol reconstruction, numeric normalization, directional detection, and diagnostic comparison.
   - evidence_id: shc-control-tests
     path: tests/test_cli.py
-    sha256: 0ed972dca3bd072c78c9d3913c20348934871401e78a015ea26af690f72ee7ea
+    sha256: 663ba2f1876140ff57aa122d4447a01ca5f9fda6c3d8db0b3304234c671346c7
     purpose: Producer-side reversed-direction, threshold, and positive-detection-effect regression tests.
   - evidence_id: shc-native-tests
     path: tests/test_native_timing_campaign.py
-    sha256: 2f3d8f9c5d233a70818cf97857affc9a1231019d3f6138ab64fe4c252c489018
+    sha256: 094f104522e16ff78ea1c221780f049a5753182f06dd7f2ba0270e5555d9d08f
     purpose: Independent-verifier direction, integral-mean serialization, and complete artifact-bundle regressions.
   - evidence_id: shc-timing-contract
     path: docs/TIMING_HARNESS_V2.md
-    sha256: 8f45c0111950a6038bd0c9bf820faae4b41d8706b102336580977a63336f277e
+    sha256: 1f7f63294f59f0272cc258768dd0d21bc5d90c29f5cff28fa201053d93d9a594
     purpose: Frozen directional positive-control rule and non-claim boundary for both A/A-derived diagnostics.
   - evidence_id: shc-native-campaign
-    path: docs/measurement/native_timing_v2_campaign.yaml
-    sha256: 256e70f1aa6b5cd4192e53ef14b83b03a5e10be59093a90d23a484dd5685f8e5
-    purpose: Frozen signature control effects and timing thresholds used by the corpus-wide native campaign.
+    path: docs/measurement/native_timing_v3_campaign.yaml
+    sha256: 582bab151ba44395dbd95fea942d758c512b7a566c81294efd6a478050255194
+    purpose: Frozen signature control effects and timing thresholds in the paper-v4-routed corpus campaign; only the mixed ML-KEM axis differs from v2.
   - evidence_id: shc-falcon-v1-campaign
     path: docs/measurement/falcon_native_v1.yaml
     sha256: 1f8fde082234356d1beac4b44f6c60b5cf5e7d0891e5b864fd1d0151aac98967
@@ -188,12 +221,12 @@ evidence:
     purpose: Conservative variable-time policy and algorithm-specific claim boundaries.
   - evidence_id: shc-review-packet
     path: docs/reviews/paper/signature-declassification-v2.yaml
-    sha256: b7209e3b25df0b426977d2bc10008e3f178827daf4ca8f0e9d2a5ddfed110689
-    purpose: Separate pending human-review packet with exact evidence and expiry requirements.
+    sha256: 13a0220092dd77386de1c7cf1445303fa936855547d538561a13aecb925462b0
+    purpose: Separate pending human-review packet covering exact ML-DSA native correctness prerequisites, evidence, and expiry requirements.
   - evidence_id: shc-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: d28f8946f7afa1ea528f4b97b15351fdd1edccc80cc741c98d987a3e9632a754
-    purpose: Signature call-contract validation, output-length association, Holm contrasts, and host heterogeneity.
+    sha256: c13bda8ada23bf7d532a361800865bae41e3f2b1a50cd51660fd0fbe0e6b021d
+    purpose: Signature call-contract validation, output-length association, Holm contrasts, host heterogeneity, and paper-v4 replacement-manifest routing.
   - evidence_id: shc-binary-contract
     path: ctkat/timing_binary_contract.py
     sha256: e3c2ce0d6d99039cdab245cd67644a7febd321c692a4a0a22c1a212266f05ff4
@@ -206,10 +239,59 @@ evidence:
     path: tests/test_timing_binary_contract.py
     sha256: 99f9a4acdfe4bd181b41d13da543f6dfe6da76fdb673faadf6e5a671c2c6c2ca
     purpose: Fresh objdump, compiler identity, hash, source, and semantic tamper rejection tests.
+  - evidence_id: shc-mldsa-adapter
+    path: examples/mldsa_native/timing_adapter.c
+    sha256: 2c12a22c88b1ee656dcf93a50480bdad04725b4e2f646833d188001c5300cea2
+    purpose: PQClean-shaped keypair, randomized detached-signature, and empty-context public-verifier bridge used by generated timing harnesses.
+  - evidence_id: shc-mldsa-api
+    path: examples/mldsa_native/timing_api.h
+    sha256: 446185bb892ad31c1487ef86ebec3f9289c1d07fec92d0790f92eae2bf70dae8
+    purpose: Exact detached-signature verifier declaration required by the common sign template.
+  - evidence_id: shc-mldsa-upstream-api
+    path: examples/mldsa_native/upstream/mldsa/mldsa_native.h
+    sha256: 0742e2c581dc5802eaa3e97cb2b075cd4357a57afae183b2908bb0a9ba9797f2
+    purpose: Pinned public verifier ABI, return-value contract, and permission for NULL when the context length is zero.
+  - evidence_id: shc-mldsa-upstream-verify
+    path: examples/mldsa_native/upstream/mldsa/src/sign.c
+    sha256: a18fd65dea26403448ed08dabe5db5117ad1cd7559637fc1e3aa3302aaaf8c25
+    purpose: Pinned verifier implementation constructing the pure-ML-DSA domain-separation prefix before verify_internal.
+  - evidence_id: shc-mldsa-upstream-config
+    path: examples/mldsa_native/upstream/mldsa/mldsa_native_config.h
+    sha256: 1ca5852553f87ce38dc08720a957f55e097accd3baf6f81affb2e6205241d3c8
+    purpose: Pinned canonical arithmetic and FIPS202 native backend metadata-header paths.
+  - evidence_id: shc-mldsa-portable-config
+    path: examples/mldsa_native/ctkat_timing_portable.yaml
+    sha256: 1868dd2da80af8da97aac2693250cc7f86cf831cc3071d020af31509b60d92b8
+    purpose: Portable generated-sign harness route through the repaired adapter and pinned monolithic C source.
+  - evidence_id: shc-mldsa-x86-config
+    path: examples/mldsa_native/ctkat_timing_x86_64.yaml
+    sha256: c9a88cf174d6405e5e6208574f5a4a52957eb761dca2b22f564d77dca88e77d1
+    purpose: x86 generated-sign profile pinning both backend headers, AVX2/BMI2 selection, and the monolithic assembly source.
+  - evidence_id: shc-premeasurement-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: c5c49a41fdc708302d095ec5d76fb4f0862b02b77353e47989167d5efac8e63b
+    purpose: Generated portable and x86 full-link/sign-to-verify regressions plus diverse-v2 and paper-v4 routing isolation.
+  - evidence_id: shc-diverse-v2-campaign
+    path: docs/measurement/diverse_native_v2.yaml
+    sha256: 33c42ce5ca87ea156d86eba246c5965e802d24b57da2cd0890b03ed44b950413
+    purpose: Paper replacement campaign retaining both repaired mldsa-native sign targets while changing only the mixed ML-KEM records.
+  - evidence_id: shc-paper-v4-campaign
+    path: docs/measurement/paper_native_campaign_v4.yaml
+    sha256: a4e904229163b1df097bf646ff2fb3a9fb84c0e81c63e88fdbb52e281147496f
+    purpose: Frozen final routing to Falcon v2 and diverse v2 with engineering/pilot non-promotion and two-host human-review gates.
+  - evidence_id: shc-paper-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 7f7cfc381ac8eb953addbf7cc3a142573ba0c73236f3cc13d4092cff34d5f1fa
+    purpose: Fail-closed exact component, command, upstream-freeze, promotion, and claim-limit validation for paper v4.
+  - evidence_id: shc-paper-tests
+    path: tests/test_paper_campaign.py
+    sha256: 92e1897de4d0a530383648791f47f4d5b4279218f5f76826eddd0c06fc9c631e
+    purpose: Regression coverage for paper-v4 component routing, command rendering, non-promotion, and two-host requirements.
 limitations:
   - This automated audit is not cryptographic approval of any public-state declassification.
   - Full-API signature timing includes encoding and randomness effects unless a separately frozen core harness is measured.
   - Directional positive-control power and its A/A-derived diagnostics do not bound an unobserved target effect or estimate achieved target power.
   - This audit checks Falcon v1-to-v2 signature and binary-contract invariance, not whether the recalibrated ladder achieves power; only fresh final controls can establish that.
+  - The observed remote x86_64 full-link and sign-to-verify smoke is an unpreserved compile/correctness engineering witness only; it is not physical timing evidence, final-campaign evidence, or human-review credit.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none

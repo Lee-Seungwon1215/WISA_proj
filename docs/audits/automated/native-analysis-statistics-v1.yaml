@@ -6,8 +6,8 @@ perspective: native-analysis-statistics
 automated_agent: true
 human_reviewer: false
 automated_agent_id: paper-analysis-automated-self-audit
-audited_at: "2026-08-10T09:20:09Z"
-audited_commit: 48791fc170e65bf117d029eae80bb3397e2198e5
+audited_at: "2026-08-10T11:40:00Z"
+audited_commit: 55f1bf0f0eda949edd52cf36e04ca3a81de780ba
 scope:
   - exact component, target, host, commit, and input-hash provenance
   - conservative primary two-host risk folding
@@ -18,6 +18,7 @@ scope:
   - directional seeded positive-control acceptance and independent recomputation
   - threshold-based A/A planning diagnostics and frozen ML-DSA control curves
   - versioned Falcon engineering calibration, amendment boundaries, and final-campaign routing
+  - versioned mixed ML-KEM valid-tuple attribution, exact trace-contract reconstruction, and replacement-artifact isolation
 findings:
   - finding_id: nas-001
     severity: critical
@@ -79,6 +80,11 @@ findings:
     title: Falcon v1 under-scaled one positive-control curve despite a functioning directional canary
     description: The disclosed engineering amendment records that c_fndsa1024_fpr_emu detected the old 65,536-tick delay in the expected direction but reached the frozen t threshold in zero of three repeats, while its A/A-derived per-repeat directional diagnostics were approximately 156,523--196,831 ticks; this is an insufficient-power control result, not a target verdict or evidence of achieved power.
     evidence_ids: [nas-preregistration, nas-falcon-campaign-v1, nas-falcon-campaign-v2]
+  - finding_id: nas-013
+    severity: critical
+    title: A mixed ML-KEM tuple contrast could be mislabeled or self-attested as secret-key evidence
+    description: The legacy sk class changed a secret key, matching public ciphertext, and embedded public-key material together, while downstream acceptance trusted a producer-level passed boolean without reconstructing the complete target, calibration, A/A, placebo, and positive-control metadata matrix.
+    evidence_ids: [nas-input-contract, nas-analysis, nas-primary-campaign, nas-diverse-campaign, nas-contract-tests]
 dispositions:
   - finding_id: nas-001
     status: addressed
@@ -132,67 +138,72 @@ dispositions:
     evidence_ids: [nas-cli, nas-dudect-verifier, nas-control-tests, nas-campaign-tests]
   - finding_id: nas-011
     status: addressed
-    rationale: The artifacts expose an A/A-derived effect for the actual directional gate, and both primary and diverse-native manifests freeze a wide pre-final ML-DSA curve of 65,536, 262,144, and 1,048,576 clock ticks; tests pin the campaign override and independent diagnostic reconstruction.
+    rationale: The artifacts expose an A/A-derived effect for the actual directional gate, and both core-v3 and diverse-v2 manifests freeze a wide pre-final ML-DSA curve of 65,536, 262,144, and 1,048,576 clock ticks; tests pin the campaign override and independent diagnostic reconstruction.
     blocker: ""
     evidence_ids: [nas-cli, nas-dudect-verifier, nas-primary-campaign, nas-diverse-campaign, nas-campaign-tests]
   - finding_id: nas-012
     status: addressed
-    rationale: Falcon v2 changes only c_fndsa1024_fpr_emu to the 65,536, 262,144, and 1,048,576-tick ladder, the v3 preregistration marks v1 engineering traces non-promotable and freezes a fresh two-host final run, the final analyzer routes Falcon evidence through v2, and regression tests pin both the changed target and all unchanged curves.
+    rationale: Falcon v2 changes only c_fndsa1024_fpr_emu to the 65,536, 262,144, and 1,048,576-tick ladder, the v4 preregistration preserves the v3 Falcon amendment and marks v1 engineering traces non-promotable, the final analyzer routes Falcon evidence through v2, and regression tests pin both the changed target and all unchanged curves.
     blocker: ""
-    evidence_ids: [nas-preregistration, nas-analysis, nas-falcon-campaign-v1, nas-falcon-campaign-v2, nas-paper-campaign-v3, nas-falcon-tests]
+    evidence_ids: [nas-preregistration, nas-analysis, nas-falcon-campaign-v1, nas-falcon-campaign-v2, nas-paper-campaign-v4, nas-falcon-tests]
+  - finding_id: nas-013
+    status: addressed
+    rationale: Core v3 and diverse v2 rename the endpoint valid_tuple and prohibit secret attribution. A shared fail-closed validator reconstructs the exact 21-trace contract, per-trace domain seeds, three-by-three positive matrix, and selected analysis metadata; the independent official verifier, native campaign validator, and paper analyzer all reject incomplete or forged reports. V1 diverse and v2 core engineering artifacts are explicitly non-reusable in paper v4.
+    blocker: ""
+    evidence_ids: [nas-input-contract, nas-dudect-verifier, nas-analysis, nas-primary-campaign, nas-diverse-campaign, nas-paper-campaign-v4, nas-contract-tests, nas-campaign-tests]
 evidence:
   - evidence_id: nas-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: d28f8946f7afa1ea528f4b97b15351fdd1edccc80cc741c98d987a3e9632a754
-    purpose: Fail-closed provenance, primary fold, secondary statistics, deterministic output, blinding parity, and Falcon-v2 routing.
+    sha256: c13bda8ada23bf7d532a361800865bae41e3f2b1a50cd51660fd0fbe0e6b021d
+    purpose: Fail-closed provenance, valid-tuple contract consumption, primary fold, secondary statistics, deterministic output, blinding parity, and replacement-campaign routing.
   - evidence_id: nas-spec
     path: docs/measurement/PAPER_NATIVE_ANALYSIS_V1.md
-    sha256: 84e5117dd7a950f920c0683552faf1a0c013c5b0b0dbce5f221f6d2ca2471233
+    sha256: 03c0fc2e49347dd585e191ec8d0fb9cad625d9ce5fc31d4948e1be770f906ec2
     purpose: Premeasurement statistical methods, thresholds, output contract, and claim boundary.
   - evidence_id: nas-tests
     path: tests/test_paper_native_analysis.py
-    sha256: c753c1512faec51d7dc3eecaf7a6baee09eeea05c402afa5bd42024e81dd88c6
-    purpose: Synthetic risk-fold, p-value, Holm, signature, provenance, determinism, and blinded-parity regression tests.
+    sha256: b44cc73dd588fb3270853d922b91dfacd5bfc97693e40610229aecd9a94bcb2b
+    purpose: Synthetic risk-fold, p-value, Holm, signature, provenance, valid-tuple rejection, determinism, and blinded-parity regression tests.
   - evidence_id: nas-bundle
     path: docs/artifact/measurement_bundle_template.yaml
-    sha256: 32b8e5e525d201c30e549f889c8d3a9dfbcb43ea1af94361ebd2ae698988cb40
+    sha256: 0cbbbea090d68589e772f76ba66c66f0a55ca1878061335c688ba2f494a1d0de
     purpose: Schema-v4 measurement/verification commits, two-host artifacts, ASM evidence, and frozen blinded-analysis paths.
   - evidence_id: nas-dudect-verifier
     path: ctkat/official_dudect_verify.py
-    sha256: 27ee104d90be08b5a6f664422adfe335bba7969e7081e01cbb4de68818f1f2e3
-    purpose: Independent raw protocol, directional canary, and statistical-field reconstruction.
+    sha256: 62bfbaf0a660663fee7cd1c53e388edb847ccf6c9554941913da4721fecfd613
+    purpose: Independent raw protocol, timing-axis, valid-tuple contract, directional canary, and statistical-field reconstruction.
   - evidence_id: nas-review-checker
     path: scripts/check_paper_reviews.py
     sha256: 03ed2511880924c9564646f71993c18445a2e74c3c55032f983082b158470d69
     purpose: Phase-specific human review commit and final-root reporting.
   - evidence_id: nas-review-tests
     path: tests/test_paper_reviews.py
-    sha256: 8eb0721b241338c4ad51ff684939be87bc8d1fabc364fa00d8fafb8da5cbd762
+    sha256: 6bafcc66f999d4dba49259187311a24fb733c383c8870699779324e333c907f8
     purpose: Distinct pre/post review commit success and split-precommit rejection tests.
   - evidence_id: nas-preregistration
     path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
-    sha256: 45bbeec7ad6be2af31f544f3f4aad8c4992ba4eb97b2167f028089d91a265813
-    purpose: Frozen estimand definitions, disclosed Falcon engineering amendment, directional canary rule, and conservative planning-diagnostic interpretation.
+    sha256: 4df9c388f71ad63c5244c7b1a0ab4a3bf2e38bded4bf325a2eab9c0668337376
+    purpose: Frozen estimand definitions, disclosed Falcon and mixed-input engineering amendments, directional canary rule, and conservative claim boundaries.
   - evidence_id: nas-cli
     path: ctkat/cli.py
-    sha256: 9bda3c2e7e74293e31c96fed0313cc1225a8b4bc7cae8281a04eaadab0d2e6cb
+    sha256: dba4a501df724c74c4d4be9410a4cfe644fb3005a657c0ddbf2b8e0f3efef506
     purpose: Directional repeat-detection gate and A/A-noise-derived nominal and actual-threshold planning diagnostics.
   - evidence_id: nas-control-tests
     path: tests/test_cli.py
-    sha256: 0ed972dca3bd072c78c9d3913c20348934871401e78a015ea26af690f72ee7ea
+    sha256: 663ba2f1876140ff57aa122d4447a01ca5f9fda6c3d8db0b3304234c671346c7
     purpose: Focused reversed-effect rejection and actual-threshold planning-formula regression tests.
   - evidence_id: nas-campaign-tests
     path: tests/test_native_timing_campaign.py
-    sha256: 2f3d8f9c5d233a70818cf97857affc9a1231019d3f6138ab64fe4c252c489018
-    purpose: Independent canary-rule reconstruction, diagnostic parity, and frozen campaign-effect regression tests.
+    sha256: 094f104522e16ff78ea1c221780f049a5753182f06dd7f2ba0270e5555d9d08f
+    purpose: Independent canary-rule and valid-tuple reconstruction, diagnostic parity, and frozen campaign-effect regression tests.
   - evidence_id: nas-primary-campaign
-    path: docs/measurement/native_timing_v2_campaign.yaml
-    sha256: 256e70f1aa6b5cd4192e53ef14b83b03a5e10be59093a90d23a484dd5685f8e5
-    purpose: Frozen primary ML-DSA positive-control curve for the pre-final native campaign.
+    path: docs/measurement/native_timing_v3_campaign.yaml
+    sha256: 582bab151ba44395dbd95fea942d758c512b7a566c81294efd6a478050255194
+    purpose: Frozen core-v3 curves plus the explicit committed-corpus ML-KEM valid-tuple axis replacement.
   - evidence_id: nas-diverse-campaign
-    path: docs/measurement/diverse_native_v1.yaml
-    sha256: 78036e094fab28501f99c78d171e700b12070573b382ac3df4e0eb3c660c07a1
-    purpose: Matching frozen ML-DSA curve for portable versus x86_64-native comparison.
+    path: docs/measurement/diverse_native_v2.yaml
+    sha256: 33c42ce5ca87ea156d86eba246c5965e802d24b57da2cd0890b03ed44b950413
+    purpose: Matching ML-DSA curve and explicit portable/native ML-KEM valid-tuple endpoints.
   - evidence_id: nas-falcon-campaign-v1
     path: docs/measurement/falcon_native_v1.yaml
     sha256: 1f8fde082234356d1beac4b44f6c60b5cf5e7d0891e5b864fd1d0151aac98967
@@ -201,14 +212,22 @@ evidence:
     path: docs/measurement/falcon_native_v2.yaml
     sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
     purpose: Versioned Falcon protocol changing only c_fndsa1024_fpr_emu to the calibrated wide positive-control ladder.
-  - evidence_id: nas-paper-campaign-v3
-    path: docs/measurement/paper_native_campaign_v3.yaml
-    sha256: 01f7ed2278e5651353bf9f1014b215a74e5839adfd55966900540b6e824ae067
-    purpose: Frozen final campaign routing Falcon through v2 while forbidding reuse of v1 engineering traces.
+  - evidence_id: nas-paper-campaign-v4
+    path: docs/measurement/paper_native_campaign_v4.yaml
+    sha256: a4e904229163b1df097bf646ff2fb3a9fb84c0e81c63e88fdbb52e281147496f
+    purpose: Frozen final campaign routing Falcon v2, core v3, and diverse v2 while forbidding replacement-artifact reuse and secret attribution.
   - evidence_id: nas-falcon-tests
     path: tests/test_falcon_comparator_v1.py
     sha256: d7fbb46ca9472006328419c14435f835e20ba02ea9fcf0d2be8a6679ba8c5c04
     purpose: Regression checks pinning the revised target ladder and preservation of every other Falcon curve.
+  - evidence_id: nas-input-contract
+    path: ctkat/timing_input_contract.py
+    sha256: 9c648e137f30520065105c5e27d83a07d76f6398685b21dae9cc21e8bb1fd9c4
+    purpose: Shared exact valid-tuple runtime-metadata, trace-matrix, seed, aggregate-contract, and selected-repeat validator.
+  - evidence_id: nas-contract-tests
+    path: tests/test_timing_input_contract.py
+    sha256: 88b448d18a49a030a83f253606ea72af52914adffdcd1718f71be6c81d080495
+    purpose: Canonical 21-trace acceptance and forged, incomplete, duplicate-seed, process-index, effect-matrix, and selected-repeat rejection tests.
 limitations:
   - The same automated agent implemented and self-audited this analysis contract; this is not independent review.
   - P-values are secondary diagnostics and cannot declassify an official-dudect finding.
@@ -216,5 +235,6 @@ limitations:
   - The threshold-based effect value is a per-repeat A/A normal approximation for planning, not achieved campaign power or a bound on target leakage; the 3/3 rule is a separate observed acceptance gate.
   - The Falcon v1 0/3 result and 156,523--196,831-tick diagnostics are disclosed in the preregistration; this automated audit does not substitute for independent inspection of the raw engineering bundle.
   - The revised ML-DSA and Falcon curves still require successful final execution on both accepted physical hosts.
+  - The portable ML-KEM engineering signal is mixed-input calibration only; it is neither final evidence nor a secret-key attribution.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none
