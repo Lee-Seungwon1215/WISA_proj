@@ -821,7 +821,12 @@ class DudectHarnessConfig(BaseModel):
     prefix: str = ""
     # kem-only
     # Which axis of the KEM API is varied between class 0 and class 1.
-    #   "sk" — fixed valid tuple pool vs random valid tuple pool (default)
+    #   "sk" — legacy name for a fixed valid tuple pool vs random valid tuple
+    #          pool.  Both the secret key and its matching public ciphertext
+    #          vary, so this axis cannot support secret attribution.
+    #   "valid_tuple" — explicit, preferred name for that mixed public/secret
+    #          valid-tuple contrast.  It has the same corpus construction as
+    #          legacy "sk", but emits a fail-closed attribution boundary.
     #   "ct" — fixed valid-ct pool vs random valid-ct pool (sk held constant;
     #          detects ct-content leaks, e.g. branches/lookups indexed by ct)
     #   "fo" — paired valid vs byte-corrupted ct pools whose rejection output
@@ -837,7 +842,7 @@ class DudectHarnessConfig(BaseModel):
     # Pick one per harness; define multiple harnesses for multiple modes.
     # Only meaningful for template=kem; rejected at load time if combined
     # with template=generic.
-    leak_target: Literal["sk", "ct", "fo", "chosen_ct", "operand_bin"] = "sk"
+    leak_target: Literal["sk", "valid_tuple", "ct", "fo", "chosen_ct", "operand_bin"] = "sk"
     # Exact untimed implicit-rejection witness used by ``fo`` and
     # ``chosen_ct``.  See the structural harness fields above for the ABI and
     # rationale.  Requiring this in config makes an unsupported KEM fail at

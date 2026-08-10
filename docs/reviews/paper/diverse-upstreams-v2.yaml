@@ -1,7 +1,7 @@
 schema_version: "2.0"
 review_id: paper-diverse-upstreams-v2
 status: pending
-title: Independent upstream source and build evidence
+title: Independent upstream source, build, and timing-profile contract
 review_phase: pre-measurement
 final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
@@ -9,22 +9,37 @@ scope:
   - {target: mlkem-native, harness: build-kat-equivalence, build_scope: 3-parameters-2-profiles-2-compilers-5-optimizations-2-architectures}
   - {target: mldsa-native, harness: build-kat-equivalence, build_scope: 3-parameters-2-profiles-2-compilers-5-optimizations-2-architectures}
   - {target: openssl-3.5-pqc-api, harness: provider-smoke, build_scope: six-provider-operations}
-threat_model: Generalization and provenance audit; build evidence must not be promoted to physical timing or constant-time evidence.
-secret_origin: Algorithm-specific secret keys; no source/build-only result performs a secret timing classification.
-observed_dependency: KAT, portable/native transcript equivalence, ELF machine identity, native symbols, and instruction markers.
-declassification_predicate: none for CT claims; this packet only approves source/build provenance and claim limits.
-public_transcript: Deterministic KAT and smoke outputs.
-security_argument: Lineages, parameters, profiles, compilers, architectures, and wrappers are counted separately and transparently.
+  - {target: mlkem-native-768, harness: kem_dec_valid_tuple, build_scope: portable-and-x86_64-paper-diverse-v2-profile-contract}
+  - {target: mldsa-native-65, harness: sign, build_scope: portable-and-x86_64-paper-diverse-v2-profile-and-verify-gate}
+threat_model: Generalization and provenance audit, including drift in the exact portable/native timing profiles; build or compile evidence must not be promoted to physical timing or constant-time evidence.
+secret_origin: Algorithm-specific secret keys; no source/build-only result performs a secret timing classification, and the ML-KEM valid-tuple profile varies matching public material too.
+observed_dependency: KAT, portable/native transcript equivalence, ELF machine identity, native symbols, instruction markers, explicit native backend headers, and the ML-DSA sign-to-verify gate.
+declassification_predicate: none for CT claims; this packet only approves source/build provenance, timing-profile construction, and claim limits.
+public_transcript: Deterministic KAT and smoke outputs plus the declared mixed valid-tuple input contract.
+security_argument: Lineages, parameters, profiles, compilers, architectures, and wrappers are counted separately and transparently. Compile and round-trip success establishes executability, not a physical timing result.
 known_limitations:
   - Shared-code fractions remain unmeasured.
   - Build and KAT evidence is not timing evidence.
+  - The ML-KEM valid-tuple profile cannot support secret attribution because secret and public inputs vary together.
 evidence:
   - docs/corpus/diverse_upstreams_v1.yaml
   - docs/corpus/independent_upstreams_v1.yaml
+  - docs/measurement/diverse_native_v2.yaml
+  - docs/measurement/DIVERSE_NATIVE_V2.md
+  - examples/mlkem_native/ctkat_timing_portable_v2.yaml
+  - examples/mlkem_native/ctkat_timing_x86_64_v2.yaml
+  - examples/mldsa_native/ctkat_timing_portable.yaml
+  - examples/mldsa_native/ctkat_timing_x86_64.yaml
+  - examples/mldsa_native/timing_adapter.c
+  - examples/mldsa_native/timing_api.h
+  - tests/test_mlkem_native_config.py
+  - tests/test_premeasurement_timing_configs.py
 expected_evidence:
   - final x86_64 and AArch64 CI build bundles
+  - fresh two-host physical timing artifacts reviewed separately under native promotion
 reviewers: []
 expiry_conditions:
   - upstream revision changes
   - architecture profile selection changes
   - KAT or equivalence digest changes
+  - native backend header, timing adapter, verifier, or valid-tuple contract changes

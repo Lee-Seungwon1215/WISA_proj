@@ -111,12 +111,37 @@ native-host gates all pass. Legacy KEM/sign artifacts remain `confounded` and
 generic targets remain `insufficient-power`; an official raw PASS or FAIL is
 non-decisional for the v2 headline unless those target-level gates pass.
 
-The deferred native refresh is frozen in
-[`measurement/native_timing_v2_campaign.yaml`](measurement/native_timing_v2_campaign.yaml).
+The active deferred native refresh is frozen in
+[`measurement/native_timing_v3_campaign.yaml`](measurement/native_timing_v3_campaign.yaml).
 Its runner emits a checked `corpus_timing_updates.csv`, but never rewrites this
 curated corpus. Runtime report metadata is authoritative for backend, emitted
-sample count, and analysis seed; YAML values are only fallbacks because a
-campaign may deliberately override modest example defaults.
+sample count, analysis seed, and the KEM input-attribution contract; YAML values
+are only fallbacks because a campaign may deliberately override modest example
+defaults.
+
+### KEM `valid_tuple` axis replacement
+
+The curated ML-KEM-768 row is keyed by `(target=pqclean_mlkem768,
+harness=kem_dec)`. That harness identifier is retained so a measured update can
+still be reviewed against the same corpus row. It is not the timing input axis.
+The active v3 manifest declares the machine-readable replacement
+`sk -> valid_tuple` and the v3 config sets `leak_target: valid_tuple`.
+
+For this axis, class 0 repeats one fixed valid `(sk, ct)` tuple and class 1 uses
+fresh valid tuples. The secret key, matching public ciphertext, and public-key
+material embedded in the secret key vary together. Consequently:
+
+- a signal is a mixed public+secret valid-tuple contrast;
+- it cannot be attributed causally to secret material;
+- every trace must preserve the exact input contract, successful setup return
+  codes, valid encapsulation-to-decapsulation witnesses, and its domain seed;
+- the campaign validator and paper analyzer independently reconstruct that
+  contract before accepting `timing_validity=valid`.
+
+The historical `timing_leak_target=sk` value remains visible only on frozen
+legacy evidence. It must not be copied into a v3 result or interpreted as a
+secret-key-only experiment. V2 engineering artifacts cannot be relabeled,
+resumed, or promoted as v3 final evidence.
 
 ## Review artifacts
 
@@ -197,6 +222,8 @@ raw or migration provenance:
 - `timing_*` parameters make the experiment traceable; official dudect uses
   `timing_threshold=|t|>10;n0>=10001`, not the legacy `4.5/10.0` warning/fail
   pair;
+- `timing_leak_target=valid_tuple` names the mixed fixed-versus-fresh KEM
+  contract above; `sk` is retained only for historical provenance;
 - `legacy_*` makes the v1→v2 decision auditable but has no headline authority;
 - `notes` can explain evidence but cannot override typed fields.
 

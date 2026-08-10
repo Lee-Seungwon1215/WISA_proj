@@ -19,7 +19,9 @@ dudect:
     cflags: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
              -DMLD_CONFIG_PARAMETER_SET=65,
              -DMLD_CONFIG_USE_NATIVE_BACKEND_ARITH,
+             '-DMLD_CONFIG_ARITH_BACKEND_FILE="native/meta.h"',
              -DMLD_CONFIG_USE_NATIVE_BACKEND_FIPS202,
+             '-DMLD_CONFIG_FIPS202_BACKEND_FILE="fips202/native/auto.h"',
              -DMLD_FORCE_X86_64, -mavx2, -mbmi2]
   harnesses:
     - name: sign

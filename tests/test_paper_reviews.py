@@ -14,7 +14,7 @@ def test_committed_review_packets_are_static_valid_and_have_no_partial_signoffs(
     assert report["static_valid"] is True
     assert report["pre_measurement_reviewed_source_commits"] == []
     assert report["post_measurement_reviewed_source_commits"] == []
-    assert sum(report["status_counts"].values()) == 7
+    assert sum(report["status_counts"].values()) == 8
     assert all(
         record["status"] != "pending" or record["reviewer_count"] == 0
         for record in report["packets"]

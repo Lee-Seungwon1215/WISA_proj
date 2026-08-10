@@ -132,9 +132,9 @@
     },
     {
       "claim_id": "native-timing-results",
-      "evidence_items": 3,
-      "open_gates": 3,
-      "prohibited_wording": "no finding means proven constant-time",
+      "evidence_items": 9,
+      "open_gates": 4,
+      "prohibited_wording": "valid-tuple signal means secret-key leakage; no finding means proven constant-time",
       "scope": "28 predeclared timing axes plus all three same-corpus baseline tools",
       "status": "pending-physical-measurement"
     }
@@ -148,11 +148,11 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v3",
+    "campaign_id": "ctkat-paper-native-v4",
     "component_count": 4,
     "components": [
       {
-        "campaign_id": "corpus-native-timing-v2",
+        "campaign_id": "corpus-native-timing-v3",
         "coverage_mode": "committed-timing-rows",
         "id": "committed-corpus-refresh",
         "protocol_rows": 2220000,
@@ -179,7 +179,7 @@
         "timing_axes": 6
       },
       {
-        "campaign_id": "diverse-native-v1",
+        "campaign_id": "diverse-native-v2",
         "coverage_mode": "manifest-only",
         "id": "diverse-lineages",
         "protocol_rows": 1170000,
@@ -204,6 +204,14 @@
         "phase": "pre-measurement",
         "required_before_measurement": "true",
         "review_id": "paper-mlkem-public-attribution-v2",
+        "reviewers": 0,
+        "status": "pending"
+      },
+      {
+        "minimum_reviewers": 2,
+        "phase": "pre-measurement",
+        "required_before_measurement": "true",
+        "review_id": "paper-mlkem-valid-tuple-v1",
         "reviewers": 0,
         "status": "pending"
       },
@@ -259,7 +267,7 @@
     "paper_ready": false,
     "pre_measurement_ready": false,
     "status_counts": {
-      "pending": 7
+      "pending": 8
     }
   },
   "schema_version": 2

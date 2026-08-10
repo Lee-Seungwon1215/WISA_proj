@@ -34,11 +34,23 @@ target mode의 timed region에는 target call만 있다.
 
 | template/axis | class 0 | class 1 | 공통 |
 |---|---|---|---|
-| KEM `sk` | fixed valid `(sk, ct)` tuple pool | random valid paired tuple pool | common `sk_work`, `ct_work` |
+| KEM `valid_tuple` | one fixed valid `(sk, ct)` tuple | fresh valid paired tuples | common `sk_work`, `ct_work`; secret, ciphertext, embedded public-key material all vary across classes |
 | KEM `ct` | fixed valid-ct pool | random valid-ct pool | fixed sk, common buffers |
 | KEM `fo` | valid-ct pool | paired byte-corrupted ct pool with exact rejection-key witness | fixed sk, common buffers |
 | sign `sk` | fixed valid-sk pool | random valid-sk pool | fixed message, common buffers |
 | sign `msg` | fixed-message pool | random-message pool | fixed sk, common buffers |
+
+KEM `valid_tuple`은 secret-key-only axis가 아니다. class 0은 하나의 valid
+tuple을 반복하고 class 1은 fresh keypair과 그 public key로 만든 matching
+ciphertext를 쓴다. 따라서 signal은 mixed public+secret input contrast로만
+보고하며 secret material에 인과 귀속하지 않는다. KEM `sk`는 이 구성을
+잘못 요약했던 역사 config/artifact의 compatibility label로만 보존한다.
+신규 paper evidence에서는 사용하지 않는다.
+
+committed-corpus v3의 하니스 ID `kem_dec`은 corpus가 `(target, harness)`로
+key되기 때문에 유지될 뿐이다. 그 report의 machine axis는
+`valid_tuple`이며, diverse v2는 더 명시적인 하니스 ID
+`kem_dec_valid_tuple`을 쓴다. 하니스 ID를 secret attribution으로 읽으면 안 된다.
 
 sign template의 portable boundary는 full `crypto_sign_signature` API다. signature
 길이를 sample마다 기록한다. sampler/acceptance loop/encoding core는
@@ -81,7 +93,10 @@ host/A/A 기반 계획 보조값일 뿐 target trace의 MDE나 achieved power가
    `insufficient-power` (3 repeats와 0.8이면 3/3 요구)
 8. target raw status repeat 불일치 → `insufficient-power`
 9. seeded randombytes interpose 미확인 → `confounded`
-10. 전부 통과 → `valid`
+10. KEM `valid_tuple`의 process별 metadata, setup return code,
+    enc→dec round-trip witness, per-trace corpus seed 또는
+    `secret_attribution_permitted=false` 계약 불일치 → `error`
+11. 전부 통과 → `valid`
 
 `valid`는 PASS 동의어가 아니다. `valid + FAIL`은 해석 가능한 signal이고
 `valid + PASS`는 선택한 host와 입력 분포에서 관측된 no-signal이다. A/A 기반
@@ -96,19 +111,24 @@ nominal sensitivity 숫자는 보조 진단일 뿐 target 효과의 상한이 �
   positive raw row.
 - `dudect_backend_report.json` schema 2.0: official 102 tests, host, seeds,
   randomness policy, false-alarm budget, power curve, MDE, 세 CSV hash.
+  `valid_tuple`은 각 preserved trace의 runtime metadata와 독립 재구성된
+  `input_contract`를 포함한다.
 
 ## 아직 증명하지 않는 것
 
 - random input pool이 희귀/adversarial trigger를 커버한다는 주장
 - 한 host/microarchitecture 결과의 다른 CPU 일반화
 - full sign API 결과를 core sampler 결과로 해석
+- mixed `valid_tuple` signal을 secret-key leakage로 인과 귀속
 - `generic` caller setup의 자동 대칭성
 - control 코드가 존재한다는 이유만으로 실제 corpus target이 control을
   통과했다는 주장
 
-따라서 다음 단계는 native single-CPU에서 기존 corpus를 v2로 재실행하고,
+따라서 다음 단계는 native single-CPU에서 기존 corpus를
+`native_timing_v3_campaign.yaml`로 재실행하고,
 target별 control artifact를 검토한 뒤 evidence v2를 재분류하는 것이다.
 6 target/8 timing axis의 paper setting, host gate, 실행 재개, 무결성 검증
-계약은 [`measurement/`](measurement/README.md)에 준비돼 있다. 현재 상태는
+계약과 diverse v2 비교는 [`measurement/`](measurement/README.md)에 준비돼 있다.
+현재 상태는
 **campaign 준비 완료 / physical 실행 보류**이며, CI의 synthetic fixture나
 Docker/QEMU smoke는 이 미완료 실측을 대신하지 않는다.

@@ -54,8 +54,11 @@ from ctkat.timing_binary_contract import (  # noqa: E402
     load_timing_binary_contract,
 )
 from ctkat.timing_environment import collect_timing_environment  # noqa: E402
+from ctkat.timing_input_contract import (  # noqa: E402
+    validate_valid_tuple_harness_report,
+)
 
-DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v2_campaign.yaml"
+DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v3_campaign.yaml"
 CORPUS_SUMMARY = ROOT / "docs" / "corpus" / "corpus_summary.csv"
 OFFICIAL_TIMING_THRESHOLD = OFFICIAL_DUDECT_THRESHOLD_LABEL
 RUN_KINDS = ("engineering", "pilot", "final")
@@ -175,11 +178,21 @@ class TargetSpec:
 
 
 @dataclass(frozen=True)
+class CorpusAxisReplacement:
+    target: str
+    harness: str
+    from_axis: str
+    to_axis: str
+    rationale: str
+
+
+@dataclass(frozen=True)
 class CampaignSpec:
     schema_version: str
     campaign_id: str
     description: str
     coverage_mode: str
+    corpus_axis_replacements: tuple[CorpusAxisReplacement, ...]
     host: dict[str, Any]
     protocol: ProtocolSpec
     targets: tuple[TargetSpec, ...]
@@ -295,6 +308,7 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
             "campaign_id",
             "description",
             "coverage_mode",
+            "corpus_axis_replacements",
             "host",
             "protocol",
             "targets",
@@ -309,6 +323,48 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
     coverage_mode = root.get("coverage_mode")
     if coverage_mode not in {"committed-timing-rows", "manifest-only"}:
         raise CampaignError("coverage_mode must be committed-timing-rows or manifest-only")
+
+    axis_names = {"sk", "valid_tuple", "ct", "fo", "msg", "chosen_ct", "operand_bin"}
+    replacements: list[CorpusAxisReplacement] = []
+    replacement_keys: set[tuple[str, str]] = set()
+    raw_replacements = root.get("corpus_axis_replacements", [])
+    for index, item in enumerate(_require_list(raw_replacements, "corpus_axis_replacements")):
+        data = _require_mapping(item, f"corpus_axis_replacements[{index}]")
+        _forbid_unknown(
+            data,
+            {"target", "harness", "from_axis", "to_axis", "rationale"},
+            f"corpus_axis_replacements[{index}]",
+        )
+        target = data.get("target")
+        harness = data.get("harness")
+        from_axis = data.get("from_axis")
+        to_axis = data.get("to_axis")
+        rationale = data.get("rationale")
+        if not isinstance(target, str) or not target:
+            raise CampaignError(f"corpus_axis_replacements[{index}].target must be non-empty")
+        if not isinstance(harness, str) or not harness:
+            raise CampaignError(f"corpus_axis_replacements[{index}].harness must be non-empty")
+        if from_axis not in axis_names or to_axis not in axis_names:
+            raise CampaignError(f"corpus_axis_replacements[{index}] axes must be known timing axes")
+        if from_axis == to_axis:
+            raise CampaignError(f"corpus_axis_replacements[{index}] must change the timing axis")
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise CampaignError(f"corpus_axis_replacements[{index}].rationale must be non-empty")
+        key = (target, harness)
+        if key in replacement_keys:
+            raise CampaignError(f"duplicate corpus axis replacement for {target}/{harness}")
+        replacement_keys.add(key)
+        replacements.append(
+            CorpusAxisReplacement(
+                target=target,
+                harness=harness,
+                from_axis=str(from_axis),
+                to_axis=str(to_axis),
+                rationale=rationale,
+            )
+        )
+    if replacements and coverage_mode != "committed-timing-rows":
+        raise CampaignError("corpus_axis_replacements require coverage_mode=committed-timing-rows")
 
     host = _require_mapping(root.get("host"), "host")
     _forbid_unknown(
@@ -408,13 +464,11 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
         axes_raw = _require_mapping(data.get("axes"), f"targets[{index}].axes")
         if set(axes_raw) != set(harnesses_raw):
             raise CampaignError(f"targets[{index}].axes keys must exactly match harnesses")
-        if any(
-            not isinstance(axis, str)
-            or axis not in {"sk", "ct", "fo", "msg", "chosen_ct", "operand_bin"}
-            for axis in axes_raw.values()
-        ):
+        if any(not isinstance(axis, str) or axis not in axis_names for axis in axes_raw.values()):
             raise CampaignError(
-                f"targets[{index}].axes values must be one of sk/ct/fo/msg/chosen_ct/operand_bin"
+                "targets["
+                f"{index}].axes values must be one of "
+                "sk/valid_tuple/ct/fo/msg/chosen_ct/operand_bin"
             )
         effects_raw = _require_list(
             data.get("positive_control_effects"),
@@ -449,6 +503,7 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
         campaign_id=campaign_id,
         description=str(root.get("description", "")),
         coverage_mode=str(coverage_mode),
+        corpus_axis_replacements=tuple(replacements),
         host=dict(host),
         protocol=protocol,
         targets=tuple(targets),
@@ -666,9 +721,18 @@ def static_check(campaign: CampaignSpec) -> list[str]:
 
     if campaign.coverage_mode == "committed-timing-rows":
         corpus_axes = _corpus_timing_axes()
-        if manifest_axes != corpus_axes:
-            missing = sorted(corpus_axes - manifest_axes)
-            extra = sorted(manifest_axes - corpus_axes)
+        expected_axes = set(corpus_axes)
+        for replacement in campaign.corpus_axis_replacements:
+            old = (replacement.target, replacement.harness, replacement.from_axis)
+            new = (replacement.target, replacement.harness, replacement.to_axis)
+            if old not in corpus_axes:
+                errors.append(f"corpus axis replacement source is not committed: {old!r}")
+                continue
+            expected_axes.remove(old)
+            expected_axes.add(new)
+        if manifest_axes != expected_axes:
+            missing = sorted(expected_axes - manifest_axes)
+            extra = sorted(manifest_axes - expected_axes)
             errors.append(
                 f"campaign/corpus timing-axis drift: missing={missing or 'none'}, "
                 f"extra={extra or 'none'}"
@@ -1824,6 +1888,7 @@ def validate_target_artifacts(
             aa_max_failures=campaign.protocol.aa_max_failures,
             target_power=campaign.protocol.target_power,
             power_alpha=campaign.protocol.power_alpha,
+            expected_axes=target.axes,
         ),
     )
     result.errors.extend(
@@ -1876,6 +1941,13 @@ def validate_target_artifacts(
         if protocol.get("axis") != expected_axis:
             harness_errors.append(
                 f"harness_protocol.axis={protocol.get('axis')!r}, expected={expected_axis!r}"
+            )
+        if expected_axis == "valid_tuple":
+            harness_errors.extend(
+                validate_valid_tuple_harness_report(
+                    item,
+                    label=f"{target.id}.{harness_name}",
+                )
             )
         expected_protocol = {
             "schema_version": "1.0",

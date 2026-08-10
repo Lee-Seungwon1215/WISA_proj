@@ -79,7 +79,7 @@ backend calibration까지 통과시킨 뒤 engineering run을 시작한다.
 `native-promotion` 리뷰는 두 호스트 artifact와 분석 digest를 동결한 뒤 받는
 측정 후 승인이라 측정 시작 조건으로 세탁하지 않는다.
 자동화 에이전트 감사는 engineering 준비도를 높일 뿐 이 사람 승인을 대신하지
-않는다. 실험 동결본은 `docs/measurement/paper_native_campaign_v3.yaml`, 논문 골격과
+않는다. 실험 동결본은 `docs/measurement/paper_native_campaign_v4.yaml`, 논문 골격과
 claim 상태는 `docs/paper/`, blind/final bundle 절차는 `docs/artifact/`에 있다.
 측정 후에는 `--profile verification`으로 digest가 박힌 후보를 먼저 만든 뒤,
 `native-promotion-v2`의 독립 2인 사람이 그 정확한 digest를 승인하고,
@@ -361,7 +361,8 @@ dudect:
       prefix: "PQCLEAN_FOO_CLEAN_"
       randombytes_header: randombytes.h # seeded weak interpose용; toy만 null
       # kem 전용:
-      leak_target: sk          # sk | ct | fo
+      leak_target: valid_tuple # 신규 KEM 혼합입력 축; ct | fo | chosen_ct | operand_bin
+                               # sk는 역사 config 재현용 compatibility label만 허용
       # sign 전용:
       sign_leak_target: sk     # sk | msg
 
@@ -565,9 +566,11 @@ C와 Python Welch `|Δt| ≤ 1e-9`다.
 
 현재 corpus에서 timing evidence가 있는 6개 target/8개 axis를
 timing-harness-v2로 다시 재기 위한 실행 계획은
-[`docs/measurement/native_timing_v2_campaign.yaml`](docs/measurement/native_timing_v2_campaign.yaml)에
+[`docs/measurement/native_timing_v3_campaign.yaml`](docs/measurement/native_timing_v3_campaign.yaml)에
 동결돼 있다. macOS/ARM이나 Docker/QEMU에서 가짜 결론을 만드는 대신, 지금
 checkout에서 가능한 준비 상태는 다음 명령으로 계속 검사한다.
+이 v3 계획은 기존 corpus key와 맞추기 위해 KEM 하니스 ID `kem_dec`은
+유지하지만, machine axis는 `sk`가 아닌 `valid_tuple`로 고정한다.
 
 ```bash
 uv run python scripts/run_native_timing_campaign.py --check
@@ -581,7 +584,7 @@ CPU pinning, target별 3-process 측정, physical controls, artifact 검증과 c
 uv run python scripts/run_native_timing_campaign.py \
   --execute --run-kind engineering \
   --cpu 2 \
-  --output-root measurement_runs/corpus-native-timing-v2
+  --output-root measurement_runs/corpus-native-timing-v3
 ```
 
 engineering/pilot 중단 run은 `--resume`, 일부 target은 반복 가능한
@@ -746,26 +749,35 @@ ct:
 `valid`/`invalid`는 Valgrind 구조 분석 축이고, 아래 `dudect.leak_target:
 fo`는 timing 비교 축이다. 둘은 서로 대체가 아니라 보완 관계다.
 
-### KEM timing axes — `sk` / `ct` / `fo` (Bundle D, K, M)
+### KEM timing axes — `valid_tuple` / `ct` / `fo` (Bundle D, K, M)
 
-`template: kem` 하니스에 `leak_target: sk` (default), `leak_target: ct`,
-또는 `leak_target: fo` (Bundle K) 설정. 세 모드는 직교 axis라 한 KEM
-구현을 더 넓게 스크리닝하려면 yaml에 하니스 3개를 둔다. 이것도
-동적 timing screen이지 absence proof는 아니다.
+신규 실험은 `template: kem`에 `leak_target: valid_tuple`, `ct`, 또는
+`fo` (Bundle K)를 쓴다. `sk`는 예전 config와 raw artifact를 재현하기
+위한 compatibility label로만 남아 있으며, 새 paper campaign의 KEM 축으로
+쓰지 않는다. 이 axis들은 서로 다른 입력 분포를 동적으로 스크리닝할
+뿐이며 absence proof가 아니다.
 
-| `leak_target` | 측정 path | 고정 | 변화 | 잡는 leak |
+| `leak_target` | 측정 path | 고정 | 변화 | 해석 경계 |
 |---|---|---|---|---|
-| `sk` (기본) | **정상 dec** | 각 pool entry의 ct는 해당 sk에 매칭된 valid ct | class-0 fixed tuple pool vs class-1 random valid tuple pool | 정상 dec 경로의 sk-content dependent timing |
-| `ct` | **정상 dec** | sk fixed 양 class | class-0 fixed valid-ct pool vs class-1 random valid-ct pool | 정상 dec 경로의 ct-content dependent timing |
+| `valid_tuple` (신규 KEM 권장) | **정상 dec** | class 0의 하나의 valid `(sk, ct)` tuple | class 1의 fresh valid tuple; secret key, matching public ciphertext, embedded public-key material이 함께 변함 | mixed public+secret input timing contrast. signal을 secret에 인과 귀속하면 안 됨 |
+| `ct` | **정상 dec** | sk fixed 양 class | class-0 fixed valid-ct pool vs class-1 random valid-ct pool | 선택한 valid-ct 분포의 public-input timing contrast |
 | `fo` | **정상 ↔ FO** 비교 | sk fixed 양 class | paired valid-ct pool vs byte-corrupted pool whose rejection output is oracle-verified | 정상 path와 FO fallback/implicit-rejection timing 차이 |
+| `sk` (legacy only) | 역사 하니스 | 역사 config에 고정 | 현재 template에서는 `valid_tuple`과 같은 mixed tuple 구성 | 과거 label 재현용. secret-key-only evidence로 사용 금지 |
 
-**Bundle M (F13/F14 audit fix)**: 이전 버전의 sk-leak은 양 class 모두
+`valid_tuple`은 설정, keygen, encapsulation, decapsulation return code와 모든 pool
+member의 untimed enc→dec round trip을 확인한다. 각 process trace는
+secret/public/embedded-public-key material이 함께 변한다는 input contract와
+`secret_attribution_permitted=false`를 남기며, campaign validator와 paper analyzer가
+이 metadata를 독립적으로 재구성해 검증한다.
+
+**Bundle M (F13/F14 audit fix)**: 이전 버전의 legacy `sk` 축은 양 class 모두
 `rand_bytes(ct, ...)`로 ct를 random bytes로 채워 dec()가 매번 FO
-fallback 경로로 떨어졌음 — 즉 README가 광고했던 "정상 dec 경로의
-sk-dependent timing"이 아니라 실제로는 "FO rejection 경로의 sk-dependent
-timing"을 측정한 셈. Bundle K에서 `leak_target: fo`를 별도로 추가하면서
-sk-leak의 의미를 재점검했어야 했는데 빠뜨렸음. Bundle M에서 양 class에
-valid ct를 `enc()`로 생성하도록 수정 → sk-leak이 진짜 정상 path를 측정.
+fallback 경로로 떨어졌다. 즉 정상 valid-input decapsulation이 아닌
+rejection 경로의 혼합 입력 차이를 측정했다. Bundle K에서
+`leak_target: fo`를 별도로 추가할 때 이 의미를 재점검했어야 했다.
+Bundle M에서 양 class에 valid ct를 `enc()`로 생성하도록 수정했지만,
+secret와 matching public ciphertext가 함께 변한다는 사실은 남았다.
+그래서 신규 campaign은 이 축을 `valid_tuple`로 이름 붙인다.
 Bundle M 이전 결과 (`dudect_summary.csv`의 |t| 값) 와 비교하려면 측정
 경로 자체가 달라졌음을 감안할 것.
 
@@ -855,8 +867,9 @@ dudect:
       rejection_seed_offset: KYBER_SECRETKEYBYTES - KYBER_SYMBYTES
 ```
 
-sk-leak / ct-leak / fo-leak 세 모드는 직교 axis — 한 KEM 구현을 더 넓게
-보려면 3개 하니스를 두되, 결과는 각 하니스/입력 분포 기준으로 읽을 것.
+valid-tuple / ct / fo 세 모드는 서로 다른 axis다. 한 KEM 구현을
+더 넓게 보려면 3개 하니스를 두되, 결과는 각 하니스/입력 분포
+기준으로 읽을 것. legacy `sk` 결과를 네 번째 독립 축으로 세지 않는다.
 
 ### Signature timing axes — `sk` / `msg`
 

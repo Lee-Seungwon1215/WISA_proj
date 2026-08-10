@@ -87,6 +87,18 @@
   해당 축의 control ladder만 65,536/262,144/1,048,576으로 올린 Falcon v2와
   paper campaign v3를 새로 동결했다. v1 engineering trace는 calibration
   전용이고 final 재사용은 금지한다.
+- **M8 / paper campaign v4 KEM valid-tuple 계약 교정 완료 (2026-08-10,
+  `0.12.0a3`)** — non-promotable diverse v1 engineering run에서 native
+  backend header와 ML-DSA verifier adapter 누락을 잡아냈다. 동시에 ML-KEM
+  `sk` 축이 secret과 matching public ciphertext를 함께 바꾸는 혼합
+  valid-tuple contrast임을 raw evidence로 확인했다. compile 계약을 고치고
+  `valid_tuple` 축·fail-closed attribution metadata를 추가한 diverse v2와
+  paper campaign v4를 새로 동결했다. 같은 혼합 `sk` label이 남아 있던
+  committed-corpus refresh도 core native v3으로 versioning했다. corpus key용
+  하니스 ID `kem_dec`은 유지하지만 machine axis는 `valid_tuple`이며,
+  secret/public/embedded public-key material이 함께 변하므로 secret attribution을
+  금지한다. diverse v1과 core v2 engineering trace는 calibration 전용이고
+  replacement final에 재사용·resume·relabel할 수 없다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -95,7 +107,8 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비가 확보되면 다음 작업은 동결된 campaign, Falcon paired
+- native 장비가 확보되면 다음 작업은 core native v3·diverse v2가
+  포함된 paper campaign v4, Falcon paired
   campaign, same-corpus official dudect를 실행해 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
@@ -427,10 +440,11 @@ official dudect와 맞출 항목:
 
 아래 1–9는 생성 C, process runner, raw protocol CSV와 backend report schema
 v2에 구현됐다. 6 target/8 axis의 실행 계약과 승격 전 검증은
-[`measurement/native_timing_v2_campaign.yaml`](measurement/native_timing_v2_campaign.yaml)과
+[`measurement/native_timing_v3_campaign.yaml`](measurement/native_timing_v3_campaign.yaml)과
 [`run_native_timing_campaign.py`](../scripts/run_native_timing_campaign.py)에
-동결했다. 단, target별 physical acceptance artifact는 native corpus
-refresh에서 생성한다. control 코드 unit test를 실제 native ML-KEM A/A
+동결했다. core v3의 KEM `kem_dec`는 역사 corpus key만 유지하고
+machine axis를 mixed `valid_tuple`로 교정했다. 단, target별 physical
+acceptance artifact는 native corpus refresh에서 생성한다. control 코드 unit test를 실제 native ML-KEM A/A
 통과로 둔갑시키지 않는다. 상세 하니스 계약은
 [`TIMING_HARNESS_V2.md`](TIMING_HARNESS_V2.md)에 고정했다.
 
@@ -986,7 +1000,8 @@ M5 종료 조건:
     4 component/26 target execution/28 axis, binary/assembly evidence,
     automated engineering audits, ablation, two-person packets,
     preregistration, generated tables, blind rerun, lock/pin, one-command gate
-11. native 장비 확보 즉시 두 host에서 v2 campaign과 same-corpus 세 도구를
+11. native 장비 확보 즉시 두 host에서 paper v4의 core v3/diverse v2
+    component와 same-corpus 세 도구를
     실행하고, postmeasurement 2인 review 뒤 별도 commit으로 재분류
 
 첫 구현 batch의 완료 기준:

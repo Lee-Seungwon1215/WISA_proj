@@ -1,9 +1,9 @@
 schema_version: 2
-matrix_id: ctkat-paper-claims-v3
+matrix_id: ctkat-paper-claims-v4
 terminology:
   screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
   source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
-  timing_campaign: physical-host timing-v2 runs; a plan or CI build is never timing evidence
+  timing_campaign: paper-native-v4 physical-host runs using the timing-harness-v2 protocol; a plan or CI build is never timing evidence
 
 claims:
   - id: fail-closed-evidence-fold
@@ -66,15 +66,22 @@ claims:
       - quantify or bound shared-code ancestry before stronger independence wording
     prohibited_wording: four from-scratch independent implementations
   - id: native-timing-results
-    statement: Paper-grade native timing will use two distinct physical x86_64 hosts, frozen controls, and no automatic corpus promotion.
+    statement: Paper-grade native timing will use two distinct physical x86_64 hosts, frozen controls, and no automatic corpus promotion; each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
     status: pending-physical-measurement
     scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
-      - docs/measurement/paper_native_campaign_v3.yaml
+      - docs/measurement/paper_native_campaign_v4.yaml
+      - docs/measurement/native_timing_v3_campaign.yaml
+      - docs/measurement/NATIVE_TIMING_V3.md
+      - docs/measurement/diverse_native_v2.yaml
+      - docs/measurement/DIVERSE_NATIVE_V2.md
       - docs/measurement/EXPERIMENT_PREREGISTRATION.md
+      - ctkat/timing_input_contract.py
       - scripts/check_paper_campaign.py
+      - docs/reviews/paper/mlkem-valid-tuple-v1.yaml
     open_gates:
+      - complete two-person premeasurement review of the valid-tuple attribution boundary
       - execute both hosts
       - hash and blind-review artifacts
       - complete postmeasurement promotion review
-    prohibited_wording: no finding means proven constant-time
+    prohibited_wording: valid-tuple signal means secret-key leakage; no finding means proven constant-time

@@ -25,8 +25,8 @@
     },
     {
       "config": "examples/pqc_mlkem768/ctkat.yaml",
-      "config_sha256": "9cde8667de8623e25de2ae8ef696448900550d05093c5ba91ca4ce3b51905dd1",
-      "input_set_sha256": "2e66a138f9cc981abd2a25cacb628fe7ace5b9af83a41c2b96b8f606fba255df",
+      "config_sha256": "edec159d8c470657ea3542105639bbabdc05831ae10da2f84e792ee6ad41d4f2",
+      "input_set_sha256": "22f3370fedd00686c4b8712ccbd152ed0e0dd7f06716fe8796731644efd7a119",
       "status": "pass",
       "summary_harnesses": [
         "kem_dec",

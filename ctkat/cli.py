@@ -87,6 +87,10 @@ from .timing_binary_contract import (
 )
 from .timing_environment import collect_timing_environment
 from .timing_harness_generator import generate_and_compile_timing
+from .timing_input_contract import (
+    build_valid_tuple_input_contract,
+    validate_valid_tuple_protocol,
+)
 from .triage import TriageConfig, load_triage
 from .valgrind_parser import Finding, parse_valgrind_log_with_stats
 from .valgrind_runner import run_valgrind
@@ -1112,21 +1116,24 @@ def _run_v2_harness_protocol(
             fail_threshold=fail_t,
         )
         target_runs.append((samples, target_result, batches))
-        target_payloads.append(
-            {
-                "process_index": process_index,
-                "analysis_seed": target_seed,
-                "calibration_seed": calibration_seed,
-                "status": target_result.status,
-                "abs_t_score": target_result.abs_t_score,
-                "test_kind": target_result.test_kind,
-                "test_index": target_result.test_index,
-                "n0": target_result.n0,
-                "n1": target_result.n1,
-                "enough_measurements": target_result.enough_measurements,
-                "runtime_metadata": dict(samples.runtime_metadata),
-            }
-        )
+        target_payload = {
+            "process_index": process_index,
+            "analysis_seed": target_seed,
+            "calibration_seed": calibration_seed,
+            "status": target_result.status,
+            "abs_t_score": target_result.abs_t_score,
+            "test_kind": target_result.test_kind,
+            "test_index": target_result.test_index,
+            "n0": target_result.n0,
+            "n1": target_result.n1,
+            "enough_measurements": target_result.enough_measurements,
+            "runtime_metadata": dict(samples.runtime_metadata),
+        }
+        if harness.template == "kem" and harness.leak_target == "valid_tuple":
+            target_payload["calibration_runtime_metadata"] = (
+                dict(calibration.runtime_metadata) if calibration is not None else None
+            )
+        target_payloads.append(target_payload)
 
         aa_seed = _timing_domain_seed(effective_seed, "aa", process_index)
         aa_samples = run_timing_harness(
@@ -1328,7 +1335,11 @@ def _run_v2_harness_protocol(
             "variable": len(set(output_lengths)) > 1,
         },
     }
-    if harness.template == "kem" and harness.leak_target in {
+    if harness.template == "kem" and harness.leak_target == "valid_tuple":
+        overall.harness_protocol["input_contract"] = build_valid_tuple_input_contract(
+            [(trace.samples.runtime_metadata, trace.seed) for trace in traces]
+        )
+    elif harness.template == "kem" and harness.leak_target in {
         "chosen_ct",
         "operand_bin",
     }:
@@ -1346,7 +1357,7 @@ def _run_v2_harness_protocol(
                 "class0_ct_sha3_256",
                 "class1_ct_sha3_256",
             )
-        else:
+        elif harness.leak_target == "operand_bin":
             expected_common.update(
                 {
                     "class_contract": "frozen-public-coefficient-bins",
@@ -1366,9 +1377,9 @@ def _run_v2_harness_protocol(
             len(values) == 1 and re.fullmatch(r"[0-9a-f]{64}", values[0])
             for values in digest_values.values()
         )
-        overall.harness_protocol["input_contract"] = {
+        input_contract = {
             "axis": harness.leak_target,
-            "key_policy": "fixed",
+            "key_policy": expected_common["key_policy"],
             "public_class_axis": True,
             "secret_key_varies_between_classes": False,
             "expected_metadata": expected_common,
@@ -1382,6 +1393,7 @@ def _run_v2_harness_protocol(
                 else "direct public numerator-bin latency canary; not full-KEM leakage"
             ),
         }
+        overall.harness_protocol["input_contract"] = input_contract
     if harness.template == "sign":
         signature_metadata = [trace.samples.runtime_metadata for trace in traces]
 
@@ -1518,6 +1530,11 @@ def _set_timing_validity(
         )
     elif harness.template in {"kem", "sign"}:
         protocol = result.harness_protocol
+        valid_tuple_errors = (
+            validate_valid_tuple_protocol(protocol, label="harness_protocol")
+            if harness.template == "kem" and harness.leak_target == "valid_tuple"
+            else []
+        )
         if protocol.get("protocol") != "timing-harness-v2":
             result.timing_validity = "confounded"
             interpretation_reasons.append(
@@ -1564,6 +1581,9 @@ def _set_timing_validity(
                 "target key/sign randomness was not confirmed to use the seeded interpose; "
                 "the runtime manifest is not reproducible from the recorded seed"
             )
+        elif valid_tuple_errors:
+            result.timing_validity = "error"
+            interpretation_reasons.extend(valid_tuple_errors)
         elif harness.binary_contract is not None and not protocol.get("binary_contract", {}).get(
             "passed", False
         ):
@@ -1573,16 +1593,12 @@ def _set_timing_validity(
             )
         elif (
             harness.template == "kem"
-            and harness.leak_target
-            in {
-                "chosen_ct",
-                "operand_bin",
-            }
+            and harness.leak_target in {"chosen_ct", "operand_bin"}
             and not protocol.get("input_contract", {}).get("passed", False)
         ):
             result.timing_validity = "error"
             interpretation_reasons.append(
-                f"{harness.leak_target} fixed-input metadata contract did not pass"
+                f"{harness.leak_target} input metadata contract did not pass"
             )
         elif harness.template == "sign" and not protocol.get("signature_call_contract", {}).get(
             "passed", False

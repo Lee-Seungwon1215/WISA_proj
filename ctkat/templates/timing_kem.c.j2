@@ -111,15 +111,17 @@ int main(int argc, char **argv) {
 
     uint8_t pk_fixed[CTKAT_PK_BYTES];
     uint8_t sk_fixed[CTKAT_SK_BYTES];
-{% if leak_target | default("sk") == "sk" %}
+{% if leak_target | default("sk") in ("sk", "valid_tuple") %}
     uint8_t pk_tmp[CTKAT_PK_BYTES];
     uint8_t sk_tmp[CTKAT_SK_BYTES];
 {% endif %}
     uint8_t ct_fixed[CTKAT_CT_BYTES];
     uint8_t ct_tmp[CTKAT_CT_BYTES];
     uint8_t ss_tmp[CTKAT_SS_BYTES];
-{% if leak_target | default("sk") in ("fo", "chosen_ct") -%}
+{% if leak_target | default("sk") in ("valid_tuple", "fo", "chosen_ct") -%}
     uint8_t ss_check[CTKAT_SS_BYTES];
+{% endif %}
+{% if leak_target | default("sk") in ("fo", "chosen_ct") -%}
     uint8_t ss_reject[CTKAT_SS_BYTES];
 {% endif %}
 {% if leak_target | default("sk") == "chosen_ct" -%}
@@ -127,16 +129,38 @@ int main(int argc, char **argv) {
     char sk_digest_hex[65], class0_digest_hex[65], class1_digest_hex[65];
 {% endif %}
 
+{% if leak_target | default("sk") == "valid_tuple" %}
+    if ({{ prefix }}crypto_kem_keypair(pk_fixed, sk_fixed) != 0 ||
+        {{ prefix }}crypto_kem_enc(ct_fixed, ss_tmp, pk_fixed) != 0 ||
+        {{ prefix }}crypto_kem_dec(ss_check, ct_fixed, sk_fixed) != 0 ||
+        memcmp(ss_check, ss_tmp, CTKAT_SS_BYTES) != 0) {
+        fprintf(stderr, "timing-harness-v2: fixed valid-tuple witness failed\n");
+        free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
+        return 4;
+    }
+{% else %}
     {{ prefix }}crypto_kem_keypair(pk_fixed, sk_fixed);
     {{ prefix }}crypto_kem_enc(ct_fixed, ss_tmp, pk_fixed);
+{% endif %}
 
     /* Generate both input pools completely before any warmup or timing. */
     for (size_t p = 0; p < CTKAT_POOL_SIZE; p++) {
-{% if leak_target | default("sk") == "sk" %}
+{% if leak_target | default("sk") in ("sk", "valid_tuple") %}
         memcpy(CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES), sk_fixed, CTKAT_SK_BYTES);
         memcpy(CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES), ct_fixed, CTKAT_CT_BYTES);
+{% if leak_target | default("sk") == "valid_tuple" %}
+        if ({{ prefix }}crypto_kem_keypair(pk_tmp, sk_tmp) != 0 ||
+            {{ prefix }}crypto_kem_enc(ct_tmp, ss_tmp, pk_tmp) != 0 ||
+            {{ prefix }}crypto_kem_dec(ss_check, ct_tmp, sk_tmp) != 0 ||
+            memcmp(ss_check, ss_tmp, CTKAT_SS_BYTES) != 0) {
+            fprintf(stderr, "timing-harness-v2: fresh valid-tuple witness failed\n");
+            free(pool0_sk); free(pool1_sk); free(pool0_ct); free(pool1_ct);
+            return 4;
+        }
+{% else %}
         {{ prefix }}crypto_kem_keypair(pk_tmp, sk_tmp);
         {{ prefix }}crypto_kem_enc(ct_tmp, ss_tmp, pk_tmp);
+{% endif %}
         memcpy(CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES), sk_tmp, CTKAT_SK_BYTES);
         memcpy(CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES), ct_tmp, CTKAT_CT_BYTES);
 {% elif leak_target | default("sk") == "ct" %}
@@ -303,7 +327,21 @@ int main(int argc, char **argv) {
     }
 
     ctkat_emit_trace(options.measurements);
-{% if leak_target | default("sk") == "chosen_ct" -%}
+{% if leak_target | default("sk") == "valid_tuple" -%}
+    fprintf(
+        stderr,
+        "CTKAT-HARNESS-META axis=valid_tuple "
+        "key_policy=class0-fixed-class1-fresh "
+        "class_contract=fixed-valid-tuple-vs-fresh-valid-tuples "
+        "secret_key_varies_between_classes=true "
+        "public_ciphertext_varies_between_classes=true "
+        "embedded_public_key_material_varies_between_classes=true "
+        "secret_attribution_permitted=false "
+        "setup_return_codes=checked "
+        "valid_tuple_round_trip_witness=all-pool-members corpus_seed=%llu\n",
+        (unsigned long long)options.seed
+    );
+{% elif leak_target | default("sk") == "chosen_ct" -%}
     fprintf(
         stderr,
         "CTKAT-HARNESS-META axis=chosen_ct key_policy=fixed "

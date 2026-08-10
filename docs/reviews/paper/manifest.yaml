@@ -4,6 +4,7 @@ minimum_reviewers: 2
 independence_rule: reviewer-id-must-be-unique-and-independent-from-artifact-author
 packets:
   - {path: docs/reviews/paper/mlkem-public-attribution-v2.yaml, required_before_measurement: true}
+  - {path: docs/reviews/paper/mlkem-valid-tuple-v1.yaml, required_before_measurement: true}
   - {path: docs/reviews/paper/signature-declassification-v2.yaml, required_before_measurement: true}
   - {path: docs/reviews/paper/kyberslash-ground-truth-v2.yaml, required_before_measurement: true}
   - {path: docs/reviews/paper/falcon-comparator-v2.yaml, required_before_measurement: true}

@@ -10,10 +10,10 @@ hosts:
     artifact_root: replace/host-a
     hash_manifest: replace/host-a/SHA256SUMS
     components:
-      committed-corpus-refresh: replace/host-a/committed-corpus
+      committed-corpus-refresh: replace/host-a/committed-corpus-v3
       kyberslash-contrast: replace/host-a/kyberslash
       falcon-contrast: replace/host-a/falcon
-      diverse-lineages: replace/host-a/diverse
+      diverse-lineages: replace/host-a/diverse-v2
     same_corpus_results:
       official_dudect: replace/host-a/same-corpus/official_dudect/baseline_report.json
       timecop: replace/host-a/same-corpus/timecop/baseline_report.json
@@ -25,10 +25,10 @@ hosts:
     artifact_root: replace/host-b
     hash_manifest: replace/host-b/SHA256SUMS
     components:
-      committed-corpus-refresh: replace/host-b/committed-corpus
+      committed-corpus-refresh: replace/host-b/committed-corpus-v3
       kyberslash-contrast: replace/host-b/kyberslash
       falcon-contrast: replace/host-b/falcon
-      diverse-lineages: replace/host-b/diverse
+      diverse-lineages: replace/host-b/diverse-v2
     same_corpus_results:
       official_dudect: replace/host-b/same-corpus/official_dudect/baseline_report.json
       timecop: replace/host-b/same-corpus/timecop/baseline_report.json

@@ -1,5 +1,6 @@
 review_id,phase,required_before_measurement,status,reviewers,minimum_reviewers
 paper-mlkem-public-attribution-v2,pre-measurement,true,pending,0,2
+paper-mlkem-valid-tuple-v1,pre-measurement,true,pending,0,2
 paper-signature-declassification-v2,pre-measurement,true,pending,0,2
 paper-kyberslash-ground-truth-v2,pre-measurement,true,pending,0,2
 paper-falcon-comparator-v2,pre-measurement,true,pending,0,2

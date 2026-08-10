@@ -30,6 +30,16 @@ def test_one_host_or_automatic_promotion_fails_closed():
     assert any("automatic_corpus_mutation" in error for error in errors)
 
 
+def test_claim_limits_are_exact_and_cannot_be_silently_weakened():
+    data = deepcopy(load_manifest())
+    data["claim_limits"].remove(
+        "the ML-KEM valid-tuple axis changes secret and public material together and "
+        "cannot support secret attribution"
+    )
+    errors, _ = validate(data)
+    assert "claim_limits drift" in errors
+
+
 def test_upstream_pin_drift_is_rejected():
     data = deepcopy(load_manifest())
     data["upstream_freeze"]["mlkem-native"]["revision"] = "0" * 40

@@ -28,6 +28,7 @@ from .official_dudect import (
     OfficialDudectAnalysis,
     OfficialProtocolTest,
 )
+from .timing_input_contract import validate_valid_tuple_harness_report
 
 RAW_TIMING_HEADER = (
     "project",
@@ -179,6 +180,7 @@ class OfficialDudectProtocolContract:
     aa_max_failures: int
     target_power: float
     power_alpha: float
+    expected_axes: tuple[tuple[str, str], ...] = ()
 
 
 def _timing_domain_seed(base: int, role: str, process_index: int, subindex: int = 0) -> int:
@@ -857,6 +859,19 @@ def _verify_protocol_contract(
     protocol = backend.get("harness_protocol")
     if not isinstance(protocol, dict):
         return {}, [f"{harness}: backend harness_protocol is not an object"]
+    expected_axis = dict(contract.expected_axes).get(harness)
+    if expected_axis is not None and protocol.get("axis") != expected_axis:
+        errors.append(
+            f"{harness}: backend harness_protocol.axis={protocol.get('axis')!r}, "
+            f"expected={expected_axis!r}"
+        )
+    if expected_axis == "valid_tuple":
+        errors.extend(
+            validate_valid_tuple_harness_report(
+                backend,
+                label=f"{harness}: backend",
+            )
+        )
 
     target_payloads: list[dict[str, Any]] = []
     target_analyses: list[

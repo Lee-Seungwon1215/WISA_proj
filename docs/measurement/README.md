@@ -1,6 +1,6 @@
 # Native timing campaign
 
-논문용 최상위 동결본은 `paper_native_campaign_v3.yaml`이다. 기존 corpus refresh
+논문용 최상위 동결본은 `paper_native_campaign_v4.yaml`이다. 기존 corpus refresh
 외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
 두 개의 서로 다른 physical x86_64 CPU model에서 같은 commit을 실행해야 한다.
 
@@ -8,30 +8,41 @@
 uv run python scripts/check_paper_campaign.py
 
 uv run python scripts/run_native_timing_campaign.py \
+  --manifest docs/measurement/native_timing_v3_campaign.yaml --check
+uv run python scripts/run_native_timing_campaign.py \
   --manifest docs/measurement/kyberslash_native_v2.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
   --manifest docs/measurement/falcon_native_v2.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/diverse_native_v1.yaml --check
+  --manifest docs/measurement/diverse_native_v2.yaml --check
 ```
 
 현재 정적 범위는 4 component, 26 target execution, 28 timing axis다. 이 숫자는
 독립 구현 수가 아니다. 같은 target이 비교/control 목적으로 여러 component에
 나올 수 있고 portable/native profile도 하나의 lineage 안에 있다.
 
-- `native_timing_v2_campaign.yaml`: committed timing row 8축의 replacement
+- `native_timing_v3_campaign.yaml`: committed timing row 8축의 replacement;
+  corpus key용 `kem_dec` 하니스 ID는 유지하지만 KEM machine axis는
+  mixed `valid_tuple`로 교정
 - `kyberslash_native_v2.yaml`: 고정키 chosen-ct 4축 + 취약/패치 operand canary 6축
 - `falcon_native_v2.yaml`: 512/1024 reference/native-FP/integer-FPR 6축;
   v1 engineering calibration에서 power가 부족했던 1024 integer-FPR positive
   control만 상향한 final 동결본
-- `diverse_native_v1.yaml`: mlkem-native/mldsa-native portable/x86_64 4축
+- `diverse_native_v2.yaml`: mlkem-native의 혼합 valid-tuple 축과 mldsa-native
+  sign 축을 portable/x86_64로 비교하는 4축; v1 engineering 결과는 attribution
+  calibration 전용이며 final 재사용 금지
 
 가설, sample/control 수, 제외 기준, multiplicity, host disagreement,
 promotion 문구는 `EXPERIMENT_PREREGISTRATION.md`에 측정 전에 고정했다. static
 check 성공은 timing 결과가 아니라 “실행 정의가 준비됨”만 뜻한다.
 
-`native_timing_v2_campaign.yaml`은 기존 corpus의 timing 8개 축을
-timing-harness-v2로 다시 측정하기 위한 동결된 실행 계획이다. 자동화 검증을
+`native_timing_v3_campaign.yaml`은 기존 corpus의 timing 8개 축을
+timing-harness-v2로 다시 측정하기 위한 동결된 실행 계획이다. v2의
+ML-KEM `sk` machine label은 secret key와 matching public ciphertext를 함께
+바꾸는 혼합 입력을 잘못 요약했다. v3은 corpus row key용 하니스 ID
+`kem_dec`은 유지하되 machine axis를 `valid_tuple`로 바꾸고 fail-closed
+input contract를 적용한다. v2 engineering trace는 역사 calibration이며 v3
+final에 재사용·resume·relabel할 수 없다. 자동화 검증을
 마친 clean commit에서는 engineering/pilot을 실행할 수 있다. 논문 승격용 final은
 별도의 사람 리뷰와 두 번째 물리 호스트가 있어야 한다.
 리뷰 서명은 자기 자신을 포함하는 git commit을 가리킬 수 없으므로 reviewer는
@@ -58,7 +69,7 @@ manifest의 warmup 1,000회, batch 10개, compile/backend timeout도 YAML의
 
 | family | target | timing axis |
 |---|---|---|
-| ML-KEM | `pqclean_mlkem768` | `kem_dec/sk`, `kem_dec_ct/ct`, `kem_dec_fo/fo` |
+| ML-KEM | `pqclean_mlkem768` | `kem_dec/valid_tuple`, `kem_dec_ct/ct`, `kem_dec_fo/fo` |
 | ML-DSA | 44/65/87 세 target | 각 `sign/sk` |
 | SPHINCS+ | SHA2-128f-simple | `sign/sk` |
 | Falcon | Falcon-512 | `sign/sk` |
@@ -76,7 +87,7 @@ uv run python scripts/run_native_timing_campaign.py --preflight --cpu 2
 uv run python scripts/run_native_timing_campaign.py \
   --execute --run-kind engineering \
   --cpu 2 \
-  --output-root measurement_runs/corpus-native-timing-v2
+  --output-root measurement_runs/corpus-native-timing-v3
 ```
 
 `--cpu`는 명시적으로 현재 campaign process와 그 자식만 해당 logical CPU에
@@ -142,7 +153,7 @@ root에는 다음 두 파일이 생긴다.
 
 ```bash
 uv run python scripts/run_native_timing_campaign.py \
-  --validate-run measurement_runs/corpus-native-timing-v2 \
+  --validate-run measurement_runs/corpus-native-timing-v3 \
   --expected-run-kind engineering
 ```
 

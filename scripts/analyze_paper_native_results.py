@@ -28,6 +28,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from ctkat.timing_input_contract import (  # noqa: E402
+    validate_valid_tuple_harness_report,
+)
+
 MEASUREMENT_CRITICAL_PATHS = (
     "ctkat",
     "scripts",
@@ -201,8 +206,8 @@ class HostAxis:
 COMPONENT_PLANS = {
     "committed-corpus-refresh": ComponentPlan(
         "committed-corpus-refresh",
-        ROOT / "docs/measurement/native_timing_v2_campaign.yaml",
-        "corpus-native-timing-v2",
+        ROOT / "docs/measurement/native_timing_v3_campaign.yaml",
+        "corpus-native-timing-v3",
     ),
     "kyberslash-contrast": ComponentPlan(
         "kyberslash-contrast",
@@ -216,8 +221,8 @@ COMPONENT_PLANS = {
     ),
     "diverse-lineages": ComponentPlan(
         "diverse-lineages",
-        ROOT / "docs/measurement/diverse_native_v1.yaml",
-        "diverse-native-v1",
+        ROOT / "docs/measurement/diverse_native_v2.yaml",
+        "diverse-native-v2",
     ),
 }
 
@@ -268,9 +273,9 @@ PAIRWISE_FAMILIES: dict[str, tuple[AxisKey, ...]] = {
             "c_fndsa1024_fpr_emu",
         )
     ),
-    "mlkem-native": (
-        AxisKey("diverse-lineages", "mlkem_native_768_portable", "kem_dec"),
-        AxisKey("diverse-lineages", "mlkem_native_768_x86_64", "kem_dec"),
+    "mlkem-native-valid-tuple": (
+        AxisKey("diverse-lineages", "mlkem_native_768_portable", "kem_dec_valid_tuple"),
+        AxisKey("diverse-lineages", "mlkem_native_768_x86_64", "kem_dec_valid_tuple"),
     ),
     "mldsa-native": (
         AxisKey("diverse-lineages", "mldsa_native_65_portable", "sign"),
@@ -894,6 +899,13 @@ def load_host_axes(
                 axis = axes.get(harness)
                 if not isinstance(protocol, dict) or protocol.get("axis") != axis:
                     raise AnalysisError(f"{host_id}.{component}.{target_id}.{harness}: axis drift")
+                if axis == "valid_tuple":
+                    contract_errors = validate_valid_tuple_harness_report(
+                        item,
+                        label=f"{host_id}.{component}.{target_id}.{harness}",
+                    )
+                    if contract_errors:
+                        raise AnalysisError(contract_errors[0])
                 target_harness = campaign_by_harness[harness]
                 backend_environment = item.get("environment")
                 if (

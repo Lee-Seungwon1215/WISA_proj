@@ -76,7 +76,7 @@ Holm adjusted separately inside these families:
 - KyberSlash2-polyvec vulnerable/patched direct operand;
 - Falcon-512;
 - Falcon-1024;
-- mlkem-native;
+- mlkem-native mixed valid-tuple profile;
 - mldsa-native.
 
 The contrast is a secondary diagnostic, not an additional implementation
@@ -84,6 +84,9 @@ lineage and not a replacement for the official 102-test dudect result.
 The full-ML-KEM chosen-ciphertext family is a public-input comparison. The
 three operand families are hardware-latency canaries. Neither is reported as
 secret attribution, a full attack, or key recovery without separate evidence.
+The mlkem-native family changes secret keys, matching public ciphertexts, and
+embedded public-key material together. It is reported only as a valid-tuple
+build-profile contrast and never as a secret-key leakage attribution.
 
 ## Host heterogeneity
 

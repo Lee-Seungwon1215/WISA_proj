@@ -1,0 +1,84 @@
+project:
+  name: pqclean_mlkem768
+  language: c
+  root: .
+
+build: {argv: ["true"], workdir: .}
+
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 10000
+  warmup: 200
+  batches: 10
+  clock: monotonic
+  seed: 0xC0FFEE
+  workdir: .
+  generated_dir: ./_generated_dudect_v3
+  compiler:
+    cc: gcc
+    cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    # The historical harness name is retained for exact committed-corpus row
+    # coverage. Its axis is explicitly a mixed fixed/fresh valid-tuple
+    # contrast, never a secret-key attribution.
+    - name: kem_dec
+      template: kem
+      leak_target: valid_tuple
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      include_dirs: [clean, common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+
+    - name: kem_dec_ct
+      template: kem
+      leak_target: ct
+      header: api.h
+      extra_headers: [params.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      include_dirs: [clean, common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+
+    - name: kem_dec_fo
+      template: kem
+      leak_target: fo
+      header: api.h
+      extra_headers: [params.h, symmetric.h]
+      prefix: "PQCLEAN_MLKEM768_CLEAN_"
+      rejection_oracle_function: PQCLEAN_MLKEM768_CLEAN_kyber_shake256_rkprf
+      rejection_seed_offset: KYBER_SECRETKEYBYTES - KYBER_SYMBYTES
+      include_dirs: [clean, common]
+      sources:
+        - clean/kem.c
+        - clean/indcpa.c
+        - clean/poly.c
+        - clean/polyvec.c
+        - clean/ntt.c
+        - clean/reduce.c
+        - clean/cbd.c
+        - clean/symmetric-shake.c
+        - clean/verify.c
+        - common/fips202.c
+
+report: {output_dir: ./reports_timing_v3}

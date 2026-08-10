@@ -17,4 +17,4 @@ def test_paper_artifacts_do_not_claim_pending_reviews_are_complete():
     readiness = report["review_readiness"]
     assert readiness["pre_measurement_ready"] is False
     assert readiness["paper_ready"] is False
-    assert readiness["status_counts"] == {"pending": 7}
+    assert readiness["status_counts"] == {"pending": 8}

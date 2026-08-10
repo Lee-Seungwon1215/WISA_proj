@@ -13,7 +13,7 @@ dudect:
   batches: 10
   clock: auto
   seed: 0xC0FFEE
-  generated_dir: ./_generated_dudect_x86_64
+  generated_dir: ./_generated_dudect_x86_64_v2
   compiler:
     cc: gcc
     cflags: [-std=c99, -O2, -g, -fno-omit-frame-pointer, -fno-lto,
@@ -24,8 +24,9 @@ dudect:
              '-DMLK_CONFIG_FIPS202_BACKEND_FILE="fips202/native/auto.h"',
              -DMLK_FORCE_X86_64, -mavx2, -mbmi2]
   harnesses:
-    - name: kem_dec
+    - name: kem_dec_valid_tuple
       template: kem
+      leak_target: valid_tuple
       header: mlkem_native.h
       randombytes_header: src/randombytes.h
       prefix: ""
@@ -34,4 +35,4 @@ dudect:
         - upstream/mlkem/mlkem_native.c
         - upstream/mlkem/mlkem_native_asm.S
 
-report: {output_dir: ./reports_timing_x86_64}
+report: {output_dir: ./reports_timing_x86_64_v2}

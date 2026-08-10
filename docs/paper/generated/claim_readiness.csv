@@ -4,4 +4,4 @@ build-matrix-sensitivity,implemented-premeasurement,committed screening corpus o
 kyberslash-attribution,pending-independent-review,ML-KEM/Kyber-768 frozen variants,4,2,full attack or key recovery reproduced
 falcon-comparator,pending-independent-review,Falcon/FN-DSA 512 and 1024 comparators,4,3,FIPS 206 conformance
 diverse-upstream-builds,implemented-premeasurement,"provenance and source/build evidence, not timing",3,2,four from-scratch independent implementations
-native-timing-results,pending-physical-measurement,28 predeclared timing axes plus all three same-corpus baseline tools,3,3,no finding means proven constant-time
+native-timing-results,pending-physical-measurement,28 predeclared timing axes plus all three same-corpus baseline tools,9,4,valid-tuple signal means secret-key leakage; no finding means proven constant-time

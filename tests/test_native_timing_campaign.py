@@ -36,13 +36,35 @@ def test_committed_campaign_covers_every_existing_timing_row():
         for target in spec.targets
         for harness in target.harnesses
     }
-    assert axes == campaign._corpus_timing_axes()
+    assert axes == {
+        ("pqclean_mlkem768", "kem_dec", "valid_tuple")
+        if (target, harness, axis) == ("pqclean_mlkem768", "kem_dec", "sk")
+        else (target, harness, axis)
+        for target, harness, axis in campaign._corpus_timing_axes()
+    }
+    assert spec.corpus_axis_replacements == (
+        campaign.CorpusAxisReplacement(
+            target="pqclean_mlkem768",
+            harness="kem_dec",
+            from_axis="sk",
+            to_axis="valid_tuple",
+            rationale=(
+                "The legacy class construction changes the secret key, matching public "
+                "ciphertext, and public key material embedded in the secret key together; "
+                "it is a mixed valid-tuple contrast and cannot support secret attribution."
+            ),
+        ),
+    )
     assert len(spec.targets) == 6
     assert len(pairs) == 8
 
 
 def test_manifest_only_campaign_does_not_claim_committed_corpus_coverage(monkeypatch):
-    spec = replace(campaign.load_campaign(), coverage_mode="manifest-only")
+    spec = replace(
+        campaign.load_campaign(),
+        coverage_mode="manifest-only",
+        corpus_axis_replacements=(),
+    )
     monkeypatch.setattr(
         campaign,
         "_corpus_timing_axes",
@@ -689,6 +711,34 @@ def test_artifact_validator_rejects_wrong_target_identity_and_axis(tmp_path):
     assert result.complete is False
     assert any("backend report project" in error for error in result.errors)
     assert any("harness_protocol.axis" in error for error in result.errors)
+
+
+def test_artifact_validator_rejects_incomplete_valid_tuple_report(tmp_path):
+    spec, target, report_dir = _small_artifact_fixture(tmp_path)
+    target = replace(target, axes=(("sign", "valid_tuple"),))
+    spec = replace(spec, targets=(target,))
+    backend_path = report_dir / "dudect_backend_report.json"
+    backend = json.loads(backend_path.read_text(encoding="utf-8"))
+    harness = backend["harnesses"][0]
+    harness["harness_protocol"]["axis"] = "valid_tuple"
+    harness["harness_protocol"]["input_contract"] = {"passed": True}
+    backend_path.write_text(json.dumps(backend), encoding="utf-8")
+
+    result = campaign.validate_target_artifacts(
+        spec,
+        target,
+        report_dir,
+        host_paper_eligible=True,
+    )
+
+    assert result.complete is False
+    assert any("process_repeats_observed" in error for error in result.errors)
+    assert any("input_contract" in error for error in result.errors)
+    assert any(
+        error.startswith("official dudect independent verification:")
+        and "process_repeats_observed" in error
+        for error in result.errors
+    )
 
 
 def test_complete_underpowered_bundle_is_nonpromotable_not_corrupt(tmp_path):

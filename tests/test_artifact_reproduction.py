@@ -37,6 +37,15 @@ def test_premeasurement_command_contract_covers_every_frozen_component():
     assert any("check_automated_audits.py" in command for command in commands)
 
 
+def test_reproducer_routes_only_replacement_core_and_diverse_manifests():
+    assert COMPONENTS["committed-corpus-refresh"] == (
+        "docs/measurement/native_timing_v3_campaign.yaml"
+    )
+    assert COMPONENTS["diverse-lineages"] == "docs/measurement/diverse_native_v2.yaml"
+    assert "native_timing_v2_campaign.yaml" not in COMPONENTS.values()
+    assert "diverse_native_v1.yaml" not in COMPONENTS.values()
+
+
 def test_engineering_ready_profile_requires_automated_audits_but_not_humans():
     commands = [" ".join(command) for command in engineering_ready_commands()]
     assert any(

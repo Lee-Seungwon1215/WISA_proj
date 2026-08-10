@@ -3,6 +3,33 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.12.0a3] - 2026-08-10
+
+### Fixed
+
+- Pinned the canonical native arithmetic and FIPS-202 backend headers in the
+  x86_64 mlkem-native and mldsa-native timing profiles.
+- Added the missing mldsa-native public-verifier adapter so generated signing
+  traces must pass the untimed sign-to-verify correctness gate.
+- Added native compile/round-trip regression tests for the premeasurement
+  timing profiles.
+
+### Changed
+
+- Versioned the committed-corpus campaign to v3, the diverse comparison to v2,
+  and the top-level paper campaign to v4 after a non-promotable engineering run
+  exposed that legacy `sk` changed a secret key and its matching public
+  ciphertext together.
+- Added the explicit `valid_tuple` KEM timing axis and a fail-closed metadata
+  contract recording that secret, public ciphertext, and embedded public-key
+  material vary together. Such a signal cannot support secret attribution.
+- Independently reconstruct the exact valid-tuple contract from every target,
+  calibration, A/A, placebo, and positive-control trace before a backend row or
+  paper analysis can be accepted.
+- Barred diverse v1 and committed-corpus v2 engineering artifacts from final
+  reuse; final v4 evidence still requires fresh roots, two physical CPU models,
+  and human review.
+
 ## [0.12.0a2] - 2026-08-10
 
 ### Changed

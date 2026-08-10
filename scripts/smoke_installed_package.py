@@ -47,6 +47,9 @@ def render_hashes() -> dict[str, str]:
         "timing_kem.c.j2": render_timing_harness(
             "kem", {**kem, **timing_base, "leak_target": "sk"}
         ),
+        "timing_kem_valid_tuple.c.j2": render_timing_harness(
+            "kem", {**kem, **timing_base, "leak_target": "valid_tuple"}
+        ),
         "timing_sign.c.j2": render_timing_harness("sign", {**sign, **timing_base}),
     }
     return {

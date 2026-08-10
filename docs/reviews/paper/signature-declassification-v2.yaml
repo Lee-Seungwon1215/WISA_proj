@@ -10,6 +10,8 @@ scope:
   - {target: pqclean_mldsa65, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
   - {target: pqclean_mldsa87, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
   - {target: pqclean_sphincs_sha2_128f_simple, harness: sign, build_scope: gcc-clang-O0-O1-O2-O3-Os-x86_64}
+  - {target: mldsa_native_65_portable, harness: sign, build_scope: portable-paper-diverse-v2-sign-to-verify-contract}
+  - {target: mldsa_native_65_x86_64, harness: sign, build_scope: x86_64-paper-diverse-v2-sign-to-verify-contract}
 threat_model: Secret-dependent signing control flow or memory access observable before values become public signature state.
 secret_origin: Long-term signing key components and signing randomness.
 observed_dependency: ML-DSA rejection paths consume long-term-key-derived state and rejected c/h/w1 values; the SPHINCS+ tree/WOTS public-state hypothesis lacks preserved exact-build probe evidence.
@@ -20,14 +22,23 @@ known_limitations:
   - Specification permission alone is not a constant-time claim.
   - A later successful signature does not declassify state from rejected iterations.
   - Legacy timing PASS rows are underpowered and remain inconclusive.
+  - A compile and sign-to-verify smoke pass is a correctness prerequisite, not physical timing evidence.
 evidence:
   - docs/reviews/rvw-mldsa-rejection-v1.yaml
   - docs/reviews/rvw-sphincs-public-state-v1.yaml
+  - docs/measurement/diverse_native_v2.yaml
+  - examples/mldsa_native/ctkat_timing_portable.yaml
+  - examples/mldsa_native/ctkat_timing_x86_64.yaml
+  - examples/mldsa_native/timing_adapter.c
+  - examples/mldsa_native/timing_api.h
+  - tests/test_premeasurement_timing_configs.py
 expected_evidence:
   - refreshed ML-DSA structural cells classified needs-analysis with correctness PASS
   - refreshed SPHINCS+ structural cell classified needs-analysis with correctness PASS
+  - final mldsa-native timing reports with successful untimed sign-to-verify gates on both hosts
 reviewers: []
 expiry_conditions:
   - source or standard revision changes
   - compiler or optimization matrix changes
   - declassification probe changes
+  - mldsa-native verifier adapter or timing profile changes

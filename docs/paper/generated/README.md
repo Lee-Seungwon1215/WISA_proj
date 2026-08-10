@@ -19,7 +19,7 @@ Final timing requires 2 physical hosts; the frozen plan contains 28 component-ax
 
 ## Independent review readiness
 
-Packets: 7; premeasurement ready: false; paper ready: false. Pending is an honest blocker, not a failed test.
+Packets: 8; premeasurement ready: false; paper ready: false. Pending is an honest blocker, not a failed test.
 
 ## Claim readiness
 
@@ -30,4 +30,4 @@ Packets: 7; premeasurement ready: false; paper ready: false. Pending is an hones
 | kyberslash-attribution | pending-independent-review | 4 | 2 |
 | falcon-comparator | pending-independent-review | 4 | 3 |
 | diverse-upstream-builds | implemented-premeasurement | 3 | 2 |
-| native-timing-results | pending-physical-measurement | 3 | 3 |
+| native-timing-results | pending-physical-measurement | 9 | 4 |

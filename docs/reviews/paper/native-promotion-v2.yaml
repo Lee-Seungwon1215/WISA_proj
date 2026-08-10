@@ -8,7 +8,7 @@ source_revision_policy: exact-clean-git-head-at-review
 scope:
   - {target: paper-native-campaign, harness: all-frozen-axes, build_scope: two-bare-metal-x86_64-microarchitectures}
 threat_model: Empirical timing differences under the pre-registered class axes and physical-host acceptance controls.
-secret_origin: Target-specific secret key, ciphertext, message, randomness, sampler, and encoding axes recorded by each component manifest.
+secret_origin: Target-specific secret key, ciphertext, message, randomness, sampler, and encoding axes recorded by each component manifest; ML-KEM valid-tuple classes vary secret and matching public material together and permit no secret attribution.
 observed_dependency: pending physical execution
 declassification_predicate: A result is promotable only if A/A, placebo, power, repeat, host, integrity, and reviewer gates all pass.
 public_transcript: Per-target public inputs and outputs declared in the frozen measurement manifest.
@@ -16,12 +16,22 @@ security_argument: Raw PASS is non-decisional unless timing_validity is valid an
 known_limitations:
   - A no-signal result is limited to the selected hosts and input distributions; the reported A/A-noise-derived nominal sensitivity diagnostic is not a bound on the target effect.
   - The campaign is not a formal constant-time proof.
+  - A valid-tuple signal is a mixed public-and-secret input contrast, not evidence isolating secret-key cost.
 evidence:
-  - docs/measurement/native_timing_v2_campaign.yaml
+  - docs/measurement/paper_native_campaign_v4.yaml
+  - docs/measurement/native_timing_v3_campaign.yaml
+  - docs/measurement/NATIVE_TIMING_V3.md
+  - docs/measurement/kyberslash_native_v2.yaml
+  - docs/measurement/falcon_native_v2.yaml
+  - docs/measurement/diverse_native_v2.yaml
+  - docs/measurement/DIVERSE_NATIVE_V2.md
+  - docs/measurement/EXPERIMENT_PREREGISTRATION.md
+  - docs/measurement/PAPER_NATIVE_ANALYSIS_V1.md
 expected_evidence:
   - canonical final_evidence_manifest.json from the verification profile
   - immutable native artifacts from two accepted hosts bound by their SHA256SUMS files
   - byte-deterministic blinded and named analysis outputs bound by final_evidence_root_sha256
+  - independently validated valid-tuple input contracts for core native v3 and diverse v2 ML-KEM axes
 reviewers: []
 expiry_conditions:
   - source, manifest, compiler, host policy, or backend revision changes

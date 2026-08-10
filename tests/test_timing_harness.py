@@ -241,7 +241,7 @@ def test_kem_sinks_output_shared_secret_after_timed_window():
     # impl could elide the work that fills the output `ss` while keeping `rc`.
     # The output must be sunk too, AND after t1 so it doesn't charge the
     # measurement (mirrors timing_generic.c.j2).
-    for lt in ("sk", "ct", "fo"):
+    for lt in ("sk", "valid_tuple", "ct", "fo"):
         out = render_timing_harness("kem", _kem_ctx(leak_target=lt))
         assert "volatile uint64_t sink" in out, lt
         assert "ss_work[j]" in out, lt
@@ -280,6 +280,23 @@ def test_kem_default_emits_sk_leak_mode():
     assert "pool1_sk" in out
     assert "crypto_kem_keypair(pk_tmp, sk_tmp)" in out
     assert "crypto_kem_enc(ct_tmp, ss_tmp, pk_tmp)" in out
+
+
+def test_kem_valid_tuple_axis_names_the_mixed_class_contract():
+    out = render_timing_harness("kem", _kem_ctx(leak_target="valid_tuple"))
+
+    assert "crypto_kem_keypair(pk_tmp, sk_tmp)" in out
+    assert "crypto_kem_enc(ct_tmp, ss_tmp, pk_tmp)" in out
+    assert "axis=valid_tuple" in out
+    assert "class_contract=fixed-valid-tuple-vs-fresh-valid-tuples" in out
+    assert "secret_key_varies_between_classes=true" in out
+    assert "public_ciphertext_varies_between_classes=true" in out
+    assert "embedded_public_key_material_varies_between_classes=true" in out
+    assert "secret_attribution_permitted=false" in out
+    assert "setup_return_codes=checked" in out
+    assert "valid_tuple_round_trip_witness=all-pool-members" in out
+    assert "fixed valid-tuple witness failed" in out
+    assert "fresh valid-tuple witness failed" in out
 
 
 def test_kem_ct_leak_mode_uses_fixed_ct():
@@ -419,7 +436,7 @@ def test_kem_sk_leak_warmup_uses_valid_ct(_kem_ctx=_kem_ctx):
 
 def test_kem_has_no_per_iteration_warm_or_keygen(_kem_ctx=_kem_ctx):
     """v2 setup is copies only; target executes once in a target iteration."""
-    for mode in ("sk", "ct", "fo"):
+    for mode in ("sk", "valid_tuple", "ct", "fo"):
         out = render_timing_harness("kem", _kem_ctx(leak_target=mode))
         code = _strip_comments(out)
         assert "ct_warm" not in code, f"{mode}: ct_warm survives as code, not just comment"

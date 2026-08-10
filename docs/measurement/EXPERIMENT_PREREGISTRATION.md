@@ -1,15 +1,61 @@
 # Native timing experiment preregistration
 
-Status: **v3 frozen after disclosed engineering-control calibration; no final measurement collected**
+Status: **v4 frozen after disclosed Falcon/diverse engineering calibrations; no final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
-Machine-readable plan: `paper_native_campaign_v3.yaml`
+V4 amendment freeze date: 2026-08-10
+Machine-readable plan: `paper_native_campaign_v4.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V4 mixed-input attribution and compile-contract amendment
+
+An engineering-only diverse v1 run at commit
+`b0b987d500bdb745d1c43035ee5330bb5579cd3d` completed the portable
+mlkem-native target before any final run. The other three targets stopped at
+compile time: both x86_64 profiles enabled upstream native backends without
+passing their required metadata-header macros, and the ML-DSA timing adapter
+did not expose the verifier required by the untimed sign-to-verify correctness
+gate. These are harness/configuration defects, not timing results.
+
+The completed portable ML-KEM target produced a large same-direction signal in
+all three process repeats while A/A, setup-placebo, and positive controls
+passed. Independent raw review showed that the legacy machine label `sk` did
+not hold public input material fixed: class 0 repeated one valid `(sk, ct)`
+tuple and class 1 selected fresh keypairs and their matching valid
+ciphertexts. The secret key, public ciphertext, and public-key material
+embedded in the secret key therefore varied together. A public seed is
+explicitly declassified by the pinned implementation and feeds variable-work
+rejection sampling, so the observed signal cannot be attributed to secret
+material alone.
+
+Diverse v2 replaces that ML-KEM label with the explicit `valid_tuple` axis and
+requires every trace to carry a fail-closed input contract stating that both
+public and secret material vary and that secret attribution is forbidden.
+Every valid-tuple setup call and every untimed encapsulation-to-decapsulation
+round trip must succeed before timing begins. It also fixes the two pinned
+native-backend header selections and adds the
+ML-DSA public-verifier adapter used by the correctness gate. Sample sizes,
+controls, thresholds, seeds, process repeats, compiler optimization, upstream
+snapshots, parameter sets, and comparison hypotheses remain unchanged.
+
+The same class-construction problem also existed in the committed-corpus v2
+`pqclean_mlkem768/kem_dec/sk` endpoint. Committed-corpus v3 retains the
+historical `kem_dec` harness name only to preserve exact row coverage, replaces
+its machine axis with `valid_tuple`, and binds the same per-trace metadata,
+setup-return-code, and round-trip contract. Its `ct`, `fo`, and all non-ML-KEM
+endpoints are unchanged. The paper v4 plan routes only the v3 core manifest.
+
+The historical diverse v1 and committed-corpus v2 engineering artifacts are
+calibration evidence only and cannot be reused, resumed, relabeled, or promoted
+in their replacement final results.
+Every v4 final component must start in a fresh output root on both hosts at one
+post-amendment commit. Any further substantive change requires another
+campaign version.
 
 ## V3 engineering-calibration amendment
 
@@ -59,8 +105,9 @@ substantive change requires another campaign version.
    non-directional comparison. It is not an FN-DSA conformance experiment.
 4. **Source/build diversity.** The portable and x86_64-native builds of the
    same pinned mlkem-native or mldsa-native parameter set may produce different
-   timing classifications. This is non-directional and does not treat the two
-   profiles as independent implementation lineages.
+   timing classifications. The ML-KEM endpoint is a mixed fixed-versus-fresh
+   valid-tuple contrast, not a secret-key endpoint. This is non-directional and
+   does not treat the two profiles as independent implementation lineages.
 
 ## Experimental unit and frozen design
 
@@ -80,6 +127,9 @@ substantive change requires another campaign version.
   control) is executed independently in both. Cross-component trace reuse or
   best-replicate selection is forbidden; duplicate executions do not increase
   the implementation-lineage count.
+- A valid-tuple ML-KEM signal is reported only as a mixed public/secret input
+  contrast. The axis label, input-contract metadata, or analysis must never
+  shorten it to a secret-key leakage claim.
 - Frozen component manifests are checked by
   `python3 scripts/check_paper_campaign.py`.
 

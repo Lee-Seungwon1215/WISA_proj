@@ -102,9 +102,12 @@ dudect:
     cc: gcc
     cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
   harnesses:
-    # sk-leak axis (default leak_target=sk). Name stays `kem_dec` so it
-    # pairs with the ct.harnesses[name=kem_dec] entry above in the combined
-    # verdict matrix.
+    # Historical compatibility axis (default leak_target=sk). This label
+    # changes a secret key and its matching valid public ciphertext together,
+    # so it is a mixed valid-tuple contrast and MUST NOT support secret
+    # attribution. The name stays `kem_dec` only so frozen corpus/config
+    # history still pairs with ct.harnesses[name=kem_dec]. New paper evidence
+    # uses ctkat_timing_v3.yaml with machine axis `valid_tuple`.
     - name: kem_dec
       template: kem
       header: api.h

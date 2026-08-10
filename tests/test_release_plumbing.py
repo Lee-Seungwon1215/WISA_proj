@@ -12,6 +12,7 @@ from ctkat import __version__
 from ctkat._template_resources import read_template
 from ctkat.cli import app
 from ctkat.config import BuildConfig, CtkatConfig, ProjectConfig
+from scripts.smoke_installed_package import render_hashes
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -19,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cli_version_matches_package_version():
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == __version__ == "0.12.0a2"
+    assert result.stdout.strip() == __version__ == "0.12.0a3"
 
 
 def test_citation_release_version_matches_package_version():
@@ -44,6 +45,12 @@ def test_all_templates_and_v2_support_are_package_resources():
         entry.name for entry in template_root.iterdir() if entry.name.endswith(".j2")
     } == expected
     assert all(read_template(name) for name in expected)
+
+
+def test_installed_package_smoke_renders_explicit_valid_tuple_axis():
+    hashes = render_hashes()
+    assert "timing_kem_valid_tuple.c.j2" in hashes
+    assert hashes["timing_kem_valid_tuple.c.j2"] != hashes["timing_kem.c.j2"]
 
 
 def test_evidence_v2_json_schema_is_a_package_resource():

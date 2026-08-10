@@ -17,5 +17,11 @@ int CTKAT_MLDSA_crypto_sign_signature(
     const uint8_t *message,
     size_t message_len,
     const uint8_t *sk);
+int CTKAT_MLDSA_crypto_sign_verify(
+    const uint8_t *sig,
+    size_t siglen,
+    const uint8_t *message,
+    size_t message_len,
+    const uint8_t *pk);
 
 #endif

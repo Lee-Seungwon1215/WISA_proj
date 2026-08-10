@@ -1152,6 +1152,90 @@ def test_timing_harness_v2_controls_can_reach_valid():
     assert result.validity_reasons == ()
 
 
+def test_valid_tuple_axis_requires_fail_closed_attribution_metadata():
+    import ctkat.cli as cli_module
+    from ctkat.timing_input_contract import (
+        VALID_TUPLE_RUNTIME_METADATA,
+        build_valid_tuple_input_contract,
+        extract_valid_tuple_trace_metadata,
+    )
+
+    samples, result, _ = _v2_validity_fixture()
+    from ctkat.config import DudectHarnessConfig
+
+    harness = DudectHarnessConfig(
+        name="kem_dec_valid_tuple",
+        template="kem",
+        header="api.h",
+        leak_target="valid_tuple",
+    )
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "error"
+    assert any("harness_protocol" in reason for reason in result.validity_reasons)
+
+    result.validity_reasons = ()
+    protocol = result.harness_protocol
+    protocol["axis"] = "valid_tuple"
+
+    def metadata(seed):
+        return {**VALID_TUPLE_RUNTIME_METADATA, "corpus_seed": str(seed)}
+
+    for process_index, target in enumerate(protocol["target_repeats"]):
+        target.update(
+            {
+                "process_index": process_index,
+                "analysis_seed": 101 + process_index,
+                "calibration_seed": 201 + process_index,
+                "runtime_metadata": metadata(101 + process_index),
+                "calibration_runtime_metadata": metadata(201 + process_index),
+            }
+        )
+    protocol["aa_controls"] = [
+        {
+            "process_index": process_index,
+            "seed": 301 + process_index,
+            "runtime_metadata": metadata(301 + process_index),
+        }
+        for process_index in range(3)
+    ]
+    protocol["setup_placebo_controls"] = [
+        {
+            "process_index": process_index,
+            "seed": 401 + process_index,
+            "runtime_metadata": metadata(401 + process_index),
+        }
+        for process_index in range(3)
+    ]
+    protocol["positive_controls"] = [
+        {
+            "process_index": process_index,
+            "effect_ticks": effect_ticks,
+            "seed": 501 + process_index * 3 + effect_index,
+            "runtime_metadata": metadata(501 + process_index * 3 + effect_index),
+        }
+        for process_index in range(3)
+        for effect_index, effect_ticks in enumerate((1, 2, 3))
+    ]
+    traces, errors = extract_valid_tuple_trace_metadata(protocol, label="harness_protocol")
+    assert errors == []
+    protocol["input_contract"] = build_valid_tuple_input_contract(traces)
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "valid"
+    assert result.validity_reasons == ()
+
+
 def test_timing_harness_v2_aa_failure_is_confounded():
     import ctkat.cli as cli_module
 

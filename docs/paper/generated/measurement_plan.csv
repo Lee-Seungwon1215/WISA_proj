@@ -1,5 +1,5 @@
 component,campaign_id,coverage_mode,targets,timing_axes,protocol_rows_per_host,physical_hosts,status
-committed-corpus-refresh,corpus-native-timing-v2,committed-timing-rows,6,8,2220000,2,prepared-not-measured
+committed-corpus-refresh,corpus-native-timing-v3,committed-timing-rows,6,8,2220000,2,prepared-not-measured
 kyberslash-contrast,kyberslash-native-v2,manifest-only,10,10,3300000,2,prepared-not-measured
 falcon-contrast,falcon-native-v2,manifest-only,6,6,1530000,2,prepared-not-measured
-diverse-lineages,diverse-native-v1,manifest-only,4,4,1170000,2,prepared-not-measured
+diverse-lineages,diverse-native-v2,manifest-only,4,4,1170000,2,prepared-not-measured

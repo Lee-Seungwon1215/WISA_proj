@@ -12,6 +12,29 @@ from scripts import reproduce_artifact
 COMMIT = "a" * 40
 
 
+def test_analysis_routes_only_replacement_core_and_diverse_campaigns():
+    assert analysis.COMPONENT_PLANS["committed-corpus-refresh"].manifest.name == (
+        "native_timing_v3_campaign.yaml"
+    )
+    assert analysis.COMPONENT_PLANS["committed-corpus-refresh"].campaign_id == (
+        "corpus-native-timing-v3"
+    )
+    assert analysis.COMPONENT_PLANS["diverse-lineages"].manifest.name == ("diverse_native_v2.yaml")
+    assert analysis.COMPONENT_PLANS["diverse-lineages"].campaign_id == "diverse-native-v2"
+    assert analysis.PAIRWISE_FAMILIES["mlkem-native-valid-tuple"] == (
+        analysis.AxisKey(
+            "diverse-lineages",
+            "mlkem_native_768_portable",
+            "kem_dec_valid_tuple",
+        ),
+        analysis.AxisKey(
+            "diverse-lineages",
+            "mlkem_native_768_x86_64",
+            "kem_dec_valid_tuple",
+        ),
+    )
+
+
 def test_review_descendant_critical_path_policy_matches_bundle_gate():
     assert analysis.MEASUREMENT_CRITICAL_PATHS == reproduce_artifact.MEASUREMENT_CRITICAL_PATHS
 
@@ -204,6 +227,7 @@ def _make_component(
     cpu_model: str,
     machine_id: str,
     commit: str = COMMIT,
+    axis: str = "sk",
 ) -> Path:
     component_root = root / host_id / "component"
     report_dir = component_root / "sig-a" / "reports"
@@ -236,7 +260,15 @@ def _make_component(
                 },
                 "harness_protocol": {
                     "template": "sign",
-                    "axis": "sk",
+                    "axis": axis,
+                    **(
+                        {
+                            "process_repeats_observed": 3,
+                            "input_contract": {"passed": True},
+                        }
+                        if axis == "valid_tuple"
+                        else {}
+                    ),
                     "target_repeats": [
                         {"process_index": index, "runtime_metadata": metadata} for index in range(3)
                     ],
@@ -307,7 +339,7 @@ def _make_component(
                 "harnesses": [
                     {
                         "harness": "sign",
-                        "axis": "sk",
+                        "axis": axis,
                         "raw_status": "PASS",
                         "timing_validity": "valid",
                         "timing_signal": "no-signal-observed",
@@ -327,6 +359,48 @@ def _make_component(
         json.dumps(campaign_report), encoding="utf-8"
     )
     return component_root
+
+
+def test_analysis_loader_rejects_incomplete_valid_tuple_report(tmp_path: Path):
+    manifest = tmp_path / "valid-tuple-manifest.yaml"
+    manifest.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "1.0",
+                "campaign_id": "synthetic-native-v1",
+                "protocol": {"process_repeats": 3},
+                "targets": [
+                    {
+                        "id": "sig-a",
+                        "family": "Synthetic",
+                        "harnesses": ["sign"],
+                        "axes": {"sign": "valid_tuple"},
+                        "target_measurements": 4,
+                    }
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    plan = {"synthetic": analysis.ComponentPlan("synthetic", manifest, "synthetic-native-v1")}
+    component_root = _make_component(
+        tmp_path,
+        manifest,
+        host_id="host-a",
+        cpu_model="cpu-a",
+        machine_id="1" * 64,
+        axis="valid_tuple",
+    )
+    host = {
+        "id": "host-a",
+        "cpu_model": "cpu-a",
+        "machine_id_sha256": "1" * 64,
+        "components": {"synthetic": str(component_root)},
+    }
+
+    with pytest.raises(analysis.AnalysisError, match="analysis_seed"):
+        analysis.load_host_axes(host, COMMIT, analysis.InputLedger(), component_plans=plan)
 
 
 def test_two_host_provenance_loader_and_outputs_are_deterministic(tmp_path: Path):
