@@ -6,13 +6,14 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-blind-audit
-audited_at: "2026-08-08T07:35:59Z"
-audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
+audited_at: "2026-08-10T09:20:29Z"
+audited_commit: 48791fc170e65bf117d029eae80bb3397e2198e5
 scope:
   - final two-host bundle provenance, host identity, hashes, run identity, and artifact reuse
   - resume and run-kind separation for engineering, pilot, and final campaigns
   - result-analyst label blinding, transfer records, unblinding order, and byte parity
   - separation between automated engineering audits and independent human review
+  - versioned separation of Falcon v1 engineering calibration from Falcon v2 final evidence
 findings:
   - finding_id: abi-001
     severity: critical
@@ -54,6 +55,11 @@ findings:
     title: Paper-ready descendants could mutate evidence-critical files
     description: A broadly defined review-only descendant could change code, manifests, or analysis after verification while retaining an apparently valid postmeasurement approval.
     evidence_ids: [abi-reproducer, abi-review-checker]
+  - finding_id: abi-009
+    severity: critical
+    title: Falcon v1 engineering calibration could be reused after the v2 protocol amendment
+    description: Without a versioned manifest, paper-campaign, and preregistration boundary, the nonpromotable v1 calibration traces could be relabeled or incorporated into v2 final evidence even though the positive-control ladder changed after the engineering run.
+    evidence_ids: [abi-falcon-v2-manifest, abi-paper-campaign-v3, abi-preregistration, abi-reproducer, abi-analysis]
 dispositions:
   - finding_id: abi-001
     status: addressed
@@ -95,6 +101,11 @@ dispositions:
     rationale: Between verification C and review completion R1, the sole permitted changed path is the native-promotion packet; both reproduction and analysis validators independently reject any other descendant change.
     blocker: ""
     evidence_ids: [abi-reproducer, abi-review-checker]
+  - finding_id: abi-009
+    status: addressed
+    rationale: Falcon v2, paper campaign v3, and the amended preregistration classify every v1 trace as engineering calibration only, require fresh final output roots on both hosts, and forbid artifact reuse or final resume. The reproducer and analysis loader now bind the Falcon component to the exact falcon-native-v2 manifest and campaign identity, so a falcon-native-v1 report cannot satisfy the v2 final boundary.
+    blocker: ""
+    evidence_ids: [abi-falcon-v2-manifest, abi-paper-campaign-v3, abi-preregistration, abi-reproducer, abi-analysis]
 evidence:
   - evidence_id: abi-bundle
     path: docs/artifact/measurement_bundle_template.yaml
@@ -106,7 +117,7 @@ evidence:
     purpose: Structured custodian, analyst, transfer, timestamp, label-map, and blinded-manifest contract.
   - evidence_id: abi-reproducer
     path: scripts/reproduce_artifact.py
-    sha256: 0bbcba9569a38886413f0ab8ea1b8c482a42a59f4644032c813d41f5ed393bd3
+    sha256: 5117c50109d65dc647ca8f03d6ea3552df5e5c3d4de8ff858332fa31cee08aa9
     purpose: Final bundle, hash, host identity, run reuse, human gate, and unblinding validation.
   - evidence_id: abi-native-runner
     path: scripts/run_native_timing_campaign.py
@@ -118,7 +129,7 @@ evidence:
     purpose: Exact-commit final same-corpus evidence, fresh TIMECOP reproduction, and physical-host validation for all tools.
   - evidence_id: abi-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: 9188b16a40ad92c58f41247dbe16c073b04299336900848f26ca2ceb5f11c2fc
+    sha256: d28f8946f7afa1ea528f4b97b15351fdd1edccc80cc741c98d987a3e9632a754
     purpose: Opaque-label output, deterministic manifest, and unblinded byte-parity enforcement.
   - evidence_id: abi-human-manifest
     path: docs/reviews/paper/manifest.yaml
@@ -132,6 +143,18 @@ evidence:
     path: scripts/check_paper_reviews.py
     sha256: 03ed2511880924c9564646f71993c18445a2e74c3c55032f983082b158470d69
     purpose: Phase-separated human-review commit and final-evidence-root validation.
+  - evidence_id: abi-falcon-v2-manifest
+    path: docs/measurement/falcon_native_v2.yaml
+    sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
+    purpose: Versioned Falcon final protocol that replaces the underpowered v1 engineering-control ladder without reusing its traces.
+  - evidence_id: abi-paper-campaign-v3
+    path: docs/measurement/paper_native_campaign_v3.yaml
+    sha256: 01f7ed2278e5651353bf9f1014b215a74e5839adfd55966900540b6e824ae067
+    purpose: Frozen final campaign policy that forbids engineering promotion, cross-component artifact reuse, and final resume.
+  - evidence_id: abi-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 45bbeec7ad6be2af31f544f3f4aad8c4992ba4eb97b2167f028089d91a265813
+    purpose: Disclosed v3 amendment and fresh-root boundary separating v1 calibration from v2 final measurements.
 limitations:
   - This audit was performed by an automated agent and is not an independent human review.
   - Human access ordering is supported by hashes and attestations but cannot be proven solely by software.

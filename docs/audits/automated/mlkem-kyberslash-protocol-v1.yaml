@@ -6,8 +6,8 @@ perspective: mlkem-kyberslash-protocol
 automated_agent: true
 human_reviewer: false
 automated_agent_id: mlkem-kyber-audit
-audited_at: "2026-08-08T07:37:08Z"
-audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
+audited_at: "2026-08-10T09:24:02Z"
+audited_commit: 48791fc170e65bf117d029eae80bb3397e2198e5
 scope:
   - same-corpus toy ML-KEM class axis and defined C arithmetic
   - exact-binary ML-KEM public instruction attribution
@@ -15,6 +15,7 @@ scope:
   - direct vulnerable-versus-patched operand-bin latency canaries
   - compiler optimization and linked-binary div/idiv contracts
   - raw-derived directional positive-control detection and sensitivity diagnostics
+  - cross-version isolation of the Falcon-only v3 protocol amendment
 findings:
   - finding_id: mkp-001
     severity: critical
@@ -61,6 +62,11 @@ findings:
     title: Ciphertext mutation was mislabeled as a proved rejection path
     description: A nonzero bit mutation plus disagreement with the original encapsulated secret does not prove ML-KEM implicit rejection because a different valid ciphertext would also disagree.
     evidence_ids: [mkp-timing-template, mkp-v2-config, mkp-v2-doc]
+  - finding_id: mkp-010
+    severity: low
+    title: A Falcon-only campaign amendment could silently drift unrelated ML-KEM protocols
+    description: Replacing the top-level paper campaign for Falcon calibration would also require renewed ML-KEM and KyberSlash review if it changed either component manifest, their KEM timing templates, source/config trees, or linked-binary contracts.
+    evidence_ids: [mkp-primary-plan, mkp-v2-plan, mkp-paper-v3, mkp-timing-template, mkp-timing-common, mkp-v2-config, mkp-binary-contract]
 dispositions:
   - finding_id: mkp-001
     status: addressed
@@ -107,6 +113,11 @@ dispositions:
     rationale: Every FO and fixed-key chosen-ciphertext pool now has an untimed scheme-specific rkprf(z, ct) witness; measurement aborts unless decapsulation returns the exact independently computed rejection key.
     blocker: ""
     evidence_ids: [mkp-timing-template, mkp-v2-config, mkp-v2-doc]
+  - finding_id: mkp-010
+    status: addressed
+    rationale: A direct 762d0ce-to-48791fc selected-path diff was empty. The native and KyberSlash manifest blobs remained af25ce7d7f3f8049445dc29b00ffc38b70806f84 and 4b4063a5be0548151afd6b5e1aca17e5f54e8830; timing_kem and timing_v2_common remained 90b9fd6a0dc831b22ab373e28b04e2f5ba022661 and 60f464933087f790b4ecef6cf0f013591aeff773. The pqc_mlkem768, three KyberSlash variant, and direct-operand source/config/contract trees were byte-identical at both commits. Paper campaign v3 still routes committed-corpus-refresh and kyberslash-contrast through the same native_timing_v2_campaign.yaml and kyberslash_native_v2.yaml manifests; only Falcon advances to v2.
+    blocker: ""
+    evidence_ids: [mkp-primary-plan, mkp-v2-plan, mkp-paper-v3, mkp-timing-template, mkp-timing-common, mkp-v2-config, mkp-binary-contract]
 evidence:
   - evidence_id: mkp-toy-source
     path: examples/toy_kem_ct_leak/src/toy_kem.c
@@ -120,6 +131,14 @@ evidence:
     path: docs/measurement/kyberslash_native_v2.yaml
     sha256: 88775f553fdb3137aaafdb9dacfb5b5efd6a4a13512adc5a5da7e40b0187899f
     purpose: Frozen fixed-key chosen-ciphertext and direct-operand v2 campaign.
+  - evidence_id: mkp-primary-plan
+    path: docs/measurement/native_timing_v2_campaign.yaml
+    sha256: 256e70f1aa6b5cd4192e53ef14b83b03a5e10be59093a90d23a484dd5685f8e5
+    purpose: Unchanged committed-corpus campaign containing the frozen primary ML-KEM timing axes.
+  - evidence_id: mkp-paper-v3
+    path: docs/measurement/paper_native_campaign_v3.yaml
+    sha256: 01f7ed2278e5651353bf9f1014b215a74e5839adfd55966900540b6e824ae067
+    purpose: Top-level amended plan retaining the same ML-KEM and KyberSlash component manifests while versioning Falcon alone.
   - evidence_id: mkp-v2-doc
     path: docs/measurement/KYBERSLASH_NATIVE_V2.md
     sha256: 31efaca5a4418729ccdbe074381825b6707280a868d59bb9b062ee479a5f47b5
@@ -180,9 +199,14 @@ evidence:
     path: ctkat/templates/timing_kem.c.j2
     sha256: f4dd82efab433b9fd398b1f7f183fe1870d115a550bd83b00387210a019b5b41
     purpose: Untimed exact rejection-key witness for FO and fixed-key chosen-ciphertext pools.
+  - evidence_id: mkp-timing-common
+    path: ctkat/templates/timing_v2_common.c.j2
+    sha256: b7dda8ef2be9be25a9fa7a36496261eff2777af88c28850fb9be2d7231d46ef1
+    purpose: Shared timing-harness-v2 clock, control-mode, and runtime metadata implementation unchanged by the Falcon amendment.
 limitations:
   - This automated audit cannot establish public attribution or exploitability without human cryptographic review.
   - Chosen-ciphertext and direct-operand axes are intentionally not described as secret-key leakage or key recovery.
   - Integral-to-float normalization is representational only; finite statistics remain raw-derived and tolerance-checked, while degenerate non-finite control statistics fail closed.
+  - Blob and tree identity proves protocol bytes were unchanged between the two audited commits; it does not replace final execution or human interpretation of ML-KEM/KyberSlash results.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none

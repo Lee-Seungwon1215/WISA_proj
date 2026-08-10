@@ -6,8 +6,8 @@ perspective: signature-harness-contracts
 automated_agent: true
 human_reviewer: false
 automated_agent_id: signature-falcon-audit
-audited_at: "2026-08-08T07:36:15Z"
-audited_commit: 762d0ce6c0afe4f476e391f0337aba2623cabd84
+audited_at: "2026-08-10T09:20:25Z"
+audited_commit: 48791fc170e65bf117d029eae80bb3397e2198e5
 scope:
   - detached-signature API return-code, length, and verification correctness gates
   - fixed versus bounded signature output contracts
@@ -15,6 +15,7 @@ scope:
   - producer-versus-independent-verifier numeric serialization and raw-protocol binding
   - ML-DSA rejection-path and SPHINCS public-state declassification claims
   - Falcon and c-fn-dsa full-API timing scope and floating-point comparator evidence
+  - Falcon v2 control-ladder isolation from signature and linked-binary contracts
   - duration-versus-output-length secondary analysis and human review boundary
 findings:
   - finding_id: shc-001
@@ -67,6 +68,11 @@ findings:
     title: Sensitivity output did not quantify the actual directional positive-control gate
     description: The existing alpha-based A/A nominal-sensitivity field did not report the effect implied by the frozen positive t threshold and target-power rule, which could mislead experiment planning if treated as the gate's detectable effect.
     evidence_ids: [shc-cli, shc-dudect-verifier, shc-control-tests, shc-native-tests, shc-timing-contract]
+  - finding_id: shc-011
+    severity: low
+    title: Falcon v2 control recalibration required signature-contract drift isolation
+    description: A versioned control-ladder amendment could accidentally change the measured signing API, output-length policy, correctness gate, or linked-binary profile and thereby make the replacement campaign incomparable to Falcon v1.
+    evidence_ids: [shc-falcon-v1-campaign, shc-falcon-v2-campaign, shc-fndsa1024-fpr-config, shc-template, shc-parser, shc-falcon-contracts, shc-falcon-checker, shc-falcon-tests]
 dispositions:
   - finding_id: shc-001
     status: addressed
@@ -118,6 +124,11 @@ dispositions:
     rationale: Producer and verifier now record and independently reconstruct positive_detection_effects_at_target_power as (positive_abs_t_threshold + z(target_power)) times the A/A standard error, separately from the legacy alpha-based nominal diagnostic and without treating either value as a target-effect bound.
     blocker: ""
     evidence_ids: [shc-cli, shc-dudect-verifier, shc-control-tests, shc-native-tests, shc-timing-contract]
+  - finding_id: shc-011
+    status: addressed
+    rationale: Independent structural comparison confirms that Falcon v2 preserves the host, protocol, six target identities, configs, sign/sk axes, sample counts, timeouts, and every target record except c_fndsa1024_fpr_emu positive_control_effects; its unchanged config still requires a fixed signature length and the same c_fndsa1024_fpr_emu binary contract, while the common template and parser retain return-code recording and the untimed sign-then-verify gate.
+    blocker: ""
+    evidence_ids: [shc-falcon-v1-campaign, shc-falcon-v2-campaign, shc-fndsa1024-fpr-config, shc-template, shc-parser, shc-falcon-contracts, shc-falcon-checker, shc-falcon-tests]
 evidence:
   - evidence_id: shc-template
     path: ctkat/templates/timing_sign.c.j2
@@ -151,6 +162,26 @@ evidence:
     path: docs/measurement/native_timing_v2_campaign.yaml
     sha256: 256e70f1aa6b5cd4192e53ef14b83b03a5e10be59093a90d23a484dd5685f8e5
     purpose: Frozen signature control effects and timing thresholds used by the corpus-wide native campaign.
+  - evidence_id: shc-falcon-v1-campaign
+    path: docs/measurement/falcon_native_v1.yaml
+    sha256: 1f8fde082234356d1beac4b44f6c60b5cf5e7d0891e5b864fd1d0151aac98967
+    purpose: Superseded engineering-only Falcon campaign used solely as the structural baseline for the v2 amendment audit.
+  - evidence_id: shc-falcon-v2-campaign
+    path: docs/measurement/falcon_native_v2.yaml
+    sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
+    purpose: Versioned Falcon campaign whose only target-record change is the c_fndsa1024_fpr_emu positive-control ladder.
+  - evidence_id: shc-fndsa1024-fpr-config
+    path: examples/c_fndsa1024_prospective/ctkat_timing_fpr_emu.yaml
+    sha256: 13d81f63fccba20ad1ec5aa643505e0c464780d1fdee3182ad0dcb71cd822d1c
+    purpose: Unchanged full-signature configuration retaining fixed output length and the exact integer-FPR linked-binary contract reference.
+  - evidence_id: shc-falcon-checker
+    path: scripts/check_falcon_comparators.py
+    sha256: f990b6a0c10cdfb42939bbde83553f26e422f9c62cc969444834bf430ae93763
+    purpose: Static closure of all six v2 targets over sign/sk configs, compiler flags, and linked-binary instruction contracts.
+  - evidence_id: shc-falcon-tests
+    path: tests/test_falcon_comparator_v1.py
+    sha256: d7fbb46ca9472006328419c14435f835e20ba02ea9fcf0d2be8a6679ba8c5c04
+    purpose: Regression coverage for the isolated c_fndsa1024_fpr_emu ladder and unchanged ladders of the other five targets.
   - evidence_id: shc-variable-time
     path: docs/accepted_variable_time.md
     sha256: 4001257f1c3365e608c84e4c311f9d9c94a6068b4637b9958397891daffa35cf
@@ -161,7 +192,7 @@ evidence:
     purpose: Separate pending human-review packet with exact evidence and expiry requirements.
   - evidence_id: shc-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: 9188b16a40ad92c58f41247dbe16c073b04299336900848f26ca2ceb5f11c2fc
+    sha256: d28f8946f7afa1ea528f4b97b15351fdd1edccc80cc741c98d987a3e9632a754
     purpose: Signature call-contract validation, output-length association, Holm contrasts, and host heterogeneity.
   - evidence_id: shc-binary-contract
     path: ctkat/timing_binary_contract.py
@@ -179,5 +210,6 @@ limitations:
   - This automated audit is not cryptographic approval of any public-state declassification.
   - Full-API signature timing includes encoding and randomness effects unless a separately frozen core harness is measured.
   - Directional positive-control power and its A/A-derived diagnostics do not bound an unobserved target effect or estimate achieved target power.
+  - This audit checks Falcon v1-to-v2 signature and binary-contract invariance, not whether the recalibrated ladder achieves power; only fresh final controls can establish that.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none
