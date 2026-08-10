@@ -1,5 +1,5 @@
 schema_version: 2
-matrix_id: ctkat-paper-claims-v2
+matrix_id: ctkat-paper-claims-v3
 terminology:
   screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
   source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
@@ -45,7 +45,7 @@ claims:
     scope: Falcon/FN-DSA 512 and 1024 comparators
     evidence:
       - docs/ground_truth/falcon/manifest.yaml
-      - docs/measurement/falcon_native_v1.yaml
+      - docs/measurement/falcon_native_v2.yaml
       - examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
       - docs/reviews/paper/falcon-comparator-v2.yaml
     open_gates:
@@ -70,7 +70,7 @@ claims:
     status: pending-physical-measurement
     scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
-      - docs/measurement/paper_native_campaign_v2.yaml
+      - docs/measurement/paper_native_campaign_v3.yaml
       - docs/measurement/EXPERIMENT_PREREGISTRATION.md
       - scripts/check_paper_campaign.py
     open_gates:

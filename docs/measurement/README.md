@@ -1,6 +1,6 @@
 # Native timing campaign
 
-논문용 최상위 동결본은 `paper_native_campaign_v2.yaml`이다. 기존 corpus refresh
+논문용 최상위 동결본은 `paper_native_campaign_v3.yaml`이다. 기존 corpus refresh
 외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
 두 개의 서로 다른 physical x86_64 CPU model에서 같은 commit을 실행해야 한다.
 
@@ -10,7 +10,7 @@ uv run python scripts/check_paper_campaign.py
 uv run python scripts/run_native_timing_campaign.py \
   --manifest docs/measurement/kyberslash_native_v2.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/falcon_native_v1.yaml --check
+  --manifest docs/measurement/falcon_native_v2.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
   --manifest docs/measurement/diverse_native_v1.yaml --check
 ```
@@ -21,7 +21,9 @@ uv run python scripts/run_native_timing_campaign.py \
 
 - `native_timing_v2_campaign.yaml`: committed timing row 8축의 replacement
 - `kyberslash_native_v2.yaml`: 고정키 chosen-ct 4축 + 취약/패치 operand canary 6축
-- `falcon_native_v1.yaml`: 512/1024 reference/native-FP/integer-FPR 6축
+- `falcon_native_v2.yaml`: 512/1024 reference/native-FP/integer-FPR 6축;
+  v1 engineering calibration에서 power가 부족했던 1024 integer-FPR positive
+  control만 상향한 final 동결본
 - `diverse_native_v1.yaml`: mlkem-native/mldsa-native portable/x86_64 4축
 
 가설, sample/control 수, 제외 기준, multiplicity, host disagreement,

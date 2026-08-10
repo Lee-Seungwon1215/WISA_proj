@@ -58,3 +58,14 @@ def test_falcon_native_campaign_is_closed_over_six_binary_contracts():
         "c_fndsa512_fpr_emu",
         "c_fndsa1024_fpr_emu",
     }
+    targets = {target["id"]: target for target in campaign["targets"]}
+    assert targets["c_fndsa1024_fpr_emu"]["positive_control_effects"] == [
+        65536,
+        262144,
+        1048576,
+    ]
+    assert {
+        tuple(target["positive_control_effects"])
+        for target_id, target in targets.items()
+        if target_id != "c_fndsa1024_fpr_emu"
+    } == {(512, 8192, 65536)}

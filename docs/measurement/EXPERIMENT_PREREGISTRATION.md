@@ -1,14 +1,43 @@
 # Native timing experiment preregistration
 
-Status: **internally frozen before physical measurement**
+Status: **v3 frozen after disclosed engineering-control calibration; no final measurement collected**
 
-Freeze date: 2026-08-08
-Machine-readable plan: `paper_native_campaign_v2.yaml`
+Initial freeze date: 2026-08-08
+V3 amendment freeze date: 2026-08-10
+Machine-readable plan: `paper_native_campaign_v3.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V3 engineering-calibration amendment
+
+An engineering-only Falcon v1 run at commit
+`4349b239cf10f30c2a29d337756cfa031d1171e6` completed before any final run.
+For `c_fndsa1024_fpr_emu`, the largest predeclared 65,536-tick positive
+control had the correct effect direction in all three process repeats but did
+not reach the frozen directional `t <= -10` threshold in any repeat
+(`t=-3.79/-5.16/-5.16`). The three physical A/A controls were clean and their
+reported per-repeat 80%-power directional diagnostics were approximately
+156,523--196,831 ticks. Raw/control row counts, return codes, fixed 1,280-byte
+signature contract, and artifact hashes all passed; the v1 result therefore
+remained honestly `insufficient-power` rather than being relabeled clean.
+
+Falcon v2 changes only that target's positive-control ladder from
+`[512, 8192, 65536]` to `[65536, 262144, 1048576]`. The 262,144-tick point
+exceeds the observed diagnostics and 1,048,576 is a robust ceiling of about
+9.1% of the target's engineering runtime. Thresholds, target samples, control
+samples, process repeats, target-trace configuration, hypotheses, exclusions,
+binaries, and all other target curves are unchanged. The diagnostic is
+per-repeat and is
+not an achieved campaign-power estimate: requiring three detections out of
+three is stricter than 80% detection probability in one repeat.
+
+The historical v1 engineering artifacts are calibration evidence only and
+cannot be reused in v2 final results. Every v3 final component must start in a
+fresh output root on both hosts at one post-amendment commit. Any further
+substantive change requires another campaign version.
 
 ## Research questions and directional hypotheses
 

@@ -79,6 +79,14 @@
   execution/28 timing axis, host당 8,220,000 protocol row다. 자동 audit는 사람
   리뷰로 세지 않으며, 두 명의 독립 human review와 서로 다른 CPU model의 두
   physical host final run은 그대로 승격 차단 조건이다.
+- **M7 / paper campaign v3 control calibration 완료 (2026-08-10,
+  `0.12.0a2`)** — non-promotable Falcon v1 engineering run에서
+  `c_fndsa1024_fpr_emu`의 최대 65,536-tick positive control이 깨끗한 A/A에도
+  방향 임계값을 0/3으로 통과하지 못한 사실을 숨기지 않고
+  `insufficient-power`로 보존했다. target 결과나 threshold를 건드리지 않고
+  해당 축의 control ladder만 65,536/262,144/1,048,576으로 올린 Falcon v2와
+  paper campaign v3를 새로 동결했다. v1 engineering trace는 calibration
+  전용이고 final 재사용은 금지한다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,

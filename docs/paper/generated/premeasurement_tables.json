@@ -148,7 +148,7 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v2",
+    "campaign_id": "ctkat-paper-native-v3",
     "component_count": 4,
     "components": [
       {
@@ -170,7 +170,7 @@
         "timing_axes": 10
       },
       {
-        "campaign_id": "falcon-native-v1",
+        "campaign_id": "falcon-native-v2",
         "coverage_mode": "manifest-only",
         "id": "falcon-contrast",
         "protocol_rows": 1530000,

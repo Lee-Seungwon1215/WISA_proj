@@ -24,12 +24,12 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v2.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v3.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
     ("committed-corpus-refresh", "docs/measurement/native_timing_v2_campaign.yaml"),
     ("kyberslash-contrast", "docs/measurement/kyberslash_native_v2.yaml"),
-    ("falcon-contrast", "docs/measurement/falcon_native_v1.yaml"),
+    ("falcon-contrast", "docs/measurement/falcon_native_v2.yaml"),
     ("diverse-lineages", "docs/measurement/diverse_native_v1.yaml"),
 )
 BASELINE_COMMAND_ORDER = ("official_dudect", "timecop", "microwalk_pin")
@@ -121,8 +121,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("paper campaign top-level field set drift")
     if manifest.get("schema_version") != 2:
         errors.append("schema_version must be 2")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v2":
-        errors.append("campaign_id must be ctkat-paper-native-v2")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v3":
+        errors.append("campaign_id must be ctkat-paper-native-v3")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
 

@@ -1,0 +1,91 @@
+schema_version: "1.0"
+campaign_id: falcon-native-v2
+description: >-
+  Frozen full-signature Falcon reference versus c-fn-dsa native-FP and
+  integer-FPR profiles. Signature lengths are captured per sample. Version 2
+  preserves the v1 target protocol while increasing only the
+  c_fndsa1024_fpr_emu positive-control curve after a non-promotable engineering
+  run showed that the v1 largest delay was below the A/A-derived detection
+  diagnostic. No final trace was collected under v1.
+coverage_mode: manifest-only
+
+host:
+  system: Linux
+  machines: [x86_64, AMD64]
+  require_single_cpu_affinity: true
+  reject_emulation: true
+  reject_virtualization: true
+  recommended_governor: performance
+
+protocol:
+  backend: official-dudect
+  clock: rdtsc
+  seed: 0xC0FFEE
+  warmup: 1000
+  batches: 10
+  process_repeats: 3
+  pool_size: 64
+  aa_abs_t_limit: 4.5
+  positive_abs_t_threshold: 10.0
+  aa_max_failures: 0
+  target_power: 0.80
+  power_alpha: 0.01
+  compiler: gcc
+  compile_timeout: 900
+  backend_timeout: 300
+
+targets:
+  - id: pqclean_falcon512_reference
+    family: Falcon/reference-512
+    config: examples/pqc_falcon512/ctkat.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 8192, 65536]
+    timeout: 3600
+  - id: pqclean_falcon1024_reference
+    family: Falcon/reference-1024
+    config: examples/pqc_falcon1024/ctkat_timing.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 8192, 65536]
+    timeout: 5400
+  - id: c_fndsa512_native_fp
+    family: FN-DSA/prospective-512-native-fp
+    config: examples/c_fndsa512_prospective/ctkat_timing_native.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 8192, 65536]
+    timeout: 3600
+  - id: c_fndsa512_fpr_emu
+    family: FN-DSA/prospective-512-integer-fpr
+    config: examples/c_fndsa512_prospective/ctkat_timing_fpr_emu.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 8192, 65536]
+    timeout: 3600
+  - id: c_fndsa1024_native_fp
+    family: FN-DSA/prospective-1024-native-fp
+    config: examples/c_fndsa1024_prospective/ctkat_timing_native.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 8192, 65536]
+    timeout: 5400
+  - id: c_fndsa1024_fpr_emu
+    family: FN-DSA/prospective-1024-integer-fpr
+    config: examples/c_fndsa1024_prospective/ctkat_timing_fpr_emu.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [65536, 262144, 1048576]
+    timeout: 5400

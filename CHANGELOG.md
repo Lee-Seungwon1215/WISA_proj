@@ -3,6 +3,24 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.12.0a2] - 2026-08-10
+
+### Changed
+
+- Versioned the paper-native freeze to v3 and the Falcon comparison to v2
+  after a non-promotable engineering run showed that the
+  `c_fndsa1024_fpr_emu` positive-control ceiling was below the physical
+  A/A-derived directional detection diagnostic.
+- Increased only that target's frozen positive-control ladder to
+  65,536/262,144/1,048,576 ticks; target sampling, thresholds, hypotheses,
+  exclusions, and every other target remain unchanged.
+
+### Documentation
+
+- Recorded the exact engineering calibration boundary and barred all Falcon
+  v1 engineering traces from final reuse. Final v3 runs still require fresh
+  output roots, two distinct physical CPU models, and the human review gate.
+
 ## [0.11.0a1] - 2026-08-07
 
 ### Added

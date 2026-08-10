@@ -61,7 +61,7 @@ jobs:
       - run: python scripts/check_diverse_upstreams.py
       - run: python scripts/run_native_timing_campaign.py --check
       - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/kyberslash_native_v2.yaml --check
-      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/falcon_native_v1.yaml --check
+      - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/falcon_native_v2.yaml --check
       - run: python scripts/run_native_timing_campaign.py --manifest docs/measurement/diverse_native_v1.yaml --check
       - run: python scripts/calibrate_timing_backend.py --check
       - run: python scripts/run_same_corpus_baselines.py --check

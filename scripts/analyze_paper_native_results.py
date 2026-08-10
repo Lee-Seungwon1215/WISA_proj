@@ -211,8 +211,8 @@ COMPONENT_PLANS = {
     ),
     "falcon-contrast": ComponentPlan(
         "falcon-contrast",
-        ROOT / "docs/measurement/falcon_native_v1.yaml",
-        "falcon-native-v1",
+        ROOT / "docs/measurement/falcon_native_v2.yaml",
+        "falcon-native-v2",
     ),
     "diverse-lineages": ComponentPlan(
         "diverse-lineages",
