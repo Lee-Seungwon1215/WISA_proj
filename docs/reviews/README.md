@@ -24,7 +24,7 @@ contract, so changing it invalidates every reviewer's
 root back to this checker and fails unless the completed human packet approved
 the exact same digest. Automated agents cannot populate reviewer entries.
 
-The current v6 single-host profile does not use these packets as a measurement
+The current v7 single-host profile does not use these packets as a measurement
 execution or host-scoped result-table gate. Their pending state means that v6
 makes no independent-review, declassification, or inter-rater-agreement claim.
 They may be completed later as follow-up validation; they must never be forged

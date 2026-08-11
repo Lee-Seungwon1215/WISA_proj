@@ -18,7 +18,7 @@ warm both pools symmetrically
 for each measurement:
     class <- label PRNG
     index <- selection PRNG
-    copy selected inputs to the same-address work buffers
+    read both class slots and masked-select into same-address work buffers
     barrier
     AUX0, t0 <- clock
     target(work buffers)
@@ -28,7 +28,8 @@ for each measurement:
 ```
 
 keygen, encapsulation, random-message construction은 measurement loop에 없다.
-target mode의 timed region에는 target call만 있다.
+`dual-read-masked-select-v4`는 class-dependent pointer branch를 금지하고 두 pool
+slot을 항상 읽는다. target mode의 timed region에는 target call만 있다.
 
 ## Axes
 
@@ -63,7 +64,7 @@ implementation-specific generic harness와 별도 evidence row로 분리한다.
 | role | setup data | timed target data | 기대 |
 |---|---|---|---|
 | `aa` | label과 무관하게 class-0 pool | label과 무관하게 동일 분포 | `|t| < aa_abs_t_limit` |
-| `setup-placebo` | 실제 target axis처럼 class-dependent copy 후 같은 work buffer를 fixed data로 정규화 | fixed data/common-work 주소 | setup/cache 잔류 무신호 |
+| `setup-placebo` | 실제 target axis와 같은 dual-read masked selection 후 같은 work buffer를 fixed data로 정규화 | fixed data/common-work 주소 | setup/cache 잔류 무신호 |
 | `positive` | label과 무관하게 class-0 pool | 동일 target + class 1 clock-tick delay | class 1이 느린 방향의 effect별 detection curve |
 
 positive delay는 RDTSCP이면 cycle, monotonic이면 ns 단위의 요청값이다. 요청값을
@@ -85,18 +86,21 @@ host/A/A 기반 계획 보조값일 뿐 target trace의 MDE나 achieved power가
 2. QEMU, Linux multi-CPU affinity, 과도/비대칭 clock·migration drop →
    `environment-rejected`
 3. official minimum 미달 → `insufficient-power`
-4. process repeat 3회 미만 → `insufficient-power`
-5. A/A false-alarm budget 실패 → `confounded`
-6. setup-placebo 실패 → `confounded`
-7. largest positive effect가 class 1 지연 방향으로 threshold를 넘긴 repeat
+4. frozen class-setup contract 미기록/불일치 → `confounded`
+5. process repeat 3회 미만 → `insufficient-power`
+6. A/A false-alarm budget 실패 → `confounded`
+7. setup-placebo 실패 → `confounded`
+8. largest positive effect가 class 1 지연 방향으로 threshold를 넘긴 repeat
    비율이 `target_power` 미달 →
    `insufficient-power` (3 repeats와 0.8이면 3/3 요구)
-8. target raw status repeat 불일치 → `insufficient-power`
-9. seeded randombytes interpose 미확인 → `confounded`
-10. KEM `valid_tuple`의 process별 metadata, setup return code,
+9. target raw status repeat 불일치 → `insufficient-power`
+10. 설정된 randombytes 계약 불일치 → `confounded`. 명시적으로
+    `randombytes_header: null`인 결정적 자가완결 API만 `external-or-none`을
+    허용하고 나머지는 `seeded-interpose`를 요구
+11. KEM `valid_tuple`의 process별 metadata, setup return code,
     enc→dec round-trip witness, per-trace corpus seed 또는
     `secret_attribution_permitted=false` 계약 불일치 → `error`
-11. 전부 통과 → `valid`
+12. 전부 통과 → `valid`
 
 `valid`는 PASS 동의어가 아니다. `valid + FAIL`은 해석 가능한 signal이고
 `valid + PASS`는 선택한 host와 입력 분포에서 관측된 no-signal이다. A/A 기반
@@ -110,7 +114,8 @@ nominal sensitivity 숫자는 보조 진단일 뿐 target 효과의 상한이 �
 - `dudect_protocol_timings.csv`: 모든 repeat의 target/calibration/A/A/placebo/
   positive raw row.
 - `dudect_backend_report.json` schema 2.0: official 102 tests, host, seeds,
-  randomness policy, false-alarm budget, power curve, MDE, 세 CSV hash.
+  randomness policy, class-setup contract, false-alarm budget, power curve,
+  MDE, 세 CSV hash.
   `valid_tuple`은 각 preserved trace의 runtime metadata와 독립 재구성된
   `input_contract`를 포함한다.
 

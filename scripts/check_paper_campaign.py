@@ -24,7 +24,7 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v6.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v7.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
     ("committed-corpus-refresh", "docs/measurement/native_timing_v3_campaign.yaml"),
@@ -44,6 +44,10 @@ EXPECTED_CLAIM_LIMITS = (
     ),
     "no independent review, declassification, or inter-rater agreement claim is made",
     (
+        "v6 final and pre-v7 engineering artifacts are calibration evidence and are not "
+        "reusable in v7"
+    ),
+    (
         "v1 Falcon and diverse plus v2 committed-corpus engineering traces are "
         "calibration evidence and are not reusable in their replacement final campaigns"
     ),
@@ -54,6 +58,14 @@ EXPECTED_CLAIM_LIMITS = (
     (
         "every final timing axis requires a pre-measurement source, binary, compiler, "
         "config, and linked-input build seal"
+    ),
+    (
+        "non-operand KEM and signature class setup uses dual-read-masked-select-v4 to "
+        "read both pools and select into shared work buffers before timing"
+    ),
+    (
+        "a deterministic self-contained toy API may report external-or-none randomness "
+        "only when randombytes_header is explicitly null"
     ),
     (
         "the ML-KEM valid-tuple axis changes secret and public material together and "
@@ -151,8 +163,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("paper campaign top-level field set drift")
     if manifest.get("schema_version") != 3:
         errors.append("schema_version must be 3")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v6-single-host":
-        errors.append("campaign_id must be ctkat-paper-native-v6-single-host")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v7-single-host":
+        errors.append("campaign_id must be ctkat-paper-native-v7-single-host")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
     if manifest.get("claim_limits") != list(EXPECTED_CLAIM_LIMITS):

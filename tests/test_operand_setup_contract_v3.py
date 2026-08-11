@@ -146,16 +146,18 @@ def test_operand_v3_render_witnesses_setup_and_measured_dec_contract():
             assert f"{key}={value}" in source
 
 
-def test_operand_legacy_render_and_metadata_are_unchanged_by_default():
+def test_operand_legacy_config_keeps_pool_contract_with_v7_masked_materialization():
     implicit = _render_operand(_operand_harness())
     explicit = _render_operand(_operand_harness(operand_setup_contract="legacy-class-pools"))
 
     assert implicit == explicit
-    assert "const uint8_t *src_sk" in implicit
-    assert "const uint8_t *src_ct" in implicit
+    assert "ctkat_select_bytes(\n            sk_work" in implicit
+    assert "ctkat_select_bytes(\n            ct_work" in implicit
+    assert "class_setup_contract=dual-read-masked-select-v4" in implicit
+    assert "data_class ? CTKAT_SLOT" not in implicit
     assert "pool0_ct" in implicit
     assert "class_contract=frozen-public-coefficient-bins" in implicit
-    assert "setup_contract=" not in implicit
+    assert " setup_contract=same-address-branchless-v3" not in implicit
     assert "class_address_policy=" not in implicit
     assert "measured_dec_contract_failures=" not in implicit
     assert "_mm_mfence();" not in implicit

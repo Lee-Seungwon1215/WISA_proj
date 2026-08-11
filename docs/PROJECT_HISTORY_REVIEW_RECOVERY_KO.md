@@ -605,23 +605,24 @@ confounded/underpowered timing 숫자도 보존은 하지만 final clean evidenc
 
 ### 10.3 아직 완료가 아닌 것
 
-다음은 코드가 없어서가 아니라 외부 증거가 아직 없어서 완료가 아니다.
+다음은 코드가 없어서가 아니라 final 증거가 아직 없어서 완료가 아니다.
 
-1. 측정 전 review packet 7종의 독립 2인 승인
-2. 서로 다른 CPU model의 physical Linux x86_64 host 두 대 final 실행
-3. 네 개 timing component와 same-corpus 세 도구의 양 host artifact
-4. blinded analysis, unblinding과 host disagreement 검토
-5. final evidence root에 대한 측정 후 독립 2인 promotion review
-6. 실제 사람 triage 시간과 agreement 수치
-7. 비개발자 blind rerun
-8. 새 결과를 corpus와 논문에 명시적으로 승격
+1. V7 clean commit에서 한 physical Linux x86_64 host의 fresh final 실행
+2. 네 timing component와 same-corpus 세 도구의 control-valid artifact
+3. 새 커밋의 ML-KEM assembly bundle과 전체 host `SHA256SUMS`
+4. schema-v5 single-host bundle과 byte-deterministic named analysis
+5. 결과 수치를 논문 표·discussion·limitation에 명시적으로 반영
+
+두 번째 host, 독립 2인 review, 사람 triage/agreement, blind rerun은 더 강한
+follow-up validation이다. 현재 V7 승격 gate인 척 꾸며내지 않으며, 없으면 해당
+재현성·사람합의 claim만 하지 않는다.
 
 pending은 실패가 아니다. 하지만 완료도 아니다.
 
 ## 11. 데스크톱과 임베디드 범위
 
-현재 final campaign의 실험 정의는 **두 개의 physical Linux x86_64 desktop-class
-host**다. 이 정의는 Cortex-M4를 포함하지 않는다.
+현재 final campaign의 실험 정의는 **한 개의 physical Linux x86_64
+desktop-class host**다. 이 정의는 Cortex-M4를 포함하지 않는다.
 
 Cortex-M4에서 Python CLI, Valgrind, x86 PinTracer와 전체 official dudect host
 workflow를 그대로 실행할 수는 없다. 임베디드 지원은 다음처럼 분리해야 한다.
@@ -687,7 +688,9 @@ host 비교, 결과 기반 discussion과 conclusion이다.
 | 2026-08-07 | M5 | paper premeasurement artifact freeze |
 | 2026-08-08~10 | M6~M8 | blind/statistics/signature/KEM 계약 보강 |
 | 2026-08-11 | M9 | KyberSlash v3와 universal build provenance 동결 |
-| 다음 | 외부 gate | 2인 리뷰, 두 host final, post-review, 논문 재작성 |
+| 2026-08-11 | V6 실측 진단 | 28축 완료 후 dudect baseline invalidity와 공통 class-setup confound 발견; 전부 비승격 보존 |
+| 2026-08-11 | V7 동결 | deterministic RNG 계약, dual-read masked setup, 안정화된 same-corpus control 반영 |
+| 다음 | final gate | 한 host fresh V7, schema-v5 bundle, named analysis, 논문 결과 반영 |
 
 ## 15. 관련 source of truth
 

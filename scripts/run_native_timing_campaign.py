@@ -2825,7 +2825,7 @@ def _human_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
     }
 
 
-SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v6.yaml"
+SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v7.yaml"
 SINGLE_HOST_GATE_INPUTS = (
     ROOT / "docs/measurement/EXPERIMENT_PREREGISTRATION.md",
     ROOT / "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
@@ -2837,6 +2837,12 @@ SINGLE_HOST_GATE_INPUTS = (
     ROOT / "docs/baselines/same_corpus_v1.yaml",
     ROOT / "docs/baselines/baseline-result-v1.schema.json",
     ROOT / "docs/artifact/measurement_bundle_single_host_template.yaml",
+    ROOT / "ctkat/cli.py",
+    ROOT / "ctkat/templates/timing_kem.c.j2",
+    ROOT / "ctkat/templates/timing_sign.c.j2",
+    ROOT / "ctkat/templates/timing_v2_common.c.j2",
+    ROOT / "examples/toy_kem_ct_leak/ctkat.yaml",
+    ROOT / "examples/toy_kem_ct_leak/src/toy_kem.c",
     ROOT / "scripts/check_paper_campaign.py",
     ROOT / "scripts/analyze_paper_native_results.py",
     ROOT / "scripts/build_asm_evidence.py",
@@ -2917,7 +2923,7 @@ def _single_host_premeasurement_gate_material(
     promotion = plan.get("promotion")
     if (
         plan.get("schema_version") != 3
-        or plan.get("campaign_id") != "ctkat-paper-native-v6-single-host"
+        or plan.get("campaign_id") != "ctkat-paper-native-v7-single-host"
         or plan.get("status") != "premeasurement-frozen"
         or not isinstance(policy, dict)
         or policy.get("minimum_physical_hosts") != 1

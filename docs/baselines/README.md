@@ -108,6 +108,12 @@ virtualization, affinity gate 중 하나라도 실패하면 공통 outcome은
 `inconclusive`이고 timing evidence로 승격되지 않는다. 현재 macOS/ARM
 개발 host에서는 실행 대신 명시적인 unsupported artifact만 생성한다.
 
+V7 toy 기준선은 결정적 API라 `randombytes_header: null`과
+`external-or-none`을 명시적으로 짝지으며, 입력독립 음성 대조군은 고정
+10,000회 작업을 수행한다. class 준비는 두 pool을 모두 읽는
+`dual-read-masked-select-v4`, 양성 대조군은 `[512, 2048, 8192]` ticks로
+동결돼 있다. V6의 두 invalid dudect run은 calibration으로만 보존한다.
+
 모든 artifact는 다시 검사할 수 있다.
 
 ```bash

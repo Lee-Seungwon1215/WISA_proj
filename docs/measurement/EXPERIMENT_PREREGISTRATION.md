@@ -1,18 +1,66 @@
 # Native timing experiment preregistration
 
-Status: **v6 single-host scope frozen; no v6 final measurement collected**
+Status: **v7 single-host protocol frozen; no v7 final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
 V4 amendment freeze date: 2026-08-10
 V5 amendment freeze date: 2026-08-11
 V6 scope amendment freeze date: 2026-08-11
-Machine-readable plan: `paper_native_campaign_v6.yaml`
+V7 setup-contract amendment freeze date: 2026-08-11
+Machine-readable plan: `paper_native_campaign_v7.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V7 class-setup and same-corpus validity amendment
+
+A v6 final attempt at commit
+`4e171ea0edce322df127cc3c52836e4b3351be6d` completed all four primary
+components, TIMECOP, and MicroWalk, but could not complete the predeclared
+official-dudect same-corpus validity gate. The first dudect run
+`70040e8fc5c74efcb561a329143f8e8a` retained every raw trace: the leaky target
+was detected in all three repeats, but the largest 512-tick positive control
+was detected in only two of three, while the negative target crossed the
+threshold in one of three repeats. The second run
+`891e3aabe154428291ec0bc2ff9c5c84` passed A/A, placebo, and power controls, but
+exposed a fail-closed policy bug: both deterministic toy harnesses correctly
+reported `external-or-none`, while the validator unconditionally required
+`seeded-interpose` for every KEM template. Neither run is promoted.
+
+Engineering diagnosis then exposed a second setup defect. The general KEM and
+signature templates selected one of two pool addresses with a class-dependent
+conditional immediately before `t0`. The placebo performed extra
+normalization copies and therefore did not reproduce the final branch-history
+boundary. A deliberately input-independent negative control could still
+separate the classes, so the v6 primary traces cannot exclude this setup
+confound even where their recorded placebo passed.
+
+V7 makes three frozen corrections before any v7 final sample. First, a KEM or
+signature harness with an explicitly null `randombytes_header` must report
+`external-or-none`; all other such harnesses still require
+`seeded-interpose`. Second, every non-operand KEM and signature iteration reads
+both class slots and uses the no-inline `dual-read-masked-select-v4` routine to
+materialize one class into the shared work buffers without a class-dependent
+branch or source-address choice. Every trace records that exact setup contract
+and validity fails closed on drift. The specialized KyberSlash operand-v3
+contract remains `same-address-branchless-v3`. Third, the same-corpus negative
+control performs a fixed 10,000-iteration volatile workload while ignoring
+class-varying input bytes, and the baseline positive ladder is fixed at
+`[512, 2048, 8192]` ticks after the observed 512-tick power failure.
+
+Two independent engineering runs at commit
+`adb68f8ff5cbd92bf427d2ea74561116bd476527` validated the corrected
+baseline before this freeze. Their leaky repeat statistics all exceeded the
+official threshold, their negative-control repeat statistics were
+`[1.18, 2.82, 1.26]` and `[1.97, 1.55, 3.10]`, and both runs had zero A/A and
+placebo failures with full directional power. These are calibration artifacts,
+not final evidence. The v6 final tree and every pre-v7 engineering tree are
+non-promotable and cannot be resumed, relabeled, or reused. Every v7 component,
+baseline, assembly bundle, and analysis input must start fresh at one clean
+post-amendment commit.
 
 ## V6 single-host scope and validation amendment
 
@@ -302,7 +350,7 @@ the frozen official analysis owns its filtering and percentile tests.
 ## Review and promotion
 
 The runner writes immutable promotion candidates and never edits the curated
-corpus. V6 paper-result promotion requires:
+corpus. V7 paper-result promotion requires:
 
 1. one complete physical-host artifact tree and its recorded SHA-256 manifest;
 2. all 28 axes and three same-corpus tools at one clean frozen commit;
@@ -315,7 +363,7 @@ corpus. V6 paper-result promotion requires:
    actually measured.
 
 Independent review packets remain optional follow-up evidence. They are not a
-v6 measurement or paper-table gate, and V6 does not use them to declassify or
+v7 measurement or paper-table gate, and V7 does not use them to declassify or
 silently mutate the curated corpus.
 
 OpenSSL 3.5 is retained as a provider-API integration/build case only. It is

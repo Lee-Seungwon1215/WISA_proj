@@ -201,8 +201,8 @@ def build() -> tuple[dict[Path, str], dict[str, Any]]:
             "",
             f"Packets: {len(review_rows)}; premeasurement ready: "
             f"{str(review['pre_measurement_ready']).lower()}; paper ready: "
-            f"{str(review['paper_ready']).lower()}. Pending means v6 makes no independent-review "
-            "claim; it is not a v6 execution gate.",
+            f"{str(review['paper_ready']).lower()}. Pending means v7 makes no independent-review "
+            "claim; it is not a v7 execution gate.",
             "",
             "## Claim readiness",
             "",

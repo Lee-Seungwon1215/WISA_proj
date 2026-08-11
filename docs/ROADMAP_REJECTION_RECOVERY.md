@@ -971,18 +971,19 @@ M5 종료 조건:
   - [x] patched TIMECOP positive/negative structural artifact gate
   - [x] MicroWalk PinTracer Linux/x86_64 artifact CI gate
   - [ ] official dudect bare-metal physical artifact
-  - [ ] host/compiler/seed 반복과 human/reviewer cost
+  - [ ] V7 single-host final의 host/compiler/seed 반복
+  - [ ] human/reviewer cost는 후속 검증에서만 주장
 - [x] maintained primary upstream lineage 3개 이상 (ancestry claim-limit 포함)
 - [x] x86_64/AArch64 build/structural artifact gate
-- [ ] native timing microarchitecture 2종
+- [ ] V7 native timing physical host 1종; 두 번째 microarchitecture는 follow-up
 - [x] KyberSlash KS1/KS2 non-timing ground truth
 - [ ] KyberSlash native timing / architecture matrix / attack reproduction
 - [x] Falcon reference-vs-CT build/structural comparator
 - [ ] Falcon paired native timing (`FAL-005`)
 - [ ] matrix ablation과 human triage cost
-- [ ] 2인 declassification review
+- [ ] 2인 declassification review는 선택적 follow-up이며 V7 실행 gate 아님
 - [ ] one-command table/figure regeneration
-- [ ] blind rerun
+- [ ] blind rerun은 선택적 follow-up이며 V7 named analysis와 혼동 금지
 
 하나라도 안 되면 해당 claim을 빼거나 제출을 미룬다. note 한 줄로 덮고
 `robust` 박는 꼼수는 금지한다.
@@ -1008,11 +1009,13 @@ M5 종료 조건:
 9. ~~**독립 upstream source/build corpus 확장**~~ — 완료 (`0.10.0a1`):
    mlkem-native → mldsa-native → OpenSSL 3.5.7 production integration,
    240 build cell/24 upstream KAT/120 equivalence pair CI gate
-10. ~~**측정 전 paper campaign/artifact 동결**~~ — v6 single-host로 갱신 완료:
+10. ~~**측정 전 paper campaign/artifact 동결**~~ — v7 single-host로 갱신 완료:
     4 component/26 target execution/28 axis, binary/assembly evidence,
     automated frozen-input gate, ablation, preregistration, generated tables,
-    named deterministic analysis, lock/pin, one-command matrix
-11. 한 physical host에서 paper v6의 core v3, KyberSlash v3, Falcon v2,
+    named deterministic analysis, lock/pin, one-command matrix. V6 final 진단에서
+    드러난 unconditional RNG policy와 pre-t0 class pointer branch를 수정하고
+    `dual-read-masked-select-v4` 및 안정화된 toy baseline을 사전 동결
+11. 한 physical host에서 paper v7의 core v3, KyberSlash v3, Falcon v2,
     diverse v2 component와 same-corpus 세 도구를 실행하고 schema-v5 bundle과
     host-scoped 결과표를 생성. 두 번째 host/2인 review는 follow-up이며 현 gate 아님
 
