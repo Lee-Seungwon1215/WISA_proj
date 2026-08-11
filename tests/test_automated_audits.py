@@ -36,7 +36,12 @@ def test_committed_automated_audits_are_engineering_ready_but_never_human_ready(
 def test_open_critical_finding_blocks_engineering_readiness_without_becoming_human_review():
     path, packet = _load_committed_packet("artifact-blind-integrity")
     packet = deepcopy(packet)
-    disposition = next(item for item in packet["dispositions"] if item["finding_id"] == "abi-001")
+    critical_finding_id = next(
+        item["finding_id"] for item in packet["findings"] if item["severity"] == "critical"
+    )
+    disposition = next(
+        item for item in packet["dispositions"] if item["finding_id"] == critical_finding_id
+    )
     disposition["status"] = "open"
     disposition["blocker"] = "host provenance remediation has not been completed"
 
@@ -48,7 +53,7 @@ def test_open_critical_finding_blocks_engineering_readiness_without_becoming_hum
     )
 
     assert errors == []
-    assert record["unresolved_high_or_critical"] == ["abi-001"]
+    assert record["unresolved_high_or_critical"] == [critical_finding_id]
     assert record["human_reviewer"] is False
     assert record["human_gate_effect"] == "none"
 
