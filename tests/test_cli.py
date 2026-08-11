@@ -799,9 +799,15 @@ def _stub_compile(name, **kwargs):
     not the compile path."""
     from ctkat.timing_harness_generator import GeneratedTimingHarness
 
+    output_dir = Path(kwargs["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    source_path = output_dir / f"timing_{name}.c"
+    binary_path = output_dir / f"timing_{name}"
+    source_path.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+    binary_path.write_bytes(b"stub timing binary\n")
     return GeneratedTimingHarness(
-        source_path=Path(f"/tmp/{name}.c"),
-        binary_path=Path(f"/tmp/{name}"),
+        source_path=source_path,
+        binary_path=binary_path,
         compile_command="(stubbed)",
     )
 
@@ -1063,6 +1069,10 @@ def _v2_validity_fixture():
         enough_measurements=True,
         harness_protocol={
             "protocol": "timing-harness-v2",
+            "build_provenance": {
+                "passed": True,
+                "captured_before_measurement": True,
+            },
             "process_repeats_observed": 3,
             "process_repeats_required": 3,
             "aa_budget_passed": True,
@@ -1837,7 +1847,7 @@ def _patch_dudect_pipeline(monkeypatch, spy):
         return []
 
     monkeypatch.setattr(cli, "detect_qemu_emulation", lambda: False)
-    monkeypatch.setattr(cli, "generate_and_compile_timing", lambda **k: _FakeGen())
+    monkeypatch.setattr(cli, "generate_and_compile_timing", lambda **k: _stub_compile(**k))
     monkeypatch.setattr(cli, "run_timing_harness", _fake_samples)
     monkeypatch.setattr(cli, "welch_with_cropping", fake_cropping)
     monkeypatch.setattr(cli, "welch_t_test", fake_welch)

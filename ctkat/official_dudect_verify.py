@@ -28,7 +28,11 @@ from .official_dudect import (
     OfficialDudectAnalysis,
     OfficialProtocolTest,
 )
-from .timing_input_contract import validate_valid_tuple_harness_report
+from .timing_input_contract import (
+    OPERAND_V3_SETUP_CONTRACT,
+    validate_operand_v3_harness_report,
+    validate_valid_tuple_harness_report,
+)
 
 RAW_TIMING_HEADER = (
     "project",
@@ -869,6 +873,18 @@ def _verify_protocol_contract(
         errors.extend(
             validate_valid_tuple_harness_report(
                 backend,
+                label=f"{harness}: backend",
+            )
+        )
+    if (
+        expected_axis == "operand_bin"
+        and isinstance(protocol.get("input_contract"), dict)
+        and protocol["input_contract"].get("setup_contract") == OPERAND_V3_SETUP_CONTRACT
+    ):
+        errors.extend(
+            validate_operand_v3_harness_report(
+                backend,
+                base_seed=contract.base_seed,
                 label=f"{harness}: backend",
             )
         )

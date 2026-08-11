@@ -843,6 +843,15 @@ class DudectHarnessConfig(BaseModel):
     # Only meaningful for template=kem; rejected at load time if combined
     # with template=generic.
     leak_target: Literal["sk", "valid_tuple", "ct", "fo", "chosen_ct", "operand_bin"] = "sk"
+    # ``operand_bin`` historically selected one of two heap-backed class
+    # pools before copying into the common work buffers.  Keep that source and
+    # metadata contract as the default so existing v2 manifests remain byte-
+    # for-byte opt-out.  The v3 contract is an explicit operand-canary-only
+    # setup: both public coefficients are computed from the same pool index,
+    # selected arithmetically, and written through one fixed work address.
+    operand_setup_contract: Literal["legacy-class-pools", "same-address-branchless-v3"] = (
+        "legacy-class-pools"
+    )
     # Exact untimed implicit-rejection witness used by ``fo`` and
     # ``chosen_ct``.  See the structural harness fields above for the ABI and
     # rationale.  Requiring this in config makes an unsupported KEM fail at
@@ -897,6 +906,14 @@ class DudectHarnessConfig(BaseModel):
             raise ValueError(
                 f"dudect harness {self.name!r}: leak_target={self.leak_target!r} "
                 "only valid for template=kem"
+            )
+        if self.operand_setup_contract != "legacy-class-pools" and not (
+            self.template == "kem" and self.leak_target == "operand_bin"
+        ):
+            raise ValueError(
+                f"dudect harness {self.name!r}: "
+                f"operand_setup_contract={self.operand_setup_contract!r} "
+                "only valid for template=kem with leak_target='operand_bin'"
             )
         _check_rejection_oracle(
             f"dudect harness {self.name!r}",

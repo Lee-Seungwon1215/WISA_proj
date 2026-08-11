@@ -24,11 +24,11 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v4.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v5.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
     ("committed-corpus-refresh", "docs/measurement/native_timing_v3_campaign.yaml"),
-    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v2.yaml"),
+    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v3.yaml"),
     ("falcon-contrast", "docs/measurement/falcon_native_v2.yaml"),
     ("diverse-lineages", "docs/measurement/diverse_native_v2.yaml"),
 )
@@ -42,6 +42,14 @@ EXPECTED_CLAIM_LIMITS = (
     (
         "v1 Falcon and diverse plus v2 committed-corpus engineering traces are "
         "calibration evidence and are not reusable in their replacement final campaigns"
+    ),
+    (
+        "KyberSlash v2 operand traces have invalid-placebo and class-address setup "
+        "confounds and are not reusable in v3"
+    ),
+    (
+        "every final timing axis requires a pre-measurement source, binary, compiler, "
+        "config, and linked-input build seal"
     ),
     (
         "the ML-KEM valid-tuple axis changes secret and public material together and "
@@ -139,8 +147,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("paper campaign top-level field set drift")
     if manifest.get("schema_version") != 2:
         errors.append("schema_version must be 2")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v4":
-        errors.append("campaign_id must be ctkat-paper-native-v4")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v5":
+        errors.append("campaign_id must be ctkat-paper-native-v5")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
     if manifest.get("claim_limits") != list(EXPECTED_CLAIM_LIMITS):
@@ -202,7 +210,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         expected_command = (
             "uv run --frozen python scripts/run_native_timing_campaign.py --manifest "
             f"{item['manifest']} --output-root measurement_runs/host-ID/"
-            f"{ {'committed-corpus-refresh': 'committed-corpus-v3', 'kyberslash-contrast': 'kyberslash', 'falcon-contrast': 'falcon', 'diverse-lineages': 'diverse-v2'}[item['id']] } "
+            f"{ {'committed-corpus-refresh': 'committed-corpus-v3', 'kyberslash-contrast': 'kyberslash-v3', 'falcon-contrast': 'falcon', 'diverse-lineages': 'diverse-v2'}[item['id']] } "
             "--run-kind final --cpu CPU-ID --execute"
         )
         if item.get("command") != expected_command:

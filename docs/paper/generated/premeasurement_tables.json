@@ -132,7 +132,7 @@
     },
     {
       "claim_id": "native-timing-results",
-      "evidence_items": 9,
+      "evidence_items": 10,
       "open_gates": 4,
       "prohibited_wording": "valid-tuple signal means secret-key leakage; no finding means proven constant-time",
       "scope": "28 predeclared timing axes plus all three same-corpus baseline tools",
@@ -148,7 +148,7 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v4",
+    "campaign_id": "ctkat-paper-native-v5",
     "component_count": 4,
     "components": [
       {
@@ -161,7 +161,7 @@
         "timing_axes": 8
       },
       {
-        "campaign_id": "kyberslash-native-v2",
+        "campaign_id": "kyberslash-native-v3",
         "coverage_mode": "manifest-only",
         "id": "kyberslash-contrast",
         "protocol_rows": 3300000,

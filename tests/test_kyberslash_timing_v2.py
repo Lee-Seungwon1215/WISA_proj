@@ -64,7 +64,9 @@ def test_chosen_ct_template_freezes_corpus_and_records_strong_digests():
 
 
 def test_direct_canary_pairs_have_identical_base_flags_and_frozen_axis():
-    configs = sorted(CANARY_DIR.glob("ctkat_*.yaml"))
+    configs = sorted(
+        path for path in CANARY_DIR.glob("ctkat_*.yaml") if not path.stem.endswith("_v3")
+    )
     assert len(configs) == 6
     selectors = set()
     for path in configs:

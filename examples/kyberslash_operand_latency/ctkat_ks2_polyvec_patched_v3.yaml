@@ -1,0 +1,26 @@
+project: {name: kyberslash_operand_ks2_polyvec_patched, language: c, root: .}
+build: {argv: ["true"], workdir: .}
+dudect:
+  enabled: true
+  backend: official-dudect
+  measurements: 10000
+  warmup: 200
+  batches: 10
+  clock: auto
+  seed: 0xC0FFEE
+  generated_dir: ./_generated/v3/ks2_polyvec_patched
+  compiler:
+    cc: gcc
+    cflags: [-std=c99, -Os, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+  harnesses:
+    - name: operand_bin
+      template: kem
+      leak_target: operand_bin
+      operand_setup_contract: same-address-branchless-v3
+      header: api.h
+      randombytes_header: null
+      prefix: "CTKAT_KS_"
+      binary_contract: {manifest: binary_contracts_v3.yaml, target: ks2_polyvec_patched}
+      include_dirs: [.]
+      sources: [operand_kem.c, ks2_polyvec_patched.c]
+report: {output_dir: ./reports}

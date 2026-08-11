@@ -1,16 +1,60 @@
 # Native timing experiment preregistration
 
-Status: **v4 frozen after disclosed Falcon/diverse engineering calibrations; no final measurement collected**
+Status: **v5 frozen after disclosed Falcon/diverse/KyberSlash engineering calibrations; no final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
 V4 amendment freeze date: 2026-08-10
-Machine-readable plan: `paper_native_campaign_v4.yaml`
+V5 amendment freeze date: 2026-08-11
+Machine-readable plan: `paper_native_campaign_v5.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V5 KyberSlash operand and universal build-seal amendment
+
+An engineering-only KyberSlash v2 run at commit
+`2191d363137d3fee17354c96eef6bce741623b5c` completed before any final run.
+The four fixed-key full-KEM chosen-ciphertext targets and their controls
+completed, but code-and-artifact review found two setup confounds in the six
+direct operand canaries. First, class selection read from two different
+heap-backed ciphertext pools before copying to the common work buffer. Second,
+the v2 setup-placebo copied a frozen ciphertext whose first coefficient was not
+constrained to the valid `[0, 3328]` range; in the observed engineering corpus
+it was `45124`, so the adapter returned before executing the arithmetic site.
+The placebo therefore could not exclude either class-address setup effects or
+site-local effects. No v2 operand statistic is promoted, corrected, resumed,
+or reused.
+
+KyberSlash v3 changes only the six direct-canary setup contracts. Both public
+coefficient candidates are computed from the same pool index, selected with an
+arithmetic mask, and written through one shared ciphertext work address while
+one fixed secret-key address is used. The placebo overwrites that same address
+with valid coefficient `1664`, every member of both 64-value bins must pass an
+untimed decapsulation witness, warm-up return codes are checked, and any
+non-zero measured decapsulation return count aborts the trace. The linked
+binary contract additionally requires the measured decapsulation wrapper to
+call the intended arithmetic-site symbol. Bins, samples, controls, thresholds,
+seeds, process repeats, optimization flags, and the four full-KEM hypotheses
+are unchanged.
+
+Review of the completed diverse and KyberSlash engineering artifacts also
+found that generated source and measured-binary hashes were preserved only on
+axes carrying a specialized instruction contract. V5 therefore requires a
+common pre-measurement build seal for every timing harness, independent of any
+specialized contract. It binds the config, generated C, measured binary,
+ordered linked sources and include directories, compiler executable/version,
+flags, and replay argv; the runner checks it before and after every measured
+subprocess, and the native validator reparses it into the target attestation.
+Any missing or changed seal is an integrity error.
+
+Every v5 final component starts in a fresh output root on both hosts at one
+post-amendment commit. Cortex-M bare-metal evaluation is explicitly outside
+this x86_64 desktop campaign; adding it requires a separately versioned board,
+clock, transport, sample-size, and analysis preregistration and does not alter
+or invalidate the desktop measurements defined here.
 
 ## V4 mixed-input attribution and compile-contract amendment
 
@@ -98,8 +142,11 @@ substantive change requires another campaign version.
    chosen-input comparison and cannot establish secret attribution. In the
    separate direct-operand layer, each vulnerable
    KS1/KS2 site is expected to show a larger coefficient-bin timing signal than
-   its matched reciprocal-multiply implementation. These canaries establish
-   operand-dependent hardware latency only, not a full attack or key recovery.
+   its matched reciprocal-multiply implementation. Both classes use the same
+   work addresses and fixed key; coefficient `1664` is the predeclared valid
+   placebo path and every bin member must pass its return-code witness. These
+   canaries establish operand-dependent hardware latency only, not a full
+   attack or key recovery.
 3. **Falcon comparator.** Reference Falcon, c-fn-dsa native floating point,
    and c-fn-dsa integer-FPR profiles may differ in timing leakage. This is a
    non-directional comparison. It is not an FN-DSA conformance experiment.
@@ -131,7 +178,7 @@ substantive change requires another campaign version.
   contrast. The axis label, input-contract metadata, or analysis must never
   shorten it to a secret-key leakage claim.
 - Frozen component manifests are checked by
-  `python3 scripts/check_paper_campaign.py`.
+  `uv run --frozen python scripts/check_paper_campaign.py`.
 
 ## Primary and secondary endpoints
 
@@ -178,6 +225,11 @@ declassify a risk finding.
   disassembly. The validator reparses that disassembly; a missing or
   unexpected division/FP instruction contract invalidates the unit before
   timing interpretation.
+- Every timing axis, including axes without a specialized instruction
+  contract, must preserve and pass the common pre-measurement build seal. The
+  generated C, measured binary, config, linked sources, compiler identity,
+  flags, and replay argv are revalidated and included in the target
+  attestation.
 - Requested counts are not reported as retained counts. Dropped and retained
   counts are preserved in the artifact and tables use the latter.
 

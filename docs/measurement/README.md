@@ -1,6 +1,6 @@
 # Native timing campaign
 
-논문용 최상위 동결본은 `paper_native_campaign_v4.yaml`이다. 기존 corpus refresh
+논문용 최상위 동결본은 `paper_native_campaign_v5.yaml`이다. 기존 corpus refresh
 외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
 두 개의 서로 다른 physical x86_64 CPU model에서 같은 commit을 실행해야 한다.
 
@@ -10,7 +10,7 @@ uv run python scripts/check_paper_campaign.py
 uv run python scripts/run_native_timing_campaign.py \
   --manifest docs/measurement/native_timing_v3_campaign.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/kyberslash_native_v2.yaml --check
+  --manifest docs/measurement/kyberslash_native_v3.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
   --manifest docs/measurement/falcon_native_v2.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
@@ -24,7 +24,9 @@ uv run python scripts/run_native_timing_campaign.py \
 - `native_timing_v3_campaign.yaml`: committed timing row 8축의 replacement;
   corpus key용 `kem_dec` 하니스 ID는 유지하지만 KEM machine axis는
   mixed `valid_tuple`로 교정
-- `kyberslash_native_v2.yaml`: 고정키 chosen-ct 4축 + 취약/패치 operand canary 6축
+- `kyberslash_native_v3.yaml`: 고정키 chosen-ct 4축 + 같은 주소/유효 placebo/
+  전 bin 반환값 witness를 강제한 취약·패치 operand canary 6축. v2 operand
+  engineering trace는 setup confound 때문에 재사용 금지
 - `falcon_native_v2.yaml`: 512/1024 reference/native-FP/integer-FPR 6축;
   v1 engineering calibration에서 power가 부족했던 1024 integer-FPR positive
   control만 상향한 final 동결본
@@ -35,6 +37,12 @@ uv run python scripts/run_native_timing_campaign.py \
 가설, sample/control 수, 제외 기준, multiplicity, host disagreement,
 promotion 문구는 `EXPERIMENT_PREREGISTRATION.md`에 측정 전에 고정했다. static
 check 성공은 timing 결과가 아니라 “실행 정의가 준비됨”만 뜻한다.
+
+모든 timing 하니스는 특수 `binary_contract` 유무와 관계없이 첫 sample 전에
+config, generated C, measured binary, linked source, compiler와 replay argv를
+`reports/build_provenance/timing_<harness>.build-seal.json`에 봉인한다. runner는
+각 subprocess 전후로 이를 확인하고 native validator는 target attestation에
+해시를 다시 묶는다.
 
 `native_timing_v3_campaign.yaml`은 기존 corpus의 timing 8개 축을
 timing-harness-v2로 다시 측정하기 위한 동결된 실행 계획이다. v2의
@@ -131,15 +139,16 @@ output root 아래 target별로 다음 파일이 생긴다.
 - `reports/dudect_protocol_timings.csv`
 - `reports/dudect_summary.csv`
 - `reports/dudect_backend_report.json`
+- `reports/build_provenance/timing_<harness>.build-seal.json`
+- `generated/timing_<harness>`와 generated C source
 
 binary contract가 있는 축은 다음 파일도 필수 산출물이다.
 
 - `reports/binary_contract/timing_<harness>.binary-contract.json`
 - `reports/binary_contract/timing_<harness>.objdump.txt`
 - `reports/binary_contract/timing_<harness>.objdump-file-header.txt`
-- `generated/timing_<harness>`와 그 generated C source
 
-root에는 다음 두 파일이 생긴다.
+root에는 다음 세 파일이 생긴다.
 
 - `campaign_report.json`: manifest/commit/host/compiler, target별 artifact hash,
   validity와 promotion blocker

@@ -30,4 +30,4 @@ Packets: 8; premeasurement ready: false; paper ready: false. Pending is an hones
 | kyberslash-attribution | pending-independent-review | 4 | 2 |
 | falcon-comparator | pending-independent-review | 4 | 3 |
 | diverse-upstream-builds | implemented-premeasurement | 3 | 2 |
-| native-timing-results | pending-physical-measurement | 9 | 4 |
+| native-timing-results | pending-physical-measurement | 10 | 4 |

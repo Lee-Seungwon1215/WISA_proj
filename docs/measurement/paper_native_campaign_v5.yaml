@@ -1,0 +1,91 @@
+schema_version: 2
+campaign_id: ctkat-paper-native-v5
+status: premeasurement-frozen
+frozen_at: "2026-08-11"
+
+execution_policy:
+  minimum_physical_hosts: 2
+  minimum_distinct_cpu_models: 2
+  operating_system: Linux
+  architecture: x86_64
+  virtualization_allowed: false
+  emulation_allowed: false
+  same_commit_required: true
+  pilot_and_final_separated: true
+  final_code_changes_allowed: false
+  cross_component_artifact_reuse: false
+  final_run_kind: final
+  engineering_results_promotable: false
+  pilot_results_promotable: false
+  final_resume_allowed: false
+  human_review_gate_required: true
+
+components:
+  - id: committed-corpus-refresh
+    purpose: replace legacy timing rows without silently expanding corpus scope
+    manifest: docs/measurement/native_timing_v3_campaign.yaml
+    command: uv run --frozen python scripts/run_native_timing_campaign.py --manifest docs/measurement/native_timing_v3_campaign.yaml --output-root measurement_runs/host-ID/committed-corpus-v3 --run-kind final --cpu CPU-ID --execute
+  - id: kyberslash-contrast
+    purpose: fixed-key chosen-ciphertext contrasts and same-address vulnerable/patched operand canaries
+    manifest: docs/measurement/kyberslash_native_v3.yaml
+    command: uv run --frozen python scripts/run_native_timing_campaign.py --manifest docs/measurement/kyberslash_native_v3.yaml --output-root measurement_runs/host-ID/kyberslash-v3 --run-kind final --cpu CPU-ID --execute
+  - id: falcon-contrast
+    purpose: full-signature reference, native-FP, and integer-FPR comparison
+    manifest: docs/measurement/falcon_native_v2.yaml
+    command: uv run --frozen python scripts/run_native_timing_campaign.py --manifest docs/measurement/falcon_native_v2.yaml --output-root measurement_runs/host-ID/falcon --run-kind final --cpu CPU-ID --execute
+  - id: diverse-lineages
+    purpose: portable versus native profiles with an explicitly mixed ML-KEM valid-tuple axis
+    manifest: docs/measurement/diverse_native_v2.yaml
+    command: uv run --frozen python scripts/run_native_timing_campaign.py --manifest docs/measurement/diverse_native_v2.yaml --output-root measurement_runs/host-ID/diverse-v2 --run-kind final --cpu CPU-ID --execute
+
+same_corpus_baseline:
+  check_command: uv run --frozen python scripts/run_same_corpus_baselines.py --check
+  execute_commands:
+    official_dudect: uv run --frozen python scripts/run_same_corpus_baselines.py --run-dudect --run-kind final --cpu CPU-ID --output-root measurement_runs/host-ID/same-corpus
+    timecop: uv run --frozen python scripts/run_same_corpus_baselines.py --run-timecop --run-kind final --prefix TIMECOP-PREFIX --output-root measurement_runs/host-ID/same-corpus
+    microwalk_pin: uv run --frozen python scripts/run_same_corpus_baselines.py --run-microwalk --run-kind final --output-root measurement_runs/host-ID/same-corpus
+  automatic_promotion: false
+
+analysis:
+  script: scripts/analyze_paper_native_results.py
+  blind_scope: result-analyst-label-blinding
+  blinded_command: uv run --frozen python scripts/analyze_paper_native_results.py --bundle BUNDLE.yaml --verification-commit COMMIT --output-root analysis/blinded --output-mode blinded
+  unblinded_command: uv run --frozen python scripts/analyze_paper_native_results.py --bundle BUNDLE.yaml --verification-commit COMMIT --output-root analysis/named --output-mode unblinded --blinding-record UNBLINDING.yaml
+  either_host_valid_finding_keeps_risk: true
+  holm_within_preregistered_family: true
+  report_host_heterogeneity: true
+
+upstream_freeze:
+  mlkem-native:
+    release: v1.3.0
+    revision: 398050c877ff4353c96305c6434b63528accfc37
+    tree_sha256: 101a2e35764993175c99dbbb7bb67c2f42970f525b0fd4493e5811eef162ec0a
+  mldsa-native:
+    release: v1.0.0-beta2
+    revision: 9b0ee84f4cf399043eca59eca4e5f8531ca1d61b
+    tree_sha256: a6899867ede95f0c5464c92b96ab314e83c610ff9e23c1cac6f3d78789e710ff
+
+promotion:
+  automatic_corpus_mutation: false
+  require_artifact_hashes: true
+  require_automated_engineering_audits: true
+  require_two_person_human_review: true
+  require_both_hosts: true
+  require_control_pass: true
+  review_manifest: docs/reviews/paper/manifest.yaml
+  automated_audit_manifest: docs/audits/manifest.yaml
+  preregistration: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+
+claim_limits:
+  - a static plan or automated-agent audit is not timing evidence or human approval
+  - an engineering or pilot run is not final evidence
+  - a single physical host is a pilot, not final evidence
+  - v1 Falcon and diverse plus v2 committed-corpus engineering traces are calibration evidence and are not reusable in their replacement final campaigns
+  - KyberSlash v2 operand traces have invalid-placebo and class-address setup confounds and are not reusable in v3
+  - every final timing axis requires a pre-measurement source, binary, compiler, config, and linked-input build seal
+  - the ML-KEM valid-tuple axis changes secret and public material together and cannot support secret attribution
+  - chosen-ciphertext timing is a public-input contrast and not secret attribution
+  - operand-bin timing is a hardware-latency canary and not a full attack or key recovery
+  - full-signature Falcon timing includes variable-length encoding
+  - c-fn-dsa is prospective comparator evidence, not a FIPS 206 conformance claim
+  - OpenSSL is a provider-API integration case and not an independent lineage

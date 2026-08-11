@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ctkat.timing_input_contract import (  # noqa: E402
+    validate_operand_v3_harness_report,
     validate_valid_tuple_harness_report,
 )
 
@@ -211,8 +212,8 @@ COMPONENT_PLANS = {
     ),
     "kyberslash-contrast": ComponentPlan(
         "kyberslash-contrast",
-        ROOT / "docs/measurement/kyberslash_native_v2.yaml",
-        "kyberslash-native-v2",
+        ROOT / "docs/measurement/kyberslash_native_v3.yaml",
+        "kyberslash-native-v3",
     ),
     "falcon-contrast": ComponentPlan(
         "falcon-contrast",
@@ -808,6 +809,12 @@ def load_host_axes(
                             f"{host_id}.{component}.{target_id}: contract artifact depth drift"
                         )
                     artifact_root = report_dir
+                elif relative.parts and relative.parts[0] == "build_provenance":
+                    if len(relative.parts) != 2:
+                        raise AnalysisError(
+                            f"{host_id}.{component}.{target_id}: build seal depth drift"
+                        )
+                    artifact_root = report_dir
                 elif len(relative.parts) == 1:
                     artifact_root = report_dir
                 else:
@@ -899,9 +906,50 @@ def load_host_axes(
                 axis = axes.get(harness)
                 if not isinstance(protocol, dict) or protocol.get("axis") != axis:
                     raise AnalysisError(f"{host_id}.{component}.{target_id}.{harness}: axis drift")
+                build_provenance = protocol.get("build_provenance")
+                if not isinstance(build_provenance, dict) or set(build_provenance) != {
+                    "passed",
+                    "captured_before_measurement",
+                    "report",
+                    "report_sha256",
+                    "generated_source_sha256",
+                    "binary_sha256",
+                    "config_sha256",
+                }:
+                    raise AnalysisError(
+                        f"{host_id}.{component}.{target_id}.{harness}: "
+                        "build provenance metadata drift"
+                    )
+                seal_relative = build_provenance.get("report")
+                if (
+                    build_provenance.get("passed") is not True
+                    or build_provenance.get("captured_before_measurement") is not True
+                    or not isinstance(seal_relative, str)
+                    or artifact_hashes.get(seal_relative) != build_provenance.get("report_sha256")
+                    or artifact_hashes.get(f"generated/timing_{harness}.c")
+                    != build_provenance.get("generated_source_sha256")
+                    or artifact_hashes.get(f"generated/timing_{harness}")
+                    != build_provenance.get("binary_sha256")
+                ):
+                    raise AnalysisError(
+                        f"{host_id}.{component}.{target_id}.{harness}: "
+                        "build provenance hashes are not bound to target artifacts"
+                    )
                 if axis == "valid_tuple":
                     contract_errors = validate_valid_tuple_harness_report(
                         item,
+                        label=f"{host_id}.{component}.{target_id}.{harness}",
+                    )
+                    if contract_errors:
+                        raise AnalysisError(contract_errors[0])
+                if component == "kyberslash-contrast" and axis == "operand_bin":
+                    contract_errors = validate_operand_v3_harness_report(
+                        item,
+                        base_seed=_integer(
+                            manifest_protocol.get("seed"),
+                            f"{component}.seed",
+                            minimum=1,
+                        ),
                         label=f"{host_id}.{component}.{target_id}.{harness}",
                     )
                     if contract_errors:

@@ -1,0 +1,46 @@
+schema_version: "1.0"
+kind: ctkat-timing-binary-instruction-contract
+contract_id: kyberslash-direct-operand-linked-binary-v3
+system: Linux
+machines: [x86_64, AMD64]
+disassembler: objdump
+file_format_pattern: '(?s)file format elf64-x86-64.*architecture: i386:x86-64'
+
+targets:
+  ks1_vulnerable: &vulnerable
+    compiler: gcc
+    cflags: &canary_cflags
+      [-std=c99, -Os, -g, -fno-inline, -fno-omit-frame-pointer, -fno-lto]
+    comparison_group: kyberslash-ks1-direct-operand-v3
+    evidence_boundary: >-
+      Same-address, fixed-key, valid-decapsulation public numerator-bin
+      hardware-division canary; not a full-KEM or key-recovery claim.
+    symbols:
+      CTKAT_KS_crypto_kem_dec:
+        {required_call_targets: [ctkat_kyberslash_site_operation]}
+      ctkat_kyberslash_site_operation:
+        {division_count: 1, forbid_division_helpers: true}
+  ks1_patched: &patched
+    compiler: gcc
+    cflags: *canary_cflags
+    comparison_group: kyberslash-ks1-direct-operand-v3
+    evidence_boundary: >-
+      Matched same-address reciprocal-multiply negative control with a valid
+      decapsulation placebo; not a full-KEM claim.
+    symbols:
+      CTKAT_KS_crypto_kem_dec:
+        {required_call_targets: [ctkat_kyberslash_site_operation]}
+      ctkat_kyberslash_site_operation:
+        {division_count: 0, forbid_division_helpers: true}
+  ks2_poly_vulnerable:
+    <<: *vulnerable
+    comparison_group: kyberslash-ks2-poly-direct-operand-v3
+  ks2_poly_patched:
+    <<: *patched
+    comparison_group: kyberslash-ks2-poly-direct-operand-v3
+  ks2_polyvec_vulnerable:
+    <<: *vulnerable
+    comparison_group: kyberslash-ks2-polyvec-direct-operand-v3
+  ks2_polyvec_patched:
+    <<: *patched
+    comparison_group: kyberslash-ks2-polyvec-direct-operand-v3

@@ -55,6 +55,8 @@ from ctkat.timing_binary_contract import (  # noqa: E402
 )
 from ctkat.timing_environment import collect_timing_environment  # noqa: E402
 from ctkat.timing_input_contract import (  # noqa: E402
+    OPERAND_V3_SETUP_CONTRACT,
+    validate_operand_v3_harness_report,
     validate_valid_tuple_harness_report,
 )
 
@@ -663,6 +665,15 @@ def static_check(campaign: CampaignSpec) -> list[str]:
                     f"{target.id}/{harness.name}: timing axis drift: "
                     f"manifest={frozen_axis!r}, config={configured_axis!r}"
                 )
+            if (
+                campaign.campaign_id == "kyberslash-native-v3"
+                and frozen_axis == "operand_bin"
+                and harness.operand_setup_contract != OPERAND_V3_SETUP_CONTRACT
+            ):
+                errors.append(
+                    f"{target.id}/{harness.name}: KyberSlash v3 operand axis must use "
+                    f"{OPERAND_V3_SETUP_CONTRACT}"
+                )
             if harness.binary_contract is None:
                 if optimization_flags != ["-O2"]:
                     errors.append(
@@ -686,6 +697,17 @@ def static_check(campaign: CampaignSpec) -> list[str]:
                         errors.append(f"{target.id}/{harness.name}: binary contract compiler drift")
                     if contract_rule.get("cflags") != dudect.compiler.cflags:
                         errors.append(f"{target.id}/{harness.name}: binary contract cflags drift")
+                    if harness.operand_setup_contract == OPERAND_V3_SETUP_CONTRACT:
+                        wrapper_rule = contract_rule.get("symbols", {}).get(
+                            f"{harness.prefix}crypto_kem_dec", {}
+                        )
+                        if wrapper_rule.get("required_call_targets") != [
+                            "ctkat_kyberslash_site_operation"
+                        ]:
+                            errors.append(
+                                f"{target.id}/{harness.name}: operand-v3 binary contract "
+                                "must bind the decapsulation wrapper to the arithmetic site"
+                            )
             if any(Path(source).name == "randombytes.c" for source in harness.sources):
                 errors.append(
                     f"{target.id}/{harness.name}: strong randombytes.c would shadow "
@@ -1533,6 +1555,283 @@ def _fresh_objdump(
     return header_proc.stdout, full_proc.stdout
 
 
+def _recorded_path_matches_repo_input(recorded: Any, expected: Path) -> bool:
+    """Match relocatable artifact paths by their exact repository suffix."""
+
+    if not isinstance(recorded, str) or not Path(recorded).is_absolute():
+        return False
+    try:
+        suffix = expected.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        suffix = Path(expected.name)
+    recorded_parts = Path(recorded).parts
+    suffix_parts = suffix.parts
+    return (
+        len(recorded_parts) >= len(suffix_parts)
+        and tuple(recorded_parts[-len(suffix_parts) :]) == suffix_parts
+    )
+
+
+def _validate_build_provenance_artifacts(
+    *,
+    campaign: CampaignSpec,
+    target: TargetSpec,
+    harness: Any,
+    protocol: dict[str, Any],
+    report_dir: Path,
+    artifact_sha256: dict[str, str],
+    host_preflight: dict[str, Any],
+) -> list[str]:
+    """Bind every timing row to its pre-measurement source and binary seal."""
+
+    errors: list[str] = []
+    label = f"{target.id}/{harness.name}: build provenance"
+    metadata = protocol.get("build_provenance")
+    expected_metadata = {
+        "passed",
+        "captured_before_measurement",
+        "report",
+        "report_sha256",
+        "generated_source_sha256",
+        "binary_sha256",
+        "config_sha256",
+    }
+    if not isinstance(metadata, dict):
+        return [f"{label} metadata is missing"]
+    if set(metadata) != expected_metadata:
+        errors.append(f"{label} metadata field set drift")
+    if metadata.get("passed") is not True:
+        errors.append(f"{label} did not pass before measurement")
+    if metadata.get("captured_before_measurement") is not True:
+        errors.append(f"{label} was not captured before measurement")
+    expected_report = f"build_provenance/timing_{harness.name}.build-seal.json"
+    if metadata.get("report") != expected_report:
+        errors.append(
+            f"{label} report path={metadata.get('report')!r}, expected={expected_report!r}"
+        )
+    try:
+        report_path = _nested_artifact(report_dir, metadata.get("report"), label)
+    except CampaignError as exc:
+        errors.append(str(exc))
+        return errors
+    report_relative = str(report_path.relative_to(report_dir.resolve()))
+    report_hash = _sha256(report_path)
+    artifact_sha256[report_relative] = report_hash
+    recorded_report_hash = _recorded_sha256(
+        metadata.get("report_sha256"), f"{label} report_sha256", errors
+    )
+    if recorded_report_hash and recorded_report_hash != report_hash:
+        errors.append(f"{label} report hash mismatch")
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"{label} report is unreadable: {exc}")
+        return errors
+    expected_payload_fields = {
+        "schema_version",
+        "kind",
+        "captured_before_measurement",
+        "config",
+        "generated_source",
+        "binary",
+        "linked_sources",
+        "include_dirs",
+        "compiler",
+        "reproduction_argv",
+    }
+    if not isinstance(payload, dict):
+        return [*errors, f"{label} report root must be an object"]
+    if set(payload) != expected_payload_fields:
+        errors.append(f"{label} report field set drift")
+    if payload.get("schema_version") != "1.0":
+        errors.append(f"{label} schema version drift")
+    if payload.get("kind") != "ctkat-timing-build-provenance":
+        errors.append(f"{label} kind drift")
+    if payload.get("captured_before_measurement") is not True:
+        errors.append(f"{label} report was not captured before measurement")
+
+    def validate_file_record(
+        record: Any,
+        *,
+        field_label: str,
+        expected_path: Path,
+        path_policy: str,
+    ) -> str:
+        if not isinstance(record, dict) or set(record) != {"path", "sha256", "bytes"}:
+            errors.append(f"{label} {field_label} record is malformed")
+            return ""
+        recorded_path = record.get("path")
+        if path_policy == "repo":
+            path_ok = _recorded_path_matches_repo_input(recorded_path, expected_path)
+        else:
+            path_ok = (
+                isinstance(recorded_path, str)
+                and Path(recorded_path).is_absolute()
+                and Path(recorded_path).name == expected_path.name
+            )
+        if not path_ok:
+            errors.append(f"{label} {field_label} path/name drift")
+        digest = _recorded_sha256(record.get("sha256"), f"{label} {field_label}", errors)
+        expected_hash = _sha256(expected_path)
+        if digest and digest != expected_hash:
+            errors.append(f"{label} {field_label} hash mismatch")
+        byte_count = record.get("bytes")
+        if (
+            isinstance(byte_count, bool)
+            or not isinstance(byte_count, int)
+            or byte_count != expected_path.stat().st_size
+        ):
+            errors.append(f"{label} {field_label} byte size mismatch")
+        return expected_hash
+
+    config_record = payload.get("config")
+    config_hash = validate_file_record(
+        config_record,
+        field_label="config",
+        expected_path=target.config,
+        path_policy="repo",
+    )
+    if metadata.get("config_sha256") != config_hash:
+        errors.append(f"{label} backend config hash mismatch")
+
+    generated_root = report_dir.parent / "generated"
+    generated_records = (
+        ("generated_source", f"timing_{harness.name}.c", "generated_source_sha256"),
+        ("binary", f"timing_{harness.name}", "binary_sha256"),
+    )
+    for field_name, expected_name, metadata_field in generated_records:
+        try:
+            generated_path = _nested_artifact(
+                generated_root,
+                expected_name,
+                f"{label} {field_name}",
+            )
+        except CampaignError as exc:
+            errors.append(str(exc))
+            continue
+        generated_hash = validate_file_record(
+            payload.get(field_name),
+            field_label=field_name,
+            expected_path=generated_path,
+            path_policy="basename",
+        )
+        artifact_key = f"generated/{expected_name}"
+        previous_hash = artifact_sha256.get(artifact_key)
+        if previous_hash is not None and previous_hash != generated_hash:
+            errors.append(f"{label} {artifact_key} conflicts with another provenance report")
+        artifact_sha256[artifact_key] = generated_hash
+        if metadata.get(metadata_field) != generated_hash:
+            errors.append(f"{label} backend {field_name} hash mismatch")
+
+    linked_records = payload.get("linked_sources")
+    if not isinstance(linked_records, list) or len(linked_records) != len(harness.sources):
+        errors.append(f"{label} linked source index drift")
+        linked_records = []
+    else:
+        recorded_paths: list[Any] = []
+        for index, (record, source) in enumerate(zip(linked_records, harness.sources, strict=True)):
+            expected_source = _resolve_from_config(target.config, source)
+            validate_file_record(
+                record,
+                field_label=f"linked_sources[{index}]",
+                expected_path=expected_source,
+                path_policy="repo",
+            )
+            recorded_paths.append(record.get("path") if isinstance(record, dict) else None)
+        if len(recorded_paths) != len(set(recorded_paths)):
+            errors.append(f"{label} linked source list contains duplicates")
+
+    include_dirs = payload.get("include_dirs")
+    if not isinstance(include_dirs, list) or len(include_dirs) != len(harness.include_dirs):
+        errors.append(f"{label} include directory index drift")
+        include_dirs = []
+    else:
+        for index, (recorded, directory) in enumerate(
+            zip(include_dirs, harness.include_dirs, strict=True)
+        ):
+            expected_directory = _resolve_from_config(target.config, directory)
+            if not _recorded_path_matches_repo_input(recorded, expected_directory):
+                errors.append(f"{label} include_dirs[{index}] path drift")
+        if len(include_dirs) != len(set(include_dirs)):
+            errors.append(f"{label} include directory list contains duplicates")
+
+    compiler = payload.get("compiler")
+    expected_compiler_fields = {
+        "requested_command",
+        "executable",
+        "version",
+        "version_command",
+        "cflags",
+        "compile_command",
+    }
+    if not isinstance(compiler, dict) or set(compiler) != expected_compiler_fields:
+        errors.append(f"{label} compiler provenance is malformed")
+        compiler = {}
+    if compiler.get("requested_command") != campaign.protocol.compiler:
+        errors.append(f"{label} compiler command drift")
+    configured_flags = load_config(target.config).dudect
+    expected_flags = list(configured_flags.compiler.cflags) if configured_flags is not None else []
+    if compiler.get("cflags") != expected_flags:
+        errors.append(f"{label} compiler flags drift")
+    if (
+        not isinstance(compiler.get("compile_command"), str)
+        or not compiler.get("compile_command", "").strip()
+    ):
+        errors.append(f"{label} compile command is missing")
+    executable = compiler.get("executable")
+    if not isinstance(executable, dict) or set(executable) != {"path", "sha256", "bytes"}:
+        errors.append(f"{label} compiler executable record is malformed")
+        executable = {}
+    executable_path = executable.get("path")
+    _recorded_sha256(executable.get("sha256"), f"{label} compiler executable", errors)
+    executable_bytes = executable.get("bytes")
+    if (
+        isinstance(executable_bytes, bool)
+        or not isinstance(executable_bytes, int)
+        or executable_bytes < 1
+    ):
+        errors.append(f"{label} compiler executable byte size is invalid")
+    expected_executable = host_preflight.get("compiler_executable")
+    if not isinstance(expected_executable, dict):
+        errors.append(f"{label} host preflight compiler executable is missing")
+    else:
+        if executable_path != expected_executable.get("resolved_path"):
+            errors.append(f"{label} compiler path differs from host preflight")
+        if executable.get("sha256") != expected_executable.get("sha256"):
+            errors.append(f"{label} compiler hash differs from host preflight")
+    if compiler.get("version") != host_preflight.get("compiler"):
+        errors.append(f"{label} compiler version differs from host preflight")
+    if compiler.get("version_command") != [executable_path, "--version"]:
+        errors.append(f"{label} compiler version command drift")
+
+    reproduction_argv = payload.get("reproduction_argv")
+    linked_paths = [
+        record.get("path") if isinstance(record, dict) else None for record in linked_records
+    ]
+    expected_reproduction = [
+        executable_path,
+        *expected_flags,
+        *(f"-I{directory}" for directory in include_dirs),
+        (
+            payload.get("generated_source", {}).get("path")
+            if isinstance(payload.get("generated_source"), dict)
+            else None
+        ),
+        *linked_paths,
+        "-o",
+        (
+            payload.get("binary", {}).get("path")
+            if isinstance(payload.get("binary"), dict)
+            else None
+        ),
+    ]
+    if reproduction_argv != expected_reproduction or any(
+        not isinstance(value, str) for value in reproduction_argv or []
+    ):
+        errors.append(f"{label} reproduction argv drift")
+    return errors
+
+
 def _validate_binary_contract_artifacts(
     *,
     target: TargetSpec,
@@ -1789,6 +2088,7 @@ def validate_target_artifacts(
     report_dir: Path,
     *,
     host_paper_eligible: bool,
+    host_preflight: dict[str, Any],
     run_kind: str = "final",
 ) -> TargetValidation:
     result = TargetValidation(target=target, report_dir=report_dir)
@@ -1949,6 +2249,21 @@ def validate_target_artifacts(
                     label=f"{target.id}.{harness_name}",
                 )
             )
+        if configured_harness.operand_setup_contract == OPERAND_V3_SETUP_CONTRACT:
+            harness_errors.extend(
+                validate_operand_v3_harness_report(
+                    item,
+                    base_seed=campaign.protocol.seed,
+                    label=f"{target.id}.{harness_name}",
+                )
+            )
+        elif (
+            isinstance(protocol.get("input_contract"), dict)
+            and protocol["input_contract"].get("setup_contract") == OPERAND_V3_SETUP_CONTRACT
+        ):
+            harness_errors.append(
+                "operand-v3 input contract is present without the configured setup contract"
+            )
         expected_protocol = {
             "schema_version": "1.0",
             "template": configured_harness.template,
@@ -2018,6 +2333,17 @@ def validate_target_artifacts(
                     harness_errors.append("bounded signature contract must resolve from length 1")
         elif signature_contract is not None:
             harness_errors.append("non-sign harness unexpectedly claims signature_call_contract")
+        harness_errors.extend(
+            _validate_build_provenance_artifacts(
+                campaign=campaign,
+                target=target,
+                harness=configured_harness,
+                protocol=protocol,
+                report_dir=report_dir,
+                artifact_sha256=result.artifact_sha256,
+                host_preflight=host_preflight,
+            )
+        )
         harness_errors.extend(
             _validate_binary_contract_artifacts(
                 target=target,
@@ -2688,6 +3014,7 @@ def execute_campaign(
                 target,
                 report_dir,
                 host_paper_eligible=host_paper_eligible,
+                host_preflight=preflight_report,
                 run_kind=run_kind,
             )
             if existing.complete:
@@ -2746,6 +3073,7 @@ def execute_campaign(
                 target,
                 report_dir,
                 host_paper_eligible=host_paper_eligible,
+                host_preflight=preflight_report,
                 run_kind=run_kind,
             )
         except BaseException as exc:
@@ -2905,6 +3233,7 @@ def validate_run(
             target,
             output_root / target.id / "reports",
             host_paper_eligible=host_eligible,
+            host_preflight=host_preflight,
             run_kind=run_kind,
         )
         for target in selected

@@ -12,7 +12,7 @@ from scripts import reproduce_artifact
 COMMIT = "a" * 40
 
 
-def test_analysis_routes_only_replacement_core_and_diverse_campaigns():
+def test_analysis_routes_only_current_replacement_campaigns():
     assert analysis.COMPONENT_PLANS["committed-corpus-refresh"].manifest.name == (
         "native_timing_v3_campaign.yaml"
     )
@@ -21,6 +21,10 @@ def test_analysis_routes_only_replacement_core_and_diverse_campaigns():
     )
     assert analysis.COMPONENT_PLANS["diverse-lineages"].manifest.name == ("diverse_native_v2.yaml")
     assert analysis.COMPONENT_PLANS["diverse-lineages"].campaign_id == "diverse-native-v2"
+    assert analysis.COMPONENT_PLANS["kyberslash-contrast"].manifest.name == (
+        "kyberslash_native_v3.yaml"
+    )
+    assert analysis.COMPONENT_PLANS["kyberslash-contrast"].campaign_id == ("kyberslash-native-v3")
     assert analysis.PAIRWISE_FAMILIES["mlkem-native-valid-tuple"] == (
         analysis.AxisKey(
             "diverse-lineages",
@@ -237,6 +241,25 @@ def _make_component(
     (report_dir / "dudect_raw_timings.csv").write_text("raw\n", encoding="utf-8")
     (report_dir / "dudect_calibration_timings.csv").write_text("calibration\n", encoding="utf-8")
     (report_dir / "dudect_summary.csv").write_text("summary\n", encoding="utf-8")
+    generated_dir = report_dir.parent / "generated"
+    generated_dir.mkdir()
+    generated_source = generated_dir / "timing_sign.c"
+    generated_binary = generated_dir / "timing_sign"
+    generated_source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+    generated_binary.write_bytes(b"synthetic timing binary\n")
+    build_dir = report_dir / "build_provenance"
+    build_dir.mkdir()
+    build_seal = build_dir / "timing_sign.build-seal.json"
+    build_seal.write_text('{"kind":"synthetic-build-seal"}\n', encoding="utf-8")
+    build_metadata = {
+        "passed": True,
+        "captured_before_measurement": True,
+        "report": "build_provenance/timing_sign.build-seal.json",
+        "report_sha256": _sha256(build_seal),
+        "generated_source_sha256": _sha256(generated_source),
+        "binary_sha256": _sha256(generated_binary),
+        "config_sha256": "5" * 64,
+    }
     metadata = _runtime_metadata()
     backend = {
         "schema_version": "2.0",
@@ -261,6 +284,7 @@ def _make_component(
                 "harness_protocol": {
                     "template": "sign",
                     "axis": axis,
+                    "build_provenance": build_metadata,
                     **(
                         {
                             "process_repeats_observed": 3,
@@ -291,6 +315,13 @@ def _make_component(
     backend_path = report_dir / "dudect_backend_report.json"
     backend_path.write_text(json.dumps(backend), encoding="utf-8")
     hashes = {path.name: _sha256(path) for path in sorted(report_dir.iterdir()) if path.is_file()}
+    hashes.update(
+        {
+            "build_provenance/timing_sign.build-seal.json": _sha256(build_seal),
+            "generated/timing_sign.c": _sha256(generated_source),
+            "generated/timing_sign": _sha256(generated_binary),
+        }
+    )
     campaign_report = {
         "schema_version": "2.0",
         "kind": "native-timing-campaign-report",

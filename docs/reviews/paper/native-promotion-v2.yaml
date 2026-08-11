@@ -18,20 +18,23 @@ known_limitations:
   - The campaign is not a formal constant-time proof.
   - A valid-tuple signal is a mixed public-and-secret input contrast, not evidence isolating secret-key cost.
 evidence:
-  - docs/measurement/paper_native_campaign_v4.yaml
+  - docs/measurement/paper_native_campaign_v5.yaml
   - docs/measurement/native_timing_v3_campaign.yaml
   - docs/measurement/NATIVE_TIMING_V3.md
-  - docs/measurement/kyberslash_native_v2.yaml
+  - docs/measurement/kyberslash_native_v3.yaml
+  - docs/measurement/KYBERSLASH_NATIVE_V3.md
   - docs/measurement/falcon_native_v2.yaml
   - docs/measurement/diverse_native_v2.yaml
   - docs/measurement/DIVERSE_NATIVE_V2.md
   - docs/measurement/EXPERIMENT_PREREGISTRATION.md
   - docs/measurement/PAPER_NATIVE_ANALYSIS_V1.md
+  - ctkat/timing_build_provenance.py
 expected_evidence:
   - canonical final_evidence_manifest.json from the verification profile
   - immutable native artifacts from two accepted hosts bound by their SHA256SUMS files
   - byte-deterministic blinded and named analysis outputs bound by final_evidence_root_sha256
   - independently validated valid-tuple input contracts for core native v3 and diverse v2 ML-KEM axes
+  - independently validated common build seals for every final timing axis
 reviewers: []
 expiry_conditions:
   - source, manifest, compiler, host policy, or backend revision changes

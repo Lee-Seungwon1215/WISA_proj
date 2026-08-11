@@ -22,7 +22,7 @@ from scripts.hash_artifacts import build_manifest  # noqa: E402
 
 COMPONENTS = {
     "committed-corpus-refresh": "docs/measurement/native_timing_v3_campaign.yaml",
-    "kyberslash-contrast": "docs/measurement/kyberslash_native_v2.yaml",
+    "kyberslash-contrast": "docs/measurement/kyberslash_native_v3.yaml",
     "falcon-contrast": "docs/measurement/falcon_native_v2.yaml",
     "diverse-lineages": "docs/measurement/diverse_native_v2.yaml",
 }

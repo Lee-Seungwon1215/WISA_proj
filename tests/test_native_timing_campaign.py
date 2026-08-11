@@ -473,6 +473,83 @@ def _small_artifact_fixture(tmp_path, *, target_measurements=20_050):
         "n1": winning.n1,
         "enough_measurements": independent.enough_measurements,
     }
+    configured = campaign.load_config(target.config)
+    assert configured.dudect is not None
+    configured_harness = next(
+        harness for harness in configured.dudect.harnesses if harness.name == "sign"
+    )
+    generated_dir = report_dir.parent / "generated"
+    generated_dir.mkdir()
+    generated_source = generated_dir / "timing_sign.c"
+    generated_binary = generated_dir / "timing_sign"
+    generated_source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+    generated_binary.write_bytes(b"sealed timing binary\n")
+
+    def build_record(path, recorded_path=None):
+        return {
+            "path": str(recorded_path or path.resolve()),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "bytes": path.stat().st_size,
+        }
+
+    linked_sources = [
+        build_record(campaign._resolve_from_config(target.config, source))
+        for source in configured_harness.sources
+    ]
+    include_dirs = [
+        str(campaign._resolve_from_config(target.config, directory))
+        for directory in configured_harness.include_dirs
+    ]
+    compiler_path = "/usr/bin/gcc"
+    compiler_flags = list(configured.dudect.compiler.cflags)
+    generated_source_record = build_record(
+        generated_source,
+        "/home/test/ctkat-native/generated/timing_sign.c",
+    )
+    generated_binary_record = build_record(
+        generated_binary,
+        "/home/test/ctkat-native/generated/timing_sign",
+    )
+    compiler_record = {
+        "requested_command": "gcc",
+        "executable": {
+            "path": compiler_path,
+            "sha256": "7" * 64,
+            "bytes": 1_234_567,
+        },
+        "version": "gcc 14.2.0",
+        "version_command": [compiler_path, "--version"],
+        "cflags": compiler_flags,
+        "compile_command": "gcc ... -o timing_sign.tmp",
+    }
+    build_payload = {
+        "schema_version": "1.0",
+        "kind": "ctkat-timing-build-provenance",
+        "captured_before_measurement": True,
+        "config": build_record(target.config),
+        "generated_source": generated_source_record,
+        "binary": generated_binary_record,
+        "linked_sources": linked_sources,
+        "include_dirs": include_dirs,
+        "compiler": compiler_record,
+        "reproduction_argv": [
+            compiler_path,
+            *compiler_flags,
+            *(f"-I{directory}" for directory in include_dirs),
+            generated_source_record["path"],
+            *(record["path"] for record in linked_sources),
+            "-o",
+            generated_binary_record["path"],
+        ],
+    }
+    build_dir = report_dir / "build_provenance"
+    build_dir.mkdir()
+    build_report = build_dir / "timing_sign.build-seal.json"
+    build_report.write_text(
+        json.dumps(build_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    build_report_hash = hashlib.sha256(build_report.read_bytes()).hexdigest()
     harness_protocol = {
         "schema_version": "1.0",
         "protocol": "timing-harness-v2",
@@ -509,6 +586,15 @@ def _small_artifact_fixture(tmp_path, *, target_measurements=20_050):
             aa_payloads[0]["positive_detection_effect_at_target_power"]
         ],
         "randomness_policies_observed": ["seeded-interpose"],
+        "build_provenance": {
+            "passed": True,
+            "captured_before_measurement": True,
+            "report": "build_provenance/timing_sign.build-seal.json",
+            "report_sha256": build_report_hash,
+            "generated_source_sha256": generated_source_record["sha256"],
+            "binary_sha256": generated_binary_record["sha256"],
+            "config_sha256": build_payload["config"]["sha256"],
+        },
         "signature_call_contract": {
             "configured": "fixed",
             "return_code_column": "signature_return_code",
@@ -588,6 +674,7 @@ def test_artifact_validator_accepts_complete_promotion_ready_bundle(tmp_path):
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
     assert result.errors == []
     assert result.blockers == []
@@ -642,6 +729,7 @@ def test_artifact_validator_accepts_integral_control_means_serialized_as_floats(
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
 
     assert result.errors == []
@@ -658,10 +746,97 @@ def test_artifact_validator_rejects_hash_and_trace_count_drift(tmp_path):
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
     assert result.complete is False
     assert any("protocol_trace_sha256" in error for error in result.errors)
     assert any("trace count drift" in error for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("artifact", "expected_error"),
+    [
+        ("timing_sign.c", "generated_source hash mismatch"),
+        ("timing_sign", "binary hash mismatch"),
+    ],
+)
+def test_artifact_validator_rejects_sealed_generated_artifact_drift(
+    tmp_path,
+    artifact,
+    expected_error,
+):
+    spec, target, report_dir = _small_artifact_fixture(tmp_path)
+    generated = report_dir.parent / "generated" / artifact
+    generated.write_bytes(generated.read_bytes() + b"tampered")
+
+    result = campaign.validate_target_artifacts(
+        spec,
+        target,
+        report_dir,
+        host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
+    )
+
+    assert result.complete is False
+    assert any(expected_error in error for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("compiler", "compiler hash differs from host preflight"),
+        ("reproduction", "reproduction argv drift"),
+    ],
+)
+def test_artifact_validator_reparses_build_seal_instead_of_trusting_backend(
+    tmp_path,
+    mutation,
+    expected_error,
+):
+    spec, target, report_dir = _small_artifact_fixture(tmp_path)
+    seal = report_dir / "build_provenance" / "timing_sign.build-seal.json"
+    payload = json.loads(seal.read_text(encoding="utf-8"))
+    if mutation == "compiler":
+        payload["compiler"]["executable"]["sha256"] = "8" * 64
+    else:
+        payload["reproduction_argv"].append("--unsealed-extra-flag")
+    seal.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    backend_path = report_dir / "dudect_backend_report.json"
+    backend = json.loads(backend_path.read_text(encoding="utf-8"))
+    backend["harnesses"][0]["harness_protocol"]["build_provenance"]["report_sha256"] = (
+        hashlib.sha256(seal.read_bytes()).hexdigest()
+    )
+    backend_path.write_text(json.dumps(backend), encoding="utf-8")
+
+    result = campaign.validate_target_artifacts(
+        spec,
+        target,
+        report_dir,
+        host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
+    )
+
+    assert result.complete is False
+    assert any(expected_error in error for error in result.errors)
+
+
+def test_artifact_validator_rejects_symlinked_build_seal(tmp_path):
+    spec, target, report_dir = _small_artifact_fixture(tmp_path)
+    seal = report_dir / "build_provenance" / "timing_sign.build-seal.json"
+    outside = tmp_path / "outside-seal.json"
+    seal.replace(outside)
+    seal.symlink_to(outside)
+
+    result = campaign.validate_target_artifacts(
+        spec,
+        target,
+        report_dir,
+        host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
+    )
+
+    assert result.complete is False
+    assert any("contains a symlink" in error for error in result.errors)
 
 
 def test_artifact_validator_recomputes_controls_instead_of_trusting_pass_flags(tmp_path):
@@ -687,6 +862,7 @@ def test_artifact_validator_recomputes_controls_instead_of_trusting_pass_flags(t
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
 
     assert result.complete is False
@@ -707,6 +883,7 @@ def test_artifact_validator_rejects_wrong_target_identity_and_axis(tmp_path):
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
     assert result.complete is False
     assert any("backend report project" in error for error in result.errors)
@@ -729,6 +906,7 @@ def test_artifact_validator_rejects_incomplete_valid_tuple_report(tmp_path):
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
 
     assert result.complete is False
@@ -752,6 +930,7 @@ def test_complete_underpowered_bundle_is_nonpromotable_not_corrupt(tmp_path):
         target,
         report_dir,
         host_paper_eligible=True,
+        host_preflight=_paper_eligible_preflight("a" * 40),
     )
     assert result.errors == []
     assert result.complete is True
@@ -768,7 +947,16 @@ def test_execute_resume_and_validate_run_round_trip(tmp_path, monkeypatch):
         calls.append(project)
         report_dir.mkdir(parents=True)
         for source in fixture_reports.iterdir():
-            shutil.copy2(source, report_dir / source.name)
+            destination = report_dir / source.name
+            if source.is_dir():
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(source, destination)
+        shutil.copytree(
+            fixture_reports.parent / "generated",
+            report_dir.parent / "generated",
+            dirs_exist_ok=True,
+        )
         return []
 
     monkeypatch.setattr(campaign, "_do_dudect", fake_dudect)

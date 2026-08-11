@@ -27,6 +27,23 @@ VALID_TUPLE_EVIDENCE_BOUNDARY = (
     "mixed fixed-versus-fresh valid-tuple contrast; secret key, public "
     "ciphertext, and embedded public-key material vary together; no secret attribution"
 )
+OPERAND_V3_AXIS = "operand_bin"
+OPERAND_V3_SETUP_CONTRACT = "same-address-branchless-v3"
+OPERAND_V3_RUNTIME_METADATA = {
+    "axis": OPERAND_V3_AXIS,
+    "key_policy": "fixed",
+    "class_contract": "frozen-public-coefficient-bins",
+    "class0_coefficients": "0-63",
+    "class1_coefficients": "3265-3328",
+    "setup_contract": OPERAND_V3_SETUP_CONTRACT,
+    "class_address_policy": "fixed-sk-and-shared-ct-work",
+    "placebo_coefficient": "1664",
+    "placebo_target_path": "valid-decapsulation",
+    "setup_return_codes": "checked",
+    "coefficient_witness": "all-bin-members",
+    "measured_dec_contract_failures": "0",
+}
+OPERAND_V3_EVIDENCE_BOUNDARY = "direct public numerator-bin latency canary; not full-KEM leakage"
 
 TraceMetadata = tuple[Mapping[str, Any], int]
 
@@ -77,6 +94,74 @@ def build_valid_tuple_input_contract(traces: Sequence[TraceMetadata]) -> dict[st
         "traces_validated": len(traces),
         "passed": bool(traces) and not metadata_errors,
         "evidence_boundary": VALID_TUPLE_EVIDENCE_BOUNDARY,
+    }
+
+
+def _operand_v3_metadata_errors(
+    metadata: Mapping[str, Any],
+    base_seed: int,
+    *,
+    label: str,
+) -> list[str]:
+    errors = [
+        f"{label}.{key}={metadata.get(key)!r}, expected={expected!r}"
+        for key, expected in OPERAND_V3_RUNTIME_METADATA.items()
+        if metadata.get(key) != expected
+    ]
+    expected_seed = str(base_seed)
+    if metadata.get("corpus_seed") != expected_seed:
+        errors.append(
+            f"{label}.corpus_seed={metadata.get('corpus_seed')!r}, expected={expected_seed!r}"
+        )
+    return errors
+
+
+def build_operand_v3_input_contract(
+    metadata: Sequence[Mapping[str, Any]],
+    *,
+    base_seed: int,
+    traces_required: int,
+    backend_is_official: bool,
+) -> dict[str, Any]:
+    """Build the exact same-address operand-canary input contract."""
+
+    metadata_errors = [
+        error
+        for index, item in enumerate(metadata)
+        for error in _operand_v3_metadata_errors(
+            item,
+            base_seed,
+            label=f"trace[{index}]",
+        )
+    ]
+    measured_failures = sum(
+        int(value)
+        for item in metadata
+        for value in [item.get("measured_dec_contract_failures")]
+        if isinstance(value, str) and value.isdigit()
+    )
+    return {
+        "axis": OPERAND_V3_AXIS,
+        "key_policy": "fixed",
+        "public_class_axis": True,
+        "secret_key_varies_between_classes": False,
+        "expected_metadata": {
+            **OPERAND_V3_RUNTIME_METADATA,
+            "corpus_seed": str(base_seed),
+        },
+        "observed_digests": {},
+        "traces_validated": len(metadata),
+        "passed": (
+            bool(metadata)
+            and backend_is_official
+            and len(metadata) == traces_required
+            and not metadata_errors
+        ),
+        "evidence_boundary": OPERAND_V3_EVIDENCE_BOUNDARY,
+        "setup_contract": OPERAND_V3_SETUP_CONTRACT,
+        "class_address_policy": "fixed-sk-and-shared-ct-work",
+        "traces_required": traces_required,
+        "measured_dec_contract_failures": measured_failures,
     }
 
 
@@ -258,6 +343,89 @@ def validate_valid_tuple_harness_report(
             _runtime_metadata_errors(
                 metadata,
                 seed,
+                label=f"{label}.analysis_runtime_metadata",
+            )
+        )
+        target_repeats = protocol.get("target_repeats")
+        matching = (
+            [
+                item
+                for item in target_repeats
+                if isinstance(item, Mapping) and item.get("analysis_seed") == seed
+            ]
+            if isinstance(target_repeats, list)
+            else []
+        )
+        if len(matching) != 1 or matching[0].get("runtime_metadata") != metadata:
+            errors.append(f"{label}.analysis_runtime_metadata is not the selected target repeat")
+    return errors
+
+
+def validate_operand_v3_protocol(
+    protocol: Mapping[str, Any],
+    *,
+    base_seed: int,
+    label: str,
+) -> list[str]:
+    """Independently reconstruct all 21 same-address operand trace contracts."""
+
+    errors: list[str] = []
+    if protocol.get("axis") != OPERAND_V3_AXIS:
+        errors.append(f"{label}.axis={protocol.get('axis')!r}, expected={OPERAND_V3_AXIS!r}")
+    repeats = protocol.get("process_repeats_observed")
+    if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 3:
+        repeats = 0
+    traces, trace_errors = extract_valid_tuple_trace_metadata(protocol, label=label)
+    errors.extend(trace_errors)
+    errors.extend(_valid_tuple_trace_matrix_errors(protocol, label=label))
+    for index, (metadata, _trace_seed) in enumerate(traces):
+        errors.extend(
+            _operand_v3_metadata_errors(
+                metadata,
+                base_seed,
+                label=f"{label}.trace[{index}]",
+            )
+        )
+    expected = build_operand_v3_input_contract(
+        [metadata for metadata, _trace_seed in traces],
+        base_seed=base_seed,
+        traces_required=repeats * 7,
+        backend_is_official=True,
+    )
+    if protocol.get("input_contract") != expected:
+        errors.append(f"{label}.input_contract does not equal the reconstructed contract")
+    return errors
+
+
+def validate_operand_v3_harness_report(
+    report: Mapping[str, Any],
+    *,
+    base_seed: int,
+    label: str,
+) -> list[str]:
+    """Validate an operand-v3 protocol and its selected target metadata."""
+
+    protocol = report.get("harness_protocol")
+    if not isinstance(protocol, Mapping):
+        return [f"{label}.harness_protocol must be an object"]
+    errors = validate_operand_v3_protocol(
+        protocol,
+        base_seed=base_seed,
+        label=f"{label}.harness_protocol",
+    )
+    selected, selected_errors = _payload_metadata(
+        report,
+        seed_key="analysis_seed",
+        metadata_key="analysis_runtime_metadata",
+        label=label,
+    )
+    errors.extend(selected_errors)
+    if selected is not None:
+        metadata, seed = selected
+        errors.extend(
+            _operand_v3_metadata_errors(
+                metadata,
+                base_seed,
                 label=f"{label}.analysis_runtime_metadata",
             )
         )

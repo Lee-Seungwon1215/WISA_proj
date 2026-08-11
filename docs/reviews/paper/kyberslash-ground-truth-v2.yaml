@@ -1,7 +1,7 @@
 schema_version: "2.0"
 review_id: paper-kyberslash-ground-truth-v2
 status: pending
-title: KyberSlash fixed-key chosen-ciphertext and operand-canary attribution
+title: KyberSlash fixed-key chosen-ciphertext and same-address operand-canary attribution
 review_phase: pre-measurement
 final_evidence_root_sha256: null
 source_revision_policy: exact-clean-git-head-at-review
@@ -20,12 +20,15 @@ known_limitations:
   - Operand attribution is not physical latency evidence.
   - Chosen-ciphertext timing is a public-input contrast and does not by itself attribute a secret dependency.
   - Direct operand canaries isolate instruction latency and are not a full decapsulation attack.
+  - KyberSlash v2 operand engineering traces are setup-confounded and cannot be reviewed as v3 evidence.
   - Full key recovery is outside the pre-measurement claim.
 evidence:
   - docs/ground_truth/kyberslash/ground_truth.yaml
   - docs/reviews/rvw-kyberslash-ground-truth-v1.yaml
-  - docs/measurement/kyberslash_native_v2.yaml
-  - docs/measurement/KYBERSLASH_NATIVE_V2.md
+  - docs/measurement/kyberslash_native_v3.yaml
+  - docs/measurement/KYBERSLASH_NATIVE_V3.md
+  - examples/kyberslash_operand_latency/binary_contracts_v3.yaml
+  - ctkat/timing_build_provenance.py
   - examples/pqc_mlkem768/kyberslash_binary_contracts_v2.yaml
 expected_evidence:
   - linked-binary contract reports for every frozen target
@@ -35,3 +38,4 @@ expiry_conditions:
   - ground-truth patch hash changes
   - upstream source revision changes
   - attribution backend revision changes
+  - same-address, placebo, return-code, or build-seal contract changes

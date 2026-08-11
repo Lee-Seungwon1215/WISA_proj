@@ -99,6 +99,18 @@
   secret/public/embedded public-key material이 함께 변하므로 secret attribution을
   금지한다. diverse v1과 core v2 engineering trace는 calibration 전용이고
   replacement final에 재사용·resume·relabel할 수 없다.
+- **M9 / paper campaign v5 KyberSlash operand·build provenance 교정 완료
+  (2026-08-11, `0.12.0a4`)** — non-promotable KyberSlash v2 engineering
+  artifact에서 class별 heap source 주소와 invalid placebo(`45124`)가 direct
+  operand canary를 confound한 사실을 숨기지 않았다. 같은 `ct_work`/고정
+  `sk_fixed`, branchless coefficient mask, valid `1664` placebo, 전 bin·warmup·
+  measured return-code 계약을 강제한 KyberSlash v3를 새로 동결했고 v2 operand
+  trace 재사용을 금지했다. 동시에 binary contract가 없던 timing 축도 config,
+  generated C, measured binary, linked inputs, compiler/flags/replay argv를 첫
+  sample 전에 봉인하고 매 subprocess 전후 및 native artifact validation에서
+  재검증하도록 했다. Cortex-M bare-metal은 별도 board/clock/transport
+  preregistration이 필요한 후속 범위로 분리했으며 desktop x86_64 final 정의는
+  갈아엎지 않는다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -107,8 +119,8 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비가 확보되면 다음 작업은 core native v3·diverse v2가
-  포함된 paper campaign v4, Falcon paired
+- native 장비가 확보되면 다음 작업은 core native v3·KyberSlash v3·diverse v2가
+  포함된 paper campaign v5, Falcon paired
   campaign, same-corpus official dudect를 실행해 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.
@@ -985,8 +997,8 @@ M5 종료 조건:
 2. ~~schema v2와 legacy migration~~ — 완료
 3. ~~official dudect backend와 timing validity~~ — 완료
 4. ~~KEM/sign pool 하니스 + physical control/power 프로토콜 구현~~ — 완료
-5. **기존 corpus native v2 캠페인 준비** — 실행기·검증기 완료,
-   bare-metal 실측/재분류만 `blocked-by-native-host`
+5. **기존 corpus native v3 캠페인 준비** — 실행기·검증기 완료,
+   physical Linux 실측/재분류만 `blocked-by-native-host`
 6. ~~**KyberSlash ground-truth의 non-timing target/provenance부터 확장**~~
    — 완료 (`0.7.0a1`); native timing/attack은 별도 미완료
 7. ~~**Falcon reference-vs-CT comparator의 build/structural 기반 확장**~~
@@ -996,12 +1008,12 @@ M5 종료 조건:
 9. ~~**독립 upstream source/build corpus 확장**~~ — 완료 (`0.10.0a1`):
    mlkem-native → mldsa-native → OpenSSL 3.5.7 production integration,
    240 build cell/24 upstream KAT/120 equivalence pair CI gate
-10. ~~**측정 전 paper campaign/artifact 동결**~~ — v2로 갱신 완료:
+10. ~~**측정 전 paper campaign/artifact 동결**~~ — v5로 갱신 완료:
     4 component/26 target execution/28 axis, binary/assembly evidence,
     automated engineering audits, ablation, two-person packets,
     preregistration, generated tables, blind rerun, lock/pin, one-command gate
-11. native 장비 확보 즉시 두 host에서 paper v4의 core v3/diverse v2
-    component와 same-corpus 세 도구를
+11. premeasurement 사람 리뷰 뒤 두 host에서 paper v5의 core v3,
+    KyberSlash v3, Falcon v2, diverse v2 component와 same-corpus 세 도구를
     실행하고, postmeasurement 2인 review 뒤 별도 commit으로 재분류
 
 첫 구현 batch의 완료 기준:

@@ -24,7 +24,7 @@ evidence:
   - docs/measurement/NATIVE_TIMING_V3.md
   - docs/measurement/diverse_native_v2.yaml
   - docs/measurement/DIVERSE_NATIVE_V2.md
-  - docs/measurement/paper_native_campaign_v4.yaml
+  - docs/measurement/paper_native_campaign_v5.yaml
   - docs/measurement/EXPERIMENT_PREREGISTRATION.md
   - examples/pqc_mlkem768/ctkat_timing_v3.yaml
   - examples/mlkem_native/ctkat_timing_portable_v2.yaml
@@ -41,5 +41,5 @@ reviewers: []
 expiry_conditions:
   - valid-tuple class construction or runtime metadata changes
   - input-contract validator or analyzer changes
-  - core v3, diverse v2, or paper v4 manifest changes
+  - core v3, diverse v2, or paper v5 manifest changes
   - compiler, upstream source revision, or timing backend revision changes

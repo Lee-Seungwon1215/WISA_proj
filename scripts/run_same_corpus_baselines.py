@@ -2358,6 +2358,7 @@ def run_dudect(
         source_config.parent.resolve(),
         config.project.name,
         raw_dir,
+        config_path=source_config.resolve(),
     )
     runtime_seconds = time.monotonic() - started
     _emit_dudect_report(config.project.name, raw_dir, results)

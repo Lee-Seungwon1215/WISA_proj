@@ -87,7 +87,7 @@ def test_diverse_v2_changes_only_attribution_and_broken_compile_contracts():
             assert old.axes == new.axes
 
     paper_v3 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v3.yaml").read_text())
-    paper_v4 = load_manifest()
+    paper_v4 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v4.yaml").read_text())
     old_diverse = next(item for item in paper_v3["components"] if item["id"] == "diverse-lineages")
     new_diverse = next(item for item in paper_v4["components"] if item["id"] == "diverse-lineages")
     assert old_diverse["manifest"] == "docs/measurement/diverse_native_v1.yaml"
@@ -131,7 +131,7 @@ def test_committed_corpus_v3_changes_only_the_mixed_mlkem_axis():
             assert old.axes == new.axes
 
     paper_v3 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v3.yaml").read_text())
-    paper_v4 = load_manifest()
+    paper_v4 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v4.yaml").read_text())
     old_core = next(
         item for item in paper_v3["components"] if item["id"] == "committed-corpus-refresh"
     )
@@ -140,6 +140,21 @@ def test_committed_corpus_v3_changes_only_the_mixed_mlkem_axis():
     )
     assert old_core["manifest"] == "docs/measurement/native_timing_v2_campaign.yaml"
     assert new_core["manifest"] == "docs/measurement/native_timing_v3_campaign.yaml"
+
+
+def test_paper_v5_replaces_only_the_confounded_kyberslash_operand_campaign():
+    paper_v4 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v4.yaml").read_text())
+    paper_v5 = load_manifest()
+    assert paper_v5["campaign_id"] == "ctkat-paper-native-v5"
+    old_components = {item["id"]: item for item in paper_v4["components"]}
+    new_components = {item["id"]: item for item in paper_v5["components"]}
+    assert set(old_components) == set(new_components)
+    for component_id in old_components:
+        if component_id == "kyberslash-contrast":
+            assert old_components[component_id]["manifest"].endswith("kyberslash_native_v2.yaml")
+            assert new_components[component_id]["manifest"].endswith("kyberslash_native_v3.yaml")
+        else:
+            assert old_components[component_id] == new_components[component_id]
 
 
 def test_timing_adapters_use_seeded_interpose_not_fixed_test_vectors():

@@ -3,6 +3,31 @@
 All notable user-facing changes are recorded here. CT-KAT follows semantic
 versioning while the public API is stabilizing.
 
+## [0.12.0a4] - 2026-08-11
+
+### Fixed
+
+- Replaced the six setup-confounded KyberSlash operand-canary configurations
+  with an opt-in same-address, fixed-key v3 contract. The valid coefficient
+  1664 placebo reaches the intended site, all bin and warm-up return codes are
+  checked, and a measured failure aborts the trace.
+- Added a wrapper-to-arithmetic-site linked-binary call contract while keeping
+  the vulnerable/patched division-count contract.
+
+### Changed
+
+- Added a universal pre-measurement build seal for every timing harness,
+  binding the config, generated source, measured binary, linked inputs,
+  compiler identity, flags, and replay argv. It is checked around every
+  measured subprocess and reparsed by the native validator into each target
+  attestation.
+- Versioned KyberSlash to v3 and the paper campaign to v5. KyberSlash v2
+  operand traces remain disclosed engineering calibration and cannot be
+  resumed, relabeled, corrected, or promoted.
+- Explicitly deferred Cortex-M bare-metal evaluation to a separately versioned
+  future campaign; it does not invalidate or expand the frozen desktop x86_64
+  campaign.
+
 ## [0.12.0a3] - 2026-08-10
 
 ### Fixed

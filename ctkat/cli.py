@@ -85,10 +85,18 @@ from .timing_binary_contract import (
     TimingBinaryContractError,
     verify_timing_binary_contract,
 )
+from .timing_build_provenance import (
+    TimingBuildProvenanceError,
+    assert_timing_build_seal_unchanged,
+    capture_timing_build_provenance,
+    write_timing_build_provenance,
+)
 from .timing_environment import collect_timing_environment
 from .timing_harness_generator import generate_and_compile_timing
 from .timing_input_contract import (
+    build_operand_v3_input_contract,
     build_valid_tuple_input_contract,
+    validate_operand_v3_protocol,
     validate_valid_tuple_protocol,
 )
 from .triage import TriageConfig, load_triage
@@ -752,6 +760,7 @@ def _dudect_context(
                 "header": h.header,
                 "prefix": h.prefix,
                 "leak_target": h.leak_target,
+                "operand_setup_contract": h.operand_setup_contract,
                 "rejection_oracle_function": h.rejection_oracle_function,
                 "rejection_seed_offset": h.rejection_seed_offset,
                 "randombytes_header": h.randombytes_header,
@@ -1000,6 +1009,74 @@ def _control_result_payload(
     return payload
 
 
+def _run_timing_harness_with_build_seal(
+    binary: Path,
+    workdir: Path,
+    *,
+    build_provenance: Optional[dict] = None,
+    build_provenance_path: Optional[Path] = None,
+    build_provenance_sha256: Optional[str] = None,
+    **kwargs,
+) -> TimingSamples:
+    """Run one measured subprocess between two immutable-build checks."""
+
+    seal_values = (
+        build_provenance,
+        build_provenance_path,
+        build_provenance_sha256,
+    )
+    if any(value is not None for value in seal_values) and not all(
+        value is not None for value in seal_values
+    ):
+        raise TimingBuildProvenanceError("incomplete timing build seal was supplied")
+    if build_provenance is not None:
+        assert build_provenance_path is not None
+        assert build_provenance_sha256 is not None
+        assert_timing_build_seal_unchanged(
+            build_provenance,
+            build_provenance_path,
+            build_provenance_sha256,
+        )
+    try:
+        return run_timing_harness(binary, workdir, **kwargs)
+    finally:
+        if build_provenance is not None:
+            assert build_provenance_path is not None
+            assert build_provenance_sha256 is not None
+            assert_timing_build_seal_unchanged(
+                build_provenance,
+                build_provenance_path,
+                build_provenance_sha256,
+            )
+
+
+def _timing_build_protocol_record(
+    payload: dict,
+    seal_path: Path,
+    seal_sha256: str,
+    out_dir: Path,
+) -> dict:
+    """Return the stable report-facing subset of a timing build seal."""
+
+    try:
+        report = seal_path.resolve().relative_to(out_dir.resolve())
+    except ValueError as exc:
+        raise TimingBuildProvenanceError(
+            f"timing build seal escaped report directory: {seal_path}"
+        ) from exc
+    return {
+        "passed": True,
+        "captured_before_measurement": payload.get("captured_before_measurement") is True,
+        "report": str(report),
+        "report_sha256": seal_sha256,
+        "generated_source_sha256": payload["generated_source"]["sha256"],
+        "binary_sha256": payload["binary"]["sha256"],
+        "config_sha256": (
+            payload["config"]["sha256"] if payload.get("config") is not None else None
+        ),
+    }
+
+
 def _run_v2_harness_protocol(
     *,
     binary: Path,
@@ -1013,6 +1090,9 @@ def _run_v2_harness_protocol(
     crop_fail_t: float,
     warn_t: float,
     fail_t: float,
+    build_provenance: Optional[dict] = None,
+    build_provenance_path: Optional[Path] = None,
+    build_provenance_sha256: Optional[str] = None,
 ) -> tuple[TimingSamples, WelchResult, list[WelchResult]]:
     """Run target repetitions plus physical A/A/placebo/effect controls."""
 
@@ -1038,7 +1118,7 @@ def _run_v2_harness_protocol(
             if official_adapter is None:
                 raise RuntimeError("official dudect adapter missing for timing-harness-v2")
             calibration_seed = _timing_domain_seed(effective_seed, "calibration", process_index)
-            calibration = run_timing_harness(
+            calibration = _run_timing_harness_with_build_seal(
                 binary,
                 workdir,
                 timeout=dud.timeout,
@@ -1046,6 +1126,9 @@ def _run_v2_harness_protocol(
                 mode="target",
                 measurements_override=dud.measurements,
                 signature_length_contract=signature_contract,
+                build_provenance=build_provenance,
+                build_provenance_path=build_provenance_path,
+                build_provenance_sha256=build_provenance_sha256,
             )
             traces.append(
                 TimingProtocolTrace(
@@ -1056,7 +1139,7 @@ def _run_v2_harness_protocol(
                 )
             )
 
-        samples = run_timing_harness(
+        samples = _run_timing_harness_with_build_seal(
             binary,
             workdir,
             timeout=dud.timeout,
@@ -1064,6 +1147,9 @@ def _run_v2_harness_protocol(
             mode="target",
             measurements_override=dud.measurements,
             signature_length_contract=signature_contract,
+            build_provenance=build_provenance,
+            build_provenance_path=build_provenance_path,
+            build_provenance_sha256=build_provenance_sha256,
         )
         samples.calibration = calibration
         traces.append(TimingProtocolTrace("target", process_index, target_seed, samples))
@@ -1129,14 +1215,12 @@ def _run_v2_harness_protocol(
             "enough_measurements": target_result.enough_measurements,
             "runtime_metadata": dict(samples.runtime_metadata),
         }
-        if harness.template == "kem" and harness.leak_target == "valid_tuple":
-            target_payload["calibration_runtime_metadata"] = (
-                dict(calibration.runtime_metadata) if calibration is not None else None
-            )
+        if calibration is not None:
+            target_payload["calibration_runtime_metadata"] = dict(calibration.runtime_metadata)
         target_payloads.append(target_payload)
 
         aa_seed = _timing_domain_seed(effective_seed, "aa", process_index)
-        aa_samples = run_timing_harness(
+        aa_samples = _run_timing_harness_with_build_seal(
             binary,
             workdir,
             timeout=dud.timeout,
@@ -1144,6 +1228,9 @@ def _run_v2_harness_protocol(
             mode="aa",
             measurements_override=control_measurements,
             signature_length_contract=signature_contract,
+            build_provenance=build_provenance,
+            build_provenance_path=build_provenance_path,
+            build_provenance_sha256=build_provenance_sha256,
         )
         traces.append(TimingProtocolTrace("aa", process_index, aa_seed, aa_samples))
         aa_result = _physical_control_result(
@@ -1165,7 +1252,7 @@ def _run_v2_harness_protocol(
         )
 
         placebo_seed = _timing_domain_seed(effective_seed, "placebo", process_index)
-        placebo_samples = run_timing_harness(
+        placebo_samples = _run_timing_harness_with_build_seal(
             binary,
             workdir,
             timeout=dud.timeout,
@@ -1173,6 +1260,9 @@ def _run_v2_harness_protocol(
             mode="placebo",
             measurements_override=control_measurements,
             signature_length_contract=signature_contract,
+            build_provenance=build_provenance,
+            build_provenance_path=build_provenance_path,
+            build_provenance_sha256=build_provenance_sha256,
         )
         traces.append(
             TimingProtocolTrace("setup-placebo", process_index, placebo_seed, placebo_samples)
@@ -1196,7 +1286,7 @@ def _run_v2_harness_protocol(
             effect_seed = _timing_domain_seed(
                 effective_seed, "positive", process_index, effect_index
             )
-            positive_samples = run_timing_harness(
+            positive_samples = _run_timing_harness_with_build_seal(
                 binary,
                 workdir,
                 timeout=dud.timeout,
@@ -1205,6 +1295,9 @@ def _run_v2_harness_protocol(
                 effect_ticks=effect_ticks,
                 measurements_override=control_measurements,
                 signature_length_contract=signature_contract,
+                build_provenance=build_provenance,
+                build_provenance_path=build_provenance_path,
+                build_provenance_sha256=build_provenance_sha256,
             )
             traces.append(
                 TimingProtocolTrace(
@@ -1365,6 +1458,19 @@ def _run_v2_harness_protocol(
                     "class1_coefficients": "3265-3328",
                 }
             )
+            operand_v3 = harness.operand_setup_contract == "same-address-branchless-v3"
+            if operand_v3:
+                expected_common.update(
+                    {
+                        "setup_contract": "same-address-branchless-v3",
+                        "class_address_policy": "fixed-sk-and-shared-ct-work",
+                        "placebo_coefficient": "1664",
+                        "placebo_target_path": "valid-decapsulation",
+                        "setup_return_codes": "checked",
+                        "coefficient_witness": "all-bin-members",
+                        "measured_dec_contract_failures": "0",
+                    }
+                )
             digest_names = ()
         metadata_matches = all(
             all(item.get(key) == value for key, value in expected_common.items())
@@ -1393,6 +1499,20 @@ def _run_v2_harness_protocol(
                 else "direct public numerator-bin latency canary; not full-KEM leakage"
             ),
         }
+        if harness.leak_target == "operand_bin" and (
+            harness.operand_setup_contract == "same-address-branchless-v3"
+        ):
+            # The official timing-harness-v2 matrix is exactly seven traces
+            # (calibration, target, A/A, placebo, and three positive effects)
+            # for each of three independent process seeds.  Do not accept a
+            # partial/non-official matrix merely because every trace that did
+            # happen to run emitted internally consistent metadata.
+            input_contract = build_operand_v3_input_contract(
+                input_metadata,
+                base_seed=effective_seed,
+                traces_required=7 * protocol.process_repeats,
+                backend_is_official=dud.backend == "official-dudect",
+            )
         overall.harness_protocol["input_contract"] = input_contract
     if harness.template == "sign":
         signature_metadata = [trace.samples.runtime_metadata for trace in traces]
@@ -1535,10 +1655,31 @@ def _set_timing_validity(
             if harness.template == "kem" and harness.leak_target == "valid_tuple"
             else []
         )
+        operand_v3_errors: list[str] = []
+        if (
+            harness.template == "kem"
+            and harness.leak_target == "operand_bin"
+            and harness.operand_setup_contract == "same-address-branchless-v3"
+        ):
+            expected_metadata = protocol.get("input_contract", {}).get("expected_metadata", {})
+            base_seed = expected_metadata.get("corpus_seed")
+            if isinstance(base_seed, str) and base_seed.isdigit():
+                operand_v3_errors = validate_operand_v3_protocol(
+                    protocol,
+                    base_seed=int(base_seed),
+                    label="harness_protocol",
+                )
+            else:
+                operand_v3_errors = ["harness_protocol operand-v3 corpus seed is missing"]
         if protocol.get("protocol") != "timing-harness-v2":
             result.timing_validity = "confounded"
             interpretation_reasons.append(
                 f"{harness.template} trace lacks timing-harness-v2 protocol evidence"
+            )
+        elif not protocol.get("build_provenance", {}).get("passed", False):
+            result.timing_validity = "error"
+            interpretation_reasons.append(
+                "pre-measurement source/binary/compiler/config build seal is missing or failed"
             )
         elif protocol.get("process_repeats_observed", 0) < protocol.get(
             "process_repeats_required", 3
@@ -1584,6 +1725,9 @@ def _set_timing_validity(
         elif valid_tuple_errors:
             result.timing_validity = "error"
             interpretation_reasons.extend(valid_tuple_errors)
+        elif operand_v3_errors:
+            result.timing_validity = "error"
+            interpretation_reasons.extend(operand_v3_errors)
         elif harness.binary_contract is not None and not protocol.get("binary_contract", {}).get(
             "passed", False
         ):
@@ -2070,14 +2214,16 @@ def _do_dudect(
     results: List[Tuple[str, TimingSamples, WelchResult, List[WelchResult]]] = []
     for h in dud.harnesses:
         console.print(f"[bold cyan]==> Generate timing harness[/]: [bold]{h.name}[/]")
+        source_paths = [_resolve(cfg_dir, source) for source in h.sources]
+        include_dir_paths = [_resolve(cfg_dir, directory) for directory in h.include_dirs]
         try:
             gen = generate_and_compile_timing(
                 name=h.name,
                 template=h.template,
                 context=_dudect_context(h, dud, effective_seed, effective_clock),
                 output_dir=gen_dir,
-                sources=[_resolve(cfg_dir, s) for s in h.sources],
-                include_dirs=[_resolve(cfg_dir, d) for d in h.include_dirs],
+                sources=source_paths,
+                include_dirs=include_dir_paths,
                 cflags=dud.compiler.cflags,
                 cc=dud.compiler.cc,
                 workdir=workdir,
@@ -2107,7 +2253,7 @@ def _do_dudect(
                     binary_path=gen.binary_path,
                     generated_source_path=gen.source_path,
                     config_path=config_path,
-                    source_paths=[_resolve(cfg_dir, source) for source in h.sources],
+                    source_paths=source_paths,
                     compiler=dud.compiler.cc,
                     cflags=list(dud.compiler.cflags),
                     compile_command=gen.compile_command,
@@ -2118,6 +2264,36 @@ def _do_dudect(
                 console.print(str(e))
                 raise typer.Exit(1)
             console.print(f"   [dim]binary contract: {contract_report}[/]")
+
+        try:
+            build_provenance = capture_timing_build_provenance(
+                compiler=dud.compiler.cc,
+                cflags=dud.compiler.cflags,
+                include_dirs=include_dir_paths,
+                linked_sources=source_paths,
+                generated_source=gen.source_path,
+                binary=gen.binary_path,
+                config_path=config_path.resolve() if config_path is not None else None,
+                compile_command=gen.compile_command,
+            )
+            build_provenance_path = (
+                out_dir / "build_provenance" / f"timing_{h.name}.build-seal.json"
+            )
+            build_provenance_sha256 = write_timing_build_provenance(
+                build_provenance_path,
+                build_provenance,
+            )
+            build_provenance_record = _timing_build_protocol_record(
+                build_provenance,
+                build_provenance_path,
+                build_provenance_sha256,
+                out_dir,
+            )
+        except TimingBuildProvenanceError as e:
+            console.print(f"[bold red][CTKAT] timing build seal FAIL ({h.name})[/]")
+            console.print(str(e))
+            raise typer.Exit(1)
+        console.print(f"   [dim]build seal: {build_provenance_path}[/]")
 
         console.print(
             f"[bold cyan]==> Run timing harness[/]: [bold]{h.name}[/] (this may take a while)"
@@ -2159,6 +2335,9 @@ def _do_dudect(
                     crop_fail_t=crop_fail_t,
                     warn_t=warn_t,
                     fail_t=fail_t,
+                    build_provenance=build_provenance,
+                    build_provenance_path=build_provenance_path,
+                    build_provenance_sha256=build_provenance_sha256,
                 )
             except subprocess.TimeoutExpired:
                 console.print(
@@ -2214,6 +2393,7 @@ def _do_dudect(
                         "full_sha256"
                     ),
                 }
+            overall.harness_protocol["build_provenance"] = build_provenance_record
             _set_timing_validity(
                 overall,
                 samples,
@@ -2242,15 +2422,25 @@ def _do_dudect(
                     "   [dim]batch 1/2: percentile calibration "
                     f"(discarded, seed=0x{calibration_seed:X})[/]"
                 )
-                calibration = run_timing_harness(
+                calibration = _run_timing_harness_with_build_seal(
                     gen.binary_path,
                     workdir,
                     timeout=dud.timeout,
                     seed_override=calibration_seed,
+                    build_provenance=build_provenance,
+                    build_provenance_path=build_provenance_path,
+                    build_provenance_sha256=build_provenance_sha256,
                 )
                 phase = "analysis"
                 console.print("   [dim]batch 2/2: independent analysis trace[/]")
-            samples = run_timing_harness(gen.binary_path, workdir, timeout=dud.timeout)
+            samples = _run_timing_harness_with_build_seal(
+                gen.binary_path,
+                workdir,
+                timeout=dud.timeout,
+                build_provenance=build_provenance,
+                build_provenance_path=build_provenance_path,
+                build_provenance_sha256=build_provenance_sha256,
+            )
             samples.calibration = calibration
         except subprocess.TimeoutExpired:
             console.print(
@@ -2407,6 +2597,7 @@ def _do_dudect(
             warning_threshold=warn_t,
             fail_threshold=fail_t,
         )
+        overall.harness_protocol["build_provenance"] = build_provenance_record
         _set_timing_validity(
             overall,
             samples,
