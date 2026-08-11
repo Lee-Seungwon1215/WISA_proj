@@ -1,0 +1,98 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v3
+status: complete
+title: Automated contract audit of v7 single-host timing analysis
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: paper-analysis-v7-audit
+audited_at: "2026-08-11T11:20:00Z"
+audited_commit: 383f995947f751146264ba8c5cbdcd1267432b35
+scope:
+  - v6 invalid-attempt disclosure and prohibition on best-run selection
+  - official-dudect repeat/control validity and corrected same-corpus negative control
+  - named single-host analysis, multiplicity, and non-replication wording
+findings:
+  - finding_id: nas7-001
+    severity: critical
+    title: Retaining only a favorable v6 dudect retry would be outcome-dependent selection
+    description: Both invalid v6 attempts and all calibration iterations must remain disclosed and non-promotable rather than being replaced by the first convenient pass.
+    evidence_ids: [nas7-preregistration, nas7-plan]
+  - finding_id: nas7-002
+    severity: high
+    title: Three process repeats cannot estimate cross-host heterogeneity
+    description: Within-host repeats support consistency and secondary effects but are not independent physical hosts.
+    evidence_ids: [nas7-analysis-contract, nas7-claim-matrix]
+  - finding_id: nas7-003
+    severity: high
+    title: The same-corpus expected negative requires a meaningful workload and valid controls
+    description: An ultra-short optimized target and weak positive ceiling can create threshold artifacts or insufficient-power results unrelated to the intended comparison.
+    evidence_ids: [nas7-baseline, nas7-toy-config, nas7-toy-source, nas7-baseline-tests]
+  - finding_id: nas7-004
+    severity: high
+    title: No v7 final dataset exists at the audited commit
+    description: Named analysis outputs cannot be generated or interpreted before all frozen inputs pass final validation.
+    evidence_ids: [nas7-plan, nas7-analysis-contract]
+dispositions:
+  - finding_id: nas7-001
+    status: addressed
+    rationale: The preregistration records exact v6 run IDs, failure reasons, calibration commit, and non-reuse rule; V7 requires every component to start fresh at one later commit.
+    blocker: ""
+    evidence_ids: [nas7-preregistration, nas7-plan]
+  - finding_id: nas7-002
+    status: addressed
+    rationale: Named analysis reports host heterogeneity as unavailable, applies within-family Holm correction, and limits conclusions to the measured host.
+    blocker: ""
+    evidence_ids: [nas7-analysis-contract, nas7-claim-matrix]
+  - finding_id: nas7-003
+    status: addressed
+    rationale: The toy negative now executes fixed input-independent work, deterministic no-RNG metadata is explicit, the positive ladder is 512/2048/8192 ticks, and raw/control validation remains fail closed.
+    blocker: ""
+    evidence_ids: [nas7-baseline, nas7-toy-config, nas7-toy-source, nas7-cli, nas7-baseline-tests]
+  - finding_id: nas7-004
+    status: accepted-with-blocker
+    rationale: The audited commit freezes methods and does not claim a result.
+    blocker: Collect the complete fresh v7 host tree, validate every upstream artifact, then generate and byte-check named JSON, CSV, and Markdown outputs.
+    evidence_ids: [nas7-plan, nas7-analysis-contract]
+evidence:
+  - evidence_id: nas7-plan
+    path: docs/measurement/paper_native_campaign_v7.yaml
+    sha256: 600e6dc4d12cbcd86fe3464fa15b9f8590a22f12e293132fbe678f59dc8a4d18
+    purpose: Frozen v7 endpoints, controls, and one-host policy.
+  - evidence_id: nas7-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 7783e07d96f2ae7f8c1a648800914b1301e18c32d35f71c83e11dc449b38b72c
+    purpose: Invalid attempts, calibration diagnostics, exclusions, and no-selection rule.
+  - evidence_id: nas7-analysis-contract
+    path: docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
+    sha256: 14eb986bee80a6947e1fa5995f8fc2ce156bf9be1935aecc954d6669680f2f26
+    purpose: Deterministic named analysis, multiplicity, and host-scope contract.
+  - evidence_id: nas7-claim-matrix
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 6d943daef3b3b287155fa16cef306ed0a4e12d2b012e1f635648766737f3beee
+    purpose: Pending-result state and prohibited statistical wording.
+  - evidence_id: nas7-baseline
+    path: docs/baselines/same_corpus_v1.yaml
+    sha256: e52bd1d5e732a94562fda30e68a2bd7e0e0166eae5a82588146550bb7b9db3d8
+    purpose: Exact two-case/three-tool comparison contract and input hashes.
+  - evidence_id: nas7-toy-config
+    path: examples/toy_kem_ct_leak/ctkat.yaml
+    sha256: 7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
+    purpose: Frozen sample counts, controls, effects, and deterministic API declaration.
+  - evidence_id: nas7-toy-source
+    path: examples/toy_kem_ct_leak/src/toy_kem.c
+    sha256: 0b925e1e6d6f81de306bd49e5153bd2409c7fa77160d68bb3d3d6c6023d38ea2
+    purpose: Known leaky target and fixed-work input-independent negative control.
+  - evidence_id: nas7-cli
+    path: ctkat/cli.py
+    sha256: 189ee20f850ad948890bee681692afdffcabf04269373963623f6990844f17c0
+    purpose: Control ordering, setup/randomness validity, and repeat consistency.
+  - evidence_id: nas7-baseline-tests
+    path: tests/test_same_corpus_baselines.py
+    sha256: 78aac9472e8da1f9129d38fe93ebba09a4222e8e8a05ecdc22d798aae0da361a
+    purpose: Exact baseline protocol and independent raw-artifact validation tests.
+limitations:
+  - Calibration repeat statistics are not final estimates and are not entered into paper tables.
+  - One host cannot support a cross-host reproducibility or heterogeneity claim.
+  - No human review, triage-time, or agreement measurement is supplied by this audit.
+human_gate_effect: none

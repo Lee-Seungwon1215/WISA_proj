@@ -1,0 +1,94 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v3
+status: complete
+title: Automated audit of v7 signature and Falcon timing contracts
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-falcon-v7-audit
+audited_at: "2026-08-11T11:20:00Z"
+audited_commit: 383f995947f751146264ba8c5cbdcd1267432b35
+scope:
+  - signature dual-read masked key/message materialization before t0
+  - randomness-policy contract and signature correctness/output-length evidence
+  - Falcon reference, native-FP, and integer-FPR comparison boundaries
+findings:
+  - finding_id: shc7-001
+    severity: critical
+    title: Signature pool selection shared the v6 pre-t0 class pointer confound
+    description: Key or message class selection used a conditional source address immediately before the signer timing boundary.
+    evidence_ids: [shc7-preregistration, shc7-sign-template]
+  - finding_id: shc7-002
+    severity: high
+    title: Randomness validity must distinguish an explicit deterministic API from a hidden failed interpose
+    description: Unconditionally requiring seeded-interpose rejects a declared deterministic no-randombytes API, while accepting external-or-none for ordinary PQC signers would hide unreproducible randomness.
+    evidence_ids: [shc7-cli, shc7-preregistration]
+  - finding_id: shc7-003
+    severity: high
+    title: Full-signature Falcon timing cannot be relabeled as sampler-only or FIPS conformance
+    description: The measured API includes signing randomness, acceptance behavior, variable-length encoding where configured, and implementation-specific prospective comparators.
+    evidence_ids: [shc7-falcon, shc7-plan]
+  - finding_id: shc7-004
+    severity: high
+    title: Fresh v7 signature results are pending
+    description: The v6 signature traces used the superseded setup and cannot be reused.
+    evidence_ids: [shc7-plan, shc7-preregistration]
+dispositions:
+  - finding_id: shc7-001
+    status: addressed
+    rationale: Signature key and message setup now reads both slots, selects with the common no-inline mask, records dual-read-masked-select-v4 on every trace, and validity requires that exact contract.
+    blocker: ""
+    evidence_ids: [shc7-sign-template, shc7-common-template, shc7-cli, shc7-template-tests]
+  - finding_id: shc7-002
+    status: addressed
+    rationale: external-or-none is accepted only when randombytes_header is explicitly null; all other KEM/sign harnesses still require seeded-interpose, with regression tests for both directions.
+    blocker: ""
+    evidence_ids: [shc7-cli, shc7-cli-tests]
+  - finding_id: shc7-003
+    status: addressed
+    rationale: The frozen Falcon manifest and V7 claim limits retain full-API, variable-length, prospective-comparator, and non-conformance wording.
+    blocker: ""
+    evidence_ids: [shc7-falcon, shc7-plan]
+  - finding_id: shc7-004
+    status: accepted-with-blocker
+    rationale: Calibration established harness readiness only.
+    blocker: Run all fresh v7 signature axes and require correctness, return-code, output-length, setup, physical-control, binary-contract, and artifact-hash gates.
+    evidence_ids: [shc7-plan, shc7-falcon]
+evidence:
+  - evidence_id: shc7-plan
+    path: docs/measurement/paper_native_campaign_v7.yaml
+    sha256: 600e6dc4d12cbcd86fe3464fa15b9f8590a22f12e293132fbe678f59dc8a4d18
+    purpose: V7 signature scope and claim limitations.
+  - evidence_id: shc7-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 7783e07d96f2ae7f8c1a648800914b1301e18c32d35f71c83e11dc449b38b72c
+    purpose: V6 diagnosis and V7 setup/randomness amendment.
+  - evidence_id: shc7-sign-template
+    path: ctkat/templates/timing_sign.c.j2
+    sha256: 632e0381b063978d0b1ac189629c36ca0c5b6393525b993dfe93620de5f47107
+    purpose: Signature pool setup, correctness gates, and timed boundary.
+  - evidence_id: shc7-common-template
+    path: ctkat/templates/timing_v2_common.c.j2
+    sha256: 3e45ca9e0c303cc9160ca2269b46296fca93d74ac69c4e3be48e51e18543b008
+    purpose: Shared masked selector and trace metadata.
+  - evidence_id: shc7-cli
+    path: ctkat/cli.py
+    sha256: 189ee20f850ad948890bee681692afdffcabf04269373963623f6990844f17c0
+    purpose: Setup and randomness validity enforcement.
+  - evidence_id: shc7-template-tests
+    path: tests/test_timing_harness.py
+    sha256: bc0deb50a9282c648f47c87487881e0c95a88d2257478f35381aea73249fd055
+    purpose: Masked materialization and signature template regression coverage.
+  - evidence_id: shc7-cli-tests
+    path: tests/test_cli.py
+    sha256: 41f925b0ec527aa2ebcebaaab850f4bad5b9a5f85d2b664f3f6b11f8a7baa44d
+    purpose: Deterministic API and interpose policy regression coverage.
+  - evidence_id: shc7-falcon
+    path: docs/measurement/falcon_native_v2.yaml
+    sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
+    purpose: Frozen Falcon target, control, and binary-contract matrix.
+limitations:
+  - Full-signature timing does not isolate a portable sampler-core ABI.
+  - c-fn-dsa remains prospective comparator evidence rather than FIPS 206 conformance.
+  - No independent human reviewer or v7 final signature dataset existed at audit time.
+human_gate_effect: none

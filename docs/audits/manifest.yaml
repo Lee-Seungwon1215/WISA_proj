@@ -1,17 +1,17 @@
 schema_version: "1.0"
-plan_id: ctkat-automated-engineering-audits-v2-single-host
+plan_id: ctkat-automated-engineering-audits-v3-single-host
 engineering_ready_rule: all-critical-and-high-addressed-or-accepted-with-blocker
 human_review_boundary: no-automated-audit-satisfies-paper-human-review
 audits:
-  - path: docs/audits/automated/artifact-integrity-single-host-v2.yaml
+  - path: docs/audits/automated/artifact-integrity-single-host-v3.yaml
     perspective: artifact-blind-integrity
     required_for_engineering: true
-  - path: docs/audits/automated/mlkem-kyberslash-protocol-v2.yaml
+  - path: docs/audits/automated/mlkem-kyberslash-protocol-v3.yaml
     perspective: mlkem-kyberslash-protocol
     required_for_engineering: true
-  - path: docs/audits/automated/signature-harness-contracts-v2.yaml
+  - path: docs/audits/automated/signature-harness-contracts-v3.yaml
     perspective: signature-harness-contracts
     required_for_engineering: true
-  - path: docs/audits/automated/native-analysis-statistics-v2.yaml
+  - path: docs/audits/automated/native-analysis-statistics-v3.yaml
     perspective: native-analysis-statistics
     required_for_engineering: true

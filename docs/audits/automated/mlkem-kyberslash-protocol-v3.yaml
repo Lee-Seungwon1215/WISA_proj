@@ -1,0 +1,86 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v3
+status: complete
+title: Automated audit of v7 ML-KEM attribution and class-setup contracts
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-v7-audit
+audited_at: "2026-08-11T11:20:00Z"
+audited_commit: 383f995947f751146264ba8c5cbdcd1267432b35
+scope:
+  - general KEM dual-read masked class materialization before t0
+  - KyberSlash operand-v3 same-address arithmetic setup and valid placebo boundary
+  - ML-KEM valid-tuple and public chosen-ciphertext attribution limits
+findings:
+  - finding_id: mkp7-001
+    severity: critical
+    title: General KEM pool selection carried class-dependent pointer-branch state into t0
+    description: The v6 setup placebo added normalization copies and could not exclude predictor state left by the target-mode class pointer choice.
+    evidence_ids: [mkp7-preregistration, mkp7-kem-template, mkp7-cli]
+  - finding_id: mkp7-002
+    severity: high
+    title: The general fix must not weaken the specialized operand-v3 contract
+    description: KyberSlash operand canaries require one fixed key, one ciphertext work address, arithmetic coefficient selection, a valid placebo, and exact linked-binary attribution.
+    evidence_ids: [mkp7-kyberslash, mkp7-kem-template]
+  - finding_id: mkp7-003
+    severity: high
+    title: Mixed valid-tuple signals still cannot be called secret-key leakage
+    description: Both secret and matching public material vary on the valid-tuple axis regardless of the corrected setup implementation.
+    evidence_ids: [mkp7-plan, mkp7-preregistration]
+  - finding_id: mkp7-004
+    severity: high
+    title: Fresh v7 ML-KEM and KyberSlash timing evidence is pending
+    description: Correct code and static contracts do not substitute for final physical traces and controls.
+    evidence_ids: [mkp7-plan]
+dispositions:
+  - finding_id: mkp7-001
+    status: addressed
+    rationale: Non-operand KEM traces now read both pool slots, select through a no-inline volatile mask into shared work buffers, record dual-read-masked-select-v4, and fail validity on contract drift.
+    blocker: ""
+    evidence_ids: [mkp7-kem-template, mkp7-common-template, mkp7-cli]
+  - finding_id: mkp7-002
+    status: addressed
+    rationale: The operand-v3 branch remains separate and preserves its same-address-branchless-v3 metadata, coefficient witnesses, valid placebo value, return-code gate, and binary contract.
+    blocker: ""
+    evidence_ids: [mkp7-kyberslash, mkp7-kem-template]
+  - finding_id: mkp7-003
+    status: addressed
+    rationale: V7 retains explicit mixed-input attribution limits in both the plan and preregistration.
+    blocker: ""
+    evidence_ids: [mkp7-plan, mkp7-preregistration]
+  - finding_id: mkp7-004
+    status: accepted-with-blocker
+    rationale: The audited commit is a premeasurement freeze.
+    blocker: Execute every v7 ML-KEM and KyberSlash axis in fresh final roots and pass correctness, setup, controls, binary contracts, hashes, and named analysis.
+    evidence_ids: [mkp7-plan, mkp7-kyberslash]
+evidence:
+  - evidence_id: mkp7-plan
+    path: docs/measurement/paper_native_campaign_v7.yaml
+    sha256: 600e6dc4d12cbcd86fe3464fa15b9f8590a22f12e293132fbe678f59dc8a4d18
+    purpose: V7 component scope and attribution limits.
+  - evidence_id: mkp7-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 7783e07d96f2ae7f8c1a648800914b1301e18c32d35f71c83e11dc449b38b72c
+    purpose: Diagnosed setup confound and frozen corrective protocol.
+  - evidence_id: mkp7-kem-template
+    path: ctkat/templates/timing_kem.c.j2
+    sha256: 6a7c549f410627e1374e135aea0b43c2bd29d0a59c7055ae0e17a26c43fecc68
+    purpose: KEM pool preparation, masked selection, placebo, and timed boundary.
+  - evidence_id: mkp7-common-template
+    path: ctkat/templates/timing_v2_common.c.j2
+    sha256: 3e45ca9e0c303cc9160ca2269b46296fca93d74ac69c4e3be48e51e18543b008
+    purpose: No-inline dual-read masked selector and runtime contract metadata.
+  - evidence_id: mkp7-cli
+    path: ctkat/cli.py
+    sha256: 189ee20f850ad948890bee681692afdffcabf04269373963623f6990844f17c0
+    purpose: Exact setup-contract aggregation and fail-closed validity policy.
+  - evidence_id: mkp7-kyberslash
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Frozen full-KEM and operand-v3 target matrix.
+limitations:
+  - Masked setup removes the diagnosed class branch but does not prove the target implementation constant-time.
+  - Chosen-ciphertext and operand-bin results retain their public-input and canary-only boundaries.
+  - No v7 final physical trace existed at audit time.
+human_gate_effect: none
