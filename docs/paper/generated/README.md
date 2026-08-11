@@ -15,11 +15,11 @@ The committed screening corpus contains 25 target/harness pairs: 6 risk-detected
 | falcon-contrast | 6 | 6 | 1530000 | prepared-not-measured |
 | diverse-lineages | 4 | 4 | 1170000 | prepared-not-measured |
 
-Final timing requires 2 physical hosts; the frozen plan contains 28 component-axis executions and 16440000 protocol rows across both hosts.
+Final timing requires 1 physical hosts; the frozen plan contains 28 component-axis executions and 8220000 protocol rows on the frozen host.
 
-## Independent review readiness
+## Optional independent review readiness
 
-Packets: 8; premeasurement ready: false; paper ready: false. Pending is an honest blocker, not a failed test.
+Packets: 8; premeasurement ready: false; paper ready: false. Pending means v6 makes no independent-review claim; it is not a v6 execution gate.
 
 ## Claim readiness
 
@@ -27,7 +27,7 @@ Packets: 8; premeasurement ready: false; paper ready: false. Pending is an hones
 |---|---|---:|---:|
 | fail-closed-evidence-fold | implemented-premeasurement | 4 | 0 |
 | build-matrix-sensitivity | implemented-premeasurement | 2 | 0 |
-| kyberslash-attribution | pending-independent-review | 4 | 2 |
-| falcon-comparator | pending-independent-review | 4 | 3 |
+| kyberslash-attribution | pending-physical-measurement | 4 | 2 |
+| falcon-comparator | pending-physical-measurement | 4 | 3 |
 | diverse-upstream-builds | implemented-premeasurement | 3 | 2 |
-| native-timing-results | pending-physical-measurement | 10 | 4 |
+| native-timing-results | pending-physical-measurement | 10 | 3 |

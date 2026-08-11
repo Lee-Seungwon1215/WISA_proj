@@ -1,0 +1,28 @@
+schema_version: 5
+evidence_scope: single-physical-host
+bundle_id: replace-with-final-bundle-id
+measurement_commit: replace-with-40-hex-measurement-commit
+verification_commit: replace-with-40-hex-verification-commit
+hosts:
+  - id: host-a
+    cpu_model: replace-with-exact-cpu-model
+    physical: true
+    virtualization_detected: false
+    artifact_root: replace/host-a
+    hash_manifest: replace/host-a/SHA256SUMS
+    components:
+      committed-corpus-refresh: replace/host-a/committed-corpus-v3
+      kyberslash-contrast: replace/host-a/kyberslash-v3
+      falcon-contrast: replace/host-a/falcon
+      diverse-lineages: replace/host-a/diverse-v2
+    same_corpus_results:
+      official_dudect: replace/host-a/same-corpus/official_dudect/baseline_report.json
+      timecop: replace/host-a/same-corpus/timecop/baseline_report.json
+      microwalk_pin: replace/host-a/same-corpus/microwalk_pin/baseline_report.json
+assembly_evidence:
+  mlkem_public_attribution:
+    host_id: host-a
+    bundle: replace/host-a/asm-evidence/asm_evidence_bundle.json
+analysis:
+  scope: named-single-host
+  output_root: replace/analysis/named

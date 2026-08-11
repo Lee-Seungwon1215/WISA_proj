@@ -1,17 +1,52 @@
 # Native timing experiment preregistration
 
-Status: **v5 frozen after disclosed Falcon/diverse/KyberSlash engineering calibrations; no final measurement collected**
+Status: **v6 single-host scope frozen; no v6 final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
 V4 amendment freeze date: 2026-08-10
 V5 amendment freeze date: 2026-08-11
-Machine-readable plan: `paper_native_campaign_v5.yaml`
+V6 scope amendment freeze date: 2026-08-11
+Machine-readable plan: `paper_native_campaign_v6.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V6 single-host scope and validation amendment
+
+No v5 final measurement was collected before this amendment. Two distinct
+physical hosts and two independent human reviewers are not available for the
+current study. V6 therefore removes both as required execution/promotion gates
+instead of fabricating host replication or reviewer identities. The frozen
+measurement scope is exactly one non-virtualized physical Linux x86_64 host at
+one clean commit. Results are paper-eligible only as host-scoped observations;
+cross-host reproducibility, independent declassification, and inter-rater
+agreement are explicitly not claimed.
+
+The unavailable human gate is replaced by a machine-verifiable frozen-input
+integrity gate. Before any `run_kind=final` sample, it requires a clean commit,
+the exact v6 plan, all four component manifests, the same-corpus manifest, this
+preregistration, the analysis contract, runner/analyzer sources, and dependency
+locks. Their SHA-256 values are embedded in every component and baseline
+report. This checks provenance and policy drift only; it is not described as
+human approval.
+
+The primary official-dudect result and all physical controls are unchanged.
+The 28 axes, sample counts, process repeats, seeds, positive-control curves,
+input contracts, build seals, exclusions, upstream revisions, and claim limits
+are identical to v5. Only the host count, promotion authority, and analysis
+fold change. V6 uses named deterministic analysis because no independent
+analyst is available. It computes pairwise secondary tests from the three
+within-host process-repeat effects, reports host heterogeneity as not
+applicable, and binds the complete host tree with `SHA256SUMS`.
+
+The earlier v5 two-host/blinded workflow remains in version control as a
+superseded stronger profile. A later second host or independent review may be
+reported as follow-up validation, but it is not required to interpret or
+promote the v6 host-scoped tables and cannot be silently merged into this
+frozen campaign.
 
 ## V5 KyberSlash operand and universal build-seal amendment
 
@@ -160,9 +195,9 @@ substantive change requires another campaign version.
 
 - A primary experimental unit is one `(physical host, target, harness,
   process seed)` trace.
-- Final evidence requires two non-virtualized physical x86_64 Linux hosts with
-  distinct CPU model strings, the same CT-KAT commit, and three process seeds
-  per target axis on each host.
+- Final v6 evidence requires one non-virtualized physical x86_64 Linux host at
+  the frozen CT-KAT commit and three process seeds per target axis. This is one
+  host with repeated processes, not hardware replication.
 - A host must have one pinned CPU available, invariant-TSC-compatible RDTSCP,
   no detected emulation or virtualization, and the performance governor where
   the platform exposes one.
@@ -190,7 +225,7 @@ whose controls fail is **inconclusive**, never clean.
 Secondary endpoints are:
 
 - signed and absolute Welch statistics for the predeclared analysis tests;
-- effect direction and repeat consistency across process seeds and hosts;
+- effect direction and within-host consistency across process seeds;
 - the observed detection fraction at each predeclared injected delay, plus an
   A/A-noise-derived nominal sensitivity diagnostic;
 - for signature harnesses, output-length distribution and time/length
@@ -251,7 +286,7 @@ the frozen official analysis owns its filtering and percentile tests.
 
 ## Analysis and multiplicity
 
-- Report every predeclared target/axis/host result; no best-host or best-repeat
+- Report every predeclared target/axis result; no best-repeat
   selection is permitted.
 - Primary claims are axis-specific. No single aggregate "accuracy" or global
   clean percentage is computed across unlike algorithms and threat models.
@@ -259,25 +294,29 @@ the frozen official analysis owns its filtering and percentile tests.
   full-ML-KEM chosen-ciphertext family; each of the three vulnerable/patched
   operand-site pairs; Falcon-512; Falcon-1024; mlkem-native; and mldsa-native.
   Both raw and adjusted values are retained.
-- Host heterogeneity is reported explicitly. A leak on either valid host keeps
-  the combined result at risk; disagreement cannot be averaged into clean.
+- Host heterogeneity is not estimable from one host and is reported as not
+  applicable. Process repeats are never relabeled as distinct hosts.
 - Absence of a threshold crossing is worded `no finding observed under this
   protocol`, not constant-time proof.
 
 ## Review and promotion
 
 The runner writes immutable promotion candidates and never edits the curated
-corpus. Promotion requires:
+corpus. V6 paper-result promotion requires:
 
-1. complete artifacts and recorded SHA-256 hashes from both hosts;
-2. passing controls and schema checks;
-3. passing automated engineering audits, which are provenance-bearing checks
-   but never count as human approval;
-4. two independent human reviewers, with no self-review, recorded in
-   `docs/reviews/paper/`;
-5. unanimous approval for a clean/declassification change. A reviewer reject
-   makes the packet disputed; missing review keeps it pending;
-6. an explicit, reviewed corpus update commit.
+1. one complete physical-host artifact tree and its recorded SHA-256 manifest;
+2. all 28 axes and three same-corpus tools at one clean frozen commit;
+3. passing correctness, input, build-seal, binary-contract, A/A, placebo,
+   directional power, schema, and fresh-artifact checks;
+4. a valid automated frozen-input integrity gate that explicitly records no
+   independent human review and no cross-host reproducibility;
+5. deterministic named analysis with byte-reproducible JSON/CSV/Markdown;
+6. paper wording restricted to the host, software, compiler, and protocol
+   actually measured.
+
+Independent review packets remain optional follow-up evidence. They are not a
+v6 measurement or paper-table gate, and V6 does not use them to declassify or
+silently mutate the curated corpus.
 
 OpenSSL 3.5 is retained as a provider-API integration/build case only. It is
 not included in the timing lineage comparison unless a separately versioned

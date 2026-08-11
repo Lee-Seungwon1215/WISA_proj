@@ -46,7 +46,9 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     _detect_virtualization,
     _git_state,
     _human_premeasurement_gate,
+    _single_host_premeasurement_gate,
     _validate_human_premeasurement_gate,
+    _validate_single_host_premeasurement_gate,
     pin_current_process,
 )
 
@@ -532,6 +534,7 @@ def _record(
     *,
     run_kind: str,
     review_gate: dict[str, Any] | None = None,
+    automated_gate: dict[str, Any] | None = None,
     timing_evidence: bool,
     backend: dict[str, Any] | None = None,
     errors: list[str] | None = None,
@@ -557,6 +560,7 @@ def _record(
         "run_id": uuid.uuid4().hex,
         "run_kind": run_kind,
         "human_review_gate": review_gate,
+        "automated_premeasurement_gate": automated_gate,
         "tool_id": tool_id,
         "host": _host(timing_evidence=timing_evidence),
         "rows": rows,
@@ -978,6 +982,7 @@ def validate_result(
         "run_id",
         "run_kind",
         "human_review_gate",
+        "automated_premeasurement_gate",
         "tool_id",
         "host",
         "rows",
@@ -1033,23 +1038,39 @@ def validate_result(
     if expected_run_kind is not None:
         check(run_kind == expected_run_kind, "result run_kind differs from expected kind")
     review_gate = value.get("human_review_gate")
+    automated_gate = value.get("automated_premeasurement_gate")
     if run_kind == "final":
         result_commit = value.get("ctkat_commit")
         if not isinstance(result_commit, str) or REVISION_RE.fullmatch(result_commit) is None:
             errors.append("final result cannot validate a malformed CT-KAT commit")
         else:
             try:
-                errors.extend(
-                    _validate_human_premeasurement_gate(
-                        review_gate,
-                        expected_commit=result_commit,
-                        allow_review_only_head=True,
+                if review_gate is not None and automated_gate is not None:
+                    errors.append("final result cannot claim both human and automated gates")
+                elif automated_gate is not None:
+                    errors.extend(
+                        _validate_single_host_premeasurement_gate(
+                            automated_gate,
+                            expected_commit=result_commit,
+                            allow_governance_only_head=True,
+                        )
                     )
-                )
+                else:
+                    errors.extend(
+                        _validate_human_premeasurement_gate(
+                            review_gate,
+                            expected_commit=result_commit,
+                            allow_review_only_head=True,
+                        )
+                    )
             except CampaignError as exc:
-                errors.append(f"final result human review gate is invalid: {exc}")
+                errors.append(f"final result premeasurement gate is invalid: {exc}")
     else:
         check(review_gate is None, "non-final result must not claim a human review gate")
+        check(
+            automated_gate is None,
+            "non-final result must not claim an automated premeasurement gate",
+        )
     tool_id = value.get("tool_id")
     check(tool_id in {*TOOL_ORDER, "capability_probe"}, "result tool_id invalid")
     check(isinstance(value.get("promotion_ready"), bool), "promotion_ready must be boolean")
@@ -2064,6 +2085,7 @@ def run_timecop(
     output_root: Path,
     run_kind: str = "engineering",
     review_gate: dict[str, Any] | None = None,
+    automated_gate: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     capability = _capability("timecop", valgrind=valgrind_arg, prefix=prefix)
     output_dir = _new_output_dir(output_root, "timecop")
@@ -2078,6 +2100,7 @@ def run_timecop(
             unsupported_rows,
             run_kind=run_kind,
             review_gate=review_gate,
+            automated_gate=automated_gate,
             timing_evidence=False,
         )
         report_path = output_dir / "baseline_report.json"
@@ -2306,6 +2329,7 @@ def run_timecop(
         rows,
         run_kind=run_kind,
         review_gate=review_gate,
+        automated_gate=automated_gate,
         timing_evidence=False,
         backend=backend,
         errors=errors,
@@ -2322,6 +2346,7 @@ def run_dudect(
     output_root: Path,
     run_kind: str = "engineering",
     review_gate: dict[str, Any] | None = None,
+    automated_gate: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     capability = _capability("official_dudect")
     output_dir = _new_output_dir(output_root, "official_dudect")
@@ -2336,6 +2361,7 @@ def run_dudect(
             unsupported_rows,
             run_kind=run_kind,
             review_gate=review_gate,
+            automated_gate=automated_gate,
             timing_evidence=False,
         )
         report_path = output_dir / "baseline_report.json"
@@ -2449,6 +2475,7 @@ def run_dudect(
         rows,
         run_kind=run_kind,
         review_gate=review_gate,
+        automated_gate=automated_gate,
         timing_evidence=physical_eligible,
         backend={
             "official_dudect_revision": OFFICIAL_DUDECT_REVISION,
@@ -2559,6 +2586,7 @@ def run_microwalk(
     timeout: int,
     run_kind: str = "engineering",
     review_gate: dict[str, Any] | None = None,
+    automated_gate: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     capability = _capability("microwalk_pin")
     output_dir = _new_output_dir(output_root, "microwalk_pin")
@@ -2573,6 +2601,7 @@ def run_microwalk(
             unsupported_rows,
             run_kind=run_kind,
             review_gate=review_gate,
+            automated_gate=automated_gate,
             timing_evidence=False,
         )
         report_path = output_dir / "baseline_report.json"
@@ -2872,6 +2901,7 @@ def run_microwalk(
         rows,
         run_kind=run_kind,
         review_gate=review_gate,
+        automated_gate=automated_gate,
         timing_evidence=False,
         backend={
             "execution_image": image,
@@ -2915,6 +2945,12 @@ def main() -> int:
         choices=RUN_KINDS,
         help="require a validated result to have this run kind",
     )
+    parser.add_argument(
+        "--final-gate",
+        choices=("human", "single-host"),
+        default="human",
+        help="final promotion gate; single-host claims no independent review",
+    )
     parser.add_argument("--microwalk-timeout", type=int, default=1800)
     args = parser.parse_args()
 
@@ -2952,9 +2988,13 @@ def main() -> int:
         if args.run_timecop and args.run_kind == "final" and args.prefix is None:
             parser.error("final TIMECOP execution requires an explicit --prefix")
         review_gate = None
+        automated_gate = None
         if executing and args.run_kind == "final":
             commit, _dirty = _git_state()
-            review_gate = _human_premeasurement_gate(commit)
+            if args.final_gate == "single-host":
+                automated_gate = _single_host_premeasurement_gate(commit)
+            else:
+                review_gate = _human_premeasurement_gate(commit)
         if executing and args.run_kind in {"pilot", "final"}:
             environment = collect_timing_environment(
                 emulated=detect_qemu_emulation(),
@@ -3044,6 +3084,7 @@ def main() -> int:
                 output_root=args.output_root,
                 run_kind=str(args.run_kind),
                 review_gate=review_gate,
+                automated_gate=automated_gate,
             )
         elif args.run_dudect:
             record, report = run_dudect(
@@ -3052,6 +3093,7 @@ def main() -> int:
                 output_root=args.output_root,
                 run_kind=str(args.run_kind),
                 review_gate=review_gate,
+                automated_gate=automated_gate,
             )
         else:
             record, report = run_microwalk(
@@ -3061,6 +3103,7 @@ def main() -> int:
                 timeout=args.microwalk_timeout,
                 run_kind=str(args.run_kind),
                 review_gate=review_gate,
+                automated_gate=automated_gate,
             )
         print(f"[same-corpus] report: {report}")
         print(f"[same-corpus] promotion_ready={record['promotion_ready']}")

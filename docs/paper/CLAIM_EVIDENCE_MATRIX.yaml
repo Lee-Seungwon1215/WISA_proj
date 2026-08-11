@@ -1,9 +1,9 @@
 schema_version: 2
-matrix_id: ctkat-paper-claims-v5
+matrix_id: ctkat-paper-claims-v6-single-host
 terminology:
   screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
   source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
-  timing_campaign: paper-native-v5 physical-host runs using the timing-harness-v2 protocol and universal pre-measurement build seals; a plan or CI build is never timing evidence
+  timing_campaign: paper-native-v6 single-physical-host runs using the timing-harness-v2 protocol and universal pre-measurement build seals; a plan or CI build is never timing evidence and cross-host reproducibility is not claimed
 
 claims:
   - id: fail-closed-evidence-fold
@@ -28,7 +28,7 @@ claims:
     prohibited_wording: universal tool accuracy
   - id: kyberslash-attribution
     statement: Stock, isolated KS1, isolated KS2, and combined full-KEM variants use one fixed key and public chosen-ciphertext pools, while three vulnerable/patched site pairs separately test operand-dependent hardware latency under exact linked-binary contracts.
-    status: pending-independent-review
+    status: pending-physical-measurement
     scope: ML-KEM/Kyber-768 frozen variants
     evidence:
       - docs/ground_truth/kyberslash/ground_truth.yaml
@@ -36,12 +36,12 @@ claims:
       - docs/measurement/KYBERSLASH_NATIVE_V3.md
       - docs/reviews/paper/kyberslash-ground-truth-v2.yaml
     open_gates:
-      - two independent premeasurement reviewers
-      - two-host physical timing artifacts
+      - complete single-host v3 physical timing artifacts
+      - pass the automated frozen-input and artifact-integrity gates
     prohibited_wording: full attack or key recovery reproduced
   - id: falcon-comparator
     statement: Reference Falcon and prospective c-fn-dsa native-FP/integer-FPR profiles have exact provenance, separate full-signature timing targets, and measured-binary sampler contracts matched to their actual software-FPR/SSE2 structure.
-    status: pending-independent-review
+    status: pending-physical-measurement
     scope: Falcon/FN-DSA 512 and 1024 comparators
     evidence:
       - docs/ground_truth/falcon/manifest.yaml
@@ -49,8 +49,8 @@ claims:
       - examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
       - docs/reviews/paper/falcon-comparator-v2.yaml
     open_gates:
-      - two independent premeasurement reviewers
-      - two-host physical timing artifacts
+      - complete single-host v2 physical timing artifacts
+      - pass the automated frozen-input and artifact-integrity gates
       - output-length secondary analysis
     prohibited_wording: FIPS 206 conformance
   - id: diverse-upstream-builds
@@ -66,11 +66,11 @@ claims:
       - quantify or bound shared-code ancestry before stronger independence wording
     prohibited_wording: four from-scratch independent implementations
   - id: native-timing-results
-    statement: Paper-grade native timing will use two distinct physical x86_64 hosts, frozen controls, and no automatic corpus promotion; each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
+    statement: Paper-grade v6 native timing uses one physical x86_64 host, frozen controls, and no automatic corpus promotion; each result is host-scoped, and each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
     status: pending-physical-measurement
     scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
-      - docs/measurement/paper_native_campaign_v5.yaml
+      - docs/measurement/paper_native_campaign_v6.yaml
       - docs/measurement/native_timing_v3_campaign.yaml
       - docs/measurement/NATIVE_TIMING_V3.md
       - docs/measurement/diverse_native_v2.yaml
@@ -79,10 +79,9 @@ claims:
       - ctkat/timing_input_contract.py
       - ctkat/timing_build_provenance.py
       - scripts/check_paper_campaign.py
-      - docs/reviews/paper/mlkem-valid-tuple-v1.yaml
+      - docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
     open_gates:
-      - complete two-person premeasurement review of the valid-tuple attribution boundary
-      - execute both hosts
-      - hash and blind-review artifacts
-      - complete postmeasurement promotion review
+      - execute the complete single physical host campaign
+      - hash the host tree and validate the schema-v5 bundle
+      - generate byte-deterministic named analysis outputs
     prohibited_wording: valid-tuple signal means secret-key leakage; no finding means proven constant-time

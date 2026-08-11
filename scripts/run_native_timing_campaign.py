@@ -2823,6 +2823,198 @@ def _human_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
     }
 
 
+SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v6.yaml"
+SINGLE_HOST_GATE_INPUTS = (
+    ROOT / "docs/measurement/EXPERIMENT_PREREGISTRATION.md",
+    ROOT / "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
+    ROOT / "docs/measurement/native_timing_v3_campaign.yaml",
+    ROOT / "docs/measurement/kyberslash_native_v3.yaml",
+    ROOT / "docs/measurement/falcon_native_v2.yaml",
+    ROOT / "docs/measurement/diverse_native_v2.yaml",
+    ROOT / "docs/measurement/mlkem_asm_evidence_v1.yaml",
+    ROOT / "docs/baselines/same_corpus_v1.yaml",
+    ROOT / "docs/baselines/baseline-result-v1.schema.json",
+    ROOT / "docs/artifact/measurement_bundle_single_host_template.yaml",
+    ROOT / "scripts/check_paper_campaign.py",
+    ROOT / "scripts/analyze_paper_native_results.py",
+    ROOT / "scripts/build_asm_evidence.py",
+    ROOT / "scripts/build_single_host_measurement_bundle.py",
+    ROOT / "scripts/check_asm_evidence.py",
+    ROOT / "scripts/hash_artifacts.py",
+    ROOT / "scripts/run_native_timing_campaign.py",
+    ROOT / "scripts/run_same_corpus_baselines.py",
+    ROOT / "pyproject.toml",
+    ROOT / "uv.lock",
+)
+
+
+def _single_host_premeasurement_gate_material(
+    expected_commit: str,
+    *,
+    allow_governance_only_head: bool = False,
+) -> dict[str, Any]:
+    """Bind a clean commit and the complete single-host frozen input set.
+
+    This gate is deliberately not described as review.  It replaces the unavailable
+    reviewer quorum with deterministic integrity checks while preserving an explicit
+    single-host/no-independent-validation scope boundary.
+    """
+
+    current_commit, dirty = _git_state()
+    if dirty:
+        raise CampaignError("single-host integrity gate requires a clean git worktree")
+    if current_commit != expected_commit:
+        if not allow_governance_only_head:
+            raise CampaignError(
+                "single-host integrity gate expected commit differs from current git HEAD: "
+                f"{expected_commit} != {current_commit}"
+            )
+        try:
+            ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", expected_commit, current_commit],
+                cwd=ROOT,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            )
+            if ancestor.returncode != 0:
+                raise CampaignError(
+                    "measurement commit is not an ancestor of the validation checkout"
+                )
+            drift = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--name-only",
+                    f"{expected_commit}..{current_commit}",
+                    "--",
+                    *MEASUREMENT_CRITICAL_PATHS,
+                ],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise CampaignError(f"cannot validate post-measurement commit drift: {exc}") from exc
+        if drift:
+            raise CampaignError(
+                "measurement-critical source changed after the recorded run: "
+                + ", ".join(drift.splitlines())
+            )
+    try:
+        plan = yaml.safe_load(SINGLE_HOST_PLAN.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise CampaignError(f"single-host paper plan is unreadable: {exc}") from exc
+    if not isinstance(plan, dict):
+        raise CampaignError("single-host paper plan must be a mapping")
+    policy = plan.get("execution_policy")
+    promotion = plan.get("promotion")
+    if (
+        plan.get("schema_version") != 3
+        or plan.get("campaign_id") != "ctkat-paper-native-v6-single-host"
+        or plan.get("status") != "premeasurement-frozen"
+        or not isinstance(policy, dict)
+        or policy.get("minimum_physical_hosts") != 1
+        or policy.get("independent_human_review_required") is not False
+        or policy.get("cross_host_reproducibility_claimed") is not False
+        or policy.get("premeasurement_gate") != "automated-frozen-input-integrity"
+        or not isinstance(promotion, dict)
+        or promotion.get("require_automated_premeasurement_gate") is not True
+        or promotion.get("require_two_person_human_review") is not False
+        or promotion.get("require_both_hosts") is not False
+    ):
+        raise CampaignError("single-host paper plan policy drift")
+    components = plan.get("components")
+    expected_manifests = {
+        str(path.relative_to(ROOT))
+        for path in SINGLE_HOST_GATE_INPUTS
+        if path.name.endswith(".yaml")
+    }
+    component_manifests = {
+        item.get("manifest")
+        for item in components or []
+        if isinstance(item, dict) and isinstance(item.get("manifest"), str)
+    }
+    required_components = {
+        "docs/measurement/native_timing_v3_campaign.yaml",
+        "docs/measurement/kyberslash_native_v3.yaml",
+        "docs/measurement/falcon_native_v2.yaml",
+        "docs/measurement/diverse_native_v2.yaml",
+    }
+    if component_manifests != required_components:
+        raise CampaignError("single-host paper component set drift")
+    for relative in sorted(component_manifests):
+        frozen = load_campaign(ROOT / relative)
+        errors = static_check(frozen)
+        if errors:
+            raise CampaignError(f"{relative}: frozen campaign invalid: " + "; ".join(errors))
+    input_paths = (SINGLE_HOST_PLAN, *SINGLE_HOST_GATE_INPUTS)
+    missing = [str(path.relative_to(ROOT)) for path in input_paths if not path.is_file()]
+    if missing:
+        raise CampaignError("single-host gate inputs are missing: " + ", ".join(missing))
+    input_hashes = {
+        str(path.relative_to(ROOT)): _sha256(path)
+        for path in sorted(input_paths, key=lambda item: str(item.relative_to(ROOT)))
+    }
+    if not required_components <= expected_manifests:
+        raise CampaignError("single-host gate manifest hash set drift")
+    return {
+        "schema_version": "1.0",
+        "kind": "automated-frozen-input-integrity-gate",
+        "ready": True,
+        "ctkat_commit": expected_commit,
+        "plan_id": plan["campaign_id"],
+        "plan_sha256": _sha256(SINGLE_HOST_PLAN),
+        "input_sha256": input_hashes,
+        "physical_host_count": 1,
+        "independent_human_review": False,
+        "cross_host_reproducibility": False,
+    }
+
+
+def _single_host_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
+    return {
+        **_single_host_premeasurement_gate_material(expected_commit),
+        "checked_at": _utc_now(),
+    }
+
+
+def _validate_single_host_premeasurement_gate(
+    gate: Any,
+    *,
+    expected_commit: str,
+    allow_governance_only_head: bool = False,
+) -> list[str]:
+    if not isinstance(gate, dict):
+        return ["final campaign lacks a single-host frozen-input integrity gate"]
+    expected_material = _single_host_premeasurement_gate_material(
+        expected_commit,
+        allow_governance_only_head=allow_governance_only_head,
+    )
+    expected_keys = set(expected_material) | {"checked_at"}
+    if set(gate) != expected_keys:
+        return ["single-host final integrity gate field set drift"]
+    checked_at = gate.get("checked_at")
+    if not isinstance(checked_at, str):
+        return ["single-host final integrity gate timestamp is missing"]
+    try:
+        parsed = datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+    except ValueError:
+        return ["single-host final integrity gate timestamp is malformed"]
+    if parsed.tzinfo is None:
+        return ["single-host final integrity gate timestamp lacks a timezone"]
+    if gate != {**expected_material, "checked_at": checked_at}:
+        return [
+            "single-host final integrity gate no longer matches the exact frozen commit "
+            "and input hashes"
+        ]
+    return []
+
+
 def _validate_human_premeasurement_gate(
     gate: Any,
     *,
@@ -2891,6 +3083,7 @@ def execute_campaign(
     review_gate: dict[str, Any] | None,
     resume: bool,
     continue_on_error: bool,
+    automated_gate: dict[str, Any] | None = None,
 ) -> int:
     output_root = _safe_output_root(output_root)
     if run_kind not in RUN_KINDS:
@@ -2910,17 +3103,25 @@ def execute_campaign(
     if run_kind in {"pilot", "final"} and not host_paper_eligible:
         raise CampaignError(f"{run_kind} requires a paper-eligible physical host")
     if run_kind == "final":
-        gate_errors = _validate_human_premeasurement_gate(
-            review_gate,
-            expected_commit=commit,
+        if review_gate is not None and automated_gate is not None:
+            raise CampaignError("final execution cannot claim both human and automated gates")
+        gate_errors = (
+            _validate_single_host_premeasurement_gate(
+                automated_gate,
+                expected_commit=commit,
+            )
+            if automated_gate is not None
+            else _validate_human_premeasurement_gate(
+                review_gate,
+                expected_commit=commit,
+            )
         )
         if gate_errors:
             raise CampaignError(
-                "final execution requires the human premeasurement review gate: "
-                + "; ".join(gate_errors)
+                "final execution requires a valid premeasurement gate: " + "; ".join(gate_errors)
             )
-    elif review_gate is not None:
-        raise CampaignError("human review_gate is only valid for a final run")
+    elif review_gate is not None or automated_gate is not None:
+        raise CampaignError("premeasurement gates are only valid for a final run")
     host_fingerprint_sha256 = _host_fingerprint(preflight_report)
     if output_root.exists() and any(output_root.iterdir()) and not resume:
         raise CampaignError(f"output root is non-empty; use --resume: {output_root}")
@@ -2997,6 +3198,7 @@ def execute_campaign(
             "paper_promotion_ready": False,
             "selected_targets": [target.id for target in targets],
             "human_review_gate": review_gate,
+            "automated_premeasurement_gate": automated_gate,
             "host_preflight": preflight_report,
             "targets": {},
         }
@@ -3217,16 +3419,30 @@ def validate_run(
     if report.get("host_fingerprint_sha256") != host_fingerprint_sha256:
         raise CampaignError("campaign host fingerprint does not match its preflight")
     if run_kind == "final":
-        gate = report.get("human_review_gate")
-        gate_errors = _validate_human_premeasurement_gate(
-            gate,
-            expected_commit=report_commit,
-            allow_review_only_head=True,
+        human_gate = report.get("human_review_gate")
+        automated_gate = report.get("automated_premeasurement_gate")
+        if human_gate is not None and automated_gate is not None:
+            raise CampaignError("final campaign claims both human and automated gates")
+        gate_errors = (
+            _validate_single_host_premeasurement_gate(
+                automated_gate,
+                expected_commit=report_commit,
+                allow_governance_only_head=True,
+            )
+            if automated_gate is not None
+            else _validate_human_premeasurement_gate(
+                human_gate,
+                expected_commit=report_commit,
+                allow_review_only_head=True,
+            )
         )
         if gate_errors:
             raise CampaignError("; ".join(gate_errors))
-    elif report.get("human_review_gate") is not None:
-        raise CampaignError("non-final campaign must not claim a human review gate")
+    elif (
+        report.get("human_review_gate") is not None
+        or report.get("automated_premeasurement_gate") is not None
+    ):
+        raise CampaignError("non-final campaign must not claim a premeasurement gate")
     validations = [
         validate_target_artifacts(
             campaign,
@@ -3337,6 +3553,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=RUN_KINDS,
         help="require --validate-run evidence to have this run kind",
     )
+    parser.add_argument(
+        "--final-gate",
+        choices=("human", "single-host"),
+        default="human",
+        help="final promotion gate; single-host is automated and claims no independent review",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -3380,11 +3602,13 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--execute requires --output-root")
         if args.run_kind is None:
             parser.error("--execute requires --run-kind")
-        review_gate = (
-            _human_premeasurement_gate(str(host["git_commit"]))
-            if args.run_kind == "final"
-            else None
-        )
+        review_gate = None
+        automated_gate = None
+        if args.run_kind == "final":
+            if args.final_gate == "single-host":
+                automated_gate = _single_host_premeasurement_gate(str(host["git_commit"]))
+            else:
+                review_gate = _human_premeasurement_gate(str(host["git_commit"]))
         return execute_campaign(
             campaign,
             args.output_root,
@@ -3394,6 +3618,7 @@ def main(argv: list[str] | None = None) -> int:
             review_gate=review_gate,
             resume=args.resume,
             continue_on_error=args.continue_on_error,
+            automated_gate=automated_gate,
         )
     except CampaignError as exc:
         print(f"[native-timing] ERROR: {exc}", file=sys.stderr)

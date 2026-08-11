@@ -24,7 +24,7 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v5.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v6.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
     ("committed-corpus-refresh", "docs/measurement/native_timing_v3_campaign.yaml"),
@@ -36,9 +36,13 @@ BASELINE_COMMAND_ORDER = ("official_dudect", "timecop", "microwalk_pin")
 EXECUTION_PLACEHOLDERS = ("host-ID", "CPU-ID", "TIMECOP-PREFIX")
 HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 EXPECTED_CLAIM_LIMITS = (
-    "a static plan or automated-agent audit is not timing evidence or human approval",
+    "a static plan or automated integrity gate is not timing evidence or independent human approval",
     "an engineering or pilot run is not final evidence",
-    "a single physical host is a pilot, not final evidence",
+    (
+        "single-host final evidence supports only host-scoped findings and does not "
+        "establish cross-host reproducibility"
+    ),
+    "no independent review, declassification, or inter-rater agreement claim is made",
     (
         "v1 Falcon and diverse plus v2 committed-corpus engineering traces are "
         "calibration evidence and are not reusable in their replacement final campaigns"
@@ -145,10 +149,10 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
     }
     if set(manifest) != expected_top_level:
         errors.append("paper campaign top-level field set drift")
-    if manifest.get("schema_version") != 2:
-        errors.append("schema_version must be 2")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v5":
-        errors.append("campaign_id must be ctkat-paper-native-v5")
+    if manifest.get("schema_version") != 3:
+        errors.append("schema_version must be 3")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v6-single-host":
+        errors.append("campaign_id must be ctkat-paper-native-v6-single-host")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
     if manifest.get("claim_limits") != list(EXPECTED_CLAIM_LIMITS):
@@ -159,8 +163,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("execution_policy must be a mapping")
         policy = {}
     required_policy = {
-        "minimum_physical_hosts": 2,
-        "minimum_distinct_cpu_models": 2,
+        "minimum_physical_hosts": 1,
+        "minimum_distinct_cpu_models": 1,
         "operating_system": "Linux",
         "architecture": "x86_64",
         "virtualization_allowed": False,
@@ -173,7 +177,9 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "engineering_results_promotable": False,
         "pilot_results_promotable": False,
         "final_resume_allowed": False,
-        "human_review_gate_required": True,
+        "premeasurement_gate": "automated-frozen-input-integrity",
+        "independent_human_review_required": False,
+        "cross_host_reproducibility_claimed": False,
     }
     for key, expected in required_policy.items():
         if policy.get(key) != expected:
@@ -211,7 +217,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
             "uv run --frozen python scripts/run_native_timing_campaign.py --manifest "
             f"{item['manifest']} --output-root measurement_runs/host-ID/"
             f"{ {'committed-corpus-refresh': 'committed-corpus-v3', 'kyberslash-contrast': 'kyberslash-v3', 'falcon-contrast': 'falcon', 'diverse-lineages': 'diverse-v2'}[item['id']] } "
-            "--run-kind final --cpu CPU-ID --execute"
+            "--run-kind final --final-gate single-host --cpu CPU-ID --execute"
         )
         if item.get("command") != expected_command:
             errors.append(f"{item.get('id')}: execution command drift")
@@ -248,17 +254,17 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
     expected_baseline_commands = {
         "official_dudect": (
             "uv run --frozen python scripts/run_same_corpus_baselines.py "
-            "--run-dudect --run-kind final "
+            "--run-dudect --run-kind final --final-gate single-host "
             "--cpu CPU-ID --output-root measurement_runs/host-ID/same-corpus"
         ),
         "timecop": (
             "uv run --frozen python scripts/run_same_corpus_baselines.py "
-            "--run-timecop --run-kind final "
+            "--run-timecop --run-kind final --final-gate single-host "
             "--prefix TIMECOP-PREFIX --output-root measurement_runs/host-ID/same-corpus"
         ),
         "microwalk_pin": (
             "uv run --frozen python scripts/run_same_corpus_baselines.py "
-            "--run-microwalk --run-kind final "
+            "--run-microwalk --run-kind final --final-gate single-host "
             "--output-root measurement_runs/host-ID/same-corpus"
         ),
     }
@@ -273,22 +279,17 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         analysis = {}
     expected_analysis = {
         "script": "scripts/analyze_paper_native_results.py",
-        "blind_scope": "result-analyst-label-blinding",
-        "blinded_command": (
-            "uv run --frozen python scripts/analyze_paper_native_results.py "
-            "--bundle BUNDLE.yaml "
-            "--verification-commit COMMIT --output-root analysis/blinded "
-            "--output-mode blinded"
-        ),
-        "unblinded_command": (
+        "contract": "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
+        "mode": "named-single-host",
+        "command": (
             "uv run --frozen python scripts/analyze_paper_native_results.py "
             "--bundle BUNDLE.yaml "
             "--verification-commit COMMIT --output-root analysis/named "
-            "--output-mode unblinded --blinding-record UNBLINDING.yaml"
+            "--output-mode named"
         ),
-        "either_host_valid_finding_keeps_risk": True,
+        "primary_decision": "valid-single-host-result",
         "holm_within_preregistered_family": True,
-        "report_host_heterogeneity": True,
+        "report_host_heterogeneity": False,
     }
     if analysis != expected_analysis:
         errors.append("analysis/blinding contract drift")
@@ -304,16 +305,19 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         promotion = {}
     for key in (
         "require_artifact_hashes",
-        "require_automated_engineering_audits",
-        "require_two_person_human_review",
-        "require_both_hosts",
+        "require_clean_frozen_commit",
+        "require_automated_premeasurement_gate",
+        "require_single_physical_host",
         "require_control_pass",
     ):
         if promotion.get(key) is not True:
             errors.append(f"promotion.{key} must be true")
+    for key in ("require_two_person_human_review", "require_both_hosts"):
+        if promotion.get(key) is not False:
+            errors.append(f"promotion.{key} must be false")
     if promotion.get("automatic_corpus_mutation") is not False:
         errors.append("promotion.automatic_corpus_mutation must be false")
-    for key in ("review_manifest", "automated_audit_manifest", "preregistration"):
+    for key in ("preregistration",):
         try:
             required_path = _repo_path(promotion.get(key), f"promotion.{key}")
             if not required_path.is_file():
@@ -346,7 +350,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "target_executions": sum(item["targets"] for item in component_report),
         "timing_axes": total_axes,
         "protocol_rows_per_host": total_protocol_rows,
-        "protocol_rows_all_hosts": total_protocol_rows * 2,
+        "protocol_rows_all_hosts": total_protocol_rows
+        * int(policy.get("minimum_physical_hosts") or 0),
         "errors": errors,
     }
     return errors, report
@@ -406,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"[paper-campaign] OK: {report['component_count']} components, "
         f"{report['target_executions']} target executions, {report['timing_axes']} axes, "
-        f"{report['protocol_rows_all_hosts']} protocol rows across two hosts"
+        f"{report['protocol_rows_all_hosts']} protocol rows on one physical host"
     )
     return 0
 

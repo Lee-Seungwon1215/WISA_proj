@@ -73,17 +73,15 @@ fail-closed로 요구하며, 사람 리뷰가 없어도 네이티브 engineering
 판정한다. 락파일, Ruff 포맷/린트, mypy도 이 프로필에서 다시 확인한다. 실제 Linux
 측정 호스트에서는 `--profile native-engineering-ready`를 사용해 고정된 timing
 backend calibration까지 통과시킨 뒤 engineering run을 시작한다.
-실제 측정은 서로 다른 physical x86_64 CPU 두 대와 완료된 review가 필요하다.
-측정 전 리뷰 7종의 독립 2인 승인이 끝난 뒤에는 같은 명령의
-`--profile measurement-ready`가 통과해야만 측정을 시작한다. 일곱 번째
-`native-promotion` 리뷰는 두 호스트 artifact와 분석 digest를 동결한 뒤 받는
-측정 후 승인이라 측정 시작 조건으로 세탁하지 않는다.
-자동화 에이전트 감사는 engineering 준비도를 높일 뿐 이 사람 승인을 대신하지
-않는다. 실험 동결본은 `docs/measurement/paper_native_campaign_v5.yaml`, 논문 골격과
-claim 상태는 `docs/paper/`, blind/final bundle 절차는 `docs/artifact/`에 있다.
-측정 후에는 `--profile verification`으로 digest가 박힌 후보를 먼저 만든 뒤,
-`native-promotion-v2`의 독립 2인 사람이 그 정확한 digest를 승인하고,
-`--profile paper-ready --candidate-root ...`로 최종 재검증한다.
+현재 v6 측정은 한 대의 physical x86_64 Linux host에서 수행한다. final 명령은
+`--final-gate single-host`를 사용하며 clean commit과 모든 frozen input hash를
+결과에 묶는다. 두 번째 host와 독립 2인 review는 필수 gate에서 제거했고, 그 대신
+논문 주장을 해당 host/CPU/compiler/protocol 범위로 제한한다. 이를 hardware
+replication이나 independent review로 표현하면 안 된다.
+실험 동결본은 `docs/measurement/paper_native_campaign_v6.yaml`, 분석 계약은
+`docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md`, 단일 host bundle 절차는
+`docs/artifact/`에 있다. 기존 `measurement-ready`/blind/paper-ready profile은
+v5 two-host/reviewer workflow를 재개할 때 쓰는 stronger historical profile이다.
 
 Valgrind 구조 검사는 Linux가 필요하다. macOS/Windows 개발 환경에서는
 Docker Desktop을 실행한 뒤:

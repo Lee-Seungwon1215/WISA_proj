@@ -7,7 +7,7 @@ constant-time screening of post-quantum C implementations. The contribution is
 not a claim that one dynamic tool proves constant-time behaviour. It is the
 explicit composition of correctness, dynamic structural observations,
 build-sensitive assembly candidates, operand attribution, controlled timing,
-and independent review.
+  and explicit claim-scoped validation.
 
 ## 1. Introduction
 
@@ -16,7 +16,7 @@ and independent review.
   controls, exact build provenance, and review.
 - Contributions: evidence schema, compiler/optimization matrix, KyberSlash
   ground truth, Falcon comparator, diverse source/build corpus, and a frozen
-  two-host timing protocol.
+  single-physical-host timing protocol.
 
 ## 2. Threat model and claim vocabulary
 
@@ -24,8 +24,9 @@ and independent review.
 - Screening corpus versus source/build corpus versus timing campaign.
 - `risk-detected`, `needs-review`, `inconclusive`, and
   `no-finding-observed`; never “proved constant-time.”
-- Public-transcript declassification requires source/disassembly attribution
-  and two independent reviewers.
+- The v6 timing tables claim neither independent human declassification nor
+  cross-host reproducibility; public/mixed-input attribution boundaries stay
+  explicit in every result.
 
 ## 3. System design
 
@@ -39,7 +40,8 @@ and independent review.
 ## 4. Experimental design
 
 - Frozen targets and upstream revisions from the machine-readable campaign.
-- Two distinct physical Linux x86_64 hosts; pilot/final separation.
+- One physical Linux x86_64 host; pilot/final separation; no hardware
+  replication claim.
 - Primary and secondary endpoints, sample sizes, exclusions, and Holm-adjusted
   within-family secondary contrasts from the preregistration.
 - Full-signature Falcon scope and separate output-length association analysis.
@@ -60,7 +62,7 @@ labelled false-positive rate without an independently labelled oracle.
 ### 5.3 KyberSlash ground truth
 
 Report stock, KS1-only, KS2-only, combined, and historical provenance/KAT
-equivalence first; then report two-host timing without collapsing variants.
+equivalence first; then report host-scoped timing without collapsing variants.
 
 ### 5.4 Falcon comparator
 
@@ -76,23 +78,25 @@ OpenSSL is not counted as a fifth implementation lineage.
 
 ### 5.6 Physical timing campaign
 
-Populate only from reviewed two-host artifacts. Host disagreement remains
-visible and cannot be averaged into a clean state.
+Populate only from complete schema-v5 single-host artifacts. Process repeats
+remain within-host evidence and are not presented as multiple machines.
 
 ## 6. Limitations
 
 - Dynamic coverage and input-distribution dependence.
-- CPU-specific variable latency and only two final microarchitectures.
+- CPU-specific variable latency and only one final microarchitecture.
 - Compiler and upstream revision scope.
 - Shared ancestry is unmeasured, not zero.
 - Beta mldsa-native API and prospective c-fn-dsa status.
-- Review subjectivity and the absence of formal constant-time proof.
+- No independent human review in v6 and the absence of formal constant-time
+  proof.
 
 ## 7. Reproducibility and artifact
 
 - One-command premeasurement and postmeasurement profiles.
 - Exact revisions, vendored tree hashes, generated tables, artifact hashes,
-  reviewer packets, blind rerun checklist, and explicit pending states.
+  automated frozen-input gate, deterministic named analysis, and explicit
+  single-host/no-independent-review limitations.
 
 Generated premeasurement tables live under `docs/paper/generated/` and must be
 refreshed by the repository script, never hand-edited.

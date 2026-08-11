@@ -139,6 +139,7 @@ def build() -> tuple[dict[Path, str], dict[str, Any]]:
             "review_id": packet["review_id"],
             "phase": packet["review_phase"],
             "required_before_measurement": str(packet["required_before_measurement"]).lower(),
+            "required_by_current_campaign": "false",
             "status": packet["status"],
             "reviewers": packet["reviewer_count"],
             "minimum_reviewers": review.get("minimum_reviewers", 2),
@@ -194,13 +195,14 @@ def build() -> tuple[dict[Path, str], dict[str, Any]]:
             "",
             f"Final timing requires {campaign['physical_hosts_required']} physical hosts; "
             f"the frozen plan contains {campaign['timing_axes']} component-axis executions "
-            f"and {campaign['protocol_rows_all_hosts']} protocol rows across both hosts.",
+            f"and {campaign['protocol_rows_all_hosts']} protocol rows on the frozen host.",
             "",
-            "## Independent review readiness",
+            "## Optional independent review readiness",
             "",
             f"Packets: {len(review_rows)}; premeasurement ready: "
             f"{str(review['pre_measurement_ready']).lower()}; paper ready: "
-            f"{str(review['paper_ready']).lower()}. Pending is an honest blocker, not a failed test.",
+            f"{str(review['paper_ready']).lower()}. Pending means v6 makes no independent-review "
+            "claim; it is not a v6 execution gate.",
             "",
             "## Claim readiness",
             "",
@@ -221,6 +223,7 @@ def build() -> tuple[dict[Path, str], dict[str, Any]]:
         "corpus_state_counts": dict(sorted(overall.items())),
         "measurement_campaign": campaign,
         "review_readiness": {
+            "required_by_current_campaign": False,
             "minimum_reviewers": review["minimum_reviewers"],
             "pre_measurement_ready": review["pre_measurement_ready"],
             "paper_ready": review["paper_ready"],
@@ -250,6 +253,7 @@ def build() -> tuple[dict[Path, str], dict[str, Any]]:
                 "review_id",
                 "phase",
                 "required_before_measurement",
+                "required_by_current_campaign",
                 "status",
                 "reviewers",
                 "minimum_reviewers",

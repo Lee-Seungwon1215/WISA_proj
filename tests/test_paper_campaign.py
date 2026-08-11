@@ -18,12 +18,12 @@ def test_frozen_paper_campaign_is_static_ready():
     assert report["component_count"] == 4
     assert report["timing_axes"] == 28
     assert report["target_executions"] == 26
-    assert report["physical_hosts_required"] == 2
+    assert report["physical_hosts_required"] == 1
 
 
-def test_one_host_or_automatic_promotion_fails_closed():
+def test_two_hosts_or_automatic_promotion_drift_fails_closed():
     data = deepcopy(load_manifest())
-    data["execution_policy"]["minimum_physical_hosts"] = 1
+    data["execution_policy"]["minimum_physical_hosts"] = 2
     data["promotion"]["automatic_corpus_mutation"] = True
     errors, _ = validate(data)
     assert any("minimum_physical_hosts" in error for error in errors)
@@ -67,7 +67,7 @@ def test_frozen_execution_commands_require_hash_locked_uv():
     assert "committed-corpus-refresh: execution command drift" in errors
 
     data = deepcopy(load_manifest())
-    data["analysis"]["blinded_command"] = data["analysis"]["blinded_command"].replace(
+    data["analysis"]["command"] = data["analysis"]["command"].replace(
         "uv run --frozen python", "python3", 1
     )
     errors, _ = validate(data)

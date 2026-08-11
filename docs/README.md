@@ -12,12 +12,12 @@ reproducing CT-KAT. Superseded scratchpads remain local-only.
 - `tutorial.md` — quick usage guide.
 - `calibration/` — pinned official-dudect backend synthetic A/A, injected
   effect curve, and same-trace parity artifact.
-- `measurement/` — frozen native timing-v2 campaign, bare-metal preflight,
+- `measurement/` — frozen paper-native-v6 single-host campaign, bare-metal preflight,
   resumable execution, artifact validation, and corpus-promotion boundary.
 - `paper/` — premeasurement outline, claim/evidence matrix, and generated
   corpus/ablation/campaign/review readiness tables.
-- `artifact/` — one-command profiles, two-host bundle template, hashes, and
-  blind-rerun checklist.
+- `artifact/` — current single-host bundle/template plus preserved two-host
+  profiles, hashes, and blind-rerun checklist.
 - `baselines/` — same-source/input official dudect, patched TIMECOP, and
   MicroWalk PinTracer adapters, complete capability matrix, and common result
   schema.

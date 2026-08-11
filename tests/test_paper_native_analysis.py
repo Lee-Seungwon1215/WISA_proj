@@ -89,6 +89,27 @@ def test_either_host_finding_remains_combined_risk():
     assert result["analysis_policy"]["secondary_can_override_primary"] is False
 
 
+def test_single_host_analysis_is_scoped_and_skips_fake_heterogeneity():
+    result = analysis.build_analysis(
+        [_host_axis("host-a", status="FAIL")],
+        expected_commit=COMMIT,
+        bundle_id="single-host-bundle",
+        input_records=[],
+        input_aggregate_sha256="0" * 64,
+        pairwise_families={},
+        expected_host_count=1,
+    )
+    assert result["kind"] == "paper-native-single-host-analysis"
+    axis = result["primary_axes"][0]
+    assert axis["combined_status"] == "risk-detected"
+    assert axis["risk_on_any_measured_host"] is True
+    assert "risk_on_either_host" not in axis
+    heterogeneity = axis["host_heterogeneity"]
+    assert heterogeneity["applicability"] == "not-applicable-single-host"
+    assert heterogeneity["i2_percent"] is None
+    assert heterogeneity["warning"] is False
+
+
 def test_student_t_and_holm_match_known_values():
     assert analysis._student_t_two_sided_p(2.570582, 5) == pytest.approx(0.05, abs=2e-7)
     rows = [

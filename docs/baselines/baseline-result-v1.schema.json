@@ -16,6 +16,7 @@
     "run_id",
     "run_kind",
     "human_review_gate",
+    "automated_premeasurement_gate",
     "tool_id",
     "host",
     "rows",
@@ -35,6 +36,7 @@
     "run_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
     "run_kind": {"enum": ["engineering", "pilot", "final"]},
     "human_review_gate": {"type": ["object", "null"]},
+    "automated_premeasurement_gate": {"type": ["object", "null"]},
     "tool_id": {
       "enum": ["official_dudect", "timecop", "microwalk_pin", "capability_probe"]
     },

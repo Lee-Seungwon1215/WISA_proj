@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed, deterministic analysis of the two-host native paper campaign.
+"""Fail-closed, deterministic analysis of the native paper campaign.
 
 The primary dudect decision is never replaced by the secondary analyses in
 this file.  In particular, a valid finding on either physical host keeps the
@@ -666,6 +666,7 @@ def load_host_axes(
     ledger: InputLedger,
     *,
     component_plans: Mapping[str, ComponentPlan] = COMPONENT_PLANS,
+    required_gate_kind: str = "human-premeasurement-review-gate",
 ) -> list[HostAxis]:
     host_id = host.get("id")
     cpu_model = host.get("cpu_model")
@@ -714,13 +715,25 @@ def load_host_axes(
             r"[0-9a-f]{32}", report["run_id"]
         ):
             raise AnalysisError(f"{host_id}.{component}: campaign run id is invalid")
-        human_gate = report.get("human_review_gate")
+        gate_field = (
+            "automated_premeasurement_gate"
+            if required_gate_kind == "automated-frozen-input-integrity-gate"
+            else "human_review_gate"
+        )
+        gate = report.get(gate_field)
         if (
-            not isinstance(human_gate, dict)
-            or human_gate.get("kind") != "human-premeasurement-review-gate"
-            or human_gate.get("ready") is not True
+            not isinstance(gate, dict)
+            or gate.get("kind") != required_gate_kind
+            or gate.get("ready") is not True
         ):
-            raise AnalysisError(f"{host_id}.{component}: human review gate is missing")
+            raise AnalysisError(f"{host_id}.{component}: required premeasurement gate is missing")
+        if required_gate_kind == "automated-frozen-input-integrity-gate" and (
+            gate.get("physical_host_count") != 1
+            or gate.get("independent_human_review") is not False
+            or gate.get("cross_host_reproducibility") is not False
+            or report.get("human_review_gate") is not None
+        ):
+            raise AnalysisError(f"{host_id}.{component}: single-host scope boundary drift")
         selected = report.get("selected_targets")
         target_index = report.get("targets")
         if set(selected or []) != set(manifest_targets) or not isinstance(target_index, dict):
@@ -1158,6 +1171,21 @@ def _correlation_p_value(
 
 
 def _host_heterogeneity(hosts: Sequence[HostAxis]) -> dict[str, Any]:
+    if len(hosts) == 1:
+        item = hosts[0]
+        return {
+            "effect_metric": "class1-minus-class0-mean-cycles-per-process-repeat",
+            "host_mean_effects": {
+                item.host_id: statistics.fmean(item.repeat_deltas),
+            },
+            "cochran_q": None,
+            "degrees_of_freedom": 0,
+            "q_p_value": None,
+            "i2_percent": None,
+            "warning": False,
+            "warning_reasons": [],
+            "applicability": "not-applicable-single-host",
+        }
     reasons: list[str] = []
     effects = [statistics.fmean(item.repeat_deltas) for item in hosts]
     variances = [
@@ -1190,6 +1218,7 @@ def _host_heterogeneity(hosts: Sequence[HostAxis]) -> dict[str, Any]:
         "i2_percent": i2,
         "warning": bool(reasons),
         "warning_reasons": reasons,
+        "applicability": "available",
     }
 
 
@@ -1270,12 +1299,21 @@ def build_analysis(
     input_records: Sequence[dict[str, Any]],
     input_aggregate_sha256: str,
     pairwise_families: Mapping[str, Sequence[AxisKey]] = PAIRWISE_FAMILIES,
+    expected_host_count: int = 2,
 ) -> dict[str, Any]:
     host_ids = sorted({item.host_id for item in observations})
     cpu_models = {item.cpu_model for item in observations}
     machine_ids = {item.machine_id_sha256 for item in observations}
-    if len(host_ids) != 2 or len(cpu_models) != 2 or len(machine_ids) != 2:
-        raise AnalysisError("analysis requires two distinct physical host and CPU identities")
+    if expected_host_count not in {1, 2}:
+        raise AnalysisError("analysis supports exactly one or two physical hosts")
+    if (
+        len(host_ids) != expected_host_count
+        or len(cpu_models) != expected_host_count
+        or len(machine_ids) != expected_host_count
+    ):
+        raise AnalysisError(
+            f"analysis requires {expected_host_count} distinct physical host and CPU identities"
+        )
     by_key: dict[AxisKey, list[HostAxis]] = {}
     for item in observations:
         by_key.setdefault(item.key, []).append(item)
@@ -1284,37 +1322,38 @@ def build_analysis(
     for key in sorted(by_key):
         hosts = sorted(by_key[key], key=lambda item: item.host_id)
         if [item.host_id for item in hosts] != host_ids:
-            raise AnalysisError(f"axis {key} does not contain exactly the two frozen hosts")
+            raise AnalysisError(f"axis {key} does not contain every frozen host")
         combined = _combined_status(hosts)
         heterogeneity = _host_heterogeneity(hosts)
-        primary.append(
-            {
-                "component": key.component,
-                "target": key.target,
-                "family": hosts[0].family,
-                "harness": key.harness,
-                "axis": hosts[0].axis,
-                "combined_status": combined,
-                "risk_on_either_host": combined == "risk-detected",
-                "host_results": [
-                    {
-                        "host_id": item.host_id,
-                        "cpu_model": item.cpu_model,
-                        "machine_id_sha256": item.machine_id_sha256,
-                        "raw_status": item.raw_status,
-                        "timing_validity": item.timing_validity,
-                        "timing_signal": item.timing_signal,
-                        "t_score": item.t_score,
-                        "abs_t_score": item.abs_t_score,
-                        "n0": item.n0,
-                        "n1": item.n1,
-                        "repeat_class_mean_deltas": list(item.repeat_deltas),
-                    }
-                    for item in hosts
-                ],
-                "host_heterogeneity": heterogeneity,
-            }
-        )
+        primary_record = {
+            "component": key.component,
+            "target": key.target,
+            "family": hosts[0].family,
+            "harness": key.harness,
+            "axis": hosts[0].axis,
+            "combined_status": combined,
+            "risk_on_any_measured_host": combined == "risk-detected",
+            "host_results": [
+                {
+                    "host_id": item.host_id,
+                    "cpu_model": item.cpu_model,
+                    "machine_id_sha256": item.machine_id_sha256,
+                    "raw_status": item.raw_status,
+                    "timing_validity": item.timing_validity,
+                    "timing_signal": item.timing_signal,
+                    "t_score": item.t_score,
+                    "abs_t_score": item.abs_t_score,
+                    "n0": item.n0,
+                    "n1": item.n1,
+                    "repeat_class_mean_deltas": list(item.repeat_deltas),
+                }
+                for item in hosts
+            ],
+            "host_heterogeneity": heterogeneity,
+        }
+        if expected_host_count == 2:
+            primary_record["risk_on_either_host"] = combined == "risk-detected"
+        primary.append(primary_record)
         for item in hosts:
             if item.signature is not None:
                 signatures.append(
@@ -1338,7 +1377,11 @@ def build_analysis(
     }
     return {
         "schema_version": "1.0",
-        "kind": "paper-native-two-host-analysis",
+        "kind": (
+            "paper-native-single-host-analysis"
+            if expected_host_count == 1
+            else "paper-native-two-host-analysis"
+        ),
         "bundle_id": bundle_id,
         "ctkat_commit": expected_commit,
         "measurement_commit": expected_commit,
@@ -1346,10 +1389,18 @@ def build_analysis(
         "input_aggregate_sha256": input_aggregate_sha256,
         "inputs": list(input_records),
         "analysis_policy": {
-            "primary_combination": "risk on either valid host remains risk",
+            "primary_combination": (
+                "single valid host result is retained without cross-host generalization"
+                if expected_host_count == 1
+                else "risk on either valid host remains risk"
+            ),
             "pairwise_method": "Welch two-sided test on per-process class-mean deltas",
             "multiplicity": "Holm within each preregistered family",
-            "heterogeneity": "Cochran Q and I2 across host mean effects",
+            "heterogeneity": (
+                "not applicable to the preregistered single-host scope"
+                if expected_host_count == 1
+                else "Cochran Q and I2 across host mean effects"
+            ),
             "heterogeneity_i2_warning_percent": HETEROGENEITY_I2_WARNING,
             "signature_association": (
                 "Pearson duration/output-length, plus within-class-centered Pearson"
@@ -1695,8 +1746,11 @@ def _signature_csv(analysis: Mapping[str, Any]) -> bytes:
 def _markdown(analysis: Mapping[str, Any]) -> bytes:
     summary = analysis["summary"]
     counts = summary["combined_status_counts"]
+    single_host = analysis.get("kind") == "paper-native-single-host-analysis"
     lines = [
-        "# Two-host native timing analysis",
+        "# Single-host native timing analysis"
+        if single_host
+        else "# Two-host native timing analysis",
         "",
         f"- Bundle: `{analysis['bundle_id']}`",
         f"- CT-KAT commit: `{analysis['ctkat_commit']}`",
@@ -1708,8 +1762,13 @@ def _markdown(analysis: Mapping[str, Any]) -> bytes:
         f"- No finding observed: {counts['no-finding-observed']}",
         f"- Heterogeneity warnings: {summary['heterogeneity_warning_count']}",
         "",
-        "A valid risk finding on either host remains `risk-detected`. Secondary",
-        "contrasts, heterogeneity, and output-length analyses never declassify it.",
+        (
+            "Each valid result is scoped to this physical host; it is not evidence of "
+            "cross-host reproducibility."
+            if single_host
+            else "A valid risk finding on either host remains `risk-detected`."
+        ),
+        "Secondary contrasts and output-length analyses never declassify a primary finding.",
         "",
         "## Primary axes",
         "",
@@ -1906,14 +1965,17 @@ def _tracked_worktree_dirty() -> bool:
 def _prepare_blinded_bundle(
     bundle_path: Path,
     verification_commit: str,
-) -> tuple[dict[str, Any], Path]:
-    """Validate measurement identity before the post-analysis unblinding exists."""
+) -> tuple[dict[str, Any], Path | None]:
+    """Validate a schema-v4 blinded bundle or schema-v5 named single-host bundle."""
     try:
         raw = yaml.safe_load(bundle_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise AnalysisError(f"measurement bundle is unreadable: {exc}") from exc
-    if not isinstance(raw, dict) or raw.get("schema_version") != 4:
-        raise AnalysisError("blinded preparation requires a schema-v4 measurement bundle")
+    if not isinstance(raw, dict) or raw.get("schema_version") not in {4, 5}:
+        raise AnalysisError("analysis requires a schema-v4 or schema-v5 measurement bundle")
+    single_host = raw.get("schema_version") == 5
+    if single_host and raw.get("evidence_scope") != "single-physical-host":
+        raise AnalysisError("schema-v5 bundle must declare single-physical-host scope")
     measurement_commit = raw.get("measurement_commit")
     if not isinstance(measurement_commit, str) or not re.fullmatch(
         r"[0-9a-f]{40}", measurement_commit
@@ -1955,8 +2017,11 @@ def _prepare_blinded_bundle(
     if not isinstance(bundle_id, str) or not bundle_id:
         raise AnalysisError("measurement bundle id is missing")
     hosts = raw.get("hosts")
-    if not isinstance(hosts, list) or len(hosts) != 2:
-        raise AnalysisError("measurement bundle requires exactly two hosts")
+    required_host_count = 1 if single_host else 2
+    if not isinstance(hosts, list) or len(hosts) != required_host_count:
+        raise AnalysisError(
+            f"measurement bundle requires exactly {required_host_count} physical host(s)"
+        )
     bundle_root = bundle_path.parent.resolve()
     records: list[dict[str, Any]] = []
     host_ids: set[str] = set()
@@ -2085,7 +2150,14 @@ def _prepare_blinded_bundle(
             baseline_report = _read_json(baseline, f"{host_id}.{tool_id}.baseline")
             baseline_run_id = baseline_report.get("run_id")
             baseline_host = baseline_report.get("host")
-            baseline_gate = baseline_report.get("human_review_gate")
+            baseline_gate = baseline_report.get(
+                "automated_premeasurement_gate" if single_host else "human_review_gate"
+            )
+            required_gate_kind = (
+                "automated-frozen-input-integrity-gate"
+                if single_host
+                else "human-premeasurement-review-gate"
+            )
             if (
                 baseline_report.get("ctkat_commit") != measurement_commit
                 or baseline_report.get("run_kind") != "final"
@@ -2097,8 +2169,17 @@ def _prepare_blinded_bundle(
                 or baseline_host.get("cpu_model") != cpu_model
                 or baseline_host.get("machine_id_sha256") != machine_id
                 or not isinstance(baseline_gate, dict)
-                or baseline_gate.get("kind") != "human-premeasurement-review-gate"
+                or baseline_gate.get("kind") != required_gate_kind
                 or baseline_gate.get("ready") is not True
+                or (
+                    single_host
+                    and (
+                        baseline_gate.get("physical_host_count") != 1
+                        or baseline_gate.get("independent_human_review") is not False
+                        or baseline_gate.get("cross_host_reproducibility") is not False
+                        or baseline_report.get("human_review_gate") is not None
+                    )
+                )
             ):
                 raise AnalysisError(f"{host_id}.{tool_id}: final baseline provenance failed")
             run_ids.add(baseline_run_id)
@@ -2115,7 +2196,7 @@ def _prepare_blinded_bundle(
             }
         )
     if len(compiler_contracts) != 1:
-        raise AnalysisError("two-host bundle must use one exact GCC version and executable hash")
+        raise AnalysisError("bundle must use one exact GCC version and executable hash")
     assembly = raw.get("assembly_evidence")
     if not isinstance(assembly, dict) or set(assembly) != {"mlkem_public_attribution"}:
         raise AnalysisError("bundle lacks the frozen ML-KEM assembly evidence")
@@ -2147,6 +2228,27 @@ def _prepare_blinded_bundle(
             "bundle": str(assembly_bundle),
         }
     }
+    if single_host:
+        named = raw.get("analysis")
+        if not isinstance(named, dict) or set(named) != {"scope", "output_root"}:
+            raise AnalysisError("schema-v5 bundle named analysis contract is malformed")
+        if named.get("scope") != "named-single-host":
+            raise AnalysisError("schema-v5 bundle analysis scope drift")
+        named_root = _safe_future_child(
+            bundle_root,
+            named.get("output_root"),
+            "analysis.output_root",
+        )
+        return {
+            "bundle_id": bundle_id,
+            "evidence_scope": "single-physical-host",
+            "measurement_commit": measurement_commit,
+            "verification_commit": verification_commit,
+            "named_analysis_root": str(named_root),
+            "hosts": records,
+            "assembly_evidence": assembly_record,
+        }, None
+
     blind = raw.get("blind_rerun")
     if not isinstance(blind, dict) or blind.get("scope") != "result-analyst-label-blinding":
         raise AnalysisError("bundle does not declare result-analyst label blinding")
@@ -2282,9 +2384,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument(
         "--output-mode",
-        choices=("blinded", "unblinded"),
+        choices=("named", "blinded", "unblinded"),
         required=True,
-        help="prepare opaque analyst results or verify parity and emit named results",
+        help="emit scoped named results, or run the legacy blinded two-host workflow",
     )
     parser.add_argument(
         "--blinding-record",
@@ -2317,6 +2419,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--verification-commit must be a lowercase 40-hex commit")
     if args.output_mode == "blinded" and args.blinded_output_root is not None:
         parser.error("--blinded-output-root applies only to unblinded mode")
+    if args.output_mode == "named" and (
+        args.blinding_record is not None or args.blinded_output_root is not None
+    ):
+        parser.error("named mode does not accept blinding arguments")
     try:
         current_commit = _git_head()
         if current_commit != args.verification_commit:
@@ -2326,13 +2432,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         if _tracked_worktree_dirty():
             raise AnalysisError("analysis checkout has tracked changes")
         bundle_path = args.bundle.resolve()
-        if args.output_mode == "blinded":
+        if args.output_mode in {"named", "blinded"}:
             bundle, record_path = _prepare_blinded_bundle(
                 bundle_path,
                 args.verification_commit,
             )
             _run_validators(_measurement_validation_commands(bundle))
-            declared_blinded_root = Path(str(bundle["blinded_analysis_root"]))
+            if args.output_mode == "named":
+                if bundle.get("evidence_scope") != "single-physical-host":
+                    raise AnalysisError("named mode requires a schema-v5 single-host bundle")
+                declared_named_root = Path(str(bundle["named_analysis_root"]))
+                declared_blinded_root = None
+            else:
+                if bundle.get("evidence_scope") == "single-physical-host":
+                    raise AnalysisError("blinded mode requires the schema-v4 two-host bundle")
+                declared_blinded_root = Path(str(bundle["blinded_analysis_root"]))
         else:
             from scripts.reproduce_artifact import validate_bundle
 
@@ -2355,11 +2469,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "blind_rerun.blinded_analysis_root",
                 directory=True,
             )
-        record_path = _select_blinding_record(
-            record_path,
-            args.blinding_record,
-            allow_external_draft=args.output_mode == "blinded",
-        )
+        if args.output_mode != "named":
+            if record_path is None:
+                raise AnalysisError("blinded workflow lost its unblinding record path")
+            record_path = _select_blinding_record(
+                record_path,
+                args.blinding_record,
+                allow_external_draft=args.output_mode == "blinded",
+            )
         measurement_commit = bundle.get("measurement_commit")
         if not isinstance(measurement_commit, str) or not re.fullmatch(
             r"[0-9a-f]{40}", measurement_commit
@@ -2369,8 +2486,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         ledger.add("measurement_bundle", bundle_path)
         _record_outer_inputs(ledger, bundle["hosts"], bundle["assembly_evidence"])
         observations: list[HostAxis] = []
+        single_host = bundle.get("evidence_scope") == "single-physical-host"
         for host in bundle["hosts"]:
-            observations.extend(load_host_axes(host, measurement_commit, ledger))
+            observations.extend(
+                load_host_axes(
+                    host,
+                    measurement_commit,
+                    ledger,
+                    required_gate_kind=(
+                        "automated-frozen-input-integrity-gate"
+                        if single_host
+                        else "human-premeasurement-review-gate"
+                    ),
+                )
+            )
         named = build_analysis(
             observations,
             expected_commit=measurement_commit,
@@ -2378,14 +2507,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             bundle_id=str(bundle.get("bundle_id") or ""),
             input_records=ledger.records(),
             input_aggregate_sha256=ledger.aggregate_sha256(),
+            expected_host_count=1 if single_host else 2,
         )
-        expected_pairs = {(item.key.component, item.key.target) for item in observations}
-        blinding, record = load_blinding_map(
-            record_path,
-            expected_bundle_id=str(bundle.get("bundle_id") or ""),
-            expected_pairs=expected_pairs,
-        )
-        blinded = blind_analysis(named, blinding)
+        if args.output_mode == "named":
+            if args.output_root.resolve() != declared_named_root.resolve():
+                raise AnalysisError(
+                    "named --output-root differs from the path frozen in the bundle"
+                )
+            write_outputs(args.output_root, named, check=args.check_output)
+            record_path = None
+        else:
+            assert record_path is not None
+            expected_pairs = {(item.key.component, item.key.target) for item in observations}
+            blinding, record = load_blinding_map(
+                record_path,
+                expected_bundle_id=str(bundle.get("bundle_id") or ""),
+                expected_pairs=expected_pairs,
+            )
+            blinded = blind_analysis(named, blinding)
         if args.output_mode == "blinded":
             if args.output_root.resolve() != declared_blinded_root.resolve():
                 raise AnalysisError(
@@ -2397,16 +2536,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 check=args.check_output,
             )
             print(f"[paper-analysis] blinded manifest SHA-256: {manifest_hash}")
-        else:
+        elif args.output_mode == "unblinded":
             expected_manifest = record.get("blinded_analysis_manifest_sha256")
             if not isinstance(expected_manifest, str):
                 raise AnalysisError("unblinding record lacks the blinded manifest hash")
             blinded_output_root = (
                 args.blinded_output_root.resolve()
                 if args.blinded_output_root is not None
-                else declared_blinded_root.resolve()
+                else declared_blinded_root.resolve()  # type: ignore[union-attr]
             )
-            if blinded_output_root != declared_blinded_root.resolve():
+            if blinded_output_root != declared_blinded_root.resolve():  # type: ignore[union-attr]
                 raise AnalysisError(
                     "--blinded-output-root differs from the path frozen in the bundle"
                 )
@@ -2427,8 +2566,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     verb = "verified" if args.check_output else "wrote"
     print(
-        f"[paper-analysis] OK: {verb} deterministic two-host analysis at "
-        f"{args.output_root.resolve()}"
+        f"[paper-analysis] OK: {verb} deterministic native analysis at {args.output_root.resolve()}"
     )
     return 0
 

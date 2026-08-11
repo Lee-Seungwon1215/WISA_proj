@@ -142,19 +142,19 @@ def test_committed_corpus_v3_changes_only_the_mixed_mlkem_axis():
     assert new_core["manifest"] == "docs/measurement/native_timing_v3_campaign.yaml"
 
 
-def test_paper_v5_replaces_only_the_confounded_kyberslash_operand_campaign():
-    paper_v4 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v4.yaml").read_text())
-    paper_v5 = load_manifest()
-    assert paper_v5["campaign_id"] == "ctkat-paper-native-v5"
-    old_components = {item["id"]: item for item in paper_v4["components"]}
-    new_components = {item["id"]: item for item in paper_v5["components"]}
+def test_paper_v6_keeps_v5_measurement_scope_and_changes_execution_policy():
+    paper_v5 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v5.yaml").read_text())
+    paper_v6 = load_manifest()
+    assert paper_v6["campaign_id"] == "ctkat-paper-native-v6-single-host"
+    assert paper_v6["execution_policy"]["minimum_physical_hosts"] == 1
+    assert paper_v6["execution_policy"]["independent_human_review_required"] is False
+    old_components = {item["id"]: item for item in paper_v5["components"]}
+    new_components = {item["id"]: item for item in paper_v6["components"]}
     assert set(old_components) == set(new_components)
     for component_id in old_components:
-        if component_id == "kyberslash-contrast":
-            assert old_components[component_id]["manifest"].endswith("kyberslash_native_v2.yaml")
-            assert new_components[component_id]["manifest"].endswith("kyberslash_native_v3.yaml")
-        else:
-            assert old_components[component_id] == new_components[component_id]
+        assert old_components[component_id]["manifest"] == new_components[component_id]["manifest"]
+        assert old_components[component_id]["purpose"] == new_components[component_id]["purpose"]
+        assert "--final-gate single-host" in new_components[component_id]["command"]
 
 
 def test_timing_adapters_use_seeded_interpose_not_fixed_test_vectors():

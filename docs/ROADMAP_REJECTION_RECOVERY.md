@@ -1008,13 +1008,13 @@ M5 종료 조건:
 9. ~~**독립 upstream source/build corpus 확장**~~ — 완료 (`0.10.0a1`):
    mlkem-native → mldsa-native → OpenSSL 3.5.7 production integration,
    240 build cell/24 upstream KAT/120 equivalence pair CI gate
-10. ~~**측정 전 paper campaign/artifact 동결**~~ — v5로 갱신 완료:
+10. ~~**측정 전 paper campaign/artifact 동결**~~ — v6 single-host로 갱신 완료:
     4 component/26 target execution/28 axis, binary/assembly evidence,
-    automated engineering audits, ablation, two-person packets,
-    preregistration, generated tables, blind rerun, lock/pin, one-command gate
-11. premeasurement 사람 리뷰 뒤 두 host에서 paper v5의 core v3,
-    KyberSlash v3, Falcon v2, diverse v2 component와 same-corpus 세 도구를
-    실행하고, postmeasurement 2인 review 뒤 별도 commit으로 재분류
+    automated frozen-input gate, ablation, preregistration, generated tables,
+    named deterministic analysis, lock/pin, one-command matrix
+11. 한 physical host에서 paper v6의 core v3, KyberSlash v3, Falcon v2,
+    diverse v2 component와 same-corpus 세 도구를 실행하고 schema-v5 bundle과
+    host-scoped 결과표를 생성. 두 번째 host/2인 review는 follow-up이며 현 gate 아님
 
 첫 구현 batch의 완료 기준:
 

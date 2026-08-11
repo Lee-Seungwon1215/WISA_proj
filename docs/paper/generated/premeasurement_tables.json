@@ -112,7 +112,7 @@
       "open_gates": 2,
       "prohibited_wording": "full attack or key recovery reproduced",
       "scope": "ML-KEM/Kyber-768 frozen variants",
-      "status": "pending-independent-review"
+      "status": "pending-physical-measurement"
     },
     {
       "claim_id": "falcon-comparator",
@@ -120,7 +120,7 @@
       "open_gates": 3,
       "prohibited_wording": "FIPS 206 conformance",
       "scope": "Falcon/FN-DSA 512 and 1024 comparators",
-      "status": "pending-independent-review"
+      "status": "pending-physical-measurement"
     },
     {
       "claim_id": "diverse-upstream-builds",
@@ -133,7 +133,7 @@
     {
       "claim_id": "native-timing-results",
       "evidence_items": 10,
-      "open_gates": 4,
+      "open_gates": 3,
       "prohibited_wording": "valid-tuple signal means secret-key leakage; no finding means proven constant-time",
       "scope": "28 predeclared timing axes plus all three same-corpus baseline tools",
       "status": "pending-physical-measurement"
@@ -148,7 +148,7 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v5",
+    "campaign_id": "ctkat-paper-native-v6-single-host",
     "component_count": 4,
     "components": [
       {
@@ -189,8 +189,8 @@
       }
     ],
     "errors": [],
-    "physical_hosts_required": 2,
-    "protocol_rows_all_hosts": 16440000,
+    "physical_hosts_required": 1,
+    "protocol_rows_all_hosts": 8220000,
     "protocol_rows_per_host": 8220000,
     "status": "static-plan-valid",
     "target_executions": 26,
@@ -203,6 +203,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-mlkem-public-attribution-v2",
         "reviewers": 0,
         "status": "pending"
@@ -211,6 +212,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-mlkem-valid-tuple-v1",
         "reviewers": 0,
         "status": "pending"
@@ -219,6 +221,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-signature-declassification-v2",
         "reviewers": 0,
         "status": "pending"
@@ -227,6 +230,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-kyberslash-ground-truth-v2",
         "reviewers": 0,
         "status": "pending"
@@ -235,6 +239,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-falcon-comparator-v2",
         "reviewers": 0,
         "status": "pending"
@@ -243,6 +248,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-same-corpus-baseline-v2",
         "reviewers": 0,
         "status": "pending"
@@ -251,6 +257,7 @@
         "minimum_reviewers": 2,
         "phase": "pre-measurement",
         "required_before_measurement": "true",
+        "required_by_current_campaign": "false",
         "review_id": "paper-diverse-upstreams-v2",
         "reviewers": 0,
         "status": "pending"
@@ -259,6 +266,7 @@
         "minimum_reviewers": 2,
         "phase": "post-measurement",
         "required_before_measurement": "false",
+        "required_by_current_campaign": "false",
         "review_id": "paper-native-promotion-v2",
         "reviewers": 0,
         "status": "pending"
@@ -266,6 +274,7 @@
     ],
     "paper_ready": false,
     "pre_measurement_ready": false,
+    "required_by_current_campaign": false,
     "status_counts": {
       "pending": 8
     }

@@ -21,6 +21,50 @@ complete command stdout/stderr, tracked-file hashes, commit/worktree metadata,
 and `SHA256SUMS`. Every profile requires a clean committed worktree so the
 source manifest and automated-audit provenance cannot diverge.
 
+## Current v6 single-host result profile
+
+The current paper campaign is `paper_native_campaign_v6.yaml`. It supersedes
+the two-host/reviewer execution gate below without deleting that stronger
+historical workflow. Render the seven commands for the one available host:
+
+```bash
+uv run --frozen python scripts/check_paper_campaign.py \
+  --print-commands \
+  --host-id host-a \
+  --cpu 2 \
+  --timecop-prefix /home/test/.local/ctkat/timecop
+```
+
+Every rendered final command carries `--final-gate single-host`. After all four
+components, three baseline tools, and ML-KEM assembly evidence complete, hash
+the one host tree and build the schema-v5 bundle without hand-editing paths:
+
+```bash
+uv run --frozen python scripts/build_single_host_measurement_bundle.py \
+  --host-root measurement_runs/host-a \
+  --host-id host-a \
+  --output measurement_runs/measurement_bundle.yaml \
+  --analysis-output measurement_runs/analysis/named
+```
+
+The layout contract is also documented in
+`measurement_bundle_single_host_template.yaml`. Run the deterministic named
+analysis fixed in `PAPER_NATIVE_ANALYSIS_V2.md`:
+
+```bash
+uv run --frozen python scripts/analyze_paper_native_results.py \
+  --bundle /path/to/measurement_bundle.yaml \
+  --verification-commit MEASUREMENT-COMMIT \
+  --output-mode named \
+  --output-root /path/to/analysis/named
+```
+
+The v6 bundle and output are paper-usable only as single-host evidence. They do
+not claim host replication, analyst blinding, independent human review, or
+automatic curated-corpus declassification.
+
+## Superseded v5 two-host/reviewer profile
+
 This preparation profile deliberately succeeds when well-formed review packets
 are still pending, while recording `pre_measurement_ready=false`. After six
 packets have real two-person sign-off, the execution gate must pass before any

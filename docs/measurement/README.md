@@ -1,8 +1,10 @@
 # Native timing campaign
 
-논문용 최상위 동결본은 `paper_native_campaign_v5.yaml`이다. 기존 corpus refresh
+논문용 최상위 동결본은 `paper_native_campaign_v6.yaml`이다. 기존 corpus refresh
 외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
-두 개의 서로 다른 physical x86_64 CPU model에서 같은 commit을 실행해야 한다.
+한 대의 physical x86_64 Linux host에서 같은 clean commit으로 전부 실행한다.
+결과는 해당 host 범위에서만 승격하며 cross-host 재현성과 독립 사람 리뷰를
+주장하지 않는다. 기존 v5 two-host 계획은 stronger historical profile로 보존한다.
 
 ```bash
 uv run python scripts/check_paper_campaign.py
@@ -51,13 +53,11 @@ ML-KEM `sk` machine label은 secret key와 matching public ciphertext를 함께
 `kem_dec`은 유지하되 machine axis를 `valid_tuple`로 바꾸고 fail-closed
 input contract를 적용한다. v2 engineering trace는 역사 calibration이며 v3
 final에 재사용·resume·relabel할 수 없다. 자동화 검증을
-마친 clean commit에서는 engineering/pilot을 실행할 수 있다. 논문 승격용 final은
-별도의 사람 리뷰와 두 번째 물리 호스트가 있어야 한다.
-리뷰 서명은 자기 자신을 포함하는 git commit을 가리킬 수 없으므로 reviewer는
-동결된 source commit을 기록하고, 승인 packet은 그 뒤의 review-only commit에
-저장한다. final runner는 두 commit 사이의 `ctkat/`, `scripts/`, `examples/`,
-measurement/baseline/ground-truth manifest, build lock drift가 0인지 다시 검사하고
-현재 packet hash까지 campaign report에 묶는다.
+마친 clean commit에서는 engineering/pilot을 실행할 수 있다. v6 논문 승격용
+final은 `--final-gate single-host`를 명시한다. runner는 v6 plan,
+preregistration, analysis contract, 네 component manifest, baseline manifest,
+실행/분석 코드와 lock file의 SHA-256을 campaign report에 묶는다. 이 gate는
+input integrity 검증이며 사람 리뷰라고 부르지 않는다.
 
 ## 지금 확인 가능한 것
 
@@ -93,7 +93,7 @@ bare-metal x86_64 Linux에서 repository를 clean checkout한 뒤:
 uv run python scripts/run_native_timing_campaign.py --preflight --cpu 2
 
 uv run python scripts/run_native_timing_campaign.py \
-  --execute --run-kind engineering \
+  --execute --run-kind final --final-gate single-host \
   --cpu 2 \
   --output-root measurement_runs/corpus-native-timing-v3
 ```
@@ -122,10 +122,9 @@ governor, invariant TSC, RDTSCP, exact CPU/machine/boot identity도 기록한다
 final은 performance governor와 timing capability를 hard gate로 요구한다. 실제
 timing-harness-v2의 environment/control gate도 별도로 적용된다.
 `machine-id` hash와 VM/container probe는 artifact 내부 일관성 검사이지 TPM quote나
-물리 장비 소유 증명이 아니다. 따라서 bundle의 `physical: true`는 운영자
-attestation이고, 측정 후 두 사람의 native-promotion 리뷰가 두 장비의 실제 분리와
-host metadata를 확인해야 한다. 소프트웨어 checker는 이 경계를 물리 증명이라고
-구라치지 않는다.
+물리 장비 소유 증명이 아니다. 따라서 bundle의 `physical: true`는 host probe와
+운영 환경 기록이지 TPM 기반 원격 attestation은 아니다. 소프트웨어 checker는
+이 경계를 물리 소유 증명이나 독립 검증이라고 구라치지 않는다.
 `--allow-dirty`와 `--allow-virtualized`는 engineering 디버깅용 실행만 허용한다.
 그 override가 붙은 run은 control이 우연히 전부 통과해도
 `paper_eligible=false`라서 promotion-ready가 될 수 없다.
