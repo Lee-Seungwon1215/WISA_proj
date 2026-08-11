@@ -1085,6 +1085,7 @@ def _v2_validity_fixture():
                 {"enough_measurements": True},
             ],
             "randomness_policies_observed": ["seeded-interpose"],
+            "class_setup_contracts_observed": ["dual-read-masked-select-v4"],
         },
     )
     harness = DudectHarnessConfig(name="kem", template="kem", header="api.h")

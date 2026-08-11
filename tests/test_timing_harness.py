@@ -203,6 +203,7 @@ def _kem_ctx(**overrides):
         "warmup": 10,
         "seed": 0xC0FFEE,
         "clock": "monotonic",
+        "class_setup_contract": "dual-read-masked-select-v4",
         "rejection_oracle_function": "TEST_kyber_shake256_rkprf",
         "rejection_seed_offset": "TEST_CRYPTO_SECRETKEYBYTES - 32",
     }
@@ -322,7 +323,9 @@ def test_kem_ct_leak_measured_dec_uses_sk_fixed():
     # content, not to sk-side caching.
     out = render_timing_harness("kem", _kem_ctx(leak_target="ct"))
     assert "crypto_kem_dec(ss_work, ct_work, sk_work)" in out
-    assert "memcpy(sk_work, src_sk, CTKAT_SK_BYTES)" in out
+    assert "ctkat_select_bytes(\n            sk_work" in out
+    assert "CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES)" in out
+    assert "CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES)" in out
 
 
 # --- Bundle J (R1 Option B): randombytes weak interpose ----------------
@@ -435,7 +438,7 @@ def test_kem_sk_leak_warmup_uses_valid_ct(_kem_ctx=_kem_ctx):
 
 
 def test_kem_has_no_per_iteration_warm_or_keygen(_kem_ctx=_kem_ctx):
-    """v2 setup is copies only; target executes once in a target iteration."""
+    """v4 setup is masked selection only; target executes once per iteration."""
     for mode in ("sk", "valid_tuple", "ct", "fo"):
         out = render_timing_harness("kem", _kem_ctx(leak_target=mode))
         code = _strip_comments(out)
@@ -443,8 +446,9 @@ def test_kem_has_no_per_iteration_warm_or_keygen(_kem_ctx=_kem_ctx):
         measurement = code[code.index("i < options.measurements") :]
         assert "crypto_kem_keypair" not in measurement
         assert "crypto_kem_enc" not in measurement
-        assert "memcpy(sk_work, src_sk" in measurement
-        assert "memcpy(ct_work, src_ct" in measurement
+        assert "ctkat_select_bytes(\n            sk_work" in measurement
+        assert "ctkat_select_bytes(\n            ct_work" in measurement
+        assert "data_class ? CTKAT_SLOT" not in measurement
 
 
 def test_kem_ct_leak_warmup_uses_fixed_valid_ct(_kem_ctx=_kem_ctx):
@@ -484,11 +488,21 @@ def test_kem_v2_controls_common_buffers_and_aux_filter():
     assert "CTKAT_MODE_AA" in out
     assert "CTKAT_MODE_PLACEBO" in out
     assert "CTKAT_MODE_POSITIVE" in out
-    assert "memcpy(sk_work, src_sk, CTKAT_SK_BYTES)" in out
-    assert "memcpy(ct_work, src_ct, CTKAT_CT_BYTES)" in out
+    assert "ctkat_select_bytes(\n            sk_work" in out
+    assert "ctkat_select_bytes(\n            ct_work" in out
+    assert "class_setup_contract=dual-read-masked-select-v4" in out
     assert "__rdtscp(&local_aux)" in out
     assert "aux0 != aux1" in out
     assert "cpu-migration" in out
+
+
+def test_masked_class_materialization_reads_both_slots_without_a_label_branch():
+    out = render_timing_harness("kem", _kem_ctx())
+    helper = out[out.index("static void ctkat_select_bytes") : out.index("/* If a strong")]
+    assert "class0[i]" in helper
+    assert "class1[i]" in helper
+    assert "volatile uint8_t mask" in helper
+    assert "?" not in helper
 
 
 # --- Signature template (CP D) -----------------------------------------------
@@ -503,6 +517,7 @@ def _sign_ctx(**overrides):
         "warmup": 10,
         "seed": 0xC0FFEE,
         "clock": "monotonic",
+        "class_setup_contract": "dual-read-masked-select-v4",
     }
     ctx.update(overrides)
     return ctx
@@ -546,8 +561,9 @@ def test_sign_pool_setup_not_per_iteration_keygen():
     out = render_timing_harness("sign", _sign_ctx())
     measurement = out[out.index("i < options.measurements") :]
     assert "crypto_sign_keypair" not in measurement
-    assert "memcpy(sk_work, src_sk, CTKAT_SK_BYTES)" in measurement
-    assert "memcpy(msg_work, src_msg, CTKAT_SIGN_MSG_LEN)" in measurement
+    assert "ctkat_select_bytes(\n            sk_work" in measurement
+    assert "ctkat_select_bytes(\n            msg_work" in measurement
+    assert "data_class ? CTKAT_SLOT" not in measurement
 
 
 def test_sign_placebo_normalizes_the_common_work_buffers():

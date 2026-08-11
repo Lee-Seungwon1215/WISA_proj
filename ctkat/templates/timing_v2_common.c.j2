@@ -75,6 +75,28 @@ static void ctkat_rand_bytes(uint8_t *buf, size_t len) {
     }
 }
 
+/* Materialize either class into one shared work buffer without a
+ * class-dependent branch or source-address choice immediately before t0.
+ * Reading both slots and using a volatile mask also gives the branch predictor
+ * the same final loop history for both labels. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static void ctkat_select_bytes(
+    uint8_t *out,
+    const uint8_t *class0,
+    const uint8_t *class1,
+    size_t len,
+    unsigned int clazz
+) {
+    volatile uint8_t mask = (uint8_t)(0U - (clazz & 1U));
+    for (size_t i = 0; i < len; i++) {
+        uint8_t left = class0[i];
+        uint8_t right = class1[i];
+        out[i] = (uint8_t)(left ^ ((left ^ right) & mask));
+    }
+}
+
 /* If a strong target randombytes symbol is linked, it replaces this weak
  * interpose and the counter remains zero.  That fact is emitted in the
  * runtime manifest instead of falsely claiming seeded randomness. */
@@ -247,7 +269,8 @@ static void ctkat_emit_metadata(
     fprintf(
         stderr,
         "CTKAT-HARNESS-META protocol=timing-harness-v2 mode=%s "
-        "randomness=%s setup_rng_calls=%llu measured_rng_calls=%llu "
+        "randomness=%s class_setup_contract={{ class_setup_contract | default('unreported') }} "
+        "setup_rng_calls=%llu measured_rng_calls=%llu "
         "pool_size=%u effect_ticks=%llu measurements=%zu\n",
         ctkat_mode_name(options->mode),
         randomness,

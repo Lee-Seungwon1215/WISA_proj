@@ -222,15 +222,21 @@ int main(int argc, char **argv) {
 
     for (size_t i = 0; i < CTKAT_WARMUP; i++) {
         size_t p = i % CTKAT_POOL_SIZE;
-        int side = (int)(i & 1U);
-        const uint8_t *src_sk =
-            side ? CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES)
-                 : CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES);
-        const uint8_t *src_msg =
-            side ? CTKAT_SLOT(pool1_msg, p, CTKAT_SIGN_MSG_LEN)
-                 : CTKAT_SLOT(pool0_msg, p, CTKAT_SIGN_MSG_LEN);
-        memcpy(sk_work, src_sk, CTKAT_SK_BYTES);
-        memcpy(msg_work, src_msg, CTKAT_SIGN_MSG_LEN);
+        unsigned int side = (unsigned int)(i & 1U);
+        ctkat_select_bytes(
+            sk_work,
+            CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SK_BYTES,
+            side
+        );
+        ctkat_select_bytes(
+            msg_work,
+            CTKAT_SLOT(pool0_msg, p, CTKAT_SIGN_MSG_LEN),
+            CTKAT_SLOT(pool1_msg, p, CTKAT_SIGN_MSG_LEN),
+            CTKAT_SIGN_MSG_LEN,
+            side
+        );
         siglen = 0;
         int warmup_rc = {{ prefix }}crypto_sign_signature(
             sig_work, &siglen, msg_work, sizeof(msg_work), sk_work
@@ -257,18 +263,23 @@ int main(int argc, char **argv) {
             (options.mode == CTKAT_MODE_TARGET || options.mode == CTKAT_MODE_PLACEBO)
                 ? cls
                 : 0;
-        const uint8_t *src_sk =
-            data_class ? CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES)
-                       : CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES);
-        const uint8_t *src_msg =
-            data_class ? CTKAT_SLOT(pool1_msg, p, CTKAT_SIGN_MSG_LEN)
-                       : CTKAT_SLOT(pool0_msg, p, CTKAT_SIGN_MSG_LEN);
-
-        memcpy(sk_work, src_sk, CTKAT_SK_BYTES);
-        memcpy(msg_work, src_msg, CTKAT_SIGN_MSG_LEN);
+        ctkat_select_bytes(
+            sk_work,
+            CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SK_BYTES,
+            (unsigned int)data_class
+        );
+        ctkat_select_bytes(
+            msg_work,
+            CTKAT_SLOT(pool0_msg, p, CTKAT_SIGN_MSG_LEN),
+            CTKAT_SLOT(pool1_msg, p, CTKAT_SIGN_MSG_LEN),
+            CTKAT_SIGN_MSG_LEN,
+            (unsigned int)data_class
+        );
         if (options.mode == CTKAT_MODE_PLACEBO) {
-            /* Keep class-dependent setup but normalize the measured inputs in
-             * the same work buffers used by every other protocol mode. */
+            /* Keep branchless class setup but normalize the measured inputs
+             * in the same work buffers used by every other protocol mode. */
             memcpy(sk_work, sk_fixed, CTKAT_SK_BYTES);
             memcpy(msg_work, msg_fixed, CTKAT_SIGN_MSG_LEN);
         }

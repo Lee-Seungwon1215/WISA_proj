@@ -8,8 +8,8 @@
  *   - every timed decapsulation uses the same fixed secret-key address;
 {% else -%}
  *   - both class pools are generated before measurement;
- *   - every iteration copies the selected tuple into the same-address work
- *     buffers with identical memcpy sizes;
+ *   - every iteration reads both tuple slots and branchlessly materializes
+ *     one class into the same-address work buffers;
 {% endif -%}
  *   - the timed region contains only decapsulation (plus a requested positive
  *     control delay);
@@ -356,15 +356,21 @@ int main(int argc, char **argv) {
     /* Symmetric burn-in over both pools; no per-iteration keygen/warm call. */
     for (size_t i = 0; i < CTKAT_WARMUP; i++) {
         size_t p = i % CTKAT_POOL_SIZE;
-        int side = (int)(i & 1U);
-        const uint8_t *src_sk =
-            side ? CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES)
-                 : CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES);
-        const uint8_t *src_ct =
-            side ? CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)
-                 : CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES);
-        memcpy(sk_work, src_sk, CTKAT_SK_BYTES);
-        memcpy(ct_work, src_ct, CTKAT_CT_BYTES);
+        unsigned int side = (unsigned int)(i & 1U);
+        ctkat_select_bytes(
+            sk_work,
+            CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SK_BYTES,
+            side
+        );
+        ctkat_select_bytes(
+            ct_work,
+            CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES),
+            CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES),
+            CTKAT_CT_BYTES,
+            side
+        );
         (void){{ prefix }}crypto_kem_dec(ss_work, ct_work, sk_work);
     }
 {% endif -%}
@@ -407,18 +413,25 @@ int main(int argc, char **argv) {
          * contract: prior work-buffer stores must retire before t0. */
         _mm_mfence();
 {% else -%}
-        const uint8_t *src_sk =
-            data_class ? CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES)
-                       : CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES);
-        const uint8_t *src_ct =
-            data_class ? CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES)
-                       : CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES);
-
-        /* Same instructions, byte counts, and destination addresses. */
-        memcpy(sk_work, src_sk, CTKAT_SK_BYTES);
-        memcpy(ct_work, src_ct, CTKAT_CT_BYTES);
+        /* Read both class slots and select with a mask.  This removes the
+         * pre-t0 class branch/source-address predictor state that a very short
+         * negative control can otherwise expose as a false target signal. */
+        ctkat_select_bytes(
+            sk_work,
+            CTKAT_SLOT(pool0_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SLOT(pool1_sk, p, CTKAT_SK_BYTES),
+            CTKAT_SK_BYTES,
+            (unsigned int)data_class
+        );
+        ctkat_select_bytes(
+            ct_work,
+            CTKAT_SLOT(pool0_ct, p, CTKAT_CT_BYTES),
+            CTKAT_SLOT(pool1_ct, p, CTKAT_CT_BYTES),
+            CTKAT_CT_BYTES,
+            (unsigned int)data_class
+        );
         if (options.mode == CTKAT_MODE_PLACEBO) {
-            /* Preserve the class-dependent setup above, then normalize the
+            /* Preserve the branchless target setup above, then normalize the
              * target inputs without changing its work-buffer addresses. */
             memcpy(sk_work, sk_fixed, CTKAT_SK_BYTES);
             memcpy(ct_work, ct_fixed, CTKAT_CT_BYTES);

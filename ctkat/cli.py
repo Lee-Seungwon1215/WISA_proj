@@ -109,6 +109,7 @@ app = typer.Typer(help="CT-KAT: KAT + Valgrind based constant-time check framewo
 console = Console()
 _CALIBRATION_SEED_DOMAIN = 0x9E3779B97F4A7C15
 _UINT64_MASK = 0xFFFFFFFFFFFFFFFF
+_MASKED_CLASS_SETUP_CONTRACT = "dual-read-masked-select-v4"
 
 
 def _fmt(x: Optional[float], digits: int = 3) -> str:
@@ -765,6 +766,12 @@ def _dudect_context(
                 "rejection_seed_offset": h.rejection_seed_offset,
                 "randombytes_header": h.randombytes_header,
                 "randombytes_return": h.randombytes_return,
+                "class_setup_contract": (
+                    "same-address-branchless-v3"
+                    if h.leak_target == "operand_bin"
+                    and h.operand_setup_contract == "same-address-branchless-v3"
+                    else _MASKED_CLASS_SETUP_CONTRACT
+                ),
             }
         )
     elif h.template == "sign":
@@ -782,6 +789,7 @@ def _dudect_context(
                 "signature_length_contract": h.signature_length_contract,
                 "randombytes_header": h.randombytes_header,
                 "randombytes_return": h.randombytes_return,
+                "class_setup_contract": _MASKED_CLASS_SETUP_CONTRACT,
             }
         )
     else:  # generic
@@ -1377,6 +1385,12 @@ def _run_v2_harness_protocol(
             if trace.role == "target"
         }
     )
+    class_setup_contracts = sorted(
+        {
+            trace.samples.runtime_metadata.get("class_setup_contract", "unreported")
+            for trace in traces
+        }
+    )
     overall.harness_protocol = {
         "schema_version": "1.0",
         "protocol": "timing-harness-v2",
@@ -1420,6 +1434,7 @@ def _run_v2_harness_protocol(
             payload["positive_detection_effect_at_target_power"] for payload in aa_payloads
         ],
         "randomness_policies_observed": randomness,
+        "class_setup_contracts_observed": class_setup_contracts,
         "output_length": {
             "observed": bool(output_lengths),
             "min": min(output_lengths) if output_lengths else None,
@@ -1650,6 +1665,13 @@ def _set_timing_validity(
         )
     elif harness.template in {"kem", "sign"}:
         protocol = result.harness_protocol
+        expected_class_setup_contract = (
+            "same-address-branchless-v3"
+            if harness.template == "kem"
+            and harness.leak_target == "operand_bin"
+            and harness.operand_setup_contract == "same-address-branchless-v3"
+            else _MASKED_CLASS_SETUP_CONTRACT
+        )
         valid_tuple_errors = (
             validate_valid_tuple_protocol(protocol, label="harness_protocol")
             if harness.template == "kem" and harness.leak_target == "valid_tuple"
@@ -1680,6 +1702,11 @@ def _set_timing_validity(
             result.timing_validity = "error"
             interpretation_reasons.append(
                 "pre-measurement source/binary/compiler/config build seal is missing or failed"
+            )
+        elif protocol.get("class_setup_contracts_observed") != [expected_class_setup_contract]:
+            result.timing_validity = "confounded"
+            interpretation_reasons.append(
+                "class input setup did not preserve the frozen branchless shared-buffer contract"
             )
         elif protocol.get("process_repeats_observed", 0) < protocol.get(
             "process_repeats_required", 3
