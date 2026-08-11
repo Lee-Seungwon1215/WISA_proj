@@ -48,7 +48,7 @@ static int trivial_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk) {
 #define CTKAT_DEFINE_DEC(NAME, ENABLE_LEAK)                                      \
     int NAME(uint8_t *ss, const uint8_t *ct, const uint8_t *sk) {                \
         volatile uint32_t x = UINT32_C(1);                                       \
-        if ((ENABLE_LEAK) && ct[0] >= UINT8_C(0x80)) {                           \
+        if (!(ENABLE_LEAK) || ct[0] >= UINT8_C(0x80)) {                          \
             for (uint32_t i = 0; i < UINT32_C(10000); i++) {                     \
                 x = x * UINT32_C(17) + UINT32_C(3);                              \
             }                                                                    \

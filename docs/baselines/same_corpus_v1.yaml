@@ -22,7 +22,7 @@ source_snapshot:
     sha256: 3b0c86fad24a632ac115b95dd29c86a406f63c66a80511eca150c675888f87c6
   implementation:
     path: examples/toy_kem_ct_leak/src/toy_kem.c
-    sha256: 2863ef0658f61624e2ee9ef36428f4afd01caae27695465e66f3797f31bb717c
+    sha256: 0b925e1e6d6f81de306bd49e5153bd2409c7fa77160d68bb3d3d6c6023d38ea2
 
 testcase_protocol:
   id: toy-kem-ciphertext-16x32-v1
