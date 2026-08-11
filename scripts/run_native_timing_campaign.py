@@ -974,8 +974,10 @@ def preflight(
         else:
             errors.append(message)
 
-    compiler = _command_version("gcc")
     compiler_executable = _compiler_executable_identity("gcc")
+    compiler = _command_version(
+        compiler_executable["resolved_path"] if compiler_executable is not None else "gcc"
+    )
     if not compiler or compiler_executable is None:
         errors.append("gcc is unavailable")
     selected_cpu = affinity[0] if len(affinity) == 1 else None

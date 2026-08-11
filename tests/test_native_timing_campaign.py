@@ -120,7 +120,12 @@ def test_preflight_accepts_clean_pinned_native_host(monkeypatch):
     )
     monkeypatch.setattr(campaign, "_detect_virtualization", lambda: {"vm": "", "container": ""})
     monkeypatch.setattr(campaign, "_git_state", lambda: ("a" * 40, False))
-    monkeypatch.setattr(campaign, "_command_version", lambda command: "gcc 14.2.0")
+    version_commands = []
+    monkeypatch.setattr(
+        campaign,
+        "_command_version",
+        lambda command: version_commands.append(command) or "gcc 14.2.0",
+    )
     monkeypatch.setattr(
         campaign,
         "_compiler_executable_identity",
@@ -137,6 +142,7 @@ def test_preflight_accepts_clean_pinned_native_host(monkeypatch):
     )
     assert result["ok"] is True
     assert result["paper_eligible"] is True
+    assert version_commands == ["/usr/bin/gcc"]
 
 
 def test_container_marker_is_not_misreported_as_a_physical_host(monkeypatch):
