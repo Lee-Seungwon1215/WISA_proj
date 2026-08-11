@@ -6,12 +6,13 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-integrity-v6-audit
-audited_at: "2026-08-11T06:29:19Z"
-audited_commit: f67480a4482710b5ed573640b574dbbf04d5091d
+audited_at: "2026-08-11T06:48:02Z"
+audited_commit: cc35cb807feff7385dc7a09fd53f2b3765d18615
 scope:
   - schema-v5 single-physical-host identity, component, baseline, assembly, and hash-manifest binding
   - automated frozen-input gate and explicit absence of human-review or cross-host claims
   - fresh final roots, unique run identities, clean commit, and deterministic named output
+  - canonical compiler identity shared by host preflight and per-harness build seals
 findings:
   - finding_id: abi-001
     severity: critical
@@ -33,6 +34,11 @@ findings:
     title: Final execution could drift from the frozen inputs after the gate was checked
     description: A gate that records only a boolean could allow runner, analyzer, manifest, dependency-lock, or bundle-contract mutation.
     evidence_ids: [abi-native-runner, abi-v6-plan]
+  - finding_id: abi-005
+    severity: high
+    title: Compiler aliases can make identical binaries report different version prefixes
+    description: Probing the gcc symlink during preflight but its resolved executable during build sealing can falsely reject a valid final run even when path and SHA-256 identify the same compiler binary.
+    evidence_ids: [abi-native-runner, abi-native-runner-tests]
 dispositions:
   - finding_id: abi-001
     status: addressed
@@ -54,6 +60,11 @@ dispositions:
     rationale: Every final report embeds the exact clean commit and SHA-256 map over the v6 plan, preregistration, analysis contract, component/baseline/assembly manifests, runner/analyzer/builder code, schemas, and dependency locks.
     blocker: ""
     evidence_ids: [abi-native-runner, abi-v6-plan]
+  - finding_id: abi-005
+    status: addressed
+    rationale: Host preflight now probes the resolved compiler executable used by build sealing, while exact resolved path and executable SHA-256 checks remain mandatory; a regression test fixes this command identity contract.
+    blocker: ""
+    evidence_ids: [abi-native-runner, abi-native-runner-tests]
 evidence:
   - evidence_id: abi-v6-plan
     path: docs/measurement/paper_native_campaign_v6.yaml
@@ -73,8 +84,12 @@ evidence:
     purpose: Schema-v5 routing contract.
   - evidence_id: abi-native-runner
     path: scripts/run_native_timing_campaign.py
-    sha256: deb6eff252da8a36193f7d69db767cbd5333dde4a2b36ee3f47d73e111dd02c9
+    sha256: fc4a63001f84a99afd09d54734c1c31d1f5e9b72b0bc9a874cf7077346599099
     purpose: Frozen-input integrity gate and final report validation.
+  - evidence_id: abi-native-runner-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: 733eb05e31987399a5c45c40ccc82fca47c94ef7599bd6ac1d663cb9362c116f
+    purpose: Regression coverage for canonical preflight compiler version capture.
   - evidence_id: abi-bundle-builder
     path: scripts/build_single_host_measurement_bundle.py
     sha256: 37e59d67f5f789c3bdc2817e2456bb7e1fc7e734b0debca9978a136ba9b6cdd9
