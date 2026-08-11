@@ -1,0 +1,90 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v2
+status: complete
+title: Automated contract audit of v6 single-host native statistics
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: paper-analysis-v6-audit
+audited_at: "2026-08-11T06:29:19Z"
+audited_commit: f67480a4482710b5ed573640b574dbbf04d5091d
+scope:
+  - single-host primary status folding and within-host process-repeat contrasts
+  - explicit non-applicability of cross-host heterogeneity
+  - deterministic named output, input ledger, and upstream artifact validation
+findings:
+  - finding_id: nas-001
+    severity: critical
+    title: Process repeats could be mislabeled as independent hosts
+    description: Computing Cochran Q or I-squared from three repeats on one machine would fabricate hardware replication and overstate generality.
+    evidence_ids: [nas-analysis, nas-analysis-contract, nas-tests]
+  - finding_id: nas-002
+    severity: critical
+    title: Named statistics could consume partial or self-attested component reports
+    description: Final tables require raw protocol reconstruction, exact host/commit/build hashes, all frozen targets, and passing upstream validators.
+    evidence_ids: [nas-analysis, nas-bundle-builder, nas-bundle-tests]
+  - finding_id: nas-003
+    severity: high
+    title: No final v6 dataset exists at the audited commit
+    description: Synthetic regression values are not paper timing results.
+    evidence_ids: [nas-v6-plan, nas-preregistration]
+  - finding_id: nas-004
+    severity: medium
+    title: V6 named analysis is not independently blinded
+    description: With no independent analyst available, retrospective label hiding would not justify a blinding claim.
+    evidence_ids: [nas-analysis-contract, nas-v6-plan]
+dispositions:
+  - finding_id: nas-001
+    status: addressed
+    rationale: Single-host analysis emits heterogeneity as not-applicable with zero degrees of freedom; repeats remain within-host effects and the paper wording forbids cross-host generalization.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-analysis-contract, nas-tests]
+  - finding_id: nas-002
+    status: addressed
+    rationale: Schema-v5 preparation and analysis require one complete host tree, unique final run IDs, consistent machine/compiler identity, SHA256SUMS, assembly evidence, complete baselines, and independent reruns of every artifact validator.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-bundle-builder, nas-bundle-tests]
+  - finding_id: nas-003
+    status: accepted-with-blocker
+    rationale: The code commit is a premeasurement freeze and makes no empirical claim.
+    blocker: Execute and validate the 28-axis campaign before populating Section 5 timing tables.
+    evidence_ids: [nas-v6-plan, nas-preregistration]
+  - finding_id: nas-004
+    status: accepted-with-blocker
+    rationale: Named deterministic analysis is disclosed as the available profile rather than mislabeled blind review.
+    blocker: Do not claim analyst blinding; retain exact input/output hashes and byte-reproduction checks.
+    evidence_ids: [nas-analysis-contract, nas-v6-plan]
+evidence:
+  - evidence_id: nas-v6-plan
+    path: docs/measurement/paper_native_campaign_v6.yaml
+    sha256: 6402bdf67092ce155cf7c4108d83fbee046f848e75b4ee975ea154724ef5a1a3
+    purpose: One-host execution and named-analysis routing.
+  - evidence_id: nas-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3769aa9c387771a513954ebcadba56205726a228e362665accb25738dba99cb9
+    purpose: Frozen endpoints, repeats, exclusions, and v6 scope amendment.
+  - evidence_id: nas-analysis-contract
+    path: docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
+    sha256: 14eb986bee80a6947e1fa5995f8fc2ce156bf9be1935aecc954d6669680f2f26
+    purpose: Single-host primary/secondary estimands and wording.
+  - evidence_id: nas-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 3c0fa503f41539cd454cf8f64f66871005d04aa4ea15fdfe2f55d14caeca2ec1
+    purpose: Raw input validation, statistics, and deterministic rendering.
+  - evidence_id: nas-bundle-builder
+    path: scripts/build_single_host_measurement_bundle.py
+    sha256: 37e59d67f5f789c3bdc2817e2456bb7e1fc7e734b0debca9978a136ba9b6cdd9
+    purpose: Exact one-host result discovery and host-tree hashing.
+  - evidence_id: nas-tests
+    path: tests/test_paper_native_analysis.py
+    sha256: b2a8f52c63a111bea14ad633c49d582023524a68ff1c45ac75c5f5bc0f8db0a3
+    purpose: Single-host status and no-fake-heterogeneity regressions.
+  - evidence_id: nas-bundle-tests
+    path: tests/test_single_host_measurement_bundle.py
+    sha256: 2842208329d4575e84c38ddb7a3306f05b8869a3b9d1002ae7f36386ef2a5d87
+    purpose: Host-tree and bundle routing regressions.
+limitations:
+  - No v6 physical dataset existed at audit time.
+  - One CPU cannot estimate between-microarchitecture heterogeneity.
+  - Automated audit supplies no independent human or analyst credit.
+human_gate_effect: none

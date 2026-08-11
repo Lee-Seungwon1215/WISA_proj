@@ -1,0 +1,80 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v2
+status: complete
+title: Automated audit of v6 ML-KEM attribution and KyberSlash v3 protocol
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-v6-audit
+audited_at: "2026-08-11T06:29:19Z"
+audited_commit: f67480a4482710b5ed573640b574dbbf04d5091d
+scope:
+  - committed and diverse ML-KEM valid-tuple attribution
+  - KyberSlash fixed-key chosen-ciphertext and same-address operand-v3 contracts
+  - host-scoped final execution without secret-only or cross-host claims
+findings:
+  - finding_id: mkp-001
+    severity: critical
+    title: ML-KEM valid-tuple timing can be over-attributed to secret material
+    description: The fixed-versus-fresh class changes matching public and secret material together and cannot identify a secret-only cause.
+    evidence_ids: [mkp-core-v3, mkp-input-contract, mkp-preregistration]
+  - finding_id: mkp-002
+    severity: critical
+    title: KyberSlash v2 operand traces contain setup and placebo confounds
+    description: Different source addresses and an invalid frozen placebo can create or hide class effects outside the intended arithmetic site.
+    evidence_ids: [mkp-kyberslash-v3, mkp-operand-tests, mkp-preregistration]
+  - finding_id: mkp-003
+    severity: high
+    title: Fresh v6 ML-KEM and KyberSlash measurements do not yet exist
+    description: Frozen contracts and tests are preparation rather than empirical host-scoped findings.
+    evidence_ids: [mkp-v6-plan, mkp-kyberslash-v3]
+dispositions:
+  - finding_id: mkp-001
+    status: addressed
+    rationale: The v3 campaign, trace validator, preregistration, and analyzer require the valid_tuple label and explicitly prohibit secret attribution.
+    blocker: ""
+    evidence_ids: [mkp-core-v3, mkp-input-contract, mkp-preregistration, mkp-analysis]
+  - finding_id: mkp-002
+    status: addressed
+    rationale: V3 selects both bins branchlessly from one pool index into one shared work address, uses a valid coefficient-1664 placebo, validates return-code witnesses, and rejects reuse of v2 traces.
+    blocker: ""
+    evidence_ids: [mkp-kyberslash-v3, mkp-operand-tests, mkp-preregistration]
+  - finding_id: mkp-003
+    status: accepted-with-blocker
+    rationale: The campaign remains honestly pending physical measurement.
+    blocker: Execute every v6 ML-KEM and KyberSlash axis in fresh final roots and pass all controls, input contracts, build seals, hashes, and named analysis.
+    evidence_ids: [mkp-v6-plan, mkp-kyberslash-v3]
+evidence:
+  - evidence_id: mkp-v6-plan
+    path: docs/measurement/paper_native_campaign_v6.yaml
+    sha256: 6402bdf67092ce155cf7c4108d83fbee046f848e75b4ee975ea154724ef5a1a3
+    purpose: Current one-host component routing and claim limits.
+  - evidence_id: mkp-core-v3
+    path: docs/measurement/native_timing_v3_campaign.yaml
+    sha256: 582bab151ba44395dbd95fea942d758c512b7a566c81294efd6a478050255194
+    purpose: Committed-corpus mixed-input label and protocol.
+  - evidence_id: mkp-kyberslash-v3
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Same-address operand and chosen-ciphertext frozen plan.
+  - evidence_id: mkp-input-contract
+    path: ctkat/timing_input_contract.py
+    sha256: 122995f867a87b059aa8b68d4e0bcd35d92f3ee5a00e86ac1fac550606b31996
+    purpose: Independent valid-tuple and operand-v3 trace reconstruction.
+  - evidence_id: mkp-operand-tests
+    path: tests/test_operand_setup_contract_v3.py
+    sha256: 7c92ca9b5b68af9fe8a0090bdf68fefe1505189eb49e9ad3b406739950c3b8b0
+    purpose: Same-address, branchless-selection, and placebo regressions.
+  - evidence_id: mkp-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3769aa9c387771a513954ebcadba56205726a228e362665accb25738dba99cb9
+    purpose: Confound disclosure, nonreuse, and attribution boundary.
+  - evidence_id: mkp-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 3c0fa503f41539cd454cf8f64f66871005d04aa4ea15fdfe2f55d14caeca2ec1
+    purpose: Raw-trace reconstruction and paper-table label retention.
+limitations:
+  - No physical v6 result existed at audit time.
+  - A valid-tuple signal remains mixed-input evidence regardless of magnitude.
+  - Operand canaries do not demonstrate key recovery or a full remote attack.
+human_gate_effect: none

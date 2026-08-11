@@ -1,0 +1,98 @@
+schema_version: "1.0"
+audit_id: automated-artifact-integrity-single-host-v2
+status: complete
+title: Automated adversarial audit of the v6 single-host evidence boundary
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-integrity-v6-audit
+audited_at: "2026-08-11T06:29:19Z"
+audited_commit: f67480a4482710b5ed573640b574dbbf04d5091d
+scope:
+  - schema-v5 single-physical-host identity, component, baseline, assembly, and hash-manifest binding
+  - automated frozen-input gate and explicit absence of human-review or cross-host claims
+  - fresh final roots, unique run identities, clean commit, and deterministic named output
+findings:
+  - finding_id: abi-001
+    severity: critical
+    title: A hand-written single-host bundle could substitute stale or unrelated artifacts
+    description: Host labels and relative paths alone cannot prove that all components, baselines, assembly evidence, commit, CPU identity, and run IDs belong to one complete final execution.
+    evidence_ids: [abi-bundle-template, abi-bundle-builder, abi-analysis]
+  - finding_id: abi-002
+    severity: high
+    title: One host or an automated check could be mislabeled as replication or independent review
+    description: Removing unavailable gates is acceptable only if every machine-readable policy and paper-facing description preserves the narrower scope.
+    evidence_ids: [abi-v6-plan, abi-preregistration, abi-analysis-contract]
+  - finding_id: abi-003
+    severity: high
+    title: No v6 final physical-host artifact exists at the audited commit
+    description: Static validators and synthetic tests establish readiness, not an empirical timing result.
+    evidence_ids: [abi-v6-plan, abi-claim-matrix]
+  - finding_id: abi-004
+    severity: critical
+    title: Final execution could drift from the frozen inputs after the gate was checked
+    description: A gate that records only a boolean could allow runner, analyzer, manifest, dependency-lock, or bundle-contract mutation.
+    evidence_ids: [abi-native-runner, abi-v6-plan]
+dispositions:
+  - finding_id: abi-001
+    status: addressed
+    rationale: The bundle builder fail-closes on one fresh report per component/tool, exact commit/CPU/machine identity, unique run IDs, eligible assembly evidence, and a complete host SHA256SUMS; the analyzer independently revalidates all upstream artifacts.
+    blocker: ""
+    evidence_ids: [abi-bundle-builder, abi-analysis, abi-bundle-tests]
+  - finding_id: abi-002
+    status: addressed
+    rationale: The v6 plan, preregistration, analysis contract, gate payload, and generated claim tables explicitly record one host, no cross-host reproducibility, and no independent human review.
+    blocker: ""
+    evidence_ids: [abi-v6-plan, abi-preregistration, abi-analysis-contract, abi-claim-matrix]
+  - finding_id: abi-003
+    status: accepted-with-blocker
+    rationale: Measurement is the next authorized phase; the audited commit remains premeasurement and makes no empirical timing claim.
+    blocker: Complete all 28 final axes, three baseline tools, assembly evidence, schema-v5 bundle, and named deterministic analysis on the recorded physical host.
+    evidence_ids: [abi-v6-plan, abi-claim-matrix]
+  - finding_id: abi-004
+    status: addressed
+    rationale: Every final report embeds the exact clean commit and SHA-256 map over the v6 plan, preregistration, analysis contract, component/baseline/assembly manifests, runner/analyzer/builder code, schemas, and dependency locks.
+    blocker: ""
+    evidence_ids: [abi-native-runner, abi-v6-plan]
+evidence:
+  - evidence_id: abi-v6-plan
+    path: docs/measurement/paper_native_campaign_v6.yaml
+    sha256: 6402bdf67092ce155cf7c4108d83fbee046f848e75b4ee975ea154724ef5a1a3
+    purpose: Frozen one-host execution and claim boundary.
+  - evidence_id: abi-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3769aa9c387771a513954ebcadba56205726a228e362665accb25738dba99cb9
+    purpose: Disclosed v6 amendment made before final measurement.
+  - evidence_id: abi-analysis-contract
+    path: docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
+    sha256: 14eb986bee80a6947e1fa5995f8fc2ce156bf9be1935aecc954d6669680f2f26
+    purpose: Named single-host statistics and no-fake-heterogeneity contract.
+  - evidence_id: abi-bundle-template
+    path: docs/artifact/measurement_bundle_single_host_template.yaml
+    sha256: c7bf5ed2e4f4cf273db2854fcf25d6edd0b89fed42b564d9a44f542785fb931c
+    purpose: Schema-v5 routing contract.
+  - evidence_id: abi-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: deb6eff252da8a36193f7d69db767cbd5333dde4a2b36ee3f47d73e111dd02c9
+    purpose: Frozen-input integrity gate and final report validation.
+  - evidence_id: abi-bundle-builder
+    path: scripts/build_single_host_measurement_bundle.py
+    sha256: 37e59d67f5f789c3bdc2817e2456bb7e1fc7e734b0debca9978a136ba9b6cdd9
+    purpose: Fail-closed host-tree discovery and hashing.
+  - evidence_id: abi-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 3c0fa503f41539cd454cf8f64f66871005d04aa4ea15fdfe2f55d14caeca2ec1
+    purpose: Independent upstream validation and deterministic named analysis.
+  - evidence_id: abi-bundle-tests
+    path: tests/test_single_host_measurement_bundle.py
+    sha256: 2842208329d4575e84c38ddb7a3306f05b8869a3b9d1002ae7f36386ef2a5d87
+    purpose: Bundle discovery and host-tree hash regression coverage.
+  - evidence_id: abi-claim-matrix
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 2c8527d3028e4bbb933ef262c1373a040afab75cbc4ab3385a8c3de26be95c60
+    purpose: Paper-facing pending measurement and prohibited wording.
+limitations:
+  - No v6 physical timing artifact existed when this automated audit was frozen.
+  - Software checks do not prove machine ownership or provide human-review credit.
+  - The preserved v5 blinded workflow is outside the v6 named-analysis claim.
+human_gate_effect: none

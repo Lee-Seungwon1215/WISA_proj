@@ -1,0 +1,84 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v2
+status: complete
+title: Automated audit of v6 signature and Falcon timing contracts
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-falcon-v6-audit
+audited_at: "2026-08-11T06:29:19Z"
+audited_commit: f67480a4482710b5ed573640b574dbbf04d5091d
+scope:
+  - measured signature return-code, output-length, and untimed verification gates
+  - Falcon reference, native-FP, and integer-FPR binary contracts
+  - universal build seals and single-host output-length secondary analysis
+findings:
+  - finding_id: shc-001
+    severity: critical
+    title: Signature rows could survive a failed call or swapped measured binary
+    description: Timing values are inadmissible without successful measured calls, an untimed sign-to-verify gate, output-length bounds, and premeasurement source/binary/compiler seals.
+    evidence_ids: [shc-build-provenance, shc-mldsa-adapter, shc-premeasurement-tests]
+  - finding_id: shc-002
+    severity: high
+    title: Fresh Falcon v2 host-scoped comparator results do not yet exist
+    description: Static instruction contracts and calibration tests do not supply the six final physical timing axes or length association.
+    evidence_ids: [shc-falcon-v2, shc-falcon-contracts, shc-analysis]
+  - finding_id: shc-003
+    severity: medium
+    title: No independent reviewer is available for signature declassification
+    description: V6 may report measured host-scoped findings but cannot claim independent human declassification or agreement.
+    evidence_ids: [shc-v6-plan, shc-analysis-contract]
+dispositions:
+  - finding_id: shc-001
+    status: addressed
+    rationale: The harness and validator bind return codes, correctness round trips, fixed/bounded lengths, exact linked binaries, and universal build seals before accepting timing rows.
+    blocker: ""
+    evidence_ids: [shc-build-provenance, shc-mldsa-adapter, shc-premeasurement-tests]
+  - finding_id: shc-002
+    status: accepted-with-blocker
+    rationale: Falcon v2 is frozen but remains pending physical measurement.
+    blocker: Execute all six Falcon final axes and emit the predeclared full-API and output-length secondary results from the schema-v5 bundle.
+    evidence_ids: [shc-falcon-v2, shc-falcon-contracts, shc-analysis]
+  - finding_id: shc-003
+    status: accepted-with-blocker
+    rationale: The unavailable review is removed as a v6 execution gate and retained as an explicit claim limitation.
+    blocker: Do not use independent-review, declassified-by-review, or inter-rater-agreement wording for v6 results.
+    evidence_ids: [shc-v6-plan, shc-analysis-contract]
+evidence:
+  - evidence_id: shc-v6-plan
+    path: docs/measurement/paper_native_campaign_v6.yaml
+    sha256: 6402bdf67092ce155cf7c4108d83fbee046f848e75b4ee975ea154724ef5a1a3
+    purpose: Current execution and no-independent-review boundary.
+  - evidence_id: shc-falcon-v2
+    path: docs/measurement/falcon_native_v2.yaml
+    sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
+    purpose: Six frozen Falcon/FN-DSA targets and controls.
+  - evidence_id: shc-falcon-contracts
+    path: examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
+    sha256: 80836994eea332d2b2621495630e3ed6a0683a8edd9a43c8f34b69801aac8718
+    purpose: Exact measured-binary sampler instruction contracts.
+  - evidence_id: shc-build-provenance
+    path: ctkat/timing_build_provenance.py
+    sha256: 5373db9a553f06c363b1990f03547548f07ddb74649bf6ac55587f0c1d21ac39
+    purpose: Universal premeasurement source/binary/compiler seals.
+  - evidence_id: shc-mldsa-adapter
+    path: examples/mldsa_native/timing_adapter.c
+    sha256: 2c12a22c88b1ee656dcf93a50480bdad04725b4e2f646833d188001c5300cea2
+    purpose: Native signature verifier adapter used by the correctness gate.
+  - evidence_id: shc-premeasurement-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: c1c129d7936308e0e92b75c04b314520f6e52b71e32ccbfc21563c1b9f2c317f
+    purpose: Portable/native compilation and signature correctness regressions.
+  - evidence_id: shc-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 3c0fa503f41539cd454cf8f64f66871005d04aa4ea15fdfe2f55d14caeca2ec1
+    purpose: Output-length association and failed-call rejection.
+  - evidence_id: shc-analysis-contract
+    path: docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
+    sha256: 14eb986bee80a6947e1fa5995f8fc2ce156bf9be1935aecc954d6669680f2f26
+    purpose: Frozen single-host secondary analysis and wording.
+limitations:
+  - No final Falcon v2 physical trace existed at audit time.
+  - Full-signature timing includes encoding and cannot isolate the sampler by itself.
+  - c-fn-dsa remains a prospective comparator, not a FIPS 206 conformance target.
+human_gate_effect: none
