@@ -40,9 +40,11 @@ static int trivial_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk) {
 }
 
 /* Both controls are instantiated from the exact same source shape.  The sole
- * compile-time toggle enables or removes the seeded ct[0] branch.  A volatile
- * local makes every slow-path iteration observable without relying on signed
- * overflow or on the optimizer preserving dead arithmetic. */
+ * compile-time toggle enables all input-dependent work, including the seeded
+ * ct[0] branch.  The disabled form is a true input-independent negative
+ * control: it neither branches on nor computes over the class-varying bytes.
+ * A volatile local makes every slow-path iteration observable without relying
+ * on signed overflow or on the optimizer preserving dead arithmetic. */
 #define CTKAT_DEFINE_DEC(NAME, ENABLE_LEAK)                                      \
     int NAME(uint8_t *ss, const uint8_t *ct, const uint8_t *sk) {                \
         volatile uint32_t x = UINT32_C(1);                                       \
@@ -53,7 +55,7 @@ static int trivial_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk) {
         }                                                                        \
         ctkat_sink = x;                                                          \
         for (size_t i = 0; i < 32; i++) {                                        \
-            ss[i] = ct[i] ^ sk[i];                                               \
+            ss[i] = (ENABLE_LEAK) ? (uint8_t)(ct[i] ^ sk[i]) : (uint8_t)i;       \
         }                                                                        \
         return 0;                                                                \
     }

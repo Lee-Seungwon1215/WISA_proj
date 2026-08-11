@@ -58,6 +58,16 @@ dudect:
   compiler:
     cc: gcc
     cflags: [-O2, -g, -fno-omit-frame-pointer, -fno-lto]
+  timing_protocol:
+    process_repeats: 3
+    pool_size: 64
+    control_measurements: 50000
+    positive_control_effects: [512, 2048, 8192]
+    aa_abs_t_limit: 4.5
+    positive_abs_t_threshold: 10.0
+    aa_max_failures: 0
+    target_power: 0.80
+    power_alpha: 0.01
   harnesses:
     # leaky: ct[0]-dependent slow path in LEAKY_crypto_kem_dec().
     # Expected: FAIL.

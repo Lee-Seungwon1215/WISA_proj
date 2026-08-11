@@ -389,7 +389,7 @@ def test_same_corpus_official_final_applies_full_raw_protocol_contract(
     assert contract.process_repeats == 3
     assert contract.target_measurements == 50000
     assert contract.control_measurements == 50000
-    assert contract.positive_effects == (32, 128, 512)
+    assert contract.positive_effects == (512, 2048, 8192)
 
 
 _BRANCH_FINDING_LOG = (

@@ -1162,6 +1162,39 @@ def test_timing_harness_v2_controls_can_reach_valid():
     assert result.validity_reasons == ()
 
 
+def test_timing_harness_v2_accepts_declared_deterministic_api_without_rng_interpose():
+    import ctkat.cli as cli_module
+
+    samples, result, harness = _v2_validity_fixture()
+    harness = harness.model_copy(update={"randombytes_header": None})
+    result.harness_protocol["randomness_policies_observed"] = ["external-or-none"]
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "valid"
+    assert result.validity_reasons == ()
+
+
+def test_timing_harness_v2_rng_policy_must_match_the_declared_api_contract():
+    import ctkat.cli as cli_module
+
+    samples, result, harness = _v2_validity_fixture()
+    harness = harness.model_copy(update={"randombytes_header": None})
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "confounded"
+    assert any("deterministic target" in reason for reason in result.validity_reasons)
+
+
 def test_valid_tuple_axis_requires_fail_closed_attribution_metadata():
     import ctkat.cli as cli_module
     from ctkat.timing_input_contract import (

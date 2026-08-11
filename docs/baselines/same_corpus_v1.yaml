@@ -16,13 +16,13 @@ comparison_contract:
 source_snapshot:
   config:
     path: examples/toy_kem_ct_leak/ctkat.yaml
-    sha256: 8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+    sha256: 7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
   header:
     path: examples/toy_kem_ct_leak/include/toy_kem.h
     sha256: 3b0c86fad24a632ac115b95dd29c86a406f63c66a80511eca150c675888f87c6
   implementation:
     path: examples/toy_kem_ct_leak/src/toy_kem.c
-    sha256: dd190550909787b1a772f6c45070b75f40c741a545c10ed06248be20fe6c0e2f
+    sha256: 2863ef0658f61624e2ee9ef36428f4afd01caae27695465e66f3797f31bb717c
 
 testcase_protocol:
   id: toy-kem-ciphertext-16x32-v1
@@ -52,7 +52,7 @@ cases:
       id: toy-fixed-work-negative-control
       state: absent
       class: negative-control
-      source_equivalence: same-macro-as-leaky-with-compile-time-leak-toggle-disabled
+      source_equivalence: same-macro-with-compile-time-input-dependence-disabled
 
 tools:
   official_dudect:
@@ -77,7 +77,7 @@ tools:
       implementation_files: []
       file_sha256:
         examples/toy_kem_ct_leak/ctkat.yaml:
-          8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+          7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
 
   timecop:
     display_name: KyberSlash patched-Valgrind TIMECOP
@@ -99,7 +99,7 @@ tools:
       implementation_files: [scripts/run_same_corpus_baselines.py]
       file_sha256:
         examples/toy_kem_ct_leak/ctkat.yaml:
-          8253bd748421f422e788c41228c30d865d76f09ca6c0b58cc1bbd81bfb4f4cbf
+          7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
         scripts/run_same_corpus_baselines.py:
           9cffb67257700561099443acce1778a0dcbeafaf5983121b5e4d2078c5c534f6
 

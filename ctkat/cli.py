@@ -1716,12 +1716,20 @@ def _set_timing_validity(
             interpretation_reasons.append(
                 "at least one target repeat did not meet the backend measurement minimum"
             )
-        elif protocol.get("randomness_policies_observed") != ["seeded-interpose"]:
+        elif protocol.get("randomness_policies_observed") != [
+            "external-or-none" if harness.randombytes_header is None else "seeded-interpose"
+        ]:
             result.timing_validity = "confounded"
-            interpretation_reasons.append(
-                "target key/sign randomness was not confirmed to use the seeded interpose; "
-                "the runtime manifest is not reproducible from the recorded seed"
-            )
+            if harness.randombytes_header is None:
+                interpretation_reasons.append(
+                    "self-contained deterministic target unexpectedly reported an active "
+                    "randomness interpose"
+                )
+            else:
+                interpretation_reasons.append(
+                    "target key/sign randomness was not confirmed to use the seeded interpose; "
+                    "the runtime manifest is not reproducible from the recorded seed"
+                )
         elif valid_tuple_errors:
             result.timing_validity = "error"
             interpretation_reasons.extend(valid_tuple_errors)
