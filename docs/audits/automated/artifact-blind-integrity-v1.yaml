@@ -6,16 +6,17 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-blind-audit
-audited_at: "2026-08-10T11:43:02Z"
-audited_commit: 55f1bf0f0eda949edd52cf36e04ca3a81de780ba
+audited_at: "2026-08-11T03:29:43Z"
+audited_commit: b0e3f5ccd2e1100d8e7d467dd3daad92a30727be
 scope:
   - final two-host bundle provenance, host identity, hashes, run identity, and artifact reuse
   - resume and run-kind separation for engineering, pilot, and final campaigns
   - result-analyst label blinding, transfer records, unblinding order, and byte parity
   - separation between automated engineering audits and independent human review
-  - paper v4 routing and isolated output roots for core v3, Falcon v2, and diverse v2 replacement evidence
-  - prohibition on reusing Falcon/diverse v1 or committed-corpus v2 engineering artifacts in replacement final campaigns
+  - paper v5 routing and isolated output roots for core v3, KyberSlash v3, Falcon v2, and diverse v2 replacement evidence
+  - prohibition on reusing Falcon/diverse v1, committed-corpus v2, or setup-confounded KyberSlash v2 engineering artifacts in replacement final campaigns
   - mixed ML-KEM valid-tuple attribution limits, independent machine validation, and the dedicated pending human-review packet
+  - universal premeasurement timing-build seals, per-subprocess mutation checks, and portable target-artifact hash binding
 findings:
   - finding_id: abi-001
     severity: critical
@@ -77,6 +78,16 @@ findings:
     title: Two-host final timing and blinded evidence do not yet exist
     description: The audited commit contains frozen schemas, validators, and pending review packets but no final runs from two distinct physical hosts, completed blinding record, named analysis, or canonical final-evidence root.
     evidence_ids: [abi-paper-campaign-v4, abi-bundle, abi-human-manifest, abi-claim-matrix, abi-reproducer, abi-final-root]
+  - finding_id: abi-013
+    severity: critical
+    title: Timing binaries and generated sources could be swapped or self-attested
+    description: >-
+      Axes without a specialized instruction contract did not preserve a
+      universal premeasurement record of the config, generated source,
+      measured binary, linked inputs, compiler, and flags. A producer-owned
+      passed flag or a post-compile replacement could therefore detach raw
+      timing rows from the executable that was reviewed.
+    evidence_ids: [abi-build-provenance, abi-native-runner, abi-analysis, abi-build-provenance-tests, abi-paper-campaign-v5]
 dispositions:
   - finding_id: abi-001
     status: addressed
@@ -138,6 +149,18 @@ dispositions:
     rationale: The repository honestly marks the paper campaign premeasurement-frozen, all human packets pending, and the timing claim pending physical measurement. The bundle, analyzer, reproducer, and final-root schema are preparation contracts rather than evidence that execution occurred.
     blocker: Collect fresh final artifacts at the audited/reviewed commit on two distinct non-virtualized physical x86_64 hosts, complete the frozen blinding and unblinding workflow, generate the canonical final-evidence root, and obtain postmeasurement human approval of that exact root.
     evidence_ids: [abi-paper-campaign-v4, abi-bundle, abi-human-manifest, abi-claim-matrix, abi-reproducer, abi-final-root]
+  - finding_id: abi-013
+    status: addressed
+    rationale: >-
+      Every timing harness now writes an atomic seal before sample one and
+      checks both the seal and all recorded files before and after each
+      measured subprocess. The native validator independently reparses the
+      exact field set, config, generated C, binary, linked sources, include
+      paths, compiler identity, flags, and replay argv; it adds the seal and
+      generated artifacts to the target hash ledger. The paper analyzer then
+      cross-binds those hashes instead of trusting the backend boolean.
+    blocker: ""
+    evidence_ids: [abi-build-provenance, abi-native-runner, abi-analysis, abi-build-provenance-tests, abi-kyberslash-v3-manifest, abi-paper-campaign-v5]
 evidence:
   - evidence_id: abi-bundle
     path: docs/artifact/measurement_bundle_template.yaml
@@ -149,19 +172,19 @@ evidence:
     purpose: Structured custodian, analyst, transfer, timestamp, label-map, and blinded-manifest contract.
   - evidence_id: abi-reproducer
     path: scripts/reproduce_artifact.py
-    sha256: c420ad95f74df9b2358273d626cca979a745ec3a1394c20e87b1338144155fee
+    sha256: 6ff0f9a50fd5d8f50cc72d5b254a6b798e7031763cfdb1fef16565f7a3946300
     purpose: Exact v3/v2 component validation, non-overlapping artifact roots, final run identity, human gates, blinded parity, and canonical final-evidence-root reproduction.
   - evidence_id: abi-native-runner
     path: scripts/run_native_timing_campaign.py
-    sha256: 4c2667217aee3c79c8008514d8335b8ffc0fa3008cf95a6c87804f6d93479f7e
+    sha256: bd32b8f1b40cbc5d93e24ee60838debe332b589d3b338e449763b5930d7e1b9b
     purpose: Fresh final-root, no-final-resume, run identity, preflight, human gate, exact manifest, and valid-tuple contract enforcement.
   - evidence_id: abi-baseline-runner
     path: scripts/run_same_corpus_baselines.py
-    sha256: d4c3d14084c926de8e740458238bddde0e636d478cc57fb10b396f5849d7c095
+    sha256: d7b422a58a5d8961c977df5bb4c62ba8f63d439ea2b2e1e4f337a1745e0f2697
     purpose: Exact-commit final same-corpus evidence, fresh TIMECOP reproduction, and physical-host validation for all tools.
   - evidence_id: abi-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: c13bda8ada23bf7d532a361800865bae41e3f2b1a50cd51660fd0fbe0e6b021d
+    sha256: 568b96c2511bf46c8f9794bee6270a1c81a57d333439cedb3864ff393b5c218f
     purpose: Independent v3/v2 manifest and valid-tuple validation, opaque-label output, deterministic manifest, and unblinded byte-parity enforcement.
   - evidence_id: abi-human-manifest
     path: docs/reviews/paper/manifest.yaml
@@ -169,11 +192,11 @@ evidence:
     purpose: Separate independent-human packet index, including the required premeasurement valid-tuple review, that remains pending and outside automated audits.
   - evidence_id: abi-valid-tuple-review
     path: docs/reviews/paper/mlkem-valid-tuple-v1.yaml
-    sha256: 7da8650336d8564e2d57ed2d5f0c5bf2d1b9e53a3f952a17035755d153fd22b8
+    sha256: 5bac8119c0f66ed050c5bfe2e47adffb25d9fe68c0597b53506965680bd4d681
     purpose: Pending two-person review of the mixed-input construction, no-secret-attribution boundary, exact v3/v2 routing, and runtime contract.
   - evidence_id: abi-claim-matrix
     path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
-    sha256: c20350035e4602b8afe67db80e80c375cb891ce9af8bb788967a2e35bd0a8885
+    sha256: 2b44acf03e9d585944af4e3c9acab6d10cce24e11f47377b2731f2696b41d7be
     purpose: Pending-physical-measurement claim with explicit valid-tuple attribution prohibition and two-host, hash, blind-review, and promotion gates.
   - evidence_id: abi-final-root
     path: docs/artifact/final-evidence-root-v1.schema.json
@@ -193,7 +216,7 @@ evidence:
     purpose: Frozen paper-v4 routing, isolated replacement roots, no legacy artifact reuse, two-host final policy, and explicit mixed-input claim limits.
   - evidence_id: abi-paper-checker
     path: scripts/check_paper_campaign.py
-    sha256: 7f7cfc381ac8eb953addbf7cc3a142573ba0c73236f3cc13d4092cff34d5f1fa
+    sha256: 391e80f42e81180f2a886e34ca169ab3cecc7084fbf8f453cc940733aa4a6f99
     purpose: Fail-closed check of paper-v4 component manifests, exact output-root commands, final-only policy, and valid-tuple claim limits.
   - evidence_id: abi-core-v3-manifest
     path: docs/measurement/native_timing_v3_campaign.yaml
@@ -205,16 +228,33 @@ evidence:
     purpose: Diverse replacement manifest with explicit valid-tuple axes and v1 engineering calibration boundary.
   - evidence_id: abi-preregistration
     path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
-    sha256: 4df9c388f71ad63c5244c7b1a0ab4a3bf2e38bded4bf325a2eab9c0668337376
+    sha256: 0b8bd39667c4958ecc794ef8d4d43e3643c5f1cdcb286c0d249581775bb82d90
     purpose: Disclosed Falcon and valid-tuple amendments, fresh-root requirement, legacy engineering nonreuse, and no-secret-attribution boundary.
   - evidence_id: abi-input-contract
     path: ctkat/timing_input_contract.py
-    sha256: 9c648e137f30520065105c5e27d83a07d76f6398685b21dae9cc21e8bb1fd9c4
+    sha256: 122995f867a87b059aa8b68d4e0bcd35d92f3ee5a00e86ac1fac550606b31996
     purpose: Canonical construction and independent reconstruction of all valid-tuple target, calibration, and control trace metadata with secret attribution disabled.
+  - evidence_id: abi-build-provenance
+    path: ctkat/timing_build_provenance.py
+    sha256: 5373db9a553f06c363b1990f03547548f07ddb74649bf6ac55587f0c1d21ac39
+    purpose: Atomic universal timing-build seal and before/after immutable-input checks.
+  - evidence_id: abi-build-provenance-tests
+    path: tests/test_timing_build_provenance.py
+    sha256: 4dcceaf4f9cb051fda28350dd316b79724f4ff1141873e8b2de6ba4d183d9e4b
+    purpose: Config, source, binary, seal, compiler-input, symlink, duplicate, schema, and mid-run replacement rejection regressions.
+  - evidence_id: abi-kyberslash-v3-manifest
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Fresh KyberSlash v3 campaign identity and explicit prohibition on v2 operand-trace reuse.
+  - evidence_id: abi-paper-campaign-v5
+    path: docs/measurement/paper_native_campaign_v5.yaml
+    sha256: 6c1950e37b2ae71d436a825caeede248adc584669e7ff2185068f4b08dd78492
+    purpose: Current four-component routing, fresh KyberSlash v3 root, universal build-seal claim limit, and two-host final policy.
 limitations:
   - This audit was performed by an automated agent and is not an independent human review.
   - Human access ordering is supported by hashes and attestations but cannot be proven solely by software.
   - No two-host final timing corpus, completed unblinding record, named final analysis, or canonical final-evidence root exists in the audited commit.
   - Valid-tuple metadata authenticates the declared mixed-input contract but cannot turn that mixed contrast into causal secret attribution.
+  - Pre/post seal checks assume the accepted physical host and operating system are not actively malicious; they are provenance and mutation guards, not remote attestation.
   - Evidence hashes expire on any referenced-file change and require a fresh automated audit disposition.
 human_gate_effect: none

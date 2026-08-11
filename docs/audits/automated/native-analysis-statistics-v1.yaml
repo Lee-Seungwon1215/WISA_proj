@@ -6,8 +6,8 @@ perspective: native-analysis-statistics
 automated_agent: true
 human_reviewer: false
 automated_agent_id: paper-analysis-automated-self-audit
-audited_at: "2026-08-10T11:40:00Z"
-audited_commit: 55f1bf0f0eda949edd52cf36e04ca3a81de780ba
+audited_at: "2026-08-11T03:29:43Z"
+audited_commit: b0e3f5ccd2e1100d8e7d467dd3daad92a30727be
 scope:
   - exact component, target, host, commit, and input-hash provenance
   - conservative primary two-host risk folding
@@ -19,6 +19,7 @@ scope:
   - threshold-based A/A planning diagnostics and frozen ML-DSA control curves
   - versioned Falcon engineering calibration, amendment boundaries, and final-campaign routing
   - versioned mixed ML-KEM valid-tuple attribution, exact trace-contract reconstruction, and replacement-artifact isolation
+  - KyberSlash v3 operand metadata reconstruction, build-seal artifact binding, and paper-v5 routing
 findings:
   - finding_id: nas-001
     severity: critical
@@ -85,6 +86,15 @@ findings:
     title: A mixed ML-KEM tuple contrast could be mislabeled or self-attested as secret-key evidence
     description: The legacy sk class changed a secret key, matching public ciphertext, and embedded public-key material together, while downstream acceptance trusted a producer-level passed boolean without reconstructing the complete target, calibration, A/A, placebo, and positive-control metadata matrix.
     evidence_ids: [nas-input-contract, nas-analysis, nas-primary-campaign, nas-diverse-campaign, nas-contract-tests]
+  - finding_id: nas-014
+    severity: critical
+    title: KyberSlash v3 input and build contracts could be copied from backend self-attestation
+    description: >-
+      Final analysis could accept a producer-owned same-address passed flag or
+      build-provenance digest without reconstructing all operand trace metadata
+      and cross-binding the seal, generated source, and measured binary to the
+      target artifact ledger.
+    evidence_ids: [nas-analysis, nas-input-contract, nas-build-provenance, nas-kyberslash-v3, nas-paper-campaign-v5, nas-tests, nas-campaign-tests, nas-operand-tests, nas-build-tests]
 dispositions:
   - finding_id: nas-001
     status: addressed
@@ -151,10 +161,21 @@ dispositions:
     rationale: Core v3 and diverse v2 rename the endpoint valid_tuple and prohibit secret attribution. A shared fail-closed validator reconstructs the exact 21-trace contract, per-trace domain seeds, three-by-three positive matrix, and selected analysis metadata; the independent official verifier, native campaign validator, and paper analyzer all reject incomplete or forged reports. V1 diverse and v2 core engineering artifacts are explicitly non-reusable in paper v4.
     blocker: ""
     evidence_ids: [nas-input-contract, nas-dudect-verifier, nas-analysis, nas-primary-campaign, nas-diverse-campaign, nas-paper-campaign-v4, nas-contract-tests, nas-campaign-tests]
+  - finding_id: nas-014
+    status: addressed
+    rationale: >-
+      The analyzer requires KyberSlash operand axes to match the v3 manifest
+      and independently reconstructs the exact seven traces per process,
+      runtime contract, constant corpus seed, zero measured failures, and
+      selected analysis record. It also requires the exact build metadata field
+      set and matches its report, generated-C, and binary hashes to artifacts
+      that the native validator already reparsed and attested.
+    blocker: ""
+    evidence_ids: [nas-analysis, nas-input-contract, nas-build-provenance, nas-kyberslash-v3, nas-paper-campaign-v5, nas-tests, nas-campaign-tests, nas-operand-tests, nas-build-tests]
 evidence:
   - evidence_id: nas-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: c13bda8ada23bf7d532a361800865bae41e3f2b1a50cd51660fd0fbe0e6b021d
+    sha256: 568b96c2511bf46c8f9794bee6270a1c81a57d333439cedb3864ff393b5c218f
     purpose: Fail-closed provenance, valid-tuple contract consumption, primary fold, secondary statistics, deterministic output, blinding parity, and replacement-campaign routing.
   - evidence_id: nas-spec
     path: docs/measurement/PAPER_NATIVE_ANALYSIS_V1.md
@@ -162,7 +183,7 @@ evidence:
     purpose: Premeasurement statistical methods, thresholds, output contract, and claim boundary.
   - evidence_id: nas-tests
     path: tests/test_paper_native_analysis.py
-    sha256: b44cc73dd588fb3270853d922b91dfacd5bfc97693e40610229aecd9a94bcb2b
+    sha256: 2c29000707535e6ce78085726d6cd2617e0fedd0a53158754d0fe2bc5baf26aa
     purpose: Synthetic risk-fold, p-value, Holm, signature, provenance, valid-tuple rejection, determinism, and blinded-parity regression tests.
   - evidence_id: nas-bundle
     path: docs/artifact/measurement_bundle_template.yaml
@@ -170,7 +191,7 @@ evidence:
     purpose: Schema-v4 measurement/verification commits, two-host artifacts, ASM evidence, and frozen blinded-analysis paths.
   - evidence_id: nas-dudect-verifier
     path: ctkat/official_dudect_verify.py
-    sha256: 62bfbaf0a660663fee7cd1c53e388edb847ccf6c9554941913da4721fecfd613
+    sha256: 0adfd7e37a3c5071bd1c517321ac654aabf50612b170a4bf69271856fb0db495
     purpose: Independent raw protocol, timing-axis, valid-tuple contract, directional canary, and statistical-field reconstruction.
   - evidence_id: nas-review-checker
     path: scripts/check_paper_reviews.py
@@ -182,19 +203,19 @@ evidence:
     purpose: Distinct pre/post review commit success and split-precommit rejection tests.
   - evidence_id: nas-preregistration
     path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
-    sha256: 4df9c388f71ad63c5244c7b1a0ab4a3bf2e38bded4bf325a2eab9c0668337376
+    sha256: 0b8bd39667c4958ecc794ef8d4d43e3643c5f1cdcb286c0d249581775bb82d90
     purpose: Frozen estimand definitions, disclosed Falcon and mixed-input engineering amendments, directional canary rule, and conservative claim boundaries.
   - evidence_id: nas-cli
     path: ctkat/cli.py
-    sha256: dba4a501df724c74c4d4be9410a4cfe644fb3005a657c0ddbf2b8e0f3efef506
+    sha256: b33150f5e9c4e05cbb515f78c96e293711ced871e64e10a7f23b6894196ce158
     purpose: Directional repeat-detection gate and A/A-noise-derived nominal and actual-threshold planning diagnostics.
   - evidence_id: nas-control-tests
     path: tests/test_cli.py
-    sha256: 663ba2f1876140ff57aa122d4447a01ca5f9fda6c3d8db0b3304234c671346c7
+    sha256: e8c01370d5a91ae65482d98e7cc4d9ca6dfed41f6009576a612d62b27eb57041
     purpose: Focused reversed-effect rejection and actual-threshold planning-formula regression tests.
   - evidence_id: nas-campaign-tests
     path: tests/test_native_timing_campaign.py
-    sha256: 094f104522e16ff78ea1c221780f049a5753182f06dd7f2ba0270e5555d9d08f
+    sha256: 2b7022fbd87383a5e1778e29c15c408f337932ee3f5a8a08619fa341ea5dd9f4
     purpose: Independent canary-rule and valid-tuple reconstruction, diagnostic parity, and frozen campaign-effect regression tests.
   - evidence_id: nas-primary-campaign
     path: docs/measurement/native_timing_v3_campaign.yaml
@@ -222,12 +243,32 @@ evidence:
     purpose: Regression checks pinning the revised target ladder and preservation of every other Falcon curve.
   - evidence_id: nas-input-contract
     path: ctkat/timing_input_contract.py
-    sha256: 9c648e137f30520065105c5e27d83a07d76f6398685b21dae9cc21e8bb1fd9c4
+    sha256: 122995f867a87b059aa8b68d4e0bcd35d92f3ee5a00e86ac1fac550606b31996
     purpose: Shared exact valid-tuple runtime-metadata, trace-matrix, seed, aggregate-contract, and selected-repeat validator.
   - evidence_id: nas-contract-tests
     path: tests/test_timing_input_contract.py
     sha256: 88b448d18a49a030a83f253606ea72af52914adffdcd1718f71be6c81d080495
     purpose: Canonical 21-trace acceptance and forged, incomplete, duplicate-seed, process-index, effect-matrix, and selected-repeat rejection tests.
+  - evidence_id: nas-kyberslash-v3
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Frozen current operand-v3 axes, seeds, controls, and v2 nonreuse boundary.
+  - evidence_id: nas-paper-campaign-v5
+    path: docs/measurement/paper_native_campaign_v5.yaml
+    sha256: 6c1950e37b2ae71d436a825caeede248adc584669e7ff2185068f4b08dd78492
+    purpose: Current analysis routing to KyberSlash v3 and universal build-seal policy.
+  - evidence_id: nas-build-provenance
+    path: ctkat/timing_build_provenance.py
+    sha256: 5373db9a553f06c363b1990f03547548f07ddb74649bf6ac55587f0c1d21ac39
+    purpose: Canonical build-seal schema and immutable-input verification.
+  - evidence_id: nas-operand-tests
+    path: tests/test_operand_setup_contract_v3.py
+    sha256: 7c92ca9b5b68af9fe8a0090bdf68fefe1505189eb49e9ad3b406739950c3b8b0
+    purpose: Exact operand-v3 protocol reconstruction and forged-placebo rejection.
+  - evidence_id: nas-build-tests
+    path: tests/test_timing_build_provenance.py
+    sha256: 4dcceaf4f9cb051fda28350dd316b79724f4ff1141873e8b2de6ba4d183d9e4b
+    purpose: Timing-build seal mutation, symlink, schema, and mid-run replacement regressions.
 limitations:
   - The same automated agent implemented and self-audited this analysis contract; this is not independent review.
   - P-values are secondary diagnostics and cannot declassify an official-dudect finding.
@@ -236,5 +277,6 @@ limitations:
   - The Falcon v1 0/3 result and 156,523--196,831-tick diagnostics are disclosed in the preregistration; this automated audit does not substitute for independent inspection of the raw engineering bundle.
   - The revised ML-DSA and Falcon curves still require successful final execution on both accepted physical hosts.
   - The portable ML-KEM engineering signal is mixed-input calibration only; it is neither final evidence nor a secret-key attribution.
+  - No KyberSlash v3 physical trace exists at the audited commit; synthetic contract tests cannot establish operand-dependent latency.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none

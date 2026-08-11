@@ -6,8 +6,8 @@ perspective: mlkem-kyberslash-protocol
 automated_agent: true
 human_reviewer: false
 automated_agent_id: mlkem-kyber-audit
-audited_at: "2026-08-10T11:42:40Z"
-audited_commit: 55f1bf0f0eda949edd52cf36e04ca3a81de780ba
+audited_at: "2026-08-11T03:29:43Z"
+audited_commit: b0e3f5ccd2e1100d8e7d467dd3daad92a30727be
 scope:
   - same-corpus toy ML-KEM class axis and defined C arithmetic
   - exact-binary ML-KEM public instruction attribution
@@ -17,7 +17,9 @@ scope:
   - nonreuse of disclosed diverse v1 and committed-corpus v2 engineering calibration artifacts
   - pending two-person human review of the mixed public-and-secret attribution boundary
   - KyberSlash fixed-secret chosen-ciphertext contrast and exact rejection witnesses
-  - direct vulnerable-versus-patched operand-bin latency canaries and linked-binary div/idiv contracts
+  - disclosed KyberSlash v2 invalid-placebo and class-address confounds with strict nonreuse
+  - KyberSlash v3 same-address operand setup, valid placebo, return-code witnesses, and linked wrapper-to-site contracts
+  - independent 21-trace operand-v3 input reconstruction and universal timing-build provenance
   - raw-derived directional controls, physical-host requirements, and two-host promotion boundary
 findings:
   - finding_id: mkp-001
@@ -53,10 +55,10 @@ findings:
     severity: high
     title: Fresh physical two-host ML-KEM and KyberSlash evidence does not yet exist
     description: >-
-      Frozen builders, v3/v2 manifests, and validators are preparation. They do
+      Frozen builders, current replacement manifests, and validators are preparation. They do
       not show that either valid-tuple contrast or a KyberSlash operand-latency
       canary reproduced on two accepted native CPU models.
-    evidence_ids: [mkp-core-v3-plan, mkp-diverse-v2-plan, mkp-kyberslash-plan, mkp-paper-v4]
+    evidence_ids: [mkp-core-v3-plan, mkp-diverse-v2-plan, mkp-kyberslash-v3-plan, mkp-paper-v5]
   - finding_id: mkp-006
     severity: critical
     title: Official-dudect controls and power fields could be self-attested
@@ -118,12 +120,31 @@ findings:
     evidence_ids: [mkp-valid-tuple-review, mkp-review-manifest, mkp-campaign-runner]
   - finding_id: mkp-013
     severity: low
-    title: The shared valid_tuple amendment could have drifted KyberSlash v2
+    title: The opt-in operand-v3 amendment could have mutated historical v2 behavior
     description: >-
-      Adding a branch to the shared KEM timing template risked changing the
-      frozen chosen-ciphertext or operand-bin classes, their rejection witness,
-      compiler contract, or paper routing.
-    evidence_ids: [mkp-timing-template, mkp-timing-common, mkp-kyberslash-plan, mkp-kyberslash-config, mkp-kyberslash1-config, mkp-kyberslash2-config, mkp-kyberslash12-config, mkp-binary-contract, mkp-binary-validator, mkp-kyberslash-tests, mkp-paper-v4]
+      Editing the shared KEM template risked silently changing historical v2
+      rendering or the four unchanged full-KEM chosen-ciphertext axes instead
+      of isolating the replacement to six new direct-canary configs.
+    evidence_ids: [mkp-timing-template, mkp-kyberslash-plan, mkp-kyberslash-v3-plan, mkp-kyberslash-tests, mkp-operand-v3-tests, mkp-paper-v5]
+  - finding_id: mkp-014
+    severity: critical
+    title: KyberSlash v2 operand controls did not isolate the intended arithmetic site
+    description: >-
+      V2 selected class data through different heap source addresses, and its
+      setup-placebo reused an unconstrained coefficient. In the preserved
+      engineering corpus that value was 45124, so decapsulation returned before
+      the site; neither address/cache setup effects nor site-local effects were
+      excluded by a passing-looking target statistic.
+    evidence_ids: [mkp-kyberslash-plan, mkp-kyberslash-doc, mkp-preregistration, mkp-timing-template, mkp-kyberslash-v3-plan, mkp-kyberslash-v3-doc, mkp-operand-v3-tests]
+  - finding_id: mkp-015
+    severity: critical
+    title: Operand-v3 input and executable provenance could be self-attested
+    description: >-
+      A producer could claim same-address setup, zero decapsulation failures,
+      a complete control matrix, or the reviewed executable without preserving
+      and independently reconstructing every runtime metadata record and build
+      artifact.
+    evidence_ids: [mkp-input-validator, mkp-build-provenance, mkp-dudect-producer, mkp-dudect-verifier, mkp-campaign-runner, mkp-analysis, mkp-operand-v3-tests, mkp-build-provenance-tests]
 dispositions:
   - finding_id: mkp-001
     status: addressed
@@ -167,10 +188,10 @@ dispositions:
       claim remains blocked until fresh final artifacts exist from both
       required physical hosts.
     blocker: >-
-      Execute core v3, diverse v2, and KyberSlash v2 at one reviewed commit on
+      Execute core v3, diverse v2, and KyberSlash v3 at one reviewed commit on
       two non-virtualized native Linux x86_64 hosts with distinct CPU models;
       retain all controls and do not claim a full attack or key recovery.
-    evidence_ids: [mkp-core-v3-plan, mkp-diverse-v2-plan, mkp-kyberslash-plan, mkp-paper-v4]
+    evidence_ids: [mkp-core-v3-plan, mkp-diverse-v2-plan, mkp-kyberslash-v3-plan, mkp-paper-v5]
   - finding_id: mkp-006
     status: addressed
     rationale: >-
@@ -249,16 +270,37 @@ dispositions:
   - finding_id: mkp-013
     status: addressed
     rationale: >-
-      Direct comparison from 48791fc170e65bf117d029eae80bb3397e2198e5 to
-      55f1bf0f0eda949edd52cf36e04ca3a81de780ba found identical KyberSlash v2
-      plan, documentation, stock and three variant configs, direct-canary tree,
-      ML-KEM source trees, binary contract, timing binary validator, and shared
-      timing_v2_common blobs. The timing_kem template changed only through
-      valid_tuple-guarded declarations, setup/witness code, and metadata; the
-      chosen_ct and operand_bin branches remain unchanged. Paper v4 still
-      routes kyberslash-contrast to kyberslash_native_v2.yaml.
+      The legacy-class-pools setup remains the schema default and all v2
+      configs are unchanged. Focused tests render v2 without any v3-only
+      address, placebo, or witness markers, require exactly six opt-in v3
+      configs, and prove paper v5 changes only the KyberSlash component from v2
+      to v3 while leaving the four full-KEM configs unchanged.
     blocker: ""
-    evidence_ids: [mkp-kyberslash-plan, mkp-kyberslash-doc, mkp-kyberslash-config, mkp-kyberslash1-config, mkp-kyberslash2-config, mkp-kyberslash12-config, mkp-binary-contract, mkp-binary-validator, mkp-timing-template, mkp-timing-common, mkp-kyberslash-tests, mkp-paper-v4]
+    evidence_ids: [mkp-kyberslash-plan, mkp-kyberslash-v3-plan, mkp-timing-template, mkp-kyberslash-tests, mkp-operand-v3-tests, mkp-paper-v5]
+  - finding_id: mkp-014
+    status: addressed
+    rationale: >-
+      V3 computes both coefficient candidates for one index, selects them with
+      an arithmetic mask, writes one ct_work address, and always uses one
+      sk_fixed address. Coefficient 1664 is the declared placebo and every one
+      of the 128 bin members plus warm-up calls must return success; any
+      measured failure aborts. The linked wrapper must call the intended site,
+      and paper v5 forbids reuse, resume, relabeling, or correction of v2
+      operand traces.
+    blocker: ""
+    evidence_ids: [mkp-kyberslash-v3-plan, mkp-kyberslash-v3-doc, mkp-binary-contract-v3, mkp-timing-template, mkp-operand-v3-config, mkp-operand-v3-tests, mkp-paper-v5, mkp-preregistration]
+  - finding_id: mkp-015
+    status: addressed
+    rationale: >-
+      The shared validator reconstructs the exact seven traces per process,
+      complete process/effect matrix, constant base corpus seed, exact v3
+      metadata, zero measured failures, and selected target record. Official
+      verification, native validation, and paper analysis invoke it. A separate
+      premeasurement build seal binds the config, generated C, binary, linked
+      sources, compiler, flags, and replay argv around every subprocess and
+      into the target artifact ledger.
+    blocker: ""
+    evidence_ids: [mkp-input-validator, mkp-build-provenance, mkp-dudect-producer, mkp-dudect-verifier, mkp-campaign-runner, mkp-analysis, mkp-operand-v3-tests, mkp-build-provenance-tests]
 evidence:
   - evidence_id: mkp-toy-source
     path: examples/toy_kem_ct_leak/src/toy_kem.c
@@ -266,7 +308,7 @@ evidence:
     purpose: Corrected same-corpus class-controlled branch and defined arithmetic.
   - evidence_id: mkp-baseline-manifest
     path: docs/baselines/same_corpus_v1.yaml
-    sha256: 846fd3c8da31e9bc6959f7b48f2d3bef3734d9dd80282b8ed65b05a9df1e0185
+    sha256: f58673477a552106a64f232758a68ba2ee7f95cbf5e8ccd7d2b56b4c1bfa1d17
     purpose: Frozen same-corpus source, cases, coverage, and tool execution contract.
   - evidence_id: mkp-kyberslash-plan
     path: docs/measurement/kyberslash_native_v2.yaml
@@ -298,11 +340,11 @@ evidence:
     purpose: Final routing to core v3, diverse v2, and unchanged KyberSlash v2 with two-host and no-reuse gates.
   - evidence_id: mkp-preregistration
     path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
-    sha256: 4df9c388f71ad63c5244c7b1a0ab4a3bf2e38bded4bf325a2eab9c0668337376
+    sha256: 0b8bd39667c4958ecc794ef8d4d43e3643c5f1cdcb286c0d249581775bb82d90
     purpose: Pre-result disclosure of the mixed-input calibration, protocol correction, and final-evidence exclusions.
   - evidence_id: mkp-valid-tuple-review
     path: docs/reviews/paper/mlkem-valid-tuple-v1.yaml
-    sha256: 7da8650336d8564e2d57ed2d5f0c5bf2d1b9e53a3f952a17035755d153fd22b8
+    sha256: 5bac8119c0f66ed050c5bfe2e47adffb25d9fe68c0597b53506965680bd4d681
     purpose: Pending two-person review packet for the exact mixed-input attribution boundary.
   - evidence_id: mkp-review-manifest
     path: docs/reviews/paper/manifest.yaml
@@ -346,7 +388,7 @@ evidence:
     purpose: Unchanged exact measured-binary disassembly contract validator.
   - evidence_id: mkp-timing-template
     path: ctkat/templates/timing_kem.c.j2
-    sha256: 90e43a92e2f38a7eebf564a9f2d4379b965d84f5a4e52c983aa3a210c2fa3fef
+    sha256: 561a73ac09d4ea98418691f12c17d7e43cde18a77a1523edcb80038d1549b59d
     purpose: Valid-tuple checked setup and round trips plus unchanged chosen-ct exact rejection-key witness.
   - evidence_id: mkp-timing-common
     path: ctkat/templates/timing_v2_common.c.j2
@@ -354,23 +396,23 @@ evidence:
     purpose: Shared clock, control modes, seeded selection, and metadata implementation unchanged from the prior audit.
   - evidence_id: mkp-input-validator
     path: ctkat/timing_input_contract.py
-    sha256: 9c648e137f30520065105c5e27d83a07d76f6398685b21dae9cc21e8bb1fd9c4
+    sha256: 122995f867a87b059aa8b68d4e0bcd35d92f3ee5a00e86ac1fac550606b31996
     purpose: Shared exact metadata, trace-matrix, seed-uniqueness, aggregate-contract, and selected-repeat validator.
   - evidence_id: mkp-dudect-producer
     path: ctkat/cli.py
-    sha256: dba4a501df724c74c4d4be9410a4cfe644fb3005a657c0ddbf2b8e0f3efef506
+    sha256: b33150f5e9c4e05cbb515f78c96e293711ced871e64e10a7f23b6894196ce158
     purpose: Preserves target and calibration runtime metadata and constructs the producer-side 21-trace contract.
   - evidence_id: mkp-dudect-verifier
     path: ctkat/official_dudect_verify.py
-    sha256: 62bfbaf0a660663fee7cd1c53e388edb847ccf6c9554941913da4721fecfd613
+    sha256: 0adfd7e37a3c5071bd1c517321ac654aabf50612b170a4bf69271856fb0db495
     purpose: Independent raw-CSV matrix and dudect recomputation plus valid-tuple report validation for expected axes.
   - evidence_id: mkp-campaign-runner
     path: scripts/run_native_timing_campaign.py
-    sha256: 4c2667217aee3c79c8008514d8335b8ffc0fa3008cf95a6c87804f6d93479f7e
+    sha256: bd32b8f1b40cbc5d93e24ee60838debe332b589d3b338e449763b5930d7e1b9b
     purpose: Axis replacement checks, official verification, direct contract validation, final no-resume, and exact human gate.
   - evidence_id: mkp-analysis
     path: scripts/analyze_paper_native_results.py
-    sha256: c13bda8ada23bf7d532a361800865bae41e3f2b1a50cd51660fd0fbe0e6b021d
+    sha256: 568b96c2511bf46c8f9794bee6270a1c81a57d333439cedb3864ff393b5c218f
     purpose: Binds final analysis to core v3/diverse v2 and rejects malformed valid-tuple backend rows.
   - evidence_id: mkp-input-contract-tests
     path: tests/test_timing_input_contract.py
@@ -378,15 +420,15 @@ evidence:
     purpose: Canonical 21-trace pass and incomplete, forged, seed, metadata, process, effect, and selection regressions.
   - evidence_id: mkp-producer-control-tests
     path: tests/test_cli.py
-    sha256: 663ba2f1876140ff57aa122d4447a01ca5f9fda6c3d8db0b3304234c671346c7
+    sha256: e8c01370d5a91ae65482d98e7cc4d9ca6dfed41f6009576a612d62b27eb57041
     purpose: Producer valid-tuple fail-closed and exact-contract acceptance plus directional-control regressions.
   - evidence_id: mkp-control-tests
     path: tests/test_native_timing_campaign.py
-    sha256: 094f104522e16ff78ea1c221780f049a5753182f06dd7f2ba0270e5555d9d08f
+    sha256: 2b7022fbd87383a5e1778e29c15c408f337932ee3f5a8a08619fa341ea5dd9f4
     purpose: Campaign and nested official-verifier rejection of incomplete valid-tuple reports and raw-derived control tests.
   - evidence_id: mkp-analysis-tests
     path: tests/test_paper_native_analysis.py
-    sha256: b44cc73dd588fb3270853d922b91dfacd5bfc97693e40610229aecd9a94bcb2b
+    sha256: 2c29000707535e6ce78085726d6cd2617e0fedd0a53158754d0fe2bc5baf26aa
     purpose: Final analyzer routing and incomplete valid-tuple report rejection.
   - evidence_id: mkp-timing-template-tests
     path: tests/test_timing_harness.py
@@ -394,7 +436,7 @@ evidence:
     purpose: Generated valid-tuple class construction, round-trip witness metadata, and common KEM timing regressions.
   - evidence_id: mkp-kyberslash-tests
     path: tests/test_kyberslash_timing_v2.py
-    sha256: 5895e62866e0fe4ba58bde739813be0e1f65b6bc7752347e172e9d48a3613e90
+    sha256: bdb19674ded7b04cafa545514fdd8864f5a1147a80d2f65469cf36be51409d34
     purpose: Fixed-secret chosen-ciphertext, exact rejection witness, operand-bin, compiler, and campaign regressions.
   - evidence_id: mkp-asm-checker
     path: scripts/check_asm_evidence.py
@@ -410,7 +452,7 @@ evidence:
     purpose: Runtime-validated frozen ML-KEM assembly evidence bundle contract.
   - evidence_id: mkp-baseline-runner
     path: scripts/run_same_corpus_baselines.py
-    sha256: d4c3d14084c926de8e740458238bddde0e636d478cc57fb10b396f5849d7c095
+    sha256: d7b422a58a5d8961c977df5bb4c62ba8f63d439ea2b2e1e4f337a1745e0f2697
     purpose: Final TIMECOP source/compiler verification, isolated rebuild, and fresh backend rerun.
   - evidence_id: mkp-baseline-schema
     path: docs/baselines/baseline-result-v1.schema.json
@@ -420,6 +462,38 @@ evidence:
     path: tests/test_same_corpus_baselines.py
     sha256: 27a7e6cfee486b4735fd2e88ca236c0fd12370c0ee9dd670e0c92b5be33294bf
     purpose: Fake-ELF, forged-log, source-tamper, compiler-tamper, and final fresh-rerun regression tests.
+  - evidence_id: mkp-kyberslash-v3-plan
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Current same-address direct-canary campaign and explicit v2 operand nonreuse boundary.
+  - evidence_id: mkp-kyberslash-v3-doc
+    path: docs/measurement/KYBERSLASH_NATIVE_V3.md
+    sha256: 38be011f85b8523b0c05ee5bdbce6ca52de13140e0fa65427727fbcca4488bba
+    purpose: V2 confound disclosure, v3 setup/witness contract, and limited public-operand claim.
+  - evidence_id: mkp-paper-v5
+    path: docs/measurement/paper_native_campaign_v5.yaml
+    sha256: 6c1950e37b2ae71d436a825caeede248adc584669e7ff2185068f4b08dd78492
+    purpose: Current paper routing to KyberSlash v3 with fresh roots and universal build seals.
+  - evidence_id: mkp-binary-contract-v3
+    path: examples/kyberslash_operand_latency/binary_contracts_v3.yaml
+    sha256: 662cc7117080f5a0ed6c28aeb6d2bc24f840690615d8858bed46f01aca07ff5b
+    purpose: Wrapper-to-site call and vulnerable-versus-patched division-count contract.
+  - evidence_id: mkp-operand-v3-config
+    path: examples/kyberslash_operand_latency/ctkat_ks1_vulnerable_v3.yaml
+    sha256: 0c6d4a148dc10f0cf37bbb7d59dd628dd06a09a4a2d5bef117f054049be27703
+    purpose: Representative opt-in same-address setup and v3 binary-contract binding; tests enumerate all six configs.
+  - evidence_id: mkp-operand-v3-tests
+    path: tests/test_operand_setup_contract_v3.py
+    sha256: 7c92ca9b5b68af9fe8a0090bdf68fefe1505189eb49e9ad3b406739950c3b8b0
+    purpose: Rendered source, legacy isolation, exact 21-trace reconstruction, selected metadata, and invalid-placebo rejection tests.
+  - evidence_id: mkp-build-provenance
+    path: ctkat/timing_build_provenance.py
+    sha256: 5373db9a553f06c363b1990f03547548f07ddb74649bf6ac55587f0c1d21ac39
+    purpose: Common source, executable, compiler, config, and linked-input seal.
+  - evidence_id: mkp-build-provenance-tests
+    path: tests/test_timing_build_provenance.py
+    sha256: 4dcceaf4f9cb051fda28350dd316b79724f4ff1141873e8b2de6ba4d183d9e4b
+    purpose: Build-input, seal, symlink, schema, and measured-subprocess replacement rejection regressions.
 limitations:
   - This automated audit supplies no human-review credit and cannot establish public attribution or exploitability without independent cryptographic review.
   - The mlkem-valid-tuple-v1 packet is pending; final execution must remain blocked until two independent reviewers bind approval to the exact source commit and evidence hashes.
@@ -427,6 +501,7 @@ limitations:
   - The disclosed portable engineering t=-383 observation is a mixed fixed-versus-fresh valid-tuple calibration only; it is neither a secret-key leakage claim nor reusable final evidence.
   - Chosen-ciphertext and direct-operand axes are intentionally not described as secret-key leakage, a full attack, or key recovery.
   - The valid-tuple contract authenticates the frozen mixed-input construction and provenance; it cannot separate secret-key cost from ciphertext, embedded public-key material, or their interaction.
-  - KyberSlash v2 non-drift was established by exact selected blob/tree comparison and conditional-template review; it does not replace final execution or human interpretation.
+  - KyberSlash v2 operand traces remain setup-confounded historical engineering evidence and cannot be promoted, repaired statistically, or reused by v3.
+  - Source-level same-address preparation and controls do not establish a hardware effect; only fresh reviewed physical v3 runs can do so.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none
