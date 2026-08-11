@@ -6,8 +6,8 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-blind-audit
-audited_at: "2026-08-11T03:29:43Z"
-audited_commit: b0e3f5ccd2e1100d8e7d467dd3daad92a30727be
+audited_at: "2026-08-11T04:03:06Z"
+audited_commit: 8b7236e449f0768b600c4bd4773a659932f0b2d5
 scope:
   - final two-host bundle provenance, host identity, hashes, run identity, and artifact reuse
   - resume and run-kind separation for engineering, pilot, and final campaigns
@@ -256,5 +256,6 @@ limitations:
   - No two-host final timing corpus, completed unblinding record, named final analysis, or canonical final-evidence root exists in the audited commit.
   - Valid-tuple metadata authenticates the declared mixed-input contract but cannot turn that mixed contrast into causal secret attribution.
   - Pre/post seal checks assume the accepted physical host and operating system are not actively malicious; they are provenance and mutation guards, not remote attestation.
+  - The Korean project-history retrospective added at the audited commit is explanatory only and grants no measurement, artifact, or human-review credit.
   - Evidence hashes expire on any referenced-file change and require a fresh automated audit disposition.
 human_gate_effect: none

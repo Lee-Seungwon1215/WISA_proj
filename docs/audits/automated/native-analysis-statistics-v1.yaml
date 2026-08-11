@@ -6,8 +6,8 @@ perspective: native-analysis-statistics
 automated_agent: true
 human_reviewer: false
 automated_agent_id: paper-analysis-automated-self-audit
-audited_at: "2026-08-11T03:29:43Z"
-audited_commit: b0e3f5ccd2e1100d8e7d467dd3daad92a30727be
+audited_at: "2026-08-11T04:03:06Z"
+audited_commit: 8b7236e449f0768b600c4bd4773a659932f0b2d5
 scope:
   - exact component, target, host, commit, and input-hash provenance
   - conservative primary two-host risk folding
@@ -278,5 +278,6 @@ limitations:
   - The revised ML-DSA and Falcon curves still require successful final execution on both accepted physical hosts.
   - The portable ML-KEM engineering signal is mixed-input calibration only; it is neither final evidence nor a secret-key attribution.
   - No KyberSlash v3 physical trace exists at the audited commit; synthetic contract tests cannot establish operand-dependent latency.
+  - The Korean project-history retrospective added at the audited commit is explanatory only and grants no statistical, timing, or human-review credit.
   - Evidence hashes expire on any referenced-file change.
 human_gate_effect: none
