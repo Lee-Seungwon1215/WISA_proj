@@ -7,7 +7,7 @@ automated_agent: true
 human_reviewer: false
 automated_agent_id: signature-falcon-v7-audit
 audited_at: "2026-08-11T11:20:00Z"
-audited_commit: 383f995947f751146264ba8c5cbdcd1267432b35
+audited_commit: c3dc1fd65c5f6876e75974ea55132d6ea3ec18cf
 scope:
   - signature dual-read masked key/message materialization before t0
   - randomness-policy contract and signature correctness/output-length evidence
