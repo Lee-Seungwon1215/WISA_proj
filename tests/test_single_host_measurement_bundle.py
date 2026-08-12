@@ -56,7 +56,10 @@ def test_build_single_host_bundle_discovers_fresh_results_and_hashes_tree(tmp_pa
         start=5,
     ):
         _write_json(
-            host_root / "same-corpus" / tool_id / "fresh" / "baseline_report.json",
+            host_root
+            / "same-corpus"
+            / f"20260812T00000{index}.000000Z-{tool_id}"
+            / "baseline_report.json",
             {
                 "schema_version": "2.0",
                 "kind": "ctkat-same-corpus-baseline",

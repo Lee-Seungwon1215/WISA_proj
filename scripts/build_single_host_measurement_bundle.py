@@ -53,8 +53,8 @@ def _relative(bundle_root: Path, path: Path, label: str) -> str:
 
 
 def _one_report(root: Path, tool_id: str) -> Path:
-    tool_root = root / "same-corpus" / tool_id
-    reports = sorted(tool_root.glob("*/baseline_report.json"))
+    tool_root = root / "same-corpus"
+    reports = sorted(tool_root.glob(f"*-{tool_id}/baseline_report.json"))
     if len(reports) != 1:
         raise BundleError(
             f"{tool_id}: expected exactly one fresh baseline report, found {len(reports)}"

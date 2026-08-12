@@ -16,9 +16,9 @@ hosts:
       falcon-contrast: replace/host-a/falcon
       diverse-lineages: replace/host-a/diverse-v2
     same_corpus_results:
-      official_dudect: replace/host-a/same-corpus/official_dudect/baseline_report.json
-      timecop: replace/host-a/same-corpus/timecop/baseline_report.json
-      microwalk_pin: replace/host-a/same-corpus/microwalk_pin/baseline_report.json
+      official_dudect: replace/host-a/same-corpus/TIMESTAMP-official_dudect/baseline_report.json
+      timecop: replace/host-a/same-corpus/TIMESTAMP-timecop/baseline_report.json
+      microwalk_pin: replace/host-a/same-corpus/TIMESTAMP-microwalk_pin/baseline_report.json
 assembly_evidence:
   mlkem_public_attribution:
     host_id: host-a
