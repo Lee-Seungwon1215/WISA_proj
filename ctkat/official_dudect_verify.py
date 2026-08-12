@@ -185,6 +185,7 @@ class OfficialDudectProtocolContract:
     target_power: float
     power_alpha: float
     expected_axes: tuple[tuple[str, str], ...] = ()
+    expected_randomness_policies: tuple[tuple[str, str], ...] = ()
 
 
 def _timing_domain_seed(base: int, role: str, process_index: int, subindex: int = 0) -> int:
@@ -869,6 +870,20 @@ def _verify_protocol_contract(
             f"{harness}: backend harness_protocol.axis={protocol.get('axis')!r}, "
             f"expected={expected_axis!r}"
         )
+    expected_randomness = dict(contract.expected_randomness_policies).get(harness)
+    if expected_randomness is not None:
+        if protocol.get("randomness_policy_expected") != expected_randomness:
+            errors.append(
+                f"{harness}: backend harness_protocol.randomness_policy_expected="
+                f"{protocol.get('randomness_policy_expected')!r}, "
+                f"expected={expected_randomness!r}"
+            )
+        if protocol.get("randomness_policies_observed") != [expected_randomness]:
+            errors.append(
+                f"{harness}: backend harness_protocol.randomness_policies_observed="
+                f"{protocol.get('randomness_policies_observed')!r}, "
+                f"expected={[expected_randomness]!r}"
+            )
     if expected_axis == "valid_tuple":
         errors.extend(
             validate_valid_tuple_harness_report(

@@ -607,14 +607,14 @@ confounded/underpowered timing 숫자도 보존은 하지만 final clean evidenc
 
 다음은 코드가 없어서가 아니라 final 증거가 아직 없어서 완료가 아니다.
 
-1. V7 clean commit에서 한 physical Linux x86_64 host의 fresh final 실행
+1. V8 clean commit에서 한 physical Linux x86_64 host의 fresh final 실행
 2. 네 timing component와 same-corpus 세 도구의 control-valid artifact
 3. 새 커밋의 ML-KEM assembly bundle과 전체 host `SHA256SUMS`
 4. schema-v5 single-host bundle과 byte-deterministic named analysis
 5. 결과 수치를 논문 표·discussion·limitation에 명시적으로 반영
 
 두 번째 host, 독립 2인 review, 사람 triage/agreement, blind rerun은 더 강한
-follow-up validation이다. 현재 V7 승격 gate인 척 꾸며내지 않으며, 없으면 해당
+follow-up validation이다. 현재 V8 승격 gate인 척 꾸며내지 않으며, 없으면 해당
 재현성·사람합의 claim만 하지 않는다.
 
 pending은 실패가 아니다. 하지만 완료도 아니다.
@@ -690,7 +690,9 @@ host 비교, 결과 기반 discussion과 conclusion이다.
 | 2026-08-11 | M9 | KyberSlash v3와 universal build provenance 동결 |
 | 2026-08-11 | V6 실측 진단 | 28축 완료 후 dudect baseline invalidity와 공통 class-setup confound 발견; 전부 비승격 보존 |
 | 2026-08-11 | V7 동결 | deterministic RNG 계약, dual-read masked setup, 안정화된 same-corpus control 반영 |
-| 다음 | final gate | 한 host fresh V7, schema-v5 bundle, named analysis, 논문 결과 반영 |
+| 2026-08-12 | V7 실측 중단 | core 6 target과 KyberSlash 10 target 수집 후 header에서 RNG 의미를 추론한 validator 결함 발견; 전부 비승격 보존 |
+| 2026-08-12 | V8 동결 | header와 독립된 explicit randomness policy, expected/observed 검증, operand measured-RNG=0 계약 반영 |
+| 다음 | final gate | 한 host fresh V8, schema-v5 bundle, named analysis, 논문 결과 반영 |
 
 ## 15. 관련 source of truth
 

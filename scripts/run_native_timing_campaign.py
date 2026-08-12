@@ -2191,6 +2191,10 @@ def validate_target_artifacts(
             target_power=campaign.protocol.target_power,
             power_alpha=campaign.protocol.power_alpha,
             expected_axes=target.axes,
+            expected_randomness_policies=tuple(
+                (name, configured_harnesses[name].randomness_policy)
+                for name in target.harnesses
+            ),
         ),
     )
     result.errors.extend(
@@ -2391,9 +2395,17 @@ def validate_target_artifacts(
         ):
             if not isinstance(protocol.get(field_name), bool):
                 harness_errors.append(f"{field_name} must be boolean")
-        if protocol.get("randomness_policies_observed") != ["seeded-interpose"]:
+        expected_randomness_policy = configured_harness.randomness_policy
+        if protocol.get("randomness_policy_expected") != expected_randomness_policy:
             harness_errors.append(
-                f"randomness policy={protocol.get('randomness_policies_observed')!r}"
+                "randomness_policy_expected="
+                f"{protocol.get('randomness_policy_expected')!r}, "
+                f"expected={expected_randomness_policy!r}"
+            )
+        if protocol.get("randomness_policies_observed") != [expected_randomness_policy]:
+            harness_errors.append(
+                f"randomness policy={protocol.get('randomness_policies_observed')!r}, "
+                f"expected={[expected_randomness_policy]!r}"
             )
         try:
             raw_total = int(row.get("raw_n_total", ""))
@@ -2825,7 +2837,7 @@ def _human_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
     }
 
 
-SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v7.yaml"
+SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v8.yaml"
 SINGLE_HOST_GATE_INPUTS = (
     ROOT / "docs/measurement/EXPERIMENT_PREREGISTRATION.md",
     ROOT / "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
@@ -2923,7 +2935,7 @@ def _single_host_premeasurement_gate_material(
     promotion = plan.get("promotion")
     if (
         plan.get("schema_version") != 3
-        or plan.get("campaign_id") != "ctkat-paper-native-v7-single-host"
+        or plan.get("campaign_id") != "ctkat-paper-native-v8-single-host"
         or plan.get("status") != "premeasurement-frozen"
         or not isinstance(policy, dict)
         or policy.get("minimum_physical_hosts") != 1

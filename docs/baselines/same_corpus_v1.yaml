@@ -16,7 +16,7 @@ comparison_contract:
 source_snapshot:
   config:
     path: examples/toy_kem_ct_leak/ctkat.yaml
-    sha256: 7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
+    sha256: e84a2ff02ba149e07ccda242832a16091104c3bafb2d2413511fa6778170bd8b
   header:
     path: examples/toy_kem_ct_leak/include/toy_kem.h
     sha256: 3b0c86fad24a632ac115b95dd29c86a406f63c66a80511eca150c675888f87c6
@@ -77,7 +77,7 @@ tools:
       implementation_files: []
       file_sha256:
         examples/toy_kem_ct_leak/ctkat.yaml:
-          7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
+          e84a2ff02ba149e07ccda242832a16091104c3bafb2d2413511fa6778170bd8b
 
   timecop:
     display_name: KyberSlash patched-Valgrind TIMECOP
@@ -99,9 +99,9 @@ tools:
       implementation_files: [scripts/run_same_corpus_baselines.py]
       file_sha256:
         examples/toy_kem_ct_leak/ctkat.yaml:
-          7866fc797b5112babaa81b3b1f23686effc33f3b77cc3f723fef490c70fde110
+          e84a2ff02ba149e07ccda242832a16091104c3bafb2d2413511fa6778170bd8b
         scripts/run_same_corpus_baselines.py:
-          9cffb67257700561099443acce1778a0dcbeafaf5983121b5e4d2078c5c534f6
+          28bf3407de760cc99f54064b4190f973f8273715dbf50cd08047508a46e5be55
 
   microwalk_pin:
     display_name: MicroWalk PinTracer

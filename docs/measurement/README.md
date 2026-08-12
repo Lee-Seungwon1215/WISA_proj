@@ -1,6 +1,6 @@
 # Native timing campaign
 
-논문용 최상위 동결본은 `paper_native_campaign_v7.yaml`이다. 기존 corpus refresh
+논문용 최상위 동결본은 `paper_native_campaign_v8.yaml`이다. 기존 corpus refresh
 외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
 한 대의 physical x86_64 Linux host에서 같은 clean commit으로 전부 실행한다.
 결과는 해당 host 범위에서만 승격하며 cross-host 재현성과 독립 사람 리뷰를
@@ -53,17 +53,20 @@ ML-KEM `sk` machine label은 secret key와 matching public ciphertext를 함께
 `kem_dec`은 유지하되 machine axis를 `valid_tuple`로 바꾸고 fail-closed
 input contract를 적용한다. v2 engineering trace는 역사 calibration이며 v3
 final에 재사용·resume·relabel할 수 없다. 자동화 검증을
-마친 clean commit에서는 engineering/pilot을 실행할 수 있다. v7 논문 승격용
-final은 `--final-gate single-host`를 명시한다. runner는 v7 plan,
+마친 clean commit에서는 engineering/pilot을 실행할 수 있다. v8 논문 승격용
+final은 `--final-gate single-host`를 명시한다. runner는 v8 plan,
 preregistration, analysis contract, 네 component manifest, baseline manifest,
 실행/분석 코드와 lock file의 SHA-256을 campaign report에 묶는다. 이 gate는
 input integrity 검증이며 사람 리뷰라고 부르지 않는다.
 
-V7은 모든 비-operand KEM/서명 하니스의 class 준비를
+V8은 모든 비-operand KEM/서명 하니스의 class 준비를
 `dual-read-masked-select-v4`로 고정한다. 두 class pool을 모두 읽고 마스크로
 같은 work buffer에 선택하므로 `t0` 직전 class-dependent pointer branch가 없다.
 각 raw trace가 이 계약을 기록하지 않으면 validity가 실패한다. V6 final tree와
-V7 동결 전 engineering 결과는 이 setup 교정의 calibration일 뿐 재사용하지 않는다.
+V7 final 실패 tree는 재사용하지 않는다. V8은 `randombytes_header`와 별개인
+`randomness_policy`를 검증한다. operand와 c-fn-dsa는 헤더가 null이어도 setup에서
+seeded interpose를 사용하며, operand 측정 구간의 RNG 호출 수는 0이어야 한다.
+오직 결정적 toy baseline만 `external-or-none`을 명시한다.
 
 ## 지금 확인 가능한 것
 

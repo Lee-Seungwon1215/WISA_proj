@@ -78,6 +78,7 @@ dudect:
       sources: [src/toy_kem.c]
       header: toy_kem.h
       randombytes_header: null
+      randomness_policy: external-or-none
       prefix: "LEAKY_"
 
     # safe: same loop count for every ct in SAFE_crypto_kem_dec().
@@ -89,6 +90,7 @@ dudect:
       sources: [src/toy_kem.c]
       header: toy_kem.h
       randombytes_header: null
+      randomness_policy: external-or-none
       prefix: "SAFE_"
 
 report:

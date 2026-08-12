@@ -497,6 +497,36 @@ def test_dudect_harness_leak_target_default_is_sk():
     assert h.leak_target == "sk"
 
 
+def test_dudect_randomness_policy_is_explicit_and_fail_closed():
+    from ctkat.config import DudectHarnessConfig
+
+    seeded = DudectHarnessConfig(
+        name="operand",
+        template="kem",
+        header="api.h",
+        randombytes_header=None,
+    )
+    deterministic = DudectHarnessConfig(
+        name="toy",
+        template="kem",
+        header="api.h",
+        randombytes_header=None,
+        randomness_policy="external-or-none",
+    )
+
+    assert seeded.randomness_policy == "seeded-interpose"
+    assert deterministic.randomness_policy == "external-or-none"
+
+    with pytest.raises(ValidationError, match="requires randombytes_header: null"):
+        DudectHarnessConfig(
+            name="ambiguous",
+            template="kem",
+            header="api.h",
+            randombytes_header="randombytes.h",
+            randomness_policy="external-or-none",
+        )
+
+
 def test_dudect_kem_can_set_leak_target_ct():
     from ctkat.config import DudectHarnessConfig
 

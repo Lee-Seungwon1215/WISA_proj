@@ -16,6 +16,8 @@ from ctkat.timing_input_contract import (
 
 OPERAND_V3_METADATA = {
     "axis": "operand_bin",
+    "randomness": "seeded-interpose",
+    "measured_rng_calls": "0",
     "key_policy": "fixed",
     "class_contract": "frozen-public-coefficient-bins",
     "class0_coefficients": "0-63",
@@ -36,6 +38,7 @@ def _operand_harness(**overrides) -> DudectHarnessConfig:
         "template": "kem",
         "header": "api.h",
         "randombytes_header": None,
+        "randomness_policy": "seeded-interpose",
         "prefix": "TEST_",
         "leak_target": "operand_bin",
     }
@@ -142,6 +145,10 @@ def test_operand_v3_render_witnesses_setup_and_measured_dec_contract():
         if key == "measured_dec_contract_failures":
             assert "measured_dec_contract_failures=%zu" in source
             assert "measured_dec_contract_failures," in source
+        elif key == "randomness":
+            assert '"randomness=%s ' in source
+        elif key == "measured_rng_calls":
+            assert "measured_rng_calls=%llu" in source
         else:
             assert f"{key}={value}" in source
 
@@ -188,7 +195,6 @@ def _protocol_input_contract(
         metadata = {
             **OPERAND_V3_METADATA,
             "corpus_seed": str(effective_seed),
-            "randomness": "seeded-interpose",
             "measurements": str(kwargs.get("measurements_override") or dudect.measurements),
         }
         if calls == corrupt_call:

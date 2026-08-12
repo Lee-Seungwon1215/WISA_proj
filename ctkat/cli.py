@@ -1433,6 +1433,7 @@ def _run_v2_harness_protocol(
         "positive_detection_effects_at_target_power": [
             payload["positive_detection_effect_at_target_power"] for payload in aa_payloads
         ],
+        "randomness_policy_expected": harness.randomness_policy,
         "randomness_policies_observed": randomness,
         "class_setup_contracts_observed": class_setup_contracts,
         "output_length": {
@@ -1743,11 +1744,14 @@ def _set_timing_validity(
             interpretation_reasons.append(
                 "at least one target repeat did not meet the backend measurement minimum"
             )
-        elif protocol.get("randomness_policies_observed") != [
-            "external-or-none" if harness.randombytes_header is None else "seeded-interpose"
-        ]:
+        elif protocol.get("randomness_policy_expected") != harness.randomness_policy:
+            result.timing_validity = "error"
+            interpretation_reasons.append(
+                "reported randomness contract does not match the frozen harness configuration"
+            )
+        elif protocol.get("randomness_policies_observed") != [harness.randomness_policy]:
             result.timing_validity = "confounded"
-            if harness.randombytes_header is None:
+            if harness.randomness_policy == "external-or-none":
                 interpretation_reasons.append(
                     "self-contained deterministic target unexpectedly reported an active "
                     "randomness interpose"

@@ -19,6 +19,7 @@ dudect:
       operand_setup_contract: same-address-branchless-v3
       header: api.h
       randombytes_header: null
+      randomness_policy: seeded-interpose
       prefix: "CTKAT_KS_"
       binary_contract: {manifest: binary_contracts_v3.yaml, target: ks2_polyvec_vulnerable}
       include_dirs: [.]

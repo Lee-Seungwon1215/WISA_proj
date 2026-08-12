@@ -207,7 +207,7 @@ def build_bundle(
     bundle = {
         "schema_version": 5,
         "evidence_scope": "single-physical-host",
-        "bundle_id": f"ctkat-v7-{commit[:12]}-{manifest_sha[:12]}",
+        "bundle_id": f"ctkat-v8-{commit[:12]}-{manifest_sha[:12]}",
         "measurement_commit": commit,
         "verification_commit": commit,
         "hosts": [

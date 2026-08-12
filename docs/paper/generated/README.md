@@ -19,7 +19,7 @@ Final timing requires 1 physical hosts; the frozen plan contains 28 component-ax
 
 ## Optional independent review readiness
 
-Packets: 8; premeasurement ready: false; paper ready: false. Pending means v7 makes no independent-review claim; it is not a v7 execution gate.
+Packets: 8; premeasurement ready: false; paper ready: false. Pending means v8 makes no independent-review claim; it is not a v8 execution gate.
 
 ## Claim readiness
 

@@ -19,6 +19,7 @@ dudect:
       leak_target: operand_bin
       header: api.h
       randombytes_header: null
+      randomness_policy: seeded-interpose
       prefix: "CTKAT_KS_"
       binary_contract: {manifest: binary_contracts_v2.yaml, target: ks1_vulnerable}
       include_dirs: [.]

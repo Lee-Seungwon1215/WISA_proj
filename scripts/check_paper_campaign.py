@@ -24,7 +24,7 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v7.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v8.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
     ("committed-corpus-refresh", "docs/measurement/native_timing_v3_campaign.yaml"),
@@ -44,8 +44,8 @@ EXPECTED_CLAIM_LIMITS = (
     ),
     "no independent review, declassification, or inter-rater agreement claim is made",
     (
-        "v6 final and pre-v7 engineering artifacts are calibration evidence and are not "
-        "reusable in v7"
+        "v6 final, pre-v7 engineering, and the failed v7 final attempt are diagnostic or "
+        "calibration evidence and are not reusable in v8"
     ),
     (
         "v1 Falcon and diverse plus v2 committed-corpus engineering traces are "
@@ -64,9 +64,18 @@ EXPECTED_CLAIM_LIMITS = (
         "read both pools and select into shared work buffers before timing"
     ),
     (
-        "a deterministic self-contained toy API may report external-or-none randomness "
-        "only when randombytes_header is explicitly null"
+        "every resolved timing harness has an explicit semantic randomness policy "
+        "independent of randombytes_header and runtime observations must match it"
     ),
+    (
+        "KyberSlash operand and c-fn-dsa harnesses require seeded-interpose despite a "
+        "null randombytes_header"
+    ),
+    (
+        "KyberSlash operand timing records zero RNG calls inside the measured "
+        "decapsulation interval"
+    ),
+    "only the deterministic self-contained toy baseline declares external-or-none randomness",
     (
         "the ML-KEM valid-tuple axis changes secret and public material together and "
         "cannot support secret attribution"
@@ -163,8 +172,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("paper campaign top-level field set drift")
     if manifest.get("schema_version") != 3:
         errors.append("schema_version must be 3")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v7-single-host":
-        errors.append("campaign_id must be ctkat-paper-native-v7-single-host")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v8-single-host":
+        errors.append("campaign_id must be ctkat-paper-native-v8-single-host")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
     if manifest.get("claim_limits") != list(EXPECTED_CLAIM_LIMITS):

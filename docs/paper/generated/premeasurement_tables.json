@@ -148,7 +148,7 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v7-single-host",
+    "campaign_id": "ctkat-paper-native-v8-single-host",
     "component_count": 4,
     "components": [
       {

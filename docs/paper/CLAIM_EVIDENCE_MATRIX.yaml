@@ -1,9 +1,9 @@
 schema_version: 2
-matrix_id: ctkat-paper-claims-v7-single-host
+matrix_id: ctkat-paper-claims-v8-single-host
 terminology:
   screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
   source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
-  timing_campaign: paper-native-v7 single-physical-host runs using timing-harness-v2, branchless shared-buffer class setup, and universal pre-measurement build seals; a plan or CI build is never timing evidence and cross-host reproducibility is not claimed
+  timing_campaign: paper-native-v8 single-physical-host runs using timing-harness-v2, explicit runtime randomness contracts, branchless shared-buffer class setup, and universal pre-measurement build seals; a plan or CI build is never timing evidence and cross-host reproducibility is not claimed
 
 claims:
   - id: fail-closed-evidence-fold
@@ -66,11 +66,11 @@ claims:
       - quantify or bound shared-code ancestry before stronger independence wording
     prohibited_wording: four from-scratch independent implementations
   - id: native-timing-results
-    statement: Paper-grade v7 native timing uses one physical x86_64 host, frozen controls, branchless shared-buffer class setup, and no automatic corpus promotion; each result is host-scoped, and each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
+    statement: Paper-grade v8 native timing uses one physical x86_64 host, frozen controls, explicit expected/observed randomness contracts, branchless shared-buffer class setup, and no automatic corpus promotion; each result is host-scoped, and each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
     status: pending-physical-measurement
     scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
-      - docs/measurement/paper_native_campaign_v7.yaml
+      - docs/measurement/paper_native_campaign_v8.yaml
       - docs/measurement/native_timing_v3_campaign.yaml
       - docs/measurement/NATIVE_TIMING_V3.md
       - docs/measurement/diverse_native_v2.yaml

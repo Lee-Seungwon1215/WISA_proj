@@ -1,6 +1,6 @@
 # Native timing experiment preregistration
 
-Status: **v7 single-host protocol frozen; no v7 final measurement collected**
+Status: **v8 single-host protocol frozen; no v8 final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
@@ -8,12 +8,56 @@ V4 amendment freeze date: 2026-08-10
 V5 amendment freeze date: 2026-08-11
 V6 scope amendment freeze date: 2026-08-11
 V7 setup-contract amendment freeze date: 2026-08-11
-Machine-readable plan: `paper_native_campaign_v7.yaml`
+V8 explicit-RNG-contract amendment freeze date: 2026-08-12
+Machine-readable plan: `paper_native_campaign_v8.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V8 explicit randomness-contract amendment
+
+One v7 final attempt was started at commit
+`fe65820180167607f7032d771b761c47ef522d1f`. The committed-corpus component
+(run `91d358cf91d540d0909f54fb3e07844c`) completed its six targets, and the
+KyberSlash component (run `7b9c3a8f5cf1427bb16d62980567d527`) collected all
+ten target artifacts. Validation then stopped the campaign before Falcon,
+diverse-lineage, same-corpus baseline, bundle, or analysis execution.
+
+The stop exposed a semantic contract bug rather than a target or control
+failure. A null `randombytes_header` had been treated as proof that the target
+must report `external-or-none`. The six operand adapters omit that declaration
+header but call CT-KAT's weak deterministic `randombytes` interpose during
+untimed corpus/key setup, so every trace correctly reported
+`seeded-interpose`. The same distinction matters for c-fn-dsa: its adapter also
+calls the seeded interpose despite using no declaration header. Conversely,
+the self-contained toy baseline performs no such call and correctly reports
+`external-or-none`. Header inclusion therefore cannot determine runtime RNG
+semantics.
+
+No v7 statistic, raw trace, control result, or completed component is promoted,
+resumed, relabeled, or copied into v8. The complete v7 tree remains diagnostic
+evidence only. V8 starts every component and baseline in fresh roots at one
+later clean commit.
+
+Before any v8 final sample, V8 adds a fail-closed `randomness_policy` to every
+resolved timing harness. The default is `seeded-interpose`; an
+`external-or-none` target must opt in explicitly and must have a null
+`randombytes_header`. Reports record both the frozen expected policy and the
+observed runtime policy, and the CLI, native validator, same-corpus validator,
+and independent official-dudect verifier all require an exact match. The six
+KyberSlash operand and four c-fn-dsa configurations explicitly require
+`seeded-interpose`; only the deterministic toy baseline opts into
+`external-or-none`. Operand-v3 traces additionally bind
+`measured_rng_calls=0`, distinguishing allowed setup RNG from the measured
+decapsulation interval.
+
+This amendment does not change hypotheses, target/control sample counts,
+process repeats, seeds, thresholds, positive-control effects, compiler flags,
+component scope, multiplicity, or host claim limits. A short post-freeze
+engineering execution may test the corrected contract but is non-promotable;
+the final campaign still starts entirely fresh.
 
 ## V7 class-setup and same-corpus validity amendment
 
@@ -50,6 +94,8 @@ contract remains `same-address-branchless-v3`. Third, the same-corpus negative
 control performs a fixed 10,000-iteration volatile workload while ignoring
 class-varying input bytes, and the baseline positive ladder is fixed at
 `[512, 2048, 8192]` ticks after the observed 512-tick power failure.
+The first rule in this historical V7 amendment was later falsified by the V7
+final attempt and is superseded by the explicit V8 policy above.
 
 Two independent engineering runs at commit
 `adb68f8ff5cbd92bf427d2ea74561116bd476527` validated the corrected
@@ -321,11 +367,11 @@ declassify a risk finding.
 Exclude a unit only for a machine-checkable reason recorded by the runner:
 
 1. virtualization, emulation, unsupported clock, missing affinity, or CPU
-   migration;
+  migration;
 2. compile/runtime timeout, non-zero harness failure, incomplete trace, schema
    failure, or hash mismatch;
-3. control failure, insufficient official class counts, or failed seeded RNG
-   interposition;
+3. control failure, insufficient official class counts, or a frozen/observed
+   randomness-policy mismatch;
 4. host or commit mismatch with the frozen campaign.
 
 Thermal drift, an unexpected effect direction, a large statistic, or
@@ -350,7 +396,7 @@ the frozen official analysis owns its filtering and percentile tests.
 ## Review and promotion
 
 The runner writes immutable promotion candidates and never edits the curated
-corpus. V7 paper-result promotion requires:
+corpus. V8 paper-result promotion requires:
 
 1. one complete physical-host artifact tree and its recorded SHA-256 manifest;
 2. all 28 axes and three same-corpus tools at one clean frozen commit;
@@ -363,7 +409,7 @@ corpus. V7 paper-result promotion requires:
    actually measured.
 
 Independent review packets remain optional follow-up evidence. They are not a
-v7 measurement or paper-table gate, and V7 does not use them to declassify or
+v8 measurement or paper-table gate, and V8 does not use them to declassify or
 silently mutate the curated corpus.
 
 OpenSSL 3.5 is retained as a provider-API integration/build case only. It is

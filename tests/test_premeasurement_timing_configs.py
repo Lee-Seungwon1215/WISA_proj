@@ -142,15 +142,17 @@ def test_committed_corpus_v3_changes_only_the_mixed_mlkem_axis():
     assert new_core["manifest"] == "docs/measurement/native_timing_v3_campaign.yaml"
 
 
-def test_paper_v7_keeps_v6_measurement_scope_and_freezes_setup_correction():
-    paper_v6 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v6.yaml").read_text())
-    paper_v7 = load_manifest()
-    assert paper_v7["campaign_id"] == "ctkat-paper-native-v7-single-host"
-    assert paper_v7["execution_policy"]["minimum_physical_hosts"] == 1
-    assert paper_v7["execution_policy"]["independent_human_review_required"] is False
-    assert any("dual-read-masked-select-v4" in limit for limit in paper_v7["claim_limits"])
-    old_components = {item["id"]: item for item in paper_v6["components"]}
-    new_components = {item["id"]: item for item in paper_v7["components"]}
+def test_paper_v8_keeps_v7_measurement_scope_and_freezes_rng_contract_correction():
+    paper_v7 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v7.yaml").read_text())
+    paper_v8 = load_manifest()
+    assert paper_v8["campaign_id"] == "ctkat-paper-native-v8-single-host"
+    assert paper_v8["execution_policy"]["minimum_physical_hosts"] == 1
+    assert paper_v8["execution_policy"]["independent_human_review_required"] is False
+    assert any("dual-read-masked-select-v4" in limit for limit in paper_v8["claim_limits"])
+    assert any("randomness policy" in limit for limit in paper_v8["claim_limits"])
+    assert any("failed v7 final attempt" in limit for limit in paper_v8["claim_limits"])
+    old_components = {item["id"]: item for item in paper_v7["components"]}
+    new_components = {item["id"]: item for item in paper_v8["components"]}
     assert set(old_components) == set(new_components)
     for component_id in old_components:
         assert old_components[component_id]["manifest"] == new_components[component_id]["manifest"]
@@ -165,6 +167,34 @@ def test_timing_adapters_use_seeded_interpose_not_fixed_test_vectors():
     assert "ctkat_keygen_seed" not in fndsa
     assert "randombytes(seed, sizeof seed)" in mldsa
     assert "randombytes(rnd, sizeof rnd)" in mldsa
+
+
+def test_null_randombytes_header_does_not_infer_the_runtime_rng_contract():
+    seeded_configs = [
+        "examples/kyberslash_operand_latency/ctkat_ks1_vulnerable_v3.yaml",
+        "examples/kyberslash_operand_latency/ctkat_ks1_patched_v3.yaml",
+        "examples/kyberslash_operand_latency/ctkat_ks2_poly_vulnerable_v3.yaml",
+        "examples/kyberslash_operand_latency/ctkat_ks2_poly_patched_v3.yaml",
+        "examples/kyberslash_operand_latency/ctkat_ks2_polyvec_vulnerable_v3.yaml",
+        "examples/kyberslash_operand_latency/ctkat_ks2_polyvec_patched_v3.yaml",
+        "examples/c_fndsa512_prospective/ctkat_timing_native.yaml",
+        "examples/c_fndsa512_prospective/ctkat_timing_fpr_emu.yaml",
+        "examples/c_fndsa1024_prospective/ctkat_timing_native.yaml",
+        "examples/c_fndsa1024_prospective/ctkat_timing_fpr_emu.yaml",
+    ]
+    for relative_path in seeded_configs:
+        cfg = load_config(ROOT / relative_path)
+        assert cfg.dudect is not None
+        harness = cfg.dudect.harnesses[0]
+        assert harness.randombytes_header is None
+        assert harness.randomness_policy == "seeded-interpose"
+
+    toy = load_config(ROOT / "examples/toy_kem_ct_leak/ctkat.yaml")
+    assert toy.dudect is not None
+    assert {
+        (harness.randombytes_header, harness.randomness_policy)
+        for harness in toy.dudect.harnesses
+    } == {(None, "external-or-none")}
 
 
 def test_historical_randombytes_abi_is_declared_exactly():

@@ -591,6 +591,7 @@ def _small_artifact_fixture(tmp_path, *, target_measurements=20_050):
         "positive_detection_effects_at_target_power": [
             aa_payloads[0]["positive_detection_effect_at_target_power"]
         ],
+        "randomness_policy_expected": "seeded-interpose",
         "randomness_policies_observed": ["seeded-interpose"],
         "build_provenance": {
             "passed": True,

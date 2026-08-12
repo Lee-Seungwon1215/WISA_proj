@@ -809,9 +809,17 @@ class DudectHarnessConfig(BaseModel):
     header: Optional[str] = None
     # PQClean headers macro-map `randombytes` to a namespaced symbol.  Include
     # that header before the weak seeded interpose so the definition receives
-    # the same mapping.  Set null only for a self-contained deterministic toy
-    # API that has no randombytes header/symbol.
+    # the same mapping.  ``null`` controls only whether a declaration header is
+    # included; it does not declare the runtime randomness contract.
     randombytes_header: Optional[str] = "randombytes.h"
+    # Keep the semantic contract independent from header layout.  Seeded
+    # interposition is the fail-closed default.  A genuinely deterministic API
+    # that never calls the weak randombytes symbol must opt in explicitly to
+    # ``external-or-none`` and cannot simultaneously include a randombytes
+    # declaration header.
+    randomness_policy: Literal["seeded-interpose", "external-or-none"] = (
+        "seeded-interpose"
+    )
     # Historical SUPERCOP/PQClean-derived APIs are split between the modern
     # `int randombytes(...)` contract and an older `void randombytes(...)`
     # contract. The seeded timing interpose must match the declaration exactly;
@@ -949,6 +957,11 @@ class DudectHarnessConfig(BaseModel):
                 f"dudect harness {self.name!r}",
                 "randombytes_header",
                 self.randombytes_header,
+            )
+        if self.randomness_policy == "external-or-none" and self.randombytes_header is not None:
+            raise ValueError(
+                f"dudect harness {self.name!r}: randomness_policy='external-or-none' "
+                "requires randombytes_header: null"
             )
         for i, p in enumerate(self.sources):
             _check_project_relative_path(f"dudect harness {self.name!r}", f"sources[{i}]", p)

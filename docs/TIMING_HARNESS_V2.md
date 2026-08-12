@@ -94,9 +94,12 @@ host/A/A 기반 계획 보조값일 뿐 target trace의 MDE나 achieved power가
    비율이 `target_power` 미달 →
    `insufficient-power` (3 repeats와 0.8이면 3/3 요구)
 9. target raw status repeat 불일치 → `insufficient-power`
-10. 설정된 randombytes 계약 불일치 → `confounded`. 명시적으로
-    `randombytes_header: null`인 결정적 자가완결 API만 `external-or-none`을
-    허용하고 나머지는 `seeded-interpose`를 요구
+10. 설정된 randombytes 계약 불일치 → `confounded`. 의미 계약은
+    `randomness_policy`로 고정하며 `randombytes_header`는 선언 헤더를 포함할지
+    여부만 정한다. 기본값은 fail-closed `seeded-interpose`이고, 실제 RNG 호출이
+    없는 결정적 자가완결 API만 `randombytes_header: null`과 함께
+    `external-or-none`을 명시할 수 있다. 보고서의 expected/observed 값이 모두
+    이 계약과 일치해야 한다
 11. KEM `valid_tuple`의 process별 metadata, setup return code,
     enc→dec round-trip witness, per-trace corpus seed 또는
     `secret_attribution_permitted=false` 계약 불일치 → `error`

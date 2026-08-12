@@ -1084,6 +1084,7 @@ def _v2_validity_fixture():
                 {"enough_measurements": True},
                 {"enough_measurements": True},
             ],
+            "randomness_policy_expected": "seeded-interpose",
             "randomness_policies_observed": ["seeded-interpose"],
             "class_setup_contracts_observed": ["dual-read-masked-select-v4"],
         },
@@ -1167,7 +1168,13 @@ def test_timing_harness_v2_accepts_declared_deterministic_api_without_rng_interp
     import ctkat.cli as cli_module
 
     samples, result, harness = _v2_validity_fixture()
-    harness = harness.model_copy(update={"randombytes_header": None})
+    harness = harness.model_copy(
+        update={
+            "randombytes_header": None,
+            "randomness_policy": "external-or-none",
+        }
+    )
+    result.harness_protocol["randomness_policy_expected"] = "external-or-none"
     result.harness_protocol["randomness_policies_observed"] = ["external-or-none"]
     cli_module._set_timing_validity(
         result,
@@ -1184,7 +1191,13 @@ def test_timing_harness_v2_rng_policy_must_match_the_declared_api_contract():
     import ctkat.cli as cli_module
 
     samples, result, harness = _v2_validity_fixture()
-    harness = harness.model_copy(update={"randombytes_header": None})
+    harness = harness.model_copy(
+        update={
+            "randombytes_header": None,
+            "randomness_policy": "external-or-none",
+        }
+    )
+    result.harness_protocol["randomness_policy_expected"] = "external-or-none"
     cli_module._set_timing_validity(
         result,
         samples,
@@ -1194,6 +1207,22 @@ def test_timing_harness_v2_rng_policy_must_match_the_declared_api_contract():
     )
     assert result.timing_validity == "confounded"
     assert any("deterministic target" in reason for reason in result.validity_reasons)
+
+
+def test_timing_harness_v2_reported_rng_contract_must_match_frozen_config():
+    import ctkat.cli as cli_module
+
+    samples, result, harness = _v2_validity_fixture()
+    result.harness_protocol["randomness_policy_expected"] = "external-or-none"
+    cli_module._set_timing_validity(
+        result,
+        samples,
+        harness,
+        {"rejected": False, "rejection_reasons": []},
+        expected_measurements=100,
+    )
+    assert result.timing_validity == "error"
+    assert any("frozen harness configuration" in reason for reason in result.validity_reasons)
 
 
 def test_valid_tuple_axis_requires_fail_closed_attribution_metadata():

@@ -24,6 +24,7 @@ dudect:
       template: sign
       header: api.h
       randombytes_header: null
+      randomness_policy: seeded-interpose
       prefix: "CTKAT_FNDSA_"
       signature_length_contract: fixed
       binary_contract:

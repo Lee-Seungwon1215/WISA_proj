@@ -31,6 +31,8 @@ OPERAND_V3_AXIS = "operand_bin"
 OPERAND_V3_SETUP_CONTRACT = "same-address-branchless-v3"
 OPERAND_V3_RUNTIME_METADATA = {
     "axis": OPERAND_V3_AXIS,
+    "randomness": "seeded-interpose",
+    "measured_rng_calls": "0",
     "key_policy": "fixed",
     "class_contract": "frozen-public-coefficient-bins",
     "class0_coefficients": "0-63",

@@ -1441,6 +1441,13 @@ def validate_result(
                                         ),
                                         target_power=(frozen_dudect.timing_protocol.target_power),
                                         power_alpha=(frozen_dudect.timing_protocol.power_alpha),
+                                        expected_randomness_policies=tuple(
+                                            sorted(
+                                                (harness.name, harness.randomness_policy)
+                                                for harness in frozen_dudect.harnesses
+                                                if harness.name in expected_harnesses
+                                            )
+                                        ),
                                     ),
                                 )
                                 errors.extend(
