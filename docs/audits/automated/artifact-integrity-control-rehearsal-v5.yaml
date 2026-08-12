@@ -1,0 +1,76 @@
+schema_version: "1.0"
+audit_id: automated-artifact-integrity-control-rehearsal-v5
+status: complete
+title: Automated adversarial audit of the non-promotable control rehearsal boundary
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-integrity-rehearsal-v5-audit
+audited_at: "2026-08-12T11:19:06Z"
+audited_commit: b67ac8db4c0953f26112e38473e0fc4fa9a277a2
+scope:
+  - outer and inner failure continuation across every component, target, baseline, and assembly step
+  - schema-bound non-promotion and prohibition on rehearsal artifact reuse
+  - blocker-matrix completeness and two-clean-run qualification
+findings:
+  - finding_id: abir5-001
+    severity: critical
+    title: Fail-fast outer orchestration concealed failures in later components
+    description: A single positive-control miss previously terminated the supervisor before KyberSlash, Falcon, diverse, and baseline paths were exercised.
+    evidence_ids: [abir5-orchestrator, abir5-profile, abir5-tests]
+  - finding_id: abir5-002
+    severity: critical
+    title: Reduced target traces could be mistaken for final evidence
+    description: Engineering traces require a machine-verifiable identity and a validator that rejects ordinary schema and promotion claims.
+    evidence_ids: [abir5-native-runner, abir5-schema, abir5-contract]
+  - finding_id: abir5-003
+    severity: high
+    title: No blocker-free rehearsal pair or fresh final exists yet
+    description: Static validation and unit tests cannot establish that all physical-host paths close or that final controls have adequate margin.
+    evidence_ids: [abir5-profile, abir5-contract]
+dispositions:
+  - finding_id: abir5-001
+    status: addressed
+    rationale: The orchestrator launches and records every independent smoke, component, baseline, validation, assembly, and closure step and aggregates all nonzero outcomes after execution.
+    blocker: ""
+    evidence_ids: [abir5-orchestrator, abir5-tests]
+  - finding_id: abir5-002
+    status: addressed
+    rationale: Reduced runs use native report schema 2.1 with an exact control-rehearsal profile, promotion_allowed=false, target_statistics_interpretable=false, and an independent rehearsal report whose schema fixes the non-promotion boundary.
+    blocker: ""
+    evidence_ids: [abir5-native-runner, abir5-schema, abir5-profile, abir5-tests]
+  - finding_id: abir5-003
+    status: accepted-with-blocker
+    rationale: The audited source is deliberately pre-rehearsal and makes no empirical timing or final-readiness claim.
+    blocker: Obtain two distinct blocker-free rehearsal run IDs at this exact candidate commit, freeze any method correction in a new campaign version, and execute a fresh non-resumed final root.
+    evidence_ids: [abir5-profile, abir5-contract]
+evidence:
+  - evidence_id: abir5-profile
+    path: docs/measurement/paper_control_rehearsal_v1.yaml
+    sha256: 9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5
+    purpose: Exact execution scope, preserved controls, safety margins, and claim limits.
+  - evidence_id: abir5-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V1.md
+    sha256: 25a137dc366f7fd36b5ca269d2f48ccac9ce0f34277cdfb51123cbe053168a9a
+    purpose: Operator-facing separation between rehearsal qualification and fresh final evidence.
+  - evidence_id: abir5-schema
+    path: docs/measurement/paper_control_rehearsal_v1.schema.json
+    sha256: d5003428b0f514b17759d6d535cced2bf94ea42d40405d0e9fd48ea793dc9394
+    purpose: Fail-closed aggregate report and blocker representation.
+  - evidence_id: abir5-orchestrator
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: a19704834afda304e1434e2531bae6cde9514968a2df7fb93b7e9959f604661e
+    purpose: Continue-and-aggregate execution, independent validation, closure, and qualification.
+  - evidence_id: abir5-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 3bdd330e9fa3bf0666aafe871528e18d10048621d41a733d6b787f53235d88fb
+    purpose: Explicit schema-2.1 reduced-target profile and revalidation.
+  - evidence_id: abir5-tests
+    path: tests/test_paper_control_rehearsal.py
+    sha256: 821dde1825aa56edd29ee5e392fa857e2ee18bd3406c4d79a40c20a204d7f706
+    purpose: Regression coverage for non-promotion, blocker aggregation, margins, and qualification.
+limitations:
+  - This automated audit grants no independent human-review credit.
+  - Static evidence cannot establish physical host stability or control power.
+  - Rehearsal outputs remain non-promotable even if every blocker is clear.
+human_gate_effect: none

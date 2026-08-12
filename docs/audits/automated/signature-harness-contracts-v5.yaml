@@ -1,0 +1,76 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v5
+status: complete
+title: Automated audit of signature rehearsal and Falcon harness contracts
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-rehearsal-v5-audit
+audited_at: "2026-08-12T11:19:06Z"
+audited_commit: b67ac8db4c0953f26112e38473e0fc4fa9a277a2
+scope:
+  - independent compile and runtime smoke for every signature timing axis
+  - signature output, return-code, randomness, build-seal, and binary contracts
+  - Falcon reference, native-FP, integer-FPR, and diverse lineage path closure
+findings:
+  - finding_id: shcr5-001
+    severity: critical
+    title: Earlier component failure could leave every signature path untested
+    description: Sequential fail-fast execution provided no evidence that Falcon and diverse signature configs still compile or satisfy runtime protocol contracts.
+    evidence_ids: [shcr5-orchestrator, shcr5-falcon, shcr5-diverse]
+  - finding_id: shcr5-002
+    severity: high
+    title: A compile-only smoke would miss variable output and runtime randomness failures
+    description: Signature paths require observed output length, return code, semantic randomness, raw protocol, build seal, and linked-binary checks before long controls are useful.
+    evidence_ids: [shcr5-orchestrator, shcr5-tests]
+  - finding_id: shcr5-003
+    severity: high
+    title: No full physical signature rehearsal has passed yet
+    description: Static contracts do not establish that all Falcon and ML-DSA controls have stable headroom on the selected host.
+    evidence_ids: [shcr5-profile, shcr5-falcon, shcr5-diverse]
+dispositions:
+  - finding_id: shcr5-001
+    status: addressed
+    rationale: The smoke scheduler treats each of the 28 axes independently, records failure without aborting, and the controls scheduler continues through all four components and three baselines.
+    blocker: ""
+    evidence_ids: [shcr5-orchestrator, shcr5-tests]
+  - finding_id: shcr5-002
+    status: addressed
+    rationale: Runtime smoke executes four target rows and validates raw count, protocol metadata, signature return/output witnesses, semantic randomness, build seal, and optional linked-binary contract.
+    blocker: ""
+    evidence_ids: [shcr5-orchestrator, shcr5-tests]
+  - finding_id: shcr5-003
+    status: accepted-with-blocker
+    rationale: The audited source defines but has not executed the physical-host rehearsal.
+    blocker: Obtain two complete blocker-free rehearsal reports, preserve full-API and non-conformance wording, and run the final signature axes from fresh roots.
+    evidence_ids: [shcr5-profile, shcr5-falcon, shcr5-diverse]
+evidence:
+  - evidence_id: shcr5-profile
+    path: docs/measurement/paper_control_rehearsal_v1.yaml
+    sha256: 9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5
+    purpose: All-axis rehearsal, exact-control, and two-run qualification contract.
+  - evidence_id: shcr5-orchestrator
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: a19704834afda304e1434e2531bae6cde9514968a2df7fb93b7e9959f604661e
+    purpose: Independent compile, runtime, component, baseline, and closure execution.
+  - evidence_id: shcr5-tests
+    path: tests/test_paper_control_rehearsal.py
+    sha256: 821dde1825aa56edd29ee5e392fa857e2ee18bd3406c4d79a40c20a204d7f706
+    purpose: Regression coverage for aggregation and report qualification.
+  - evidence_id: shcr5-falcon
+    path: docs/measurement/falcon_native_v2.yaml
+    sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
+    purpose: Frozen Falcon implementation and binary-contract matrix.
+  - evidence_id: shcr5-diverse
+    path: docs/measurement/diverse_native_v2.yaml
+    sha256: 33c42ce5ca87ea156d86eba246c5965e802d24b57da2cd0890b03ed44b950413
+    purpose: Frozen portable and native ML-DSA lineage comparison.
+  - evidence_id: shcr5-native-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: c46b47a7c805c70ad06837de8631aa85819149c95191ca23465fab96f2a72da9
+    purpose: Native report schema and target-only override validation.
+limitations:
+  - Full-signature timing does not isolate a sampler-core ABI.
+  - Falcon and c-fn-dsa evidence is not a FIPS conformance claim.
+  - No independent human review or physical rehearsal result is supplied here.
+human_gate_effect: none

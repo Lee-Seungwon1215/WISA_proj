@@ -1,0 +1,86 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v5
+status: complete
+title: Automated statistical audit of the control rehearsal boundary
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: rehearsal-statistics-v5-audit
+audited_at: "2026-08-12T11:19:06Z"
+audited_commit: b67ac8db4c0953f26112e38473e0fc4fa9a277a2
+scope:
+  - non-interpretability of reduced target and calibration traces
+  - separation of engineering safety margins from preregistered final thresholds
+  - two-clean-run qualification and prohibition on result reuse or relabeling
+findings:
+  - finding_id: nasr5-001
+    severity: critical
+    title: Reduced target counts are underpowered and vulnerable to selective interpretation
+    description: Target traces reduced to one thousand samples cannot answer the preregistered leakage hypotheses and must not influence pass, fail, effect, or paper tables.
+    evidence_ids: [nasr5-profile, nasr5-contract, nasr5-native-runner]
+  - finding_id: nasr5-002
+    severity: high
+    title: Rehearsal headroom limits could silently replace final thresholds
+    description: The stricter A/A, placebo, and positive-effect margins are operational launch criteria, not amended statistical decision rules.
+    evidence_ids: [nasr5-profile, nasr5-contract, nasr5-prereg]
+  - finding_id: nasr5-003
+    severity: high
+    title: Repeated rehearsal repair can become post-observation method selection
+    description: Corrections must be based on controls and contracts only, then frozen before a fresh final whose target traces are never inherited from rehearsal.
+    evidence_ids: [nasr5-profile, nasr5-contract, nasr5-orchestrator]
+  - finding_id: nasr5-004
+    severity: high
+    title: No qualifying rehearsal pair or final analysis exists
+    description: Unit and static checks cannot supply empirical control margins, target findings, multiplicity outputs, or host-scoped conclusions.
+    evidence_ids: [nasr5-profile, nasr5-prereg]
+dispositions:
+  - finding_id: nasr5-001
+    status: addressed
+    rationale: Native schema 2.1 marks target statistics non-interpretable and promotion forbidden; the rehearsal assessor ignores target status, repeat consistency, and target power entirely.
+    blocker: ""
+    evidence_ids: [nasr5-native-runner, nasr5-orchestrator, nasr5-profile]
+  - finding_id: nasr5-002
+    status: addressed
+    rationale: The profile and operator contract explicitly retain every final threshold while labeling stricter margins engineering headroom only.
+    blocker: ""
+    evidence_ids: [nasr5-profile, nasr5-contract, nasr5-prereg]
+  - finding_id: nasr5-003
+    status: addressed
+    rationale: Qualification requires two clean runs at one exact commit; any correction produces a new commit and restarts qualification, and final begins only after a new freeze from empty roots.
+    blocker: ""
+    evidence_ids: [nasr5-profile, nasr5-contract, nasr5-orchestrator]
+  - finding_id: nasr5-004
+    status: accepted-with-blocker
+    rationale: This audit establishes engineering readiness only and makes no empirical or paper claim.
+    blocker: Execute and qualify two complete rehearsals, freeze the resulting method without reading reduced target statistics, then collect and analyze a complete fresh final dataset.
+    evidence_ids: [nasr5-profile, nasr5-prereg]
+evidence:
+  - evidence_id: nasr5-profile
+    path: docs/measurement/paper_control_rehearsal_v1.yaml
+    sha256: 9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5
+    purpose: Counts, preserved controls, safety margins, qualification, and claim limits.
+  - evidence_id: nasr5-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V1.md
+    sha256: 25a137dc366f7fd36b5ca269d2f48ccac9ce0f34277cdfb51123cbe053168a9a
+    purpose: Human-readable separation of diagnostic and inferential stages.
+  - evidence_id: nasr5-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 3bdd330e9fa3bf0666aafe871528e18d10048621d41a733d6b787f53235d88fb
+    purpose: Exact reduced-target profile identity and independent validation.
+  - evidence_id: nasr5-orchestrator
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: a19704834afda304e1434e2531bae6cde9514968a2df7fb93b7e9959f604661e
+    purpose: Control-only assessment, aggregate blockers, and two-report qualification.
+  - evidence_id: nasr5-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3899b5a8b1a38b4dfb642c92787af659c0901e506bde97fa1ff15a443b6b4549
+    purpose: Frozen final hypotheses, thresholds, invalid-attempt disclosure, and no-selection rule.
+  - evidence_id: nasr5-baseline
+    path: docs/baselines/same_corpus_v1.yaml
+    sha256: 7421c99cdf28328a6666129adc65ed84f1811d8cb1fdbd5792436375e0169074
+    purpose: Frozen three-tool same-corpus comparison scope.
+limitations:
+  - Rehearsal controls do not answer target leakage hypotheses.
+  - One host cannot establish cross-host reproducibility or heterogeneity.
+  - Automated engineering review supplies no human-review, triage-time, or agreement evidence.
+human_gate_effect: none

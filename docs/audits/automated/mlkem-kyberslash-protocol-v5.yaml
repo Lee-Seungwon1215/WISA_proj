@@ -1,0 +1,76 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v5
+status: complete
+title: Automated audit of ML-KEM and KyberSlash control rehearsal contracts
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-rehearsal-v5-audit
+audited_at: "2026-08-12T11:19:06Z"
+audited_commit: b67ac8db4c0953f26112e38473e0fc4fa9a277a2
+scope:
+  - full ML-KEM and KyberSlash axis coverage under reduced target-only execution
+  - final-equivalent physical controls, seeds, effects, repeats, and input contracts
+  - positive-control headroom after the v8 largest-effect cliff
+findings:
+  - finding_id: mkpr5-001
+    severity: critical
+    title: Borderline positive-control detection can consume hours and hide later axes
+    description: The v8 valid-tuple largest effect detected only two of three repeats, while fail-fast supervision prevented discovery of other component defects.
+    evidence_ids: [mkpr5-profile, mkpr5-orchestrator, mkpr5-kyberslash]
+  - finding_id: mkpr5-002
+    severity: high
+    title: A reduced ML-KEM target trace cannot support a target leakage conclusion
+    description: One thousand target samples are only an execution-contract smoke and the valid-tuple axis also remains mixed public and secret input.
+    evidence_ids: [mkpr5-profile, mkpr5-contract, mkpr5-prereg]
+  - finding_id: mkpr5-003
+    severity: high
+    title: Fresh physical control evidence for all ML-KEM and KyberSlash axes is pending
+    description: Code-level preservation of control parameters does not demonstrate runtime headroom on the native host.
+    evidence_ids: [mkpr5-profile, mkpr5-kyberslash]
+dispositions:
+  - finding_id: mkpr5-001
+    status: addressed
+    rationale: All axes now run through independent smoke and continue-on-error component paths, and qualification requires the largest positive effect in all three repeats to reach t at most -15 with positive mean delta.
+    blocker: ""
+    evidence_ids: [mkpr5-profile, mkpr5-orchestrator]
+  - finding_id: mkpr5-002
+    status: addressed
+    rationale: The profile, report schema, and runner mark reduced target statistics non-interpretable and non-promotable while retaining the existing mixed-input attribution limit.
+    blocker: ""
+    evidence_ids: [mkpr5-profile, mkpr5-contract, mkpr5-native-runner, mkpr5-prereg]
+  - finding_id: mkpr5-003
+    status: accepted-with-blocker
+    rationale: The audited commit freezes the diagnostic procedure but contains no new physical-host result.
+    blocker: Run two blocker-free rehearsals on the native host, remediate only from non-target engineering evidence, then restart every final axis from an empty root.
+    evidence_ids: [mkpr5-profile, mkpr5-orchestrator, mkpr5-kyberslash]
+evidence:
+  - evidence_id: mkpr5-profile
+    path: docs/measurement/paper_control_rehearsal_v1.yaml
+    sha256: 9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5
+    purpose: Frozen reduced-target and exact-control execution contract.
+  - evidence_id: mkpr5-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V1.md
+    sha256: 25a137dc366f7fd36b5ca269d2f48ccac9ce0f34277cdfb51123cbe053168a9a
+    purpose: Target non-interpretation and engineering headroom semantics.
+  - evidence_id: mkpr5-orchestrator
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: a19704834afda304e1434e2531bae6cde9514968a2df7fb93b7e9959f604661e
+    purpose: Complete axis execution and per-repeat control assessment.
+  - evidence_id: mkpr5-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 3bdd330e9fa3bf0666aafe871528e18d10048621d41a733d6b787f53235d88fb
+    purpose: Schema-bound target-only override without control mutation.
+  - evidence_id: mkpr5-kyberslash
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Frozen chosen-ciphertext and operand-v3 axis and control matrix.
+  - evidence_id: mkpr5-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3899b5a8b1a38b4dfb642c92787af659c0901e506bde97fa1ff15a443b6b4549
+    purpose: Existing mixed-input, invalid-attempt, and no-selection boundaries.
+limitations:
+  - Control headroom does not prove a target implementation constant-time.
+  - Chosen-ciphertext and operand canary results retain their public-input and site-specific limits.
+  - No rehearsal or fresh final result existed at audit time.
+human_gate_effect: none
