@@ -1,0 +1,98 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v4
+status: complete
+title: Automated audit of v8 signature and Falcon timing contracts
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-falcon-v8-audit
+audited_at: "2026-08-12T06:46:14Z"
+audited_commit: 625b86f69b339c5137e479dbca7266c569e4f39b
+scope:
+  - c-fn-dsa seeded-interpose behavior despite null declaration headers
+  - signature correctness, output-length, and dual-read masked setup contracts
+  - Falcon reference, native-FP, and integer-FPR comparison boundaries
+findings:
+  - finding_id: shc8-001
+    severity: critical
+    title: Header-based RNG inference would misclassify all four c-fn-dsa profiles
+    description: The c-fn-dsa adapter explicitly calls randombytes for deterministic key-generation and signing seeds even though its configs require no randombytes declaration header.
+    evidence_ids: [shc8-adapter, shc8-config, shc8-cli, shc8-preregistration]
+  - finding_id: shc8-002
+    severity: high
+    title: Expected and observed signature RNG policy need independent validation
+    description: A report-local expectation alone cannot distinguish a seeded interpose from a strong target symbol or a missing call.
+    evidence_ids: [shc8-cli, shc8-independent-verifier, shc8-runner]
+  - finding_id: shc8-003
+    severity: high
+    title: Full-signature Falcon timing cannot be relabeled as sampler-only or FIPS conformance
+    description: The measured APIs include signing randomness and encoding behavior, while c-fn-dsa remains a prospective comparator.
+    evidence_ids: [shc8-falcon, shc8-plan]
+  - finding_id: shc8-004
+    severity: high
+    title: Fresh v8 signature results are pending
+    description: Prior signature traces use superseded setup or validation semantics and cannot be promoted.
+    evidence_ids: [shc8-plan, shc8-preregistration]
+dispositions:
+  - finding_id: shc8-001
+    status: addressed
+    rationale: All four c-fn-dsa configs explicitly require seeded-interpose independently of their null headers, and regression tests pin the distinction together with the adapter calls.
+    blocker: ""
+    evidence_ids: [shc8-adapter, shc8-config, shc8-config-tests]
+  - finding_id: shc8-002
+    status: addressed
+    rationale: The CLI records the frozen expectation and runtime observation; the native runner and independent official-dudect verifier reconstruct the expected policy from the config and reject either mismatch.
+    blocker: ""
+    evidence_ids: [shc8-cli, shc8-independent-verifier, shc8-runner]
+  - finding_id: shc8-003
+    status: addressed
+    rationale: The frozen Falcon manifest and v8 claim limits retain full-API, variable-length, prospective-comparator, and non-conformance wording.
+    blocker: ""
+    evidence_ids: [shc8-falcon, shc8-plan]
+  - finding_id: shc8-004
+    status: accepted-with-blocker
+    rationale: Corrected contracts establish premeasurement readiness only.
+    blocker: Run every fresh v8 signature axis and require correctness, return-code, output-length, setup, RNG, physical-control, binary-contract, and artifact-hash gates.
+    evidence_ids: [shc8-plan, shc8-falcon]
+evidence:
+  - evidence_id: shc8-plan
+    path: docs/measurement/paper_native_campaign_v8.yaml
+    sha256: 53319f550e7083d4c2c5167d9626c7ef337aaa0a222af5948b6cf600c158fef5
+    purpose: Frozen v8 signature scope and claim limitations.
+  - evidence_id: shc8-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3899b5a8b1a38b4dfb642c92787af659c0901e506bde97fa1ff15a443b6b4549
+    purpose: V7 RNG-contract failure, V8 correction, and non-reuse rule.
+  - evidence_id: shc8-adapter
+    path: examples/fndsa_prospective/timing_adapter.c
+    sha256: 6ad42cebf259e90fec0fa89be1c88baecbbfee0fffb834d05101b773d428432f
+    purpose: Explicit c-fn-dsa randombytes calls for key and signature seeds.
+  - evidence_id: shc8-config
+    path: examples/c_fndsa512_prospective/ctkat_timing_native.yaml
+    sha256: eadd1e9be5b439a00c619d5f24f9d5d8bd75846995ca4f3495bf13a3f081910d
+    purpose: Representative null-header but seeded-interpose c-fn-dsa profile.
+  - evidence_id: shc8-cli
+    path: ctkat/cli.py
+    sha256: 21b98fa8dd53b35b9239c7c1db48e20904ef92358a4ee3ff0ffa293a07c98618
+    purpose: Expected and observed policy aggregation and validity.
+  - evidence_id: shc8-independent-verifier
+    path: ctkat/official_dudect_verify.py
+    sha256: 2d5fdff825bf132c3db5a25809beb206966ab514ee3bebda61100dc6937274c6
+    purpose: Independent raw-protocol and runtime-policy verification.
+  - evidence_id: shc8-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 81bac1b4823ff16361095275b18afe2cf9b2912e27bb87bb558ac37950398b8c
+    purpose: Frozen config reconstruction and final artifact validation.
+  - evidence_id: shc8-config-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: 640ffa5f8a0eb58f109d01ff0b9859edfd950f22b2c84db5615ff517957696c5
+    purpose: Null-header seeded c-fn-dsa and operand policy regression coverage.
+  - evidence_id: shc8-falcon
+    path: docs/measurement/falcon_native_v2.yaml
+    sha256: 1618455367300f785d7ab9366ff30a9fd31bee469a4874a8c0757084394ce697
+    purpose: Frozen Falcon target, control, and binary-contract matrix.
+limitations:
+  - Full-signature timing does not isolate a portable sampler-core ABI.
+  - c-fn-dsa remains prospective comparator evidence rather than FIPS 206 conformance.
+  - No independent human reviewer or v8 final signature dataset existed at audit time.
+human_gate_effect: none

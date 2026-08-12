@@ -1,0 +1,98 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v4
+status: complete
+title: Automated contract audit of v8 single-host timing analysis
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: paper-analysis-v8-audit
+audited_at: "2026-08-12T06:46:14Z"
+audited_commit: 625b86f69b339c5137e479dbca7266c569e4f39b
+scope:
+  - v6 and v7 invalid-attempt disclosure and prohibition on result selection
+  - official-dudect repeat, control, and explicit randomness-policy validity
+  - named single-host analysis, multiplicity, and non-replication wording
+findings:
+  - finding_id: nas8-001
+    severity: critical
+    title: Retaining completed v7 rows after a post-observation validator amendment would be selective reuse
+    description: Even target rows with passing controls were generated under a method whose semantic RNG contract was wrong, so all components must restart rather than keeping favorable partial results.
+    evidence_ids: [nas8-preregistration, nas8-plan]
+  - finding_id: nas8-002
+    severity: high
+    title: Randomness policy must be independently bound to raw-protocol interpretation
+    description: Expected and observed runtime values must be checked against the frozen config before any target statistic is interpreted.
+    evidence_ids: [nas8-cli, nas8-independent-verifier, nas8-runner]
+  - finding_id: nas8-003
+    severity: high
+    title: Three process repeats cannot estimate cross-host heterogeneity
+    description: Within-host repeats support consistency and secondary effects but are not independent physical hosts.
+    evidence_ids: [nas8-analysis-contract, nas8-claim-matrix]
+  - finding_id: nas8-004
+    severity: high
+    title: No v8 final dataset exists at the audited commit
+    description: Named analysis outputs cannot be generated or interpreted before every frozen input and baseline passes final validation.
+    evidence_ids: [nas8-plan, nas8-analysis-contract]
+dispositions:
+  - finding_id: nas8-001
+    status: addressed
+    rationale: The preregistration identifies the v7 commit and component run IDs, records the precise failure, forbids reuse of every raw and derived artifact, and requires fresh v8 roots at one later commit.
+    blocker: ""
+    evidence_ids: [nas8-preregistration, nas8-plan]
+  - finding_id: nas8-002
+    status: addressed
+    rationale: The CLI emits both fields, and the native plus same-corpus paths pass config-derived expectations into the independent official-dudect verifier before promotion.
+    blocker: ""
+    evidence_ids: [nas8-cli, nas8-independent-verifier, nas8-runner, nas8-baseline-runner]
+  - finding_id: nas8-003
+    status: addressed
+    rationale: Named analysis reports host heterogeneity as unavailable, applies within-family Holm correction, and limits conclusions to the measured host.
+    blocker: ""
+    evidence_ids: [nas8-analysis-contract, nas8-claim-matrix]
+  - finding_id: nas8-004
+    status: accepted-with-blocker
+    rationale: The audited commit freezes methods and explicitly makes no final timing claim.
+    blocker: Collect the complete fresh v8 host tree, validate every upstream artifact, then generate and byte-check named JSON, CSV, and Markdown outputs.
+    evidence_ids: [nas8-plan, nas8-analysis-contract]
+evidence:
+  - evidence_id: nas8-plan
+    path: docs/measurement/paper_native_campaign_v8.yaml
+    sha256: 53319f550e7083d4c2c5167d9626c7ef337aaa0a222af5948b6cf600c158fef5
+    purpose: Frozen v8 endpoints, controls, non-reuse, and one-host policy.
+  - evidence_id: nas8-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3899b5a8b1a38b4dfb642c92787af659c0901e506bde97fa1ff15a443b6b4549
+    purpose: Invalid attempts, exact v7 diagnosis, exclusions, and no-selection rule.
+  - evidence_id: nas8-analysis-contract
+    path: docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
+    sha256: 14eb986bee80a6947e1fa5995f8fc2ce156bf9be1935aecc954d6669680f2f26
+    purpose: Deterministic named analysis, multiplicity, and host-scope contract.
+  - evidence_id: nas8-claim-matrix
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: ba5b15087a5af469c34ed78780f85baa9d97e1c63816084e94c2544bb8a30f26
+    purpose: Pending-result state and prohibited statistical wording.
+  - evidence_id: nas8-cli
+    path: ctkat/cli.py
+    sha256: 21b98fa8dd53b35b9239c7c1db48e20904ef92358a4ee3ff0ffa293a07c98618
+    purpose: Control ordering, setup, randomness validity, and repeat consistency.
+  - evidence_id: nas8-independent-verifier
+    path: ctkat/official_dudect_verify.py
+    sha256: 2d5fdff825bf132c3db5a25809beb206966ab514ee3bebda61100dc6937274c6
+    purpose: Independent recomputation and configured runtime-policy verification.
+  - evidence_id: nas8-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 81bac1b4823ff16361095275b18afe2cf9b2912e27bb87bb558ac37950398b8c
+    purpose: Final component protocol and promotion validation.
+  - evidence_id: nas8-baseline-runner
+    path: scripts/run_same_corpus_baselines.py
+    sha256: 28bf3407de760cc99f54064b4190f973f8273715dbf50cd08047508a46e5be55
+    purpose: Same-corpus config-derived expected-policy verification.
+  - evidence_id: nas8-baseline
+    path: docs/baselines/same_corpus_v1.yaml
+    sha256: 7421c99cdf28328a6666129adc65ed84f1811d8cb1fdbd5792436375e0169074
+    purpose: Exact two-case and three-tool comparison contract with frozen hashes.
+limitations:
+  - Calibration or failed-final statistics are not entered into paper tables.
+  - One host cannot support a cross-host reproducibility or heterogeneity claim.
+  - No human review, triage-time, or agreement measurement is supplied by this audit.
+human_gate_effect: none

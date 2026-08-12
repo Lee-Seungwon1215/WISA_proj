@@ -1,0 +1,98 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v4
+status: complete
+title: Automated audit of v8 ML-KEM and KyberSlash timing contracts
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-v8-audit
+audited_at: "2026-08-12T06:46:14Z"
+audited_commit: 625b86f69b339c5137e479dbca7266c569e4f39b
+scope:
+  - KyberSlash operand-v3 setup randomness versus measured-interval randomness
+  - general KEM dual-read masked class materialization before t0
+  - ML-KEM valid-tuple and public chosen-ciphertext attribution limits
+findings:
+  - finding_id: mkp8-001
+    severity: critical
+    title: Null randombytes_header was incorrectly treated as a no-RNG contract
+    description: The operand adapters omit a declaration header but call the weak seeded interpose during setup, so header-based inference invalidated six otherwise complete v7 target artifacts.
+    evidence_ids: [mkp8-preregistration, mkp8-config, mkp8-operand-config, mkp8-cli]
+  - finding_id: mkp8-002
+    severity: high
+    title: Setup RNG must not conceal RNG calls inside measured decapsulation
+    description: Seeded setup is reproducible, but an operand canary must independently prove that the timed arithmetic-site call performs zero randombytes calls.
+    evidence_ids: [mkp8-input-contract, mkp8-operand-tests]
+  - finding_id: mkp8-003
+    severity: high
+    title: Mixed valid-tuple signals cannot be called secret-key leakage
+    description: Both secret and matching public material vary on the valid-tuple axis regardless of setup or RNG contract correctness.
+    evidence_ids: [mkp8-plan, mkp8-preregistration]
+  - finding_id: mkp8-004
+    severity: high
+    title: Fresh v8 ML-KEM and KyberSlash timing evidence is pending
+    description: V7 traces are diagnostic only, and corrected contracts do not substitute for fresh physical traces and controls.
+    evidence_ids: [mkp8-plan, mkp8-preregistration]
+dispositions:
+  - finding_id: mkp8-001
+    status: addressed
+    rationale: Randomness policy is now a semantic config field independent of header inclusion; every operand config explicitly requires seeded-interpose and all validation layers compare the runtime observation with that policy.
+    blocker: ""
+    evidence_ids: [mkp8-config, mkp8-operand-config, mkp8-cli, mkp8-runner]
+  - finding_id: mkp8-002
+    status: addressed
+    rationale: Operand-v3 runtime and independently reconstructed input contracts now require measured_rng_calls=0 in addition to seeded-interpose setup metadata and decapsulation return-code witnesses.
+    blocker: ""
+    evidence_ids: [mkp8-input-contract, mkp8-operand-tests, mkp8-runner]
+  - finding_id: mkp8-003
+    status: addressed
+    rationale: V8 retains explicit mixed-input attribution limits in both the frozen plan and preregistration.
+    blocker: ""
+    evidence_ids: [mkp8-plan, mkp8-preregistration]
+  - finding_id: mkp8-004
+    status: accepted-with-blocker
+    rationale: The audited commit freezes corrected methods but makes no physical timing claim.
+    blocker: Execute every v8 ML-KEM and KyberSlash axis in fresh final roots and pass correctness, setup, RNG, controls, binary contracts, hashes, and named analysis.
+    evidence_ids: [mkp8-plan, mkp8-kyberslash]
+evidence:
+  - evidence_id: mkp8-plan
+    path: docs/measurement/paper_native_campaign_v8.yaml
+    sha256: 53319f550e7083d4c2c5167d9626c7ef337aaa0a222af5948b6cf600c158fef5
+    purpose: Frozen v8 component scope, randomness contract, and attribution limits.
+  - evidence_id: mkp8-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3899b5a8b1a38b4dfb642c92787af659c0901e506bde97fa1ff15a443b6b4549
+    purpose: Exact v7 failure mechanism and non-reuse rule.
+  - evidence_id: mkp8-config
+    path: ctkat/config.py
+    sha256: ef0852495faf40ef4e5b07008a07ff2453116e571f0d18b3946a57788971a27a
+    purpose: Explicit fail-closed semantic randomness policy.
+  - evidence_id: mkp8-cli
+    path: ctkat/cli.py
+    sha256: 21b98fa8dd53b35b9239c7c1db48e20904ef92358a4ee3ff0ffa293a07c98618
+    purpose: Policy provenance and fail-closed timing validity.
+  - evidence_id: mkp8-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 81bac1b4823ff16361095275b18afe2cf9b2912e27bb87bb558ac37950398b8c
+    purpose: Independent config-to-report policy and operand-contract validation.
+  - evidence_id: mkp8-input-contract
+    path: ctkat/timing_input_contract.py
+    sha256: c587b5669d42d375a589c97357b7b9fa459b2bd6376858f9eb4618a8d97948a8
+    purpose: Operand-v3 seeded setup and zero measured RNG metadata contract.
+  - evidence_id: mkp8-operand-config
+    path: examples/kyberslash_operand_latency/ctkat_ks1_vulnerable_v3.yaml
+    sha256: f99591db8b54749a404effef06d25e92233294af09f0fa3129c114ded58f82ed
+    purpose: Representative explicit seeded-interpose operand configuration.
+  - evidence_id: mkp8-operand-tests
+    path: tests/test_operand_setup_contract_v3.py
+    sha256: d9059e58e1e92721fac826dcab2e0398c9735a24f8ed1e4ab035e6b2f5ed7e10
+    purpose: Runtime and independent-validator operand contract regressions.
+  - evidence_id: mkp8-kyberslash
+    path: docs/measurement/kyberslash_native_v3.yaml
+    sha256: 6cde2f872ba42a3b7e2a169a89cda0f16737c450d69d33be3ab2fe28bb3d4f62
+    purpose: Frozen full-KEM and operand-v3 target matrix.
+limitations:
+  - Seeded setup and zero measured RNG do not prove the target implementation constant-time.
+  - Chosen-ciphertext and operand-bin results retain their public-input and canary-only boundaries.
+  - No v8 final ML-KEM or KyberSlash physical trace existed at audit time.
+human_gate_effect: none

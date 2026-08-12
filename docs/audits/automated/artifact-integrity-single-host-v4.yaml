@@ -1,0 +1,84 @@
+schema_version: "1.0"
+audit_id: automated-artifact-integrity-single-host-v4
+status: complete
+title: Automated adversarial audit of the v8 single-host evidence boundary
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-integrity-v8-audit
+audited_at: "2026-08-12T06:46:14Z"
+audited_commit: 625b86f69b339c5137e479dbca7266c569e4f39b
+scope:
+  - failed v7 artifact non-reuse and fresh v8 component routing
+  - explicit expected and observed randomness policy provenance
+  - schema-v5 single-host identity, assembly binding, and hash-manifest closure
+findings:
+  - finding_id: abi8-001
+    severity: critical
+    title: Completed v7 component trees could be mixed into a repaired v8 campaign
+    description: Reusing the completed core or KyberSlash artifacts after changing the randomness validity semantics would create a cross-method bundle selected after observation.
+    evidence_ids: [abi8-plan, abi8-preregistration, abi8-bundle-builder]
+  - finding_id: abi8-002
+    severity: critical
+    title: A backend report could self-assert its expected randomness policy
+    description: Recording an expected value is insufficient unless an independent validator reconstructs it from the frozen config and checks the runtime observation separately.
+    evidence_ids: [abi8-config, abi8-cli, abi8-runner, abi8-independent-verifier]
+  - finding_id: abi8-003
+    severity: high
+    title: No fresh v8 final artifact exists at the audited commit
+    description: Corrected source, static gates, and engineering calibration cannot substitute for the complete fresh physical campaign.
+    evidence_ids: [abi8-plan, abi8-claim-matrix]
+dispositions:
+  - finding_id: abi8-001
+    status: addressed
+    rationale: V8 explicitly forbids every v7 trace and requires empty final roots, one exact commit, unique run IDs, no final resume, and exact-commit bundle discovery.
+    blocker: ""
+    evidence_ids: [abi8-plan, abi8-preregistration, abi8-bundle-builder]
+  - finding_id: abi8-002
+    status: addressed
+    rationale: The resolved config carries a fail-closed semantic policy; the CLI records expected and observed values, while both the native runner and independent official-dudect verifier reconstruct and compare the configured policy.
+    blocker: ""
+    evidence_ids: [abi8-config, abi8-cli, abi8-runner, abi8-independent-verifier]
+  - finding_id: abi8-003
+    status: accepted-with-blocker
+    rationale: The audited source is deliberately a premeasurement freeze and makes no empirical v8 timing claim.
+    blocker: Execute all 28 axes, three same-corpus tools, fresh assembly evidence, schema-v5 bundle, and deterministic named analysis at one post-audit clean commit.
+    evidence_ids: [abi8-plan, abi8-claim-matrix]
+evidence:
+  - evidence_id: abi8-plan
+    path: docs/measurement/paper_native_campaign_v8.yaml
+    sha256: 53319f550e7083d4c2c5167d9626c7ef337aaa0a222af5948b6cf600c158fef5
+    purpose: Frozen v8 execution, non-reuse, randomness, and claim boundary.
+  - evidence_id: abi8-preregistration
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 3899b5a8b1a38b4dfb642c92787af659c0901e506bde97fa1ff15a443b6b4549
+    purpose: Exact v7 failure disclosure and fresh v8 amendment.
+  - evidence_id: abi8-config
+    path: ctkat/config.py
+    sha256: ef0852495faf40ef4e5b07008a07ff2453116e571f0d18b3946a57788971a27a
+    purpose: Fail-closed randomness policy schema and validation.
+  - evidence_id: abi8-cli
+    path: ctkat/cli.py
+    sha256: 21b98fa8dd53b35b9239c7c1db48e20904ef92358a4ee3ff0ffa293a07c98618
+    purpose: Expected and observed runtime policy recording and validity enforcement.
+  - evidence_id: abi8-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 81bac1b4823ff16361095275b18afe2cf9b2912e27bb87bb558ac37950398b8c
+    purpose: Frozen-input gate and independent configured-policy artifact validation.
+  - evidence_id: abi8-independent-verifier
+    path: ctkat/official_dudect_verify.py
+    sha256: 2d5fdff825bf132c3db5a25809beb206966ab514ee3bebda61100dc6937274c6
+    purpose: Raw-protocol verifier check of expected and observed randomness policies.
+  - evidence_id: abi8-bundle-builder
+    path: scripts/build_single_host_measurement_bundle.py
+    sha256: 4141fd3187202271efca93225359c089b9078513e5518bdba20311cad399d8ac
+    purpose: Exact-commit host-tree discovery, hashing, and v8 schema-v5 routing.
+  - evidence_id: abi8-claim-matrix
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: ba5b15087a5af469c34ed78780f85baa9d97e1c63816084e94c2544bb8a30f26
+    purpose: Paper-facing pending state and prohibited wording.
+limitations:
+  - This automated engineering audit grants no independent human-review credit.
+  - It cannot establish physical host ownership or cross-host reproducibility.
+  - No v8 final measurement existed at the audited source commit.
+human_gate_effect: none
