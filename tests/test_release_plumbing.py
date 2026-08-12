@@ -96,6 +96,7 @@ def test_untrusted_profile_rejects_shell_even_when_opted_in():
         ("migrate_evidence_v1_to_v2.py", ["--check"]),
         ("check_falcon_comparators.py", ["--static-only"]),
         ("run_same_corpus_baselines.py", ["--check"]),
+        ("run_paper_control_rehearsal.py", ["--check"]),
     ],
 )
 def test_committed_release_gate_scripts_pass(script, args):

@@ -6,6 +6,35 @@
 결과는 해당 host 범위에서만 승격하며 cross-host 재현성과 독립 사람 리뷰를
 주장하지 않는다. 기존 v5 two-host 계획은 stronger historical profile로 보존한다.
 
+## 장시간 final 전 control 리허설
+
+긴 final을 디버거처럼 여러 번 태우지 않도록
+`paper_control_rehearsal_v1.yaml`과 `run_paper_control_rehearsal.py`를 먼저 쓴다.
+이 프로필은 28개 축, 네 component, 세 same-corpus baseline, assembly 경로를
+끝까지 실행하고 중간 실패를 전부 blocker matrix 하나로 모으는 engineering
+전용 절차다. target/calibration trace만 process당 1,000회로 줄이고 A/A,
+setup-placebo, positive-control의 표본 수·seed·effect·repeat는 final manifest와
+동일하게 보존한다. 따라서 target 통계와 baseline 결과는 논문 수치로 해석하거나
+final로 승격할 수 없다.
+
+```bash
+uv run --frozen python scripts/run_paper_control_rehearsal.py --check
+
+uv run --frozen python scripts/run_paper_control_rehearsal.py \
+  --execute --phase smoke --cpu 2 \
+  --timecop-prefix /home/test/.local/ctkat/timecop \
+  --output-root measurement_runs/rehearsal-v1-a
+
+uv run --frozen python scripts/run_paper_control_rehearsal.py \
+  --execute --phase controls --resume --cpu 2 \
+  --timecop-prefix /home/test/.local/ctkat/timecop \
+  --output-root measurement_runs/rehearsal-v1-a
+```
+
+같은 candidate commit에서 blocker 0인 서로 다른 리허설을 두 번 얻은 뒤에만
+새 final manifest와 사전등록 amendment를 동결한다. 리허설의 정확한 비승격
+경계와 안전 여유는 `PAPER_CONTROL_REHEARSAL_V1.md`를 따른다.
+
 ```bash
 uv run python scripts/check_paper_campaign.py
 

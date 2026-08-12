@@ -1035,6 +1035,85 @@ def test_execute_resume_and_validate_run_round_trip(tmp_path, monkeypatch):
     )
 
 
+def test_control_rehearsal_override_is_explicit_nonpromotable_and_revalidates(
+    tmp_path, monkeypatch
+):
+    effective_spec, effective_target, fixture_reports = _small_artifact_fixture(
+        tmp_path / "fixture",
+        target_measurements=100,
+    )
+    source_target = replace(effective_target, target_measurements=20_050)
+    source_spec = replace(effective_spec, targets=(source_target,))
+    output_root = tmp_path / "rehearsal"
+
+    def fake_dudect(_dudect, _config_dir, _project, report_dir, **_kwargs):
+        report_dir.mkdir(parents=True)
+        for source in fixture_reports.iterdir():
+            destination = report_dir / source.name
+            if source.is_dir():
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(source, destination)
+        shutil.copytree(
+            fixture_reports.parent / "generated",
+            report_dir.parent / "generated",
+            dirs_exist_ok=True,
+        )
+        return []
+
+    monkeypatch.setattr(campaign, "_do_dudect", fake_dudect)
+    preflight = _paper_eligible_preflight("a" * 40)
+    assert (
+        campaign.execute_campaign(
+            source_spec,
+            output_root,
+            (source_target,),
+            preflight_report=preflight,
+            run_kind="engineering",
+            review_gate=None,
+            resume=False,
+            continue_on_error=True,
+            target_measurements_override=100,
+        )
+        == 0
+    )
+    report = json.loads((output_root / "campaign_report.json").read_text(encoding="utf-8"))
+    assert report["schema_version"] == "2.1"
+    assert report["execution_profile"] == {
+        "schema_version": "1.0",
+        "kind": "control-rehearsal",
+        "profile_id": campaign.CONTROL_REHEARSAL_PROFILE_ID,
+        "target_measurements_override": 100,
+        "target_statistics_interpretable": False,
+        "control_contract": "component-manifest-exact",
+        "promotion_allowed": False,
+    }
+    assert report["paper_promotion_ready"] is False
+    assert (
+        campaign.validate_run(
+            source_spec,
+            output_root,
+            (source_target,),
+            expected_commit="a" * 40,
+            expected_run_kind="engineering",
+        )
+        == 0
+    )
+
+
+def test_control_rehearsal_override_is_forbidden_for_final_and_pilot():
+    spec = campaign.load_campaign()
+    target = spec.targets[0]
+    for run_kind in ("pilot", "final"):
+        with pytest.raises(campaign.CampaignError, match="only for engineering"):
+            campaign._apply_control_rehearsal_override(
+                spec,
+                (target,),
+                1_000,
+                run_kind=run_kind,
+            )
+
+
 def test_final_run_cannot_resume_or_bypass_human_gate(tmp_path):
     spec, target, _report_dir = _small_artifact_fixture(tmp_path / "fixture")
     preflight = _paper_eligible_preflight("a" * 40)

@@ -22,7 +22,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -64,6 +64,7 @@ DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v3_campaign.ya
 CORPUS_SUMMARY = ROOT / "docs" / "corpus" / "corpus_summary.csv"
 OFFICIAL_TIMING_THRESHOLD = OFFICIAL_DUDECT_THRESHOLD_LABEL
 RUN_KINDS = ("engineering", "pilot", "final")
+CONTROL_REHEARSAL_PROFILE_ID = "ctkat-paper-control-rehearsal-v1"
 TARGET_ATTESTATION = "run_attestation.json"
 MEASUREMENT_CRITICAL_PATHS = (
     "ctkat",
@@ -2192,8 +2193,7 @@ def validate_target_artifacts(
             power_alpha=campaign.protocol.power_alpha,
             expected_axes=target.axes,
             expected_randomness_policies=tuple(
-                (name, configured_harnesses[name].randomness_policy)
-                for name in target.harnesses
+                (name, configured_harnesses[name].randomness_policy) for name in target.harnesses
             ),
         ),
     )
@@ -2737,6 +2737,61 @@ def _select_targets(campaign: CampaignSpec, selected: list[str]) -> tuple[Target
     return tuple(target for target in campaign.targets if target.id in set(selected))
 
 
+def _control_rehearsal_execution_profile(target_measurements: int) -> dict[str, Any]:
+    """Describe the only supported reduced-target execution profile.
+
+    The override is deliberately narrower than a general sample-count knob:
+    it is engineering-only, never promotable, and changes target/calibration
+    traces while preserving every physical control from the source manifest.
+    """
+
+    return {
+        "schema_version": "1.0",
+        "kind": "control-rehearsal",
+        "profile_id": CONTROL_REHEARSAL_PROFILE_ID,
+        "target_measurements_override": target_measurements,
+        "target_statistics_interpretable": False,
+        "control_contract": "component-manifest-exact",
+        "promotion_allowed": False,
+    }
+
+
+def _apply_control_rehearsal_override(
+    campaign: CampaignSpec,
+    targets: tuple[TargetSpec, ...],
+    target_measurements: int | None,
+    *,
+    run_kind: str,
+) -> tuple[CampaignSpec, tuple[TargetSpec, ...], dict[str, Any] | None]:
+    if target_measurements is None:
+        return campaign, targets, None
+    if run_kind != "engineering":
+        raise CampaignError("reduced target measurements are allowed only for engineering runs")
+    if isinstance(target_measurements, bool) or not 100 <= target_measurements < 20_000:
+        raise CampaignError(
+            "control rehearsal target measurements must be in [100, 20000); "
+            "reduced target statistics are intentionally non-interpretable"
+        )
+    if any(target_measurements >= target.target_measurements for target in campaign.targets):
+        raise CampaignError(
+            "control rehearsal target measurements must be smaller than every source target"
+        )
+    effective_by_id = {
+        target.id: replace(target, target_measurements=target_measurements)
+        for target in campaign.targets
+    }
+    effective_campaign = replace(
+        campaign,
+        targets=tuple(effective_by_id[target.id] for target in campaign.targets),
+    )
+    effective_targets = tuple(effective_by_id[target.id] for target in targets)
+    return (
+        effective_campaign,
+        effective_targets,
+        _control_rehearsal_execution_profile(target_measurements),
+    )
+
+
 def _human_premeasurement_gate_material(
     expected_commit: str,
     *,
@@ -2841,6 +2896,9 @@ SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v8.yaml"
 SINGLE_HOST_GATE_INPUTS = (
     ROOT / "docs/measurement/EXPERIMENT_PREREGISTRATION.md",
     ROOT / "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
+    ROOT / "docs/measurement/PAPER_CONTROL_REHEARSAL_V1.md",
+    ROOT / "docs/measurement/paper_control_rehearsal_v1.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v1.schema.json",
     ROOT / "docs/measurement/native_timing_v3_campaign.yaml",
     ROOT / "docs/measurement/kyberslash_native_v3.yaml",
     ROOT / "docs/measurement/falcon_native_v2.yaml",
@@ -2862,6 +2920,7 @@ SINGLE_HOST_GATE_INPUTS = (
     ROOT / "scripts/check_asm_evidence.py",
     ROOT / "scripts/hash_artifacts.py",
     ROOT / "scripts/run_native_timing_campaign.py",
+    ROOT / "scripts/run_paper_control_rehearsal.py",
     ROOT / "scripts/run_same_corpus_baselines.py",
     ROOT / "pyproject.toml",
     ROOT / "uv.lock",
@@ -3104,10 +3163,17 @@ def execute_campaign(
     resume: bool,
     continue_on_error: bool,
     automated_gate: dict[str, Any] | None = None,
+    target_measurements_override: int | None = None,
 ) -> int:
     output_root = _safe_output_root(output_root)
     if run_kind not in RUN_KINDS:
         raise CampaignError(f"invalid run_kind={run_kind!r}")
+    campaign, targets, execution_profile = _apply_control_rehearsal_override(
+        campaign,
+        targets,
+        target_measurements_override,
+        run_kind=run_kind,
+    )
     if run_kind == "final" and resume:
         raise CampaignError("final runs cannot use --resume; start a fresh output root")
     commit = preflight_report.get("git_commit")
@@ -3156,8 +3222,9 @@ def execute_campaign(
             raise CampaignError(f"cannot resume: campaign report unreadable: {exc}") from exc
         if not isinstance(previous, dict):
             raise CampaignError("cannot resume: campaign report root must be an object")
-        if previous.get("schema_version") != "2.0":
-            raise CampaignError("cannot resume: campaign report schema is not 2.0")
+        expected_schema = "2.1" if execution_profile is not None else "2.0"
+        if previous.get("schema_version") != expected_schema:
+            raise CampaignError(f"cannot resume: campaign report schema is not {expected_schema}")
         if previous.get("kind") != "native-timing-campaign-report":
             raise CampaignError("cannot resume: campaign report kind changed")
         if previous.get("campaign_id") != campaign.campaign_id:
@@ -3168,6 +3235,8 @@ def execute_campaign(
             raise CampaignError("cannot resume: CT-KAT commit changed")
         if previous.get("run_kind") != run_kind:
             raise CampaignError("cannot resume: run kind changed")
+        if previous.get("execution_profile") != execution_profile:
+            raise CampaignError("cannot resume: execution profile changed")
         run_id = previous.get("run_id")
         if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
             raise CampaignError("cannot resume: run id is malformed")
@@ -3203,7 +3272,7 @@ def execute_campaign(
     else:
         run_id = uuid.uuid4().hex
         report = {
-            "schema_version": "2.0",
+            "schema_version": "2.1" if execution_profile is not None else "2.0",
             "kind": "native-timing-campaign-report",
             "campaign_id": campaign.campaign_id,
             "manifest": _display_path(campaign.manifest_path),
@@ -3222,6 +3291,8 @@ def execute_campaign(
             "host_preflight": preflight_report,
             "targets": {},
         }
+        if execution_profile is not None:
+            report["execution_profile"] = execution_profile
     _write_json_atomic(report_path, report)
 
     validations: list[TargetValidation] = []
@@ -3395,7 +3466,8 @@ def validate_run(
         raise CampaignError(f"campaign report unreadable: {exc}") from exc
     if not isinstance(report, dict):
         raise CampaignError("campaign report root must be an object")
-    if report.get("schema_version") != "2.0" or report.get("campaign_id") != campaign.campaign_id:
+    report_schema = report.get("schema_version")
+    if report_schema not in {"2.0", "2.1"} or report.get("campaign_id") != campaign.campaign_id:
         raise CampaignError("campaign report identity/schema mismatch")
     if report.get("kind") != "native-timing-campaign-report":
         raise CampaignError("campaign report kind mismatch")
@@ -3406,6 +3478,22 @@ def validate_run(
         raise CampaignError("campaign report run_kind is invalid")
     if expected_run_kind is not None and run_kind != expected_run_kind:
         raise CampaignError("campaign report run_kind differs from expected kind")
+    execution_profile = report.get("execution_profile")
+    if report_schema == "2.0":
+        if execution_profile is not None:
+            raise CampaignError("schema-2.0 campaign cannot claim an execution profile")
+    else:
+        if not isinstance(execution_profile, dict):
+            raise CampaignError("schema-2.1 campaign requires an execution profile")
+        override = execution_profile.get("target_measurements_override")
+        campaign, selected, expected_profile = _apply_control_rehearsal_override(
+            campaign,
+            selected,
+            override,
+            run_kind=str(run_kind),
+        )
+        if execution_profile != expected_profile:
+            raise CampaignError("campaign execution profile is malformed or unsupported")
     run_id = report.get("run_id")
     if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
         raise CampaignError("campaign report run_id is malformed")
@@ -3557,6 +3645,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cpu", type=int, help="explicitly pin this process and children")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
+    parser.add_argument(
+        "--target-measurements-override",
+        type=int,
+        help=(
+            "engineering-only control rehearsal: reduce target/calibration traces while "
+            "preserving manifest control counts, effects, seeds, and repeats"
+        ),
+    )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--allow-virtualized", action="store_true")
     parser.add_argument(
@@ -3580,6 +3676,8 @@ def main(argv: list[str] | None = None) -> int:
         help="final promotion gate; single-host is automated and claims no independent review",
     )
     args = parser.parse_args(argv)
+    if args.target_measurements_override is not None and not args.execute:
+        parser.error("--target-measurements-override is valid only with --execute")
 
     try:
         campaign = load_campaign(args.manifest)
@@ -3622,6 +3720,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--execute requires --output-root")
         if args.run_kind is None:
             parser.error("--execute requires --run-kind")
+        if args.target_measurements_override is not None and args.run_kind != "engineering":
+            parser.error("--target-measurements-override requires --run-kind engineering")
         review_gate = None
         automated_gate = None
         if args.run_kind == "final":
@@ -3639,6 +3739,7 @@ def main(argv: list[str] | None = None) -> int:
             resume=args.resume,
             continue_on_error=args.continue_on_error,
             automated_gate=automated_gate,
+            target_measurements_override=args.target_measurements_override,
         )
     except CampaignError as exc:
         print(f"[native-timing] ERROR: {exc}", file=sys.stderr)
