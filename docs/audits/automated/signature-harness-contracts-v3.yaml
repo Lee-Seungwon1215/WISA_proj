@@ -6,8 +6,8 @@ perspective: signature-harness-contracts
 automated_agent: true
 human_reviewer: false
 automated_agent_id: signature-falcon-v7-audit
-audited_at: "2026-08-11T11:20:00Z"
-audited_commit: c3dc1fd65c5f6876e75974ea55132d6ea3ec18cf
+audited_at: "2026-08-12T01:42:27Z"
+audited_commit: 217c6c3b4b9eb05fe4ccd429ec536d2d9dd498b1
 scope:
   - signature dual-read masked key/message materialization before t0
   - randomness-policy contract and signature correctness/output-length evidence
