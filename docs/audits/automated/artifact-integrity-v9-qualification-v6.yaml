@@ -6,8 +6,8 @@ perspective: artifact-blind-integrity
 automated_agent: true
 human_reviewer: false
 automated_agent_id: artifact-integrity-v9-v6-audit
-audited_at: "2026-08-14T01:50:38Z"
-audited_commit: 3338b3a98046009c24579477d0600ddaee8d14cc
+audited_at: "2026-08-14T01:56:32Z"
+audited_commit: 8de8b997b5815ce7422b59209a693257d6d42403
 scope:
   - exact-commit two-rehearsal qualification before every V9 final component or baseline
   - qualification and source-report preservation inside the single-host hashed artifact tree

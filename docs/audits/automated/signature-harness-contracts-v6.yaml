@@ -6,8 +6,8 @@ perspective: signature-harness-contracts
 automated_agent: true
 human_reviewer: false
 automated_agent_id: signature-v9-v6-audit
-audited_at: "2026-08-14T01:50:38Z"
-audited_commit: 3338b3a98046009c24579477d0600ddaee8d14cc
+audited_at: "2026-08-14T01:56:32Z"
+audited_commit: 8de8b997b5815ce7422b59209a693257d6d42403
 scope:
   - Falcon reference, native-FP, integer-FPR, and diverse ML-DSA V9 effect deltas
   - full-signature output, correctness, RNG, build-seal, and binary-contract preservation
@@ -77,7 +77,7 @@ evidence:
     purpose: Portable/native ML-DSA and ML-KEM comparison with preserved signature contracts.
   - evidence_id: shv9-checker
     path: scripts/check_paper_campaign.py
-    sha256: 6d36e3999b58941597574df80386fc34f1c47669f3e37b9cf2a6d412bcf8204a
+    sha256: 48cb9a2cee25b24e07cdffdfe99bd30ef4e46aa9f181fb0489d7ec1f80ea0d04
     purpose: Exact predecessor comparison and calibrated-effect allowlist.
   - evidence_id: shv9-falcon-checker
     path: scripts/check_falcon_comparators.py
