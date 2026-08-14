@@ -1,0 +1,124 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v6
+status: complete
+title: Automated statistical audit of V9 control calibration and final launch qualification
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: native-statistics-v9-v6-audit
+audited_at: "2026-08-14T01:50:38Z"
+audited_commit: 3338b3a98046009c24579477d0600ddaee8d14cc
+scope:
+  - control-only use of the completed V1 engineering rehearsal
+  - separation of V2 operational headroom from unchanged final decision thresholds
+  - two-clean-run qualification, artifact preservation, multiplicity, and single-host claims
+findings:
+  - finding_id: nsv9-001
+    severity: critical
+    title: Reduced target statistics must not select the V9 method
+    description: One-thousand-sample rehearsal target traces are deliberately underpowered and cannot choose effects, thresholds, counts, exclusions, axes, or paper conclusions without post-selection bias.
+    evidence_ids: [nsv9-calibration, nsv9-profile, nsv9-prereg]
+  - finding_id: nsv9-002
+    severity: high
+    title: Operational safety margins could be mistaken for amended final thresholds
+    description: The V2 limits of absolute t below 3.5 and largest positive t at most -15 are launch headroom checks and must not replace the final 4.5 and -10 decision rules.
+    evidence_ids: [nsv9-profile, nsv9-contract, nsv9-prereg]
+  - finding_id: nsv9-003
+    severity: high
+    title: Two claimed clean rehearsals could be stale, duplicated, or from another commit
+    description: Counting two PASS labels is insufficient unless run IDs, exact commit, current profile and calibration hashes, full blocker-free summaries, and immutable source-report hashes are independently verified.
+    evidence_ids: [nsv9-rehearsal, nsv9-native-runner, nsv9-native-tests]
+  - finding_id: nsv9-004
+    severity: high
+    title: A single A/A tail observation does not justify adaptive null-control changes
+    description: The V1 ML-DSA-44 absolute t of 3.7793 exceeded rehearsal headroom but remained inside the final threshold; changing counts, seeds, or thresholds from one null tail would be outcome-driven.
+    evidence_ids: [nsv9-calibration, nsv9-prereg]
+  - finding_id: nsv9-005
+    severity: high
+    title: V9 inferential results and multiplicity outputs remain unavailable
+    description: Two rehearsals validate launch controls only; they cannot supply final target findings, Holm-adjusted contrasts, output-length diagnostics, or cross-host evidence.
+    evidence_ids: [nsv9-plan, nsv9-analysis, nsv9-claims]
+dispositions:
+  - finding_id: nsv9-001
+    status: addressed
+    rationale: The calibration source-of-truth sets target_statistics_used_for_calibration=false, enumerates every forbidden target input, records one uniform rule based only on largest-effect positive controls, and the static checker binds its exact source run and effect matrix.
+    blocker: ""
+    evidence_ids: [nsv9-calibration, nsv9-prereg, nsv9-checker, nsv9-config-tests]
+  - finding_id: nsv9-002
+    status: addressed
+    rationale: The V2 profile and operator contract label 3.5 and -15 as rehearsal safety margins, while predecessor comparison proves final counts, repeats, A/A limit, positive threshold, alpha, and target power are unchanged.
+    blocker: ""
+    evidence_ids: [nsv9-profile, nsv9-contract, nsv9-checker, nsv9-config-tests]
+  - finding_id: nsv9-003
+    status: addressed
+    rationale: Qualification requires exactly two distinct run IDs at one commit; final launch reopens both source reports and rejects any identity, hash, summary, phase, profile, calibration, or commit drift before sampling.
+    blocker: ""
+    evidence_ids: [nsv9-rehearsal, nsv9-native-runner, nsv9-native-tests, nsv9-rehearsal-tests]
+  - finding_id: nsv9-004
+    status: addressed
+    rationale: The calibration records no parameter change for the A/A observation and requires it to resolve naturally in two fresh independent V2 runs under the unchanged final protocol.
+    blocker: ""
+    evidence_ids: [nsv9-calibration, nsv9-prereg, nsv9-profile]
+  - finding_id: nsv9-005
+    status: accepted-with-blocker
+    rationale: The campaign and claim matrix remain pending-physical-measurement and prohibit cross-host or constant-time claims.
+    blocker: After two clean V2 rehearsals, collect all fresh V9 final axes and baselines, build the preserved single-host bundle, and run the deterministic named analysis before populating any result table.
+    evidence_ids: [nsv9-plan, nsv9-analysis, nsv9-claims]
+evidence:
+  - evidence_id: nsv9-calibration
+    path: docs/measurement/paper_control_rehearsal_v1_calibration.yaml
+    sha256: f7536da19b9d3c1f9e383de1ed288f8f5014fa948b075415af0a2713b7dc4326
+    purpose: Exact V1 control observations, forbidden target inputs, null-tail disposition, and uniform effect rule.
+  - evidence_id: nsv9-profile
+    path: docs/measurement/paper_control_rehearsal_v2.yaml
+    sha256: 15119eb11e49867738a2abbd807a0582057f83e536527c18b761788441075b44
+    purpose: Reduced-target, final-equivalent-control, safety-margin, and two-run contract.
+  - evidence_id: nsv9-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V2.md
+    sha256: 4ded7a8a94c9a616770854b8b482101fc1960594a95efb90d6bd06cd28fcfc1e
+    purpose: Human-readable separation between calibration, qualification, and inference.
+  - evidence_id: nsv9-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 14eed26c6ede55c13cb758bd1c244debf923366a8e91aaca685482f36b557307
+    purpose: V9 amendment, unchanged final rules, no-selection disclosure, and analysis limits.
+  - evidence_id: nsv9-plan
+    path: docs/measurement/paper_native_campaign_v9.yaml
+    sha256: 8293e5ac2d7122f9a2bf9886a70e915a5286a266e38a76ea44dabe54872b3335
+    purpose: One-host final scope, qualification gate, multiplicity, and claim limits.
+  - evidence_id: nsv9-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 9db8d0252e680bd79b1d59ec4322140e82ba90a3b924d659c31e8599a314d5ad
+    purpose: Pending evidence state and prohibited statistical overclaims.
+  - evidence_id: nsv9-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 6d36e3999b58941597574df80386fc34f1c47669f3e37b9cf2a6d412bcf8204a
+    purpose: Exact calibration provenance and predecessor-only delta validation.
+  - evidence_id: nsv9-rehearsal
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: d5678654b0fa183d142faa20333080342ac5d7dc04a73dfe40b424f2dcf4b045
+    purpose: Control-only assessment and two-report qualification generation.
+  - evidence_id: nsv9-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 8ecf5435deec623c42c29b6e8122f9517cae99bd544e7602751510f281d42fd9
+    purpose: Independent qualification revalidation and exact-commit final launch gate.
+  - evidence_id: nsv9-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: b922909cda7660a627c3341b97b1d131e668c047c95ee226d1ea1c3221dfb256
+    purpose: Host-scoped primary decisions, Holm families, and qualification preservation checks.
+  - evidence_id: nsv9-config-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: 3017e9f004c90f8b546ada3f9e04ce43aeb5add80aa017ac2ee3316e3d34a3d1
+    purpose: Exact allowed V8-to-V9 effect-only mutation regression.
+  - evidence_id: nsv9-native-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: fecae522756c93970af697e39ae14ee6a69e25c0ccd2aa183f0e43de60456414
+    purpose: Final gate reopens both source reports and rejects post-qualification mutation.
+  - evidence_id: nsv9-rehearsal-tests
+    path: tests/test_paper_control_rehearsal.py
+    sha256: 55fbda0d85bbcd88a750bb458fdb9787e446d9d2b605f42f418ad9700f2bbe1d
+    purpose: Qualification requires two distinct blocker-free reports at one commit.
+limitations:
+  - The V9 amendment is internally frozen after diagnostic controls and is not an external preregistration.
+  - One physical host cannot estimate cross-host heterogeneity or reproducibility.
+  - No target statistic from V1 is used here, and no V9 target result yet exists.
+human_gate_effect: none

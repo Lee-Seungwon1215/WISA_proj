@@ -1,0 +1,102 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v6
+status: complete
+title: Automated audit of V9 Falcon and signature control qualification
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-v9-v6-audit
+audited_at: "2026-08-14T01:50:38Z"
+audited_commit: 3338b3a98046009c24579477d0600ddaee8d14cc
+scope:
+  - Falcon reference, native-FP, integer-FPR, and diverse ML-DSA V9 effect deltas
+  - full-signature output, correctness, RNG, build-seal, and binary-contract preservation
+  - Falcon-1024 V1 power failure and two-clean-rehearsal launch gate
+findings:
+  - finding_id: shv9-001
+    severity: critical
+    title: Falcon-1024 reference positive power failed the prior final-equivalent control
+    description: The V1 rehearsal detected the 65536-tick largest effect in only two of three repeats, so launching the same final control curve again would knowingly retain inadequate power.
+    evidence_ids: [shv9-calibration, shv9-falcon, shv9-prereg]
+  - finding_id: shv9-002
+    severity: high
+    title: Falcon-specific repair could become an outcome-driven exception
+    description: Increasing only the visibly failed Falcon-1024 control after inspection would lack a systematic rule and could leave weaker headroom axes untreated.
+    evidence_ids: [shv9-calibration, shv9-checker, shv9-config-tests]
+  - finding_id: shv9-003
+    severity: high
+    title: Control-effect changes must not weaken full-signature semantics
+    description: V9 must retain signature verification, return-code and output-length witnesses, runtime randomness, build seals, linked-binary contracts, and the prohibition on FIPS 206 conformance claims.
+    evidence_ids: [shv9-falcon, shv9-diverse, shv9-falcon-checker, shv9-claims]
+  - finding_id: shv9-004
+    severity: high
+    title: Fresh signature control headroom and target evidence are pending
+    description: Static and regression evidence cannot demonstrate that the selected native host yields two blocker-free signature rehearsals or promotion-ready final axes.
+    evidence_ids: [shv9-profile, shv9-falcon, shv9-diverse]
+dispositions:
+  - finding_id: shv9-001
+    status: addressed
+    rationale: Falcon V3 doubles the Falcon-1024 reference largest effect to 131072 ticks while preserving the two lower points, counts, seeds, repeats, thresholds, sources, compiler, and harness contract; two fresh V2 rehearsals must still pass before final launch.
+    blocker: ""
+    evidence_ids: [shv9-calibration, shv9-falcon, shv9-profile, shv9-prereg]
+  - finding_id: shv9-002
+    status: addressed
+    rationale: One control-only rule is applied to every manifest target and therefore also selects Falcon-512 reference and c-fn-dsa-512 integer-FPR headroom cases; the checker rejects all undeclared effect or non-effect changes.
+    blocker: ""
+    evidence_ids: [shv9-calibration, shv9-checker, shv9-config-tests]
+  - finding_id: shv9-003
+    status: addressed
+    rationale: Falcon V3 and diverse V3 are predecessor-identical outside declared positive effects, the comparator checker remains closed over six binary contracts, and analysis retains variable-length full-signature and non-conformance wording.
+    blocker: ""
+    evidence_ids: [shv9-falcon, shv9-diverse, shv9-falcon-checker, shv9-analysis, shv9-claims]
+  - finding_id: shv9-004
+    status: accepted-with-blocker
+    rationale: The audited source declares signature timing pending and supplies no final values.
+    blocker: Complete two blocker-free V2 rehearsals at this exact commit, then execute Falcon V3 and diverse V3 from fresh final roots with the shared qualification and report every predeclared signature axis.
+    evidence_ids: [shv9-profile, shv9-falcon, shv9-diverse]
+evidence:
+  - evidence_id: shv9-calibration
+    path: docs/measurement/paper_control_rehearsal_v1_calibration.yaml
+    sha256: f7536da19b9d3c1f9e383de1ed288f8f5014fa948b075415af0a2713b7dc4326
+    purpose: Falcon-1024 power failure and uniform Falcon target selection record.
+  - evidence_id: shv9-profile
+    path: docs/measurement/paper_control_rehearsal_v2.yaml
+    sha256: 15119eb11e49867738a2abbd807a0582057f83e536527c18b761788441075b44
+    purpose: Full signature-axis rehearsal and control headroom contract.
+  - evidence_id: shv9-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 14eed26c6ede55c13cb758bd1c244debf923366a8e91aaca685482f36b557307
+    purpose: Prior failure disclosure and no-target-use amendment boundary.
+  - evidence_id: shv9-falcon
+    path: docs/measurement/falcon_native_v3.yaml
+    sha256: 0b79ee1b8206a5e686b15f0873979e043324d16346d18d373a4dae26b842f4d9
+    purpose: Six-axis Falcon/FN-DSA V9 target and positive-control matrix.
+  - evidence_id: shv9-diverse
+    path: docs/measurement/diverse_native_v3.yaml
+    sha256: 89e7fb05735a98632ee5eace5d3318bdab54a5376c6069f836d06597ee2016d6
+    purpose: Portable/native ML-DSA and ML-KEM comparison with preserved signature contracts.
+  - evidence_id: shv9-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 6d36e3999b58941597574df80386fc34f1c47669f3e37b9cf2a6d412bcf8204a
+    purpose: Exact predecessor comparison and calibrated-effect allowlist.
+  - evidence_id: shv9-falcon-checker
+    path: scripts/check_falcon_comparators.py
+    sha256: 7974bdb150b190421e9fa6c76f1429c471f17e9fa94286b2969a286a3adc4d19
+    purpose: Falcon source, profile, taint, KAT, and binary-contract static closure.
+  - evidence_id: shv9-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: b922909cda7660a627c3341b97b1d131e668c047c95ee226d1ea1c3221dfb256
+    purpose: Full-signature output-length diagnostics and host-scoped wording.
+  - evidence_id: shv9-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 9db8d0252e680bd79b1d59ec4322140e82ba90a3b924d659c31e8599a314d5ad
+    purpose: Pending Falcon claim state and FIPS conformance prohibition.
+  - evidence_id: shv9-config-tests
+    path: tests/test_falcon_comparator_v1.py
+    sha256: 6a9f972395eee536acdde07b9d8ee31ffb263f7c508d1158e070e5cff4485b3d
+    purpose: Exact selected and unchanged Falcon effect-ladder regression coverage.
+limitations:
+  - Full-signature timing includes variable-length encoding and does not isolate the sampler core.
+  - c-fn-dsa remains a prospective comparator and not a FIPS 206 conformance claim.
+  - No fresh physical signature rehearsal or final result is supplied here.
+human_gate_effect: none

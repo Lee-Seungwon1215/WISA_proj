@@ -1,0 +1,92 @@
+schema_version: "1.0"
+audit_id: automated-artifact-integrity-v9-qualification-v6
+status: complete
+title: Automated adversarial audit of V9 qualification and artifact preservation
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-integrity-v9-v6-audit
+audited_at: "2026-08-14T01:50:38Z"
+audited_commit: 3338b3a98046009c24579477d0600ddaee8d14cc
+scope:
+  - exact-commit two-rehearsal qualification before every V9 final component or baseline
+  - qualification and source-report preservation inside the single-host hashed artifact tree
+  - fresh-root non-reuse boundary for failed V8 and diagnostic V1 rehearsal artifacts
+findings:
+  - finding_id: aiv9-001
+    severity: critical
+    title: A self-declared qualification could bypass the physical control evidence
+    description: A final launcher must not trust a ready boolean without reopening both source reports and checking their hashes, run identities, profile, calibration, commit, and blocker-free summaries.
+    evidence_ids: [aiv9-native-runner, aiv9-rehearsal, aiv9-profile, aiv9-schema]
+  - finding_id: aiv9-002
+    severity: high
+    title: Qualification provenance could disappear when the final host tree is transferred
+    description: Absolute machine-local paths in a launch gate are not archival evidence unless the qualification and both source reports are also retained under the host hash manifest.
+    evidence_ids: [aiv9-bundle, aiv9-analysis, aiv9-bundle-tests]
+  - finding_id: aiv9-003
+    severity: high
+    title: V9 physical qualification and final evidence do not yet exist
+    description: Source, tests, and completed V1 diagnostics cannot establish that two fresh V2 rehearsals or the final campaign pass on the native host.
+    evidence_ids: [aiv9-plan, aiv9-contract, aiv9-prereg]
+dispositions:
+  - finding_id: aiv9-001
+    status: addressed
+    rationale: Every V9 final command requires one qualification path, and the final gate reopens the qualification plus both regular source reports, verifies exact hashes and distinct run IDs, requires the same clean commit and current profile/calibration hashes, and checks the complete blocker-free summary before sampling.
+    blocker: ""
+    evidence_ids: [aiv9-plan, aiv9-native-runner, aiv9-rehearsal, aiv9-profile, aiv9-schema]
+  - finding_id: aiv9-002
+    status: addressed
+    rationale: The operator contract places V2 reports and qualification below measurement_runs/host-a; the bundle builder requires those exact files inside the host root, and named analysis requires their three hashes to occur uniquely in the verified SHA256SUMS tree.
+    blocker: ""
+    evidence_ids: [aiv9-contract, aiv9-bundle, aiv9-analysis, aiv9-bundle-tests]
+  - finding_id: aiv9-003
+    status: accepted-with-blocker
+    rationale: The audited commit is deliberately premeasurement and labels every rehearsal non-promotable.
+    blocker: Execute two distinct blocker-free V2 rehearsals at this exact commit, create and retain their qualification, then execute all seven fresh V9 final commands and assembly evidence before building the host bundle.
+    evidence_ids: [aiv9-plan, aiv9-contract, aiv9-prereg]
+evidence:
+  - evidence_id: aiv9-plan
+    path: docs/measurement/paper_native_campaign_v9.yaml
+    sha256: 8293e5ac2d7122f9a2bf9886a70e915a5286a266e38a76ea44dabe54872b3335
+    purpose: Exact V9 component, baseline, promotion, qualification, and non-reuse policy.
+  - evidence_id: aiv9-profile
+    path: docs/measurement/paper_control_rehearsal_v2.yaml
+    sha256: 15119eb11e49867738a2abbd807a0582057f83e536527c18b761788441075b44
+    purpose: Non-promotable all-axis rehearsal and two-clean-run contract.
+  - evidence_id: aiv9-schema
+    path: docs/measurement/paper_control_rehearsal_v2.schema.json
+    sha256: 3e0de3815a3cb108388aefff9a03bb4a2f014ac744444c6e43d67040dd695130
+    purpose: Fail-closed aggregate report structure including calibration provenance.
+  - evidence_id: aiv9-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V2.md
+    sha256: 4ded7a8a94c9a616770854b8b482101fc1960594a95efb90d6bd06cd28fcfc1e
+    purpose: Operator routing that preserves qualification inputs inside the host tree.
+  - evidence_id: aiv9-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 14eed26c6ede55c13cb758bd1c244debf923366a8e91aaca685482f36b557307
+    purpose: V8 failure, V1 completion, calibration boundary, and fresh V9 non-reuse disclosure.
+  - evidence_id: aiv9-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 8ecf5435deec623c42c29b6e8122f9517cae99bd544e7602751510f281d42fd9
+    purpose: Exact-commit final gate that independently revalidates qualification inputs.
+  - evidence_id: aiv9-rehearsal
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: d5678654b0fa183d142faa20333080342ac5d7dc04a73dfe40b424f2dcf4b045
+    purpose: V2 report production, aggregate assessment, and two-report qualification.
+  - evidence_id: aiv9-bundle
+    path: scripts/build_single_host_measurement_bundle.py
+    sha256: 765bf7d146324726f89b3f37ada6e8392a2aa5a706e4aa9f67e726b4696a57d5
+    purpose: Seven-result qualification equality and source-file preservation gate.
+  - evidence_id: aiv9-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: b922909cda7660a627c3341b97b1d131e668c047c95ee226d1ea1c3221dfb256
+    purpose: Independent qualification fingerprint and host-hash-manifest verification.
+  - evidence_id: aiv9-bundle-tests
+    path: tests/test_single_host_measurement_bundle.py
+    sha256: 9629d52ae699e5c48d2a3bd8206a3e7fec7d3e0008e2949d27d97d5372c2698c
+    purpose: Regression fixture for preserved qualification and V9 host-tree routing.
+limitations:
+  - This automated audit grants no independent human-review credit.
+  - Hash closure detects mutation and omission but is not remote hardware attestation.
+  - No V2 qualification, V9 final timing result, or paper result table is supplied by this audit.
+human_gate_effect: none

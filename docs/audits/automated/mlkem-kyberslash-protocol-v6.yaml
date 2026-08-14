@@ -1,0 +1,98 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v6
+status: complete
+title: Automated audit of V9 ML-KEM and KyberSlash control-only calibration
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-v9-v6-audit
+audited_at: "2026-08-14T01:50:38Z"
+audited_commit: 3338b3a98046009c24579477d0600ddaee8d14cc
+scope:
+  - V1 control-only selection rule and exact V9 ML-KEM and KyberSlash effect deltas
+  - preservation of valid-tuple, chosen-ciphertext, and operand-v3 attribution boundaries
+  - prohibition on target-statistic use and diagnostic-row reuse
+findings:
+  - finding_id: mkv9-001
+    severity: critical
+    title: Post-observation target tuning would invalidate the V9 campaign
+    description: The completed V1 rehearsal contains reduced target traces, so any target t-score, status, direction, consistency, or baseline finding used to choose V9 parameters would create selective analysis.
+    evidence_ids: [mkv9-calibration, mkv9-prereg, mkv9-profile]
+  - finding_id: mkv9-002
+    severity: high
+    title: Shared manifest-target effects can change more than the triggering ML-KEM axis
+    description: The committed-corpus ML-KEM target has three harnesses under one effect ladder, so selection by its valid-tuple axis necessarily updates the largest injected delay for all three harnesses and must be explicit.
+    evidence_ids: [mkv9-calibration, mkv9-core, mkv9-checker, mkv9-tests]
+  - finding_id: mkv9-003
+    severity: high
+    title: Stronger controls do not strengthen leakage attribution
+    description: Valid-tuple remains mixed public-and-secret input, chosen ciphertext remains public input, and operand-bin timing remains a site-specific hardware-latency canary rather than a key-recovery result.
+    evidence_ids: [mkv9-kyberslash, mkv9-plan, mkv9-claims]
+  - finding_id: mkv9-004
+    severity: high
+    title: Fresh V9 ML-KEM and KyberSlash runtime evidence is pending
+    description: Manifest equality and calibration provenance cannot establish physical-host A/A, placebo, power, or target outcomes.
+    evidence_ids: [mkv9-profile, mkv9-core, mkv9-kyberslash]
+dispositions:
+  - finding_id: mkv9-001
+    status: addressed
+    rationale: The calibration record enumerates allowed control inputs and forbids every reduced-target statistic; one uniform manifest-target rule selects nine targets, and the checker binds the source run hashes and exact allowed V8-to-V9 deltas.
+    blocker: ""
+    evidence_ids: [mkv9-calibration, mkv9-prereg, mkv9-checker, mkv9-tests]
+  - finding_id: mkv9-002
+    status: addressed
+    rationale: The calibration explicitly declares manifest-target as the selection unit and documents the shared-harness effect policy; static validation compares every V9 target against its predecessor and rejects any non-effect protocol change.
+    blocker: ""
+    evidence_ids: [mkv9-calibration, mkv9-core, mkv9-checker, mkv9-tests]
+  - finding_id: mkv9-003
+    status: addressed
+    rationale: V9 changes only selected largest positive-control effects while preserving axes, setup, source, compiler, RNG, and binary contracts; the campaign and claim matrix retain all three attribution prohibitions.
+    blocker: ""
+    evidence_ids: [mkv9-kyberslash, mkv9-plan, mkv9-claims, mkv9-checker]
+  - finding_id: mkv9-004
+    status: accepted-with-blocker
+    rationale: The audited commit freezes methods and makes no final ML-KEM or KyberSlash timing claim.
+    blocker: Obtain two blocker-free V2 rehearsals at this exact commit, then execute the core V4 and KyberSlash V4 final roots fresh with the resulting qualification.
+    evidence_ids: [mkv9-profile, mkv9-core, mkv9-kyberslash]
+evidence:
+  - evidence_id: mkv9-calibration
+    path: docs/measurement/paper_control_rehearsal_v1_calibration.yaml
+    sha256: f7536da19b9d3c1f9e383de1ed288f8f5014fa948b075415af0a2713b7dc4326
+    purpose: Exact source run, forbidden target inputs, uniform selection rule, and nine effect changes.
+  - evidence_id: mkv9-profile
+    path: docs/measurement/paper_control_rehearsal_v2.yaml
+    sha256: 15119eb11e49867738a2abbd807a0582057f83e536527c18b761788441075b44
+    purpose: Final-equivalent controls and reduced non-interpretable target execution.
+  - evidence_id: mkv9-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 14eed26c6ede55c13cb758bd1c244debf923366a8e91aaca685482f36b557307
+    purpose: Post-V1 amendment disclosure, no-target-selection rule, and fresh final boundary.
+  - evidence_id: mkv9-core
+    path: docs/measurement/native_timing_v4_campaign.yaml
+    sha256: f3811945c5cfa801510afa58c69a6ce4771346cd487e4cf7d19f7972897a1ffc
+    purpose: V4 committed-corpus scope and calibrated ML-KEM shared effect ladder.
+  - evidence_id: mkv9-kyberslash
+    path: docs/measurement/kyberslash_native_v4.yaml
+    sha256: 49f50df03a3befb47875e0e2555dd037d7cf2a63bca51df9f11134e620ce1e5d
+    purpose: Frozen chosen-ciphertext and operand-v3 target/control matrix.
+  - evidence_id: mkv9-plan
+    path: docs/measurement/paper_native_campaign_v9.yaml
+    sha256: 8293e5ac2d7122f9a2bf9886a70e915a5286a266e38a76ea44dabe54872b3335
+    purpose: V9 scope, qualification, non-reuse, and attribution claim limits.
+  - evidence_id: mkv9-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 9db8d0252e680bd79b1d59ec4322140e82ba90a3b924d659c31e8599a314d5ad
+    purpose: Pending-measurement state and prohibited ML-KEM/KyberSlash wording.
+  - evidence_id: mkv9-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 6d36e3999b58941597574df80386fc34f1c47669f3e37b9cf2a6d412bcf8204a
+    purpose: Exact predecessor comparison, source-run binding, and allowed-effect matrix gate.
+  - evidence_id: mkv9-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: 3017e9f004c90f8b546ada3f9e04ce43aeb5add80aa017ac2ee3316e3d34a3d1
+    purpose: Regression proof that V9 changes only the nine declared effect ladders.
+limitations:
+  - A passing positive control validates sensitivity under this protocol but does not prove a target constant-time.
+  - The calibration is an internal post-diagnostic amendment rather than an externally registered preregistration.
+  - No fresh V2 or V9 physical-host artifact is supplied here.
+human_gate_effect: none
