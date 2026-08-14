@@ -12,7 +12,7 @@ reproducing CT-KAT. Superseded scratchpads remain local-only.
 - `tutorial.md` — quick usage guide.
 - `calibration/` — pinned official-dudect backend synthetic A/A, injected
   effect curve, and same-trace parity artifact.
-- `measurement/` — frozen paper-native-v8 single-host campaign, bare-metal preflight,
+- `measurement/` — frozen paper-native-v9 single-host campaign, bare-metal preflight,
   resumable execution, artifact validation, and corpus-promotion boundary.
 - `paper/` — premeasurement outline, claim/evidence matrix, and generated
   corpus/ablation/campaign/review readiness tables.

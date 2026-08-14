@@ -80,32 +80,57 @@ def test_rendered_execution_matrix_has_seven_placeholder_free_commands():
         host_id="host-a",
         cpu=2,
         timecop_prefix=Path("/opt/ctkat/timecop"),
+        control_qualification=Path("/srv/ctkat/v9-control-qualification.json"),
     )
     assert len(commands) == 7
     assert all(command.startswith("uv run --frozen python ") for command in commands)
     assert all(
         placeholder not in command
         for command in commands
-        for placeholder in ("host-ID", "CPU-ID", "TIMECOP-PREFIX")
+        for placeholder in ("host-ID", "CPU-ID", "TIMECOP-PREFIX", "QUALIFICATION")
     )
     assert sum("measurement_runs/host-a/" in command for command in commands) == 7
     assert sum("--cpu 2" in command for command in commands) == 5
     assert sum("--prefix /opt/ctkat/timecop" in command for command in commands) == 1
+    assert (
+        sum(
+            "--control-qualification /srv/ctkat/v9-control-qualification.json" in command
+            for command in commands
+        )
+        == 7
+    )
     assert sum("--run-dudect" in command for command in commands) == 1
     assert sum("--run-timecop" in command for command in commands) == 1
     assert sum("--run-microwalk" in command for command in commands) == 1
 
 
 @pytest.mark.parametrize(
-    ("host_id", "prefix", "message"),
+    ("host_id", "prefix", "qualification", "message"),
     [
-        ("host a", Path("/opt/ctkat/timecop"), "host id"),
-        ("host-a", Path("relative/timecop"), "absolute path"),
+        (
+            "host a",
+            Path("/opt/ctkat/timecop"),
+            Path("/srv/qualification.json"),
+            "host id",
+        ),
+        (
+            "host-a",
+            Path("relative/timecop"),
+            Path("/srv/qualification.json"),
+            "absolute path",
+        ),
+        (
+            "host-a",
+            Path("/opt/ctkat/timecop"),
+            Path("relative/qualification.json"),
+            "control qualification",
+        ),
     ],
 )
 def test_command_renderer_rejects_unsafe_or_ambiguous_substitutions(
     host_id: str,
     prefix: Path,
+    qualification: Path,
     message: str,
 ):
     with pytest.raises(ValueError, match=message):
@@ -114,6 +139,7 @@ def test_command_renderer_rejects_unsafe_or_ambiguous_substitutions(
             host_id=host_id,
             cpu=2,
             timecop_prefix=prefix,
+            control_qualification=qualification,
         )
 
 
@@ -128,6 +154,8 @@ def test_print_commands_cli_emits_only_the_seven_commands(capsys):
                 "3",
                 "--timecop-prefix",
                 "/srv/timecop",
+                "--control-qualification",
+                "/srv/v9-control-qualification.json",
             ]
         )
         == 0

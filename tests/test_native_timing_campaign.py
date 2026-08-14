@@ -1506,3 +1506,117 @@ targets:
         artifact_sha256={},
     )
     assert any("objdump current path differs" in error for error in wrong_path)
+
+
+def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypatch):
+    monkeypatch.setattr(campaign, "ROOT", tmp_path)
+    docs = tmp_path / "docs" / "measurement"
+    docs.mkdir(parents=True)
+    profile = docs / "paper_control_rehearsal_v2.yaml"
+    calibration = docs / "paper_control_rehearsal_v1_calibration.yaml"
+    profile.write_text("profile: v2\n", encoding="utf-8")
+    calibration.write_text("calibration: v1\n", encoding="utf-8")
+
+    commit = "a" * 40
+    host_root = tmp_path / "measurement_runs" / "host-a"
+    summary = {
+        "smoke_axes_passed": 28,
+        "native_axes_assessed": 28,
+        "native_components_passed": 4,
+        "baselines_passed": 3,
+        "assembly_passed": True,
+        "pipeline_closure_passed": True,
+        "blocker_count": 0,
+        "target_statistics_interpretable": False,
+        "promotion_allowed": False,
+    }
+    records = []
+    report_hashes = {}
+    run_ids = ["1" * 32, "2" * 32]
+    for label, run_id in zip(("v2-a", "v2-b"), run_ids, strict=True):
+        report_path = host_root / "control-rehearsals" / label / "rehearsal_report.json"
+        report_path.parent.mkdir(parents=True)
+        report = {
+            "schema_version": "2.0",
+            "kind": "ctkat-paper-control-rehearsal-report",
+            "profile_id": "ctkat-paper-control-rehearsal-v2",
+            "profile": "docs/measurement/paper_control_rehearsal_v2.yaml",
+            "profile_sha256": campaign._sha256(profile),
+            "source_paper_campaign": "docs/measurement/paper_native_campaign_v9.yaml",
+            "calibration": "docs/measurement/paper_control_rehearsal_v1_calibration.yaml",
+            "calibration_sha256": campaign._sha256(calibration),
+            "target_measurements": 1000,
+            "run_id": run_id,
+            "run_kind": "engineering",
+            "promotion_allowed": False,
+            "ctkat_commit": commit,
+            "started_at": "2026-08-14T00:00:00Z",
+            "finished_at": "2026-08-14T01:00:00Z",
+            "status": "pass",
+            "phase": "controls",
+            "smoke": {"passed_axes": 28},
+            "native_components": {
+                component_id: {"status": "pass"}
+                for component_id in (
+                    "committed-corpus-refresh",
+                    "kyberslash-contrast",
+                    "falcon-contrast",
+                    "diverse-lineages",
+                )
+            },
+            "baselines": {
+                tool_id: {"status": "pass"}
+                for tool_id in ("official_dudect", "timecop", "microwalk_pin")
+            },
+            "assembly": {"status": "pass"},
+            "pipeline_closure": {"status": "pass"},
+            "summary": summary,
+            "blockers": [],
+        }
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        report_sha = campaign._sha256(report_path)
+        report_hashes[str(report_path.resolve())] = report_sha
+        records.append(
+            {
+                "path": str(report_path.resolve()),
+                "sha256": report_sha,
+                "run_id": run_id,
+                "started_at": report["started_at"],
+                "finished_at": report["finished_at"],
+            }
+        )
+
+    qualification_path = host_root / "v9-control-qualification.json"
+    qualification = {
+        "schema_version": "2.0",
+        "kind": "ctkat-v9-final-control-qualification",
+        "created_at": "2026-08-14T02:00:00Z",
+        "candidate_commit": commit,
+        "profile_id": "ctkat-paper-control-rehearsal-v2",
+        "profile_sha256": campaign._sha256(profile),
+        "calibration_sha256": campaign._sha256(calibration),
+        "rehearsal_run_ids": run_ids,
+        "rehearsals": records,
+        "required_clean_runs": 2,
+        "observed_clean_runs": 2,
+        "final_launch_ready": True,
+        "next_gate": "execute every V9 final component from fresh roots at candidate_commit",
+        "errors": [],
+    }
+    qualification_path.write_text(json.dumps(qualification), encoding="utf-8")
+
+    material = campaign._final_control_qualification_material(
+        qualification_path,
+        expected_commit=commit,
+    )
+    assert material["ready"] is True
+    assert material["rehearsal_run_ids"] == run_ids
+    assert material["rehearsal_report_sha256"] == report_hashes
+
+    first_report = Path(records[0]["path"])
+    first_report.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(campaign.CampaignError, match="hash mismatch"):
+        campaign._final_control_qualification_material(
+            qualification_path,
+            expected_commit=commit,
+        )

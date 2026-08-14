@@ -112,12 +112,15 @@ generic targets remain `insufficient-power`; an official raw PASS or FAIL is
 non-decisional for the v2 headline unless those target-level gates pass.
 
 The active deferred native refresh is frozen in
-[`measurement/native_timing_v3_campaign.yaml`](measurement/native_timing_v3_campaign.yaml).
+[`measurement/native_timing_v4_campaign.yaml`](measurement/native_timing_v4_campaign.yaml).
+V4 keeps the V3 target/axis contract and changes only the predeclared
+positive-control effects selected by the V1 control-only calibration rule.
 Its runner emits a checked `corpus_timing_updates.csv`, but never rewrites this
 curated corpus. Runtime report metadata is authoritative for backend, emitted
 sample count, analysis seed, and the KEM input-attribution contract; YAML values
 are only fallbacks because a campaign may deliberately override modest example
-defaults.
+defaults. Final execution additionally requires the V9 qualification that binds
+two clean V2 control rehearsals at the exact candidate commit.
 
 ### KEM `valid_tuple` axis replacement
 

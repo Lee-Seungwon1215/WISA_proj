@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -11,13 +12,63 @@ CPU = "Synthetic CPU"
 MACHINE = "b" * 64
 
 
-def _gate():
+def _gate(host_root: Path):
+    rehearsal_records = []
+    report_hashes = {}
+    rehearsal_run_ids = ["8" * 32, "9" * 32]
+    for label, run_id in zip(("v2-a", "v2-b"), rehearsal_run_ids, strict=True):
+        report_path = host_root / "control-rehearsals" / label / "rehearsal_report.json"
+        _write_json(report_path, {"run_id": run_id, "status": "pass"})
+        report_sha = hashlib.sha256(report_path.read_bytes()).hexdigest()
+        report_hashes[str(report_path.resolve())] = report_sha
+        rehearsal_records.append(
+            {
+                "path": str(report_path.resolve()),
+                "sha256": report_sha,
+                "run_id": run_id,
+                "started_at": "2026-08-14T00:00:00Z",
+                "finished_at": "2026-08-14T01:00:00Z",
+            }
+        )
+    qualification_path = host_root / "v9-control-qualification.json"
+    _write_json(
+        qualification_path,
+        {
+            "schema_version": "2.0",
+            "kind": "ctkat-v9-final-control-qualification",
+            "created_at": "2026-08-14T02:00:00Z",
+            "candidate_commit": COMMIT,
+            "profile_id": "ctkat-paper-control-rehearsal-v2",
+            "profile_sha256": "d" * 64,
+            "calibration_sha256": "e" * 64,
+            "rehearsal_run_ids": rehearsal_run_ids,
+            "rehearsals": rehearsal_records,
+            "required_clean_runs": 2,
+            "observed_clean_runs": 2,
+            "final_launch_ready": True,
+            "next_gate": "execute fresh V9 final roots",
+            "errors": [],
+        },
+    )
     return {
         "kind": "automated-frozen-input-integrity-gate",
         "ready": True,
+        "ctkat_commit": COMMIT,
+        "plan_id": "ctkat-paper-native-v9-single-host",
         "physical_host_count": 1,
         "independent_human_review": False,
         "cross_host_reproducibility": False,
+        "control_qualification": {
+            "kind": "two-clean-control-rehearsal-qualification",
+            "ready": True,
+            "path": str(qualification_path.resolve()),
+            "sha256": hashlib.sha256(qualification_path.read_bytes()).hexdigest(),
+            "profile_id": "ctkat-paper-control-rehearsal-v2",
+            "profile_sha256": "d" * 64,
+            "calibration_sha256": "e" * 64,
+            "rehearsal_run_ids": rehearsal_run_ids,
+            "rehearsal_report_sha256": report_hashes,
+        },
     }
 
 
@@ -28,6 +79,7 @@ def _write_json(path: Path, value):
 
 def test_build_single_host_bundle_discovers_fresh_results_and_hashes_tree(tmp_path):
     host_root = tmp_path / "host-a"
+    gate = _gate(host_root)
     for index, dirname in enumerate(COMPONENT_DIRS.values(), start=1):
         _write_json(
             host_root / dirname / "campaign_report.json",
@@ -40,7 +92,7 @@ def test_build_single_host_bundle_discovers_fresh_results_and_hashes_tree(tmp_pa
                 "run_id": f"{index:x}" * 32,
                 "ctkat_commit": COMMIT,
                 "human_review_gate": None,
-                "automated_premeasurement_gate": _gate(),
+                "automated_premeasurement_gate": gate,
                 "host_preflight": {
                     "paper_eligible": True,
                     "environment": {
@@ -70,7 +122,7 @@ def test_build_single_host_bundle_discovers_fresh_results_and_hashes_tree(tmp_pa
                 "git_dirty": False,
                 "promotion_ready": True,
                 "human_review_gate": None,
-                "automated_premeasurement_gate": _gate(),
+                "automated_premeasurement_gate": gate,
                 "host": {"cpu_model": CPU, "machine_id_sha256": MACHINE},
             },
         )

@@ -207,23 +207,23 @@ class HostAxis:
 COMPONENT_PLANS = {
     "committed-corpus-refresh": ComponentPlan(
         "committed-corpus-refresh",
-        ROOT / "docs/measurement/native_timing_v3_campaign.yaml",
-        "corpus-native-timing-v3",
+        ROOT / "docs/measurement/native_timing_v4_campaign.yaml",
+        "corpus-native-timing-v4",
     ),
     "kyberslash-contrast": ComponentPlan(
         "kyberslash-contrast",
-        ROOT / "docs/measurement/kyberslash_native_v3.yaml",
-        "kyberslash-native-v3",
+        ROOT / "docs/measurement/kyberslash_native_v4.yaml",
+        "kyberslash-native-v4",
     ),
     "falcon-contrast": ComponentPlan(
         "falcon-contrast",
-        ROOT / "docs/measurement/falcon_native_v2.yaml",
-        "falcon-native-v2",
+        ROOT / "docs/measurement/falcon_native_v3.yaml",
+        "falcon-native-v3",
     ),
     "diverse-lineages": ComponentPlan(
         "diverse-lineages",
-        ROOT / "docs/measurement/diverse_native_v2.yaml",
-        "diverse-native-v2",
+        ROOT / "docs/measurement/diverse_native_v3.yaml",
+        "diverse-native-v3",
     ),
 }
 
@@ -660,6 +660,47 @@ def _signal(raw_status: str) -> str:
     }[raw_status]
 
 
+def _single_host_qualification_fingerprint(
+    gate: Mapping[str, Any],
+    *,
+    expected_commit: str,
+    label: str,
+) -> str:
+    qualification = gate.get("control_qualification")
+    run_ids = qualification.get("rehearsal_run_ids") if isinstance(qualification, dict) else None
+    report_hashes = (
+        qualification.get("rehearsal_report_sha256") if isinstance(qualification, dict) else None
+    )
+    if (
+        gate.get("ctkat_commit") != expected_commit
+        or gate.get("plan_id") != "ctkat-paper-native-v9-single-host"
+        or not isinstance(qualification, dict)
+        or qualification.get("kind") != "two-clean-control-rehearsal-qualification"
+        or qualification.get("ready") is not True
+        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+        or any(
+            not isinstance(qualification.get(field), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", qualification.get(field, ""))
+            for field in ("sha256", "profile_sha256", "calibration_sha256")
+        )
+        or not isinstance(run_ids, list)
+        or len(run_ids) != 2
+        or len(set(run_ids)) != 2
+        or any(
+            not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id)
+            for run_id in run_ids
+        )
+        or not isinstance(report_hashes, dict)
+        or len(report_hashes) != 2
+        or any(
+            not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+            for value in report_hashes.values()
+        )
+    ):
+        raise AnalysisError(f"{label}: V9 control qualification is missing or malformed")
+    return json.dumps(qualification, sort_keys=True, separators=(",", ":"))
+
+
 def load_host_axes(
     host: Mapping[str, Any],
     expected_commit: str,
@@ -682,6 +723,7 @@ def load_host_axes(
         raise AnalysisError(f"{host_id}: component set differs from the analysis plan")
 
     observations: list[HostAxis] = []
+    qualification_fingerprints: set[str] = set()
     for component in sorted(component_plans):
         plan = component_plans[component]
         component_root = Path(str(component_roots[component])).resolve()
@@ -734,6 +776,14 @@ def load_host_axes(
             or report.get("human_review_gate") is not None
         ):
             raise AnalysisError(f"{host_id}.{component}: single-host scope boundary drift")
+        if required_gate_kind == "automated-frozen-input-integrity-gate":
+            qualification_fingerprints.add(
+                _single_host_qualification_fingerprint(
+                    gate,
+                    expected_commit=expected_commit,
+                    label=f"{host_id}.{component}",
+                )
+            )
         selected = report.get("selected_targets")
         target_index = report.get("targets")
         if set(selected or []) != set(manifest_targets) or not isinstance(target_index, dict):
@@ -1041,6 +1091,11 @@ def load_host_axes(
                         signature=signature,
                     )
                 )
+    if (
+        required_gate_kind == "automated-frozen-input-integrity-gate"
+        and len(qualification_fingerprints) != 1
+    ):
+        raise AnalysisError(f"{host_id}: components do not share one V9 control qualification")
     return observations
 
 
@@ -2072,15 +2127,15 @@ def _prepare_blinded_bundle(
         )
         if not hash_manifest.is_relative_to(host_root):
             raise AnalysisError(f"{host_id}: hash manifest escapes its host artifact root")
-        if hash_manifest.read_text(encoding="utf-8") != build_manifest(
-            host_root, exclude=hash_manifest
-        ):
+        host_hash_manifest = hash_manifest.read_text(encoding="utf-8")
+        if host_hash_manifest != build_manifest(host_root, exclude=hash_manifest):
             raise AnalysisError(f"{host_id}: host SHA-256 manifest mismatch")
         raw_components = host.get("components")
         if not isinstance(raw_components, dict) or set(raw_components) != set(COMPONENT_PLANS):
             raise AnalysisError(f"{host_id}: component set differs from the frozen plan")
         components: dict[str, str] = {}
         observed_machine_ids: set[str] = set()
+        qualification_fingerprints: set[str] = set()
         for component in sorted(COMPONENT_PLANS):
             component_root = _safe_child(
                 bundle_root,
@@ -2094,6 +2149,17 @@ def _prepare_blinded_bundle(
                 component_root / "campaign_report.json",
                 f"{host_id}.{component}.campaign_report",
             )
+            if single_host:
+                gate = report.get("automated_premeasurement_gate")
+                if not isinstance(gate, dict):
+                    raise AnalysisError(f"{host_id}.{component}: automated final gate is missing")
+                qualification_fingerprints.add(
+                    _single_host_qualification_fingerprint(
+                        gate,
+                        expected_commit=measurement_commit,
+                        label=f"{host_id}.{component}",
+                    )
+                )
             run_id = report.get("run_id")
             if (
                 not isinstance(run_id, str)
@@ -2182,8 +2248,42 @@ def _prepare_blinded_bundle(
                 )
             ):
                 raise AnalysisError(f"{host_id}.{tool_id}: final baseline provenance failed")
+            if single_host:
+                assert isinstance(baseline_gate, dict)
+                qualification_fingerprints.add(
+                    _single_host_qualification_fingerprint(
+                        baseline_gate,
+                        expected_commit=measurement_commit,
+                        label=f"{host_id}.{tool_id}",
+                    )
+                )
             run_ids.add(baseline_run_id)
             baselines[tool_id] = str(baseline)
+        if single_host and len(qualification_fingerprints) != 1:
+            raise AnalysisError(
+                f"{host_id}: final results do not share one V9 control qualification"
+            )
+        if single_host:
+            qualification = json.loads(next(iter(qualification_fingerprints)))
+            required_qualification_hashes = {
+                qualification["sha256"],
+                *qualification["rehearsal_report_sha256"].values(),
+            }
+            manifest_hashes = [
+                line.split("  ", maxsplit=1)[0]
+                for line in host_hash_manifest.splitlines()
+                if "  " in line
+            ]
+            missing_or_ambiguous = sorted(
+                value
+                for value in required_qualification_hashes
+                if manifest_hashes.count(value) != 1
+            )
+            if missing_or_ambiguous:
+                raise AnalysisError(
+                    f"{host_id}: qualification or rehearsal source is not uniquely preserved "
+                    "by the host SHA-256 manifest"
+                )
         records.append(
             {
                 "id": host_id,

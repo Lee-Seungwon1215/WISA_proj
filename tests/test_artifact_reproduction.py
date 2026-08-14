@@ -39,9 +39,11 @@ def test_premeasurement_command_contract_covers_every_frozen_component():
 
 def test_reproducer_routes_only_replacement_core_and_diverse_manifests():
     assert COMPONENTS["committed-corpus-refresh"] == (
-        "docs/measurement/native_timing_v3_campaign.yaml"
+        "docs/measurement/native_timing_v4_campaign.yaml"
     )
-    assert COMPONENTS["diverse-lineages"] == "docs/measurement/diverse_native_v2.yaml"
+    assert COMPONENTS["kyberslash-contrast"] == "docs/measurement/kyberslash_native_v4.yaml"
+    assert COMPONENTS["falcon-contrast"] == "docs/measurement/falcon_native_v3.yaml"
+    assert COMPONENTS["diverse-lineages"] == "docs/measurement/diverse_native_v3.yaml"
     assert "native_timing_v2_campaign.yaml" not in COMPONENTS.values()
     assert "diverse_native_v1.yaml" not in COMPONENTS.values()
 

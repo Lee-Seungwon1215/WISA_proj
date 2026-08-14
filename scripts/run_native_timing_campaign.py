@@ -60,7 +60,7 @@ from ctkat.timing_input_contract import (  # noqa: E402
     validate_valid_tuple_harness_report,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v3_campaign.yaml"
+DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v4_campaign.yaml"
 CORPUS_SUMMARY = ROOT / "docs" / "corpus" / "corpus_summary.csv"
 OFFICIAL_TIMING_THRESHOLD = OFFICIAL_DUDECT_THRESHOLD_LABEL
 RUN_KINDS = ("engineering", "pilot", "final")
@@ -667,7 +667,7 @@ def static_check(campaign: CampaignSpec) -> list[str]:
                     f"manifest={frozen_axis!r}, config={configured_axis!r}"
                 )
             if (
-                campaign.campaign_id == "kyberslash-native-v3"
+                campaign.campaign_id in {"kyberslash-native-v3", "kyberslash-native-v4"}
                 and frozen_axis == "operand_bin"
                 and harness.operand_setup_contract != OPERAND_V3_SETUP_CONTRACT
             ):
@@ -2892,17 +2892,21 @@ def _human_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
     }
 
 
-SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v8.yaml"
+SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v9.yaml"
 SINGLE_HOST_GATE_INPUTS = (
     ROOT / "docs/measurement/EXPERIMENT_PREREGISTRATION.md",
     ROOT / "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
     ROOT / "docs/measurement/PAPER_CONTROL_REHEARSAL_V1.md",
+    ROOT / "docs/measurement/PAPER_CONTROL_REHEARSAL_V2.md",
     ROOT / "docs/measurement/paper_control_rehearsal_v1.yaml",
     ROOT / "docs/measurement/paper_control_rehearsal_v1.schema.json",
-    ROOT / "docs/measurement/native_timing_v3_campaign.yaml",
-    ROOT / "docs/measurement/kyberslash_native_v3.yaml",
-    ROOT / "docs/measurement/falcon_native_v2.yaml",
-    ROOT / "docs/measurement/diverse_native_v2.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v2.schema.json",
+    ROOT / "docs/measurement/native_timing_v4_campaign.yaml",
+    ROOT / "docs/measurement/kyberslash_native_v4.yaml",
+    ROOT / "docs/measurement/falcon_native_v3.yaml",
+    ROOT / "docs/measurement/diverse_native_v3.yaml",
     ROOT / "docs/measurement/mlkem_asm_evidence_v1.yaml",
     ROOT / "docs/baselines/same_corpus_v1.yaml",
     ROOT / "docs/baselines/baseline-result-v1.schema.json",
@@ -2927,9 +2931,187 @@ SINGLE_HOST_GATE_INPUTS = (
 )
 
 
+def _final_control_qualification_material(
+    path: Path,
+    *,
+    expected_commit: str,
+) -> dict[str, Any]:
+    """Validate and bind the two clean non-promotable V9 rehearsals."""
+
+    resolved = path.resolve()
+    measurement_root = (ROOT / "measurement_runs").resolve()
+    if path.is_symlink() or not resolved.is_file() or not resolved.is_relative_to(measurement_root):
+        raise CampaignError(
+            "final control qualification must be a regular file under measurement_runs/"
+        )
+    qualification_host_root = resolved.parent
+    if qualification_host_root.parent != measurement_root:
+        raise CampaignError(
+            "final control qualification must be a direct child of measurement_runs/<host-id>/"
+        )
+    try:
+        qualification = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CampaignError(f"final control qualification is unreadable: {exc}") from exc
+    if not isinstance(qualification, dict):
+        raise CampaignError("final control qualification root must be an object")
+    required_keys = {
+        "schema_version",
+        "kind",
+        "created_at",
+        "candidate_commit",
+        "profile_id",
+        "profile_sha256",
+        "calibration_sha256",
+        "rehearsal_run_ids",
+        "rehearsals",
+        "required_clean_runs",
+        "observed_clean_runs",
+        "final_launch_ready",
+        "next_gate",
+        "errors",
+    }
+    if set(qualification) != required_keys:
+        raise CampaignError("final control qualification field set drift")
+    if (
+        qualification.get("schema_version") != "2.0"
+        or qualification.get("kind") != "ctkat-v9-final-control-qualification"
+        or qualification.get("candidate_commit") != expected_commit
+        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+        or qualification.get("required_clean_runs") != 2
+        or qualification.get("observed_clean_runs") != 2
+        or qualification.get("final_launch_ready") is not True
+        or qualification.get("next_gate")
+        != "execute every V9 final component from fresh roots at candidate_commit"
+        or qualification.get("errors") != []
+    ):
+        raise CampaignError("final control qualification identity/readiness drift")
+    created_at = qualification.get("created_at")
+    try:
+        parsed_created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise CampaignError("final control qualification timestamp is malformed") from exc
+    if parsed_created.tzinfo is None:
+        raise CampaignError("final control qualification timestamp lacks a timezone")
+
+    profile_path = ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml"
+    calibration_path = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+    if qualification.get("profile_sha256") != _sha256(profile_path):
+        raise CampaignError("final control qualification profile hash drift")
+    if qualification.get("calibration_sha256") != _sha256(calibration_path):
+        raise CampaignError("final control qualification calibration hash drift")
+
+    run_ids = qualification.get("rehearsal_run_ids")
+    records = qualification.get("rehearsals")
+    if (
+        not isinstance(run_ids, list)
+        or len(run_ids) != 2
+        or len(set(run_ids)) != 2
+        or run_ids != sorted(run_ids)
+        or any(
+            not isinstance(item, str) or not re.fullmatch(r"[0-9a-f]{32}", item) for item in run_ids
+        )
+        or not isinstance(records, list)
+        or len(records) != 2
+    ):
+        raise CampaignError("final control qualification run matrix is malformed")
+    report_hashes: dict[str, str] = {}
+    observed_run_ids: set[str] = set()
+    expected_summary = {
+        "smoke_axes_passed": 28,
+        "native_axes_assessed": 28,
+        "native_components_passed": 4,
+        "baselines_passed": 3,
+        "assembly_passed": True,
+        "pipeline_closure_passed": True,
+        "blocker_count": 0,
+        "target_statistics_interpretable": False,
+        "promotion_allowed": False,
+    }
+    for index, record in enumerate(records):
+        if not isinstance(record, dict) or set(record) != {
+            "path",
+            "sha256",
+            "run_id",
+            "started_at",
+            "finished_at",
+        }:
+            raise CampaignError(f"final control qualification rehearsal[{index}] is malformed")
+        report_path_value = record.get("path")
+        if not isinstance(report_path_value, str) or not Path(report_path_value).is_absolute():
+            raise CampaignError(
+                f"final control qualification rehearsal[{index}] path must be absolute"
+            )
+        report_path = Path(report_path_value)
+        report_resolved = report_path.resolve()
+        if (
+            report_path.is_symlink()
+            or not report_resolved.is_file()
+            or not report_resolved.is_relative_to(qualification_host_root)
+        ):
+            raise CampaignError(
+                f"final control qualification rehearsal[{index}] is missing or outside its host tree"
+            )
+        report_sha = _sha256(report_resolved)
+        if record.get("sha256") != report_sha:
+            raise CampaignError(f"final control qualification rehearsal[{index}] hash mismatch")
+        try:
+            report = json.loads(report_resolved.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CampaignError(
+                f"final control qualification rehearsal[{index}] is unreadable: {exc}"
+            ) from exc
+        if not isinstance(report, dict):
+            raise CampaignError(
+                f"final control qualification rehearsal[{index}] root must be an object"
+            )
+        run_id = record.get("run_id")
+        if (
+            report.get("schema_version") != "2.0"
+            or report.get("kind") != "ctkat-paper-control-rehearsal-report"
+            or report.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+            or report.get("profile") != "docs/measurement/paper_control_rehearsal_v2.yaml"
+            or report.get("source_paper_campaign")
+            != "docs/measurement/paper_native_campaign_v9.yaml"
+            or report.get("calibration")
+            != "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+            or report.get("target_measurements") != 1000
+            or report.get("ctkat_commit") != expected_commit
+            or report.get("run_id") != run_id
+            or report.get("run_kind") != "engineering"
+            or report.get("promotion_allowed") is not False
+            or report.get("status") != "pass"
+            or report.get("phase") not in {"controls", "all"}
+            or report.get("blockers") != []
+            or report.get("summary") != expected_summary
+            or report.get("profile_sha256") != qualification.get("profile_sha256")
+            or report.get("calibration_sha256") != qualification.get("calibration_sha256")
+            or report.get("started_at") != record.get("started_at")
+            or report.get("finished_at") != record.get("finished_at")
+        ):
+            raise CampaignError(f"final control qualification rehearsal[{index}] content drift")
+        observed_run_ids.add(str(run_id))
+        report_hashes[str(report_resolved)] = report_sha
+    if observed_run_ids != set(run_ids):
+        raise CampaignError("final control qualification run ids differ from rehearsal reports")
+    return {
+        "schema_version": "1.0",
+        "kind": "two-clean-control-rehearsal-qualification",
+        "ready": True,
+        "path": _display_path(resolved),
+        "sha256": _sha256(resolved),
+        "profile_id": qualification["profile_id"],
+        "profile_sha256": qualification["profile_sha256"],
+        "calibration_sha256": qualification["calibration_sha256"],
+        "rehearsal_run_ids": sorted(observed_run_ids),
+        "rehearsal_report_sha256": dict(sorted(report_hashes.items())),
+    }
+
+
 def _single_host_premeasurement_gate_material(
     expected_commit: str,
     *,
+    control_qualification: Path,
     allow_governance_only_head: bool = False,
 ) -> dict[str, Any]:
     """Bind a clean commit and the complete single-host frozen input set.
@@ -2994,15 +3176,19 @@ def _single_host_premeasurement_gate_material(
     promotion = plan.get("promotion")
     if (
         plan.get("schema_version") != 3
-        or plan.get("campaign_id") != "ctkat-paper-native-v8-single-host"
+        or plan.get("campaign_id") != "ctkat-paper-native-v9-single-host"
         or plan.get("status") != "premeasurement-frozen"
         or not isinstance(policy, dict)
         or policy.get("minimum_physical_hosts") != 1
         or policy.get("independent_human_review_required") is not False
         or policy.get("cross_host_reproducibility_claimed") is not False
         or policy.get("premeasurement_gate") != "automated-frozen-input-integrity"
+        or policy.get("required_clean_control_rehearsals") != 2
+        or policy.get("control_qualification_required") is not True
         or not isinstance(promotion, dict)
         or promotion.get("require_automated_premeasurement_gate") is not True
+        or promotion.get("require_two_clean_control_rehearsals") is not True
+        or promotion.get("require_control_qualification_artifact") is not True
         or promotion.get("require_two_person_human_review") is not False
         or promotion.get("require_both_hosts") is not False
     ):
@@ -3019,10 +3205,10 @@ def _single_host_premeasurement_gate_material(
         if isinstance(item, dict) and isinstance(item.get("manifest"), str)
     }
     required_components = {
-        "docs/measurement/native_timing_v3_campaign.yaml",
-        "docs/measurement/kyberslash_native_v3.yaml",
-        "docs/measurement/falcon_native_v2.yaml",
-        "docs/measurement/diverse_native_v2.yaml",
+        "docs/measurement/native_timing_v4_campaign.yaml",
+        "docs/measurement/kyberslash_native_v4.yaml",
+        "docs/measurement/falcon_native_v3.yaml",
+        "docs/measurement/diverse_native_v3.yaml",
     }
     if component_manifests != required_components:
         raise CampaignError("single-host paper component set drift")
@@ -3052,12 +3238,23 @@ def _single_host_premeasurement_gate_material(
         "physical_host_count": 1,
         "independent_human_review": False,
         "cross_host_reproducibility": False,
+        "control_qualification": _final_control_qualification_material(
+            control_qualification,
+            expected_commit=expected_commit,
+        ),
     }
 
 
-def _single_host_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
+def _single_host_premeasurement_gate(
+    expected_commit: str,
+    *,
+    control_qualification: Path,
+) -> dict[str, Any]:
     return {
-        **_single_host_premeasurement_gate_material(expected_commit),
+        **_single_host_premeasurement_gate_material(
+            expected_commit,
+            control_qualification=control_qualification,
+        ),
         "checked_at": _utc_now(),
     }
 
@@ -3070,10 +3267,23 @@ def _validate_single_host_premeasurement_gate(
 ) -> list[str]:
     if not isinstance(gate, dict):
         return ["final campaign lacks a single-host frozen-input integrity gate"]
-    expected_material = _single_host_premeasurement_gate_material(
-        expected_commit,
-        allow_governance_only_head=allow_governance_only_head,
+    qualification = gate.get("control_qualification")
+    qualification_path_value = (
+        qualification.get("path") if isinstance(qualification, dict) else None
     )
+    if not isinstance(qualification_path_value, str):
+        return ["single-host final integrity gate lacks control qualification provenance"]
+    qualification_path = Path(qualification_path_value)
+    if not qualification_path.is_absolute():
+        qualification_path = ROOT / qualification_path
+    try:
+        expected_material = _single_host_premeasurement_gate_material(
+            expected_commit,
+            control_qualification=qualification_path,
+            allow_governance_only_head=allow_governance_only_head,
+        )
+    except CampaignError as exc:
+        return [f"single-host final integrity gate validation failed: {exc}"]
     expected_keys = set(expected_material) | {"checked_at"}
     if set(gate) != expected_keys:
         return ["single-host final integrity gate field set drift"]
@@ -3675,9 +3885,16 @@ def main(argv: list[str] | None = None) -> int:
         default="human",
         help="final promotion gate; single-host is automated and claims no independent review",
     )
+    parser.add_argument(
+        "--control-qualification",
+        type=Path,
+        help="two-clean-rehearsal qualification required by the V9 single-host final gate",
+    )
     args = parser.parse_args(argv)
     if args.target_measurements_override is not None and not args.execute:
         parser.error("--target-measurements-override is valid only with --execute")
+    if args.control_qualification is not None and not args.execute:
+        parser.error("--control-qualification is valid only with --execute")
 
     try:
         campaign = load_campaign(args.manifest)
@@ -3726,9 +3943,21 @@ def main(argv: list[str] | None = None) -> int:
         automated_gate = None
         if args.run_kind == "final":
             if args.final_gate == "single-host":
-                automated_gate = _single_host_premeasurement_gate(str(host["git_commit"]))
+                if args.control_qualification is None:
+                    parser.error(
+                        "V9 --run-kind final --final-gate single-host requires "
+                        "--control-qualification"
+                    )
+                automated_gate = _single_host_premeasurement_gate(
+                    str(host["git_commit"]),
+                    control_qualification=args.control_qualification,
+                )
             else:
+                if args.control_qualification is not None:
+                    parser.error("--control-qualification requires --final-gate single-host")
                 review_gate = _human_premeasurement_gate(str(host["git_commit"]))
+        elif args.control_qualification is not None:
+            parser.error("--control-qualification requires --run-kind final")
         return execute_campaign(
             campaign,
             args.output_root,

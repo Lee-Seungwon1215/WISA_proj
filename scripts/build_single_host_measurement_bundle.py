@@ -19,10 +19,10 @@ sys.path.insert(0, str(ROOT))
 from scripts.hash_artifacts import build_manifest  # noqa: E402
 
 COMPONENT_DIRS = {
-    "committed-corpus-refresh": "committed-corpus-v3",
-    "kyberslash-contrast": "kyberslash-v3",
-    "falcon-contrast": "falcon",
-    "diverse-lineages": "diverse-v2",
+    "committed-corpus-refresh": "committed-corpus-v4",
+    "kyberslash-contrast": "kyberslash-v4",
+    "falcon-contrast": "falcon-v3",
+    "diverse-lineages": "diverse-v3",
 }
 BASELINE_TOOLS = ("official_dudect", "timecop", "microwalk_pin")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -45,6 +45,14 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _relative(bundle_root: Path, path: Path, label: str) -> str:
     resolved = path.resolve()
     if path.is_symlink() or not resolved.is_relative_to(bundle_root):
@@ -62,19 +70,119 @@ def _one_report(root: Path, tool_id: str) -> Path:
     return reports[0]
 
 
-def _gate_ok(report: dict[str, Any], *, label: str) -> None:
+def _gate_ok(report: dict[str, Any], *, label: str) -> dict[str, Any]:
     gate = report.get("automated_premeasurement_gate")
+    qualification = gate.get("control_qualification") if isinstance(gate, dict) else None
+    run_ids = qualification.get("rehearsal_run_ids") if isinstance(qualification, dict) else None
+    report_hashes = (
+        qualification.get("rehearsal_report_sha256") if isinstance(qualification, dict) else None
+    )
     if (
         report.get("run_kind") != "final"
         or report.get("human_review_gate") is not None
         or not isinstance(gate, dict)
         or gate.get("kind") != "automated-frozen-input-integrity-gate"
         or gate.get("ready") is not True
+        or gate.get("ctkat_commit") != report.get("ctkat_commit")
+        or gate.get("plan_id") != "ctkat-paper-native-v9-single-host"
         or gate.get("physical_host_count") != 1
         or gate.get("independent_human_review") is not False
         or gate.get("cross_host_reproducibility") is not False
+        or not isinstance(qualification, dict)
+        or qualification.get("kind") != "two-clean-control-rehearsal-qualification"
+        or qualification.get("ready") is not True
+        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+        or not isinstance(qualification.get("sha256"), str)
+        or SHA256_RE.fullmatch(qualification["sha256"]) is None
+        or not isinstance(qualification.get("profile_sha256"), str)
+        or SHA256_RE.fullmatch(qualification["profile_sha256"]) is None
+        or not isinstance(qualification.get("calibration_sha256"), str)
+        or SHA256_RE.fullmatch(qualification["calibration_sha256"]) is None
+        or not isinstance(run_ids, list)
+        or len(run_ids) != 2
+        or len(set(run_ids)) != 2
+        or any(
+            not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id)
+            for run_id in run_ids
+        )
+        or not isinstance(report_hashes, dict)
+        or len(report_hashes) != 2
+        or any(
+            not isinstance(value, str) or SHA256_RE.fullmatch(value) is None
+            for value in report_hashes.values()
+        )
     ):
         raise BundleError(f"{label}: single-host final gate is missing or malformed")
+    return qualification
+
+
+def _verify_preserved_qualification(
+    host_root: Path,
+    qualification: dict[str, Any],
+    *,
+    commit: str,
+) -> None:
+    path_value = qualification.get("path")
+    if not isinstance(path_value, str):
+        raise BundleError("control qualification path is missing")
+    qualification_candidate = Path(path_value)
+    if not qualification_candidate.is_absolute():
+        qualification_candidate = ROOT / qualification_candidate
+    qualification_path = qualification_candidate.resolve()
+    if (
+        qualification_candidate.is_symlink()
+        or not qualification_path.is_file()
+        or not qualification_path.is_relative_to(host_root)
+        or _sha256(qualification_path) != qualification.get("sha256")
+    ):
+        raise BundleError("control qualification is not preserved inside the host tree")
+    source = _read_json(qualification_path, "control qualification")
+    records = source.get("rehearsals")
+    if (
+        source.get("schema_version") != "2.0"
+        or source.get("kind") != "ctkat-v9-final-control-qualification"
+        or source.get("candidate_commit") != commit
+        or source.get("profile_id") != qualification.get("profile_id")
+        or source.get("profile_sha256") != qualification.get("profile_sha256")
+        or source.get("calibration_sha256") != qualification.get("calibration_sha256")
+        or source.get("rehearsal_run_ids") != qualification.get("rehearsal_run_ids")
+        or source.get("required_clean_runs") != 2
+        or source.get("observed_clean_runs") != 2
+        or source.get("final_launch_ready") is not True
+        or source.get("errors") != []
+        or not isinstance(records, list)
+        or len(records) != 2
+    ):
+        raise BundleError("preserved control qualification content drift")
+    expected_reports = qualification.get("rehearsal_report_sha256")
+    assert isinstance(expected_reports, dict)
+    observed_reports: dict[str, str] = {}
+    observed_run_ids: set[str] = set()
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise BundleError(f"control qualification rehearsal[{index}] is malformed")
+        report_value = record.get("path")
+        if not isinstance(report_value, str) or not Path(report_value).is_absolute():
+            raise BundleError(f"control qualification rehearsal[{index}] path is invalid")
+        report_candidate = Path(report_value)
+        report_path = report_candidate.resolve()
+        report_sha = record.get("sha256")
+        if (
+            report_candidate.is_symlink()
+            or not report_path.is_file()
+            or not report_path.is_relative_to(host_root)
+            or not isinstance(report_sha, str)
+            or _sha256(report_path) != report_sha
+        ):
+            raise BundleError(
+                f"control qualification rehearsal[{index}] is not preserved inside the host tree"
+            )
+        observed_reports[str(report_path)] = report_sha
+        observed_run_ids.add(str(record.get("run_id")))
+    if observed_reports != expected_reports or observed_run_ids != set(
+        qualification["rehearsal_run_ids"]
+    ):
+        raise BundleError("control qualification rehearsal provenance drift")
 
 
 def build_bundle(
@@ -103,6 +211,8 @@ def build_bundle(
     commit: str | None = None
     cpu_model: str | None = None
     machine_id: str | None = None
+    qualification_fingerprint: str | None = None
+    control_qualification: dict[str, Any] | None = None
     run_ids: set[str] = set()
     for component, dirname in COMPONENT_DIRS.items():
         component_root = host_root / dirname
@@ -110,7 +220,17 @@ def build_bundle(
             component_root / "campaign_report.json",
             f"{component} campaign report",
         )
-        _gate_ok(report, label=component)
+        current_qualification = _gate_ok(report, label=component)
+        current_fingerprint = json.dumps(
+            current_qualification,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if qualification_fingerprint is None:
+            qualification_fingerprint = current_fingerprint
+            control_qualification = current_qualification
+        elif current_fingerprint != qualification_fingerprint:
+            raise BundleError(f"{component}: final control qualification differs between results")
         if (
             report.get("schema_version") != "2.0"
             or report.get("kind") != "native-timing-campaign-report"
@@ -163,7 +283,14 @@ def build_bundle(
     for tool_id in BASELINE_TOOLS:
         report_path = _one_report(host_root, tool_id)
         report = _read_json(report_path, f"{tool_id} baseline report")
-        _gate_ok(report, label=tool_id)
+        current_qualification = _gate_ok(report, label=tool_id)
+        current_fingerprint = json.dumps(
+            current_qualification,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if current_fingerprint != qualification_fingerprint:
+            raise BundleError(f"{tool_id}: final control qualification differs between results")
         baseline_host = report.get("host")
         run_id = report.get("run_id")
         if (
@@ -183,6 +310,13 @@ def build_bundle(
             raise BundleError(f"{tool_id}: baseline is not a matching final result")
         run_ids.add(run_id)
         baseline_paths[tool_id] = report_path
+
+    assert control_qualification is not None
+    _verify_preserved_qualification(
+        host_root,
+        control_qualification,
+        commit=commit,
+    )
 
     asm_candidates = sorted((host_root / "asm-evidence").glob("**/asm_evidence_bundle.json"))
     if len(asm_candidates) != 1:
@@ -207,7 +341,7 @@ def build_bundle(
     bundle = {
         "schema_version": 5,
         "evidence_scope": "single-physical-host",
-        "bundle_id": f"ctkat-v8-{commit[:12]}-{manifest_sha[:12]}",
+        "bundle_id": f"ctkat-v9-{commit[:12]}-{manifest_sha[:12]}",
         "measurement_commit": commit,
         "verification_commit": commit,
         "hosts": [

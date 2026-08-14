@@ -24,16 +24,57 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v8.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v9.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
-    ("committed-corpus-refresh", "docs/measurement/native_timing_v3_campaign.yaml"),
-    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v3.yaml"),
-    ("falcon-contrast", "docs/measurement/falcon_native_v2.yaml"),
-    ("diverse-lineages", "docs/measurement/diverse_native_v2.yaml"),
+    ("committed-corpus-refresh", "docs/measurement/native_timing_v4_campaign.yaml"),
+    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v4.yaml"),
+    ("falcon-contrast", "docs/measurement/falcon_native_v3.yaml"),
+    ("diverse-lineages", "docs/measurement/diverse_native_v3.yaml"),
 )
+PREVIOUS_COMPONENTS = {
+    "committed-corpus-refresh": "docs/measurement/native_timing_v3_campaign.yaml",
+    "kyberslash-contrast": "docs/measurement/kyberslash_native_v3.yaml",
+    "falcon-contrast": "docs/measurement/falcon_native_v2.yaml",
+    "diverse-lineages": "docs/measurement/diverse_native_v2.yaml",
+}
+EXPECTED_OUTPUT_DIRS = {
+    "committed-corpus-refresh": "committed-corpus-v4",
+    "kyberslash-contrast": "kyberslash-v4",
+    "falcon-contrast": "falcon-v3",
+    "diverse-lineages": "diverse-v3",
+}
+CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+V9_EFFECT_OVERRIDES = {
+    ("committed-corpus-refresh", "pqclean_mlkem768"): (64, 512, 8192),
+    ("committed-corpus-refresh", "pqclean_falcon512_reference"): (512, 8192, 131072),
+    ("kyberslash-contrast", "pqclean_mlkem768"): (64, 512, 8192),
+    ("kyberslash-contrast", "pqclean_mlkem768_kyberslash2"): (64, 512, 8192),
+    ("kyberslash-contrast", "pqclean_mlkem768_kyberslash"): (64, 512, 8192),
+    ("falcon-contrast", "pqclean_falcon512_reference"): (512, 8192, 131072),
+    ("falcon-contrast", "pqclean_falcon1024_reference"): (512, 8192, 131072),
+    ("falcon-contrast", "c_fndsa512_fpr_emu"): (512, 8192, 131072),
+    ("diverse-lineages", "mlkem_native_768_portable"): (64, 512, 8192),
+}
+EXPECTED_CALIBRATION_SOURCE = {
+    "profile_id": "ctkat-paper-control-rehearsal-v1",
+    "profile_sha256": "9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5",
+    "candidate_commit": "0ed9ea5359c00d7e1aac115001dbd9dc270d6d9a",
+    "run_id": "18fc18bf328b417b9a4faf1ef2607406",
+    "started_at": "2026-08-12T11:28:26.861473Z",
+    "finished_at": "2026-08-12T12:53:51.985878Z",
+    "report_sha256": "03385b3cb17d8103c2dacd4b9c185b02f026c1849738663bc4b885f7114fae65",
+    "markdown_sha256": "8338741a791bf2f8aef349e53ac0db65c212028db8175acf535a3b4956fd5243",
+    "completed_without_interruption": True,
+    "smoke_axes_passed": 28,
+    "native_axes_assessed": 28,
+    "baselines_passed": 3,
+    "assembly_passed": True,
+    "pipeline_closure_passed": True,
+    "blocker_count": 8,
+}
 BASELINE_COMMAND_ORDER = ("official_dudect", "timecop", "microwalk_pin")
-EXECUTION_PLACEHOLDERS = ("host-ID", "CPU-ID", "TIMECOP-PREFIX")
+EXECUTION_PLACEHOLDERS = ("host-ID", "CPU-ID", "TIMECOP-PREFIX", "QUALIFICATION")
 HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 EXPECTED_CLAIM_LIMITS = (
     "a static plan or automated integrity gate is not timing evidence or independent human approval",
@@ -44,8 +85,14 @@ EXPECTED_CLAIM_LIMITS = (
     ),
     "no independent review, declassification, or inter-rater agreement claim is made",
     (
-        "v6 final, pre-v7 engineering, and the failed v7 final attempt are diagnostic or "
-        "calibration evidence and are not reusable in v8"
+        "v6 final, pre-v7 engineering, failed v7 and v8 final attempts, and both v1 "
+        "control-rehearsal artifacts are diagnostic or calibration evidence and are not "
+        "reusable in v9"
+    ),
+    "the v9 largest-effect changes use one uniform control-only rule and no reduced target statistic",
+    (
+        "every v9 final command requires a machine-validated qualification from two "
+        "blocker-free v2 control rehearsals at the exact final commit"
     ),
     (
         "v1 Falcon and diverse plus v2 committed-corpus engineering traces are "
@@ -53,7 +100,7 @@ EXPECTED_CLAIM_LIMITS = (
     ),
     (
         "KyberSlash v2 operand traces have invalid-placebo and class-address setup "
-        "confounds and are not reusable in v3"
+        "confounds and are not reusable in v3 or v4"
     ),
     (
         "every final timing axis requires a pre-measurement source, binary, compiler, "
@@ -71,10 +118,7 @@ EXPECTED_CLAIM_LIMITS = (
         "KyberSlash operand and c-fn-dsa harnesses require seeded-interpose despite a "
         "null randombytes_header"
     ),
-    (
-        "KyberSlash operand timing records zero RNG calls inside the measured "
-        "decapsulation interval"
-    ),
+    ("KyberSlash operand timing records zero RNG calls inside the measured decapsulation interval"),
     "only the deterministic self-contained toy baseline declares external-or-none randomness",
     (
         "the ML-KEM valid-tuple axis changes secret and public material together and "
@@ -112,6 +156,7 @@ def render_execution_commands(
     host_id: str,
     cpu: int,
     timecop_prefix: Path,
+    control_qualification: Path,
 ) -> list[str]:
     """Render the frozen four-component and three-baseline final commands."""
 
@@ -121,6 +166,8 @@ def render_execution_commands(
         raise ValueError("cpu must be a non-negative logical CPU id")
     if not timecop_prefix.is_absolute():
         raise ValueError("TIMECOP prefix must be an absolute path")
+    if not control_qualification.is_absolute():
+        raise ValueError("control qualification must be an absolute path")
 
     components = manifest.get("components")
     baseline = manifest.get("same_corpus_baseline")
@@ -136,6 +183,7 @@ def render_execution_commands(
     replacements = {
         "CPU-ID": str(cpu),
         "TIMECOP-PREFIX": str(timecop_prefix),
+        "QUALIFICATION": str(control_qualification),
     }
     rendered: list[str] = []
     for raw_command in raw_commands:
@@ -172,8 +220,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("paper campaign top-level field set drift")
     if manifest.get("schema_version") != 3:
         errors.append("schema_version must be 3")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v8-single-host":
-        errors.append("campaign_id must be ctkat-paper-native-v8-single-host")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v9-single-host":
+        errors.append("campaign_id must be ctkat-paper-native-v9-single-host")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
     if manifest.get("claim_limits") != list(EXPECTED_CLAIM_LIMITS):
@@ -201,6 +249,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "premeasurement_gate": "automated-frozen-input-integrity",
         "independent_human_review_required": False,
         "cross_host_reproducibility_claimed": False,
+        "required_clean_control_rehearsals": 2,
+        "control_qualification_required": True,
     }
     for key, expected in required_policy.items():
         if policy.get(key) != expected:
@@ -225,20 +275,56 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
             continue
         if set(item) != {"id", "purpose", "manifest", "command"}:
             errors.append(f"components[{index}] field set drift")
+        component_id = item.get("id")
+        previous_manifest = PREVIOUS_COMPONENTS.get(str(component_id))
+        output_dir = EXPECTED_OUTPUT_DIRS.get(str(component_id))
+        if previous_manifest is None or output_dir is None:
+            errors.append(f"components[{index}] has an unknown component id")
+            continue
         try:
             path = _repo_path(item.get("manifest"), f"components[{index}].manifest")
             native = load_native_manifest(path)
             native_errors = static_check(native)
+            previous = load_native_manifest(ROOT / previous_manifest)
         except (OSError, ValueError, CampaignError) as exc:
             errors.append(f"components[{index}] cannot load: {exc}")
             continue
         if native_errors:
             errors.extend(f"{item.get('id')}: {error}" for error in native_errors)
+        if (
+            native.coverage_mode != previous.coverage_mode
+            or native.corpus_axis_replacements != previous.corpus_axis_replacements
+            or native.host != previous.host
+            or native.protocol != previous.protocol
+            or [target.id for target in native.targets]
+            != [target.id for target in previous.targets]
+        ):
+            errors.append(f"{item.get('id')}: V9 changed scope or non-effect protocol fields")
+        for old_target, new_target in zip(previous.targets, native.targets, strict=True):
+            if (
+                old_target.family != new_target.family
+                or old_target.config != new_target.config
+                or old_target.harnesses != new_target.harnesses
+                or old_target.axes != new_target.axes
+                or old_target.target_measurements != new_target.target_measurements
+                or old_target.control_measurements != new_target.control_measurements
+                or old_target.timeout != new_target.timeout
+            ):
+                errors.append(
+                    f"{item.get('id')}/{new_target.id}: V9 changed a non-effect target field"
+                )
+            expected_effects = V9_EFFECT_OVERRIDES.get(
+                (str(component_id), new_target.id),
+                old_target.positive_control_effects,
+            )
+            if new_target.positive_control_effects != expected_effects:
+                errors.append(f"{item.get('id')}/{new_target.id}: V9 effect calibration drift")
         expected_command = (
             "uv run --frozen python scripts/run_native_timing_campaign.py --manifest "
             f"{item['manifest']} --output-root measurement_runs/host-ID/"
-            f"{ {'committed-corpus-refresh': 'committed-corpus-v3', 'kyberslash-contrast': 'kyberslash-v3', 'falcon-contrast': 'falcon', 'diverse-lineages': 'diverse-v2'}[item['id']] } "
-            "--run-kind final --final-gate single-host --cpu CPU-ID --execute"
+            f"{output_dir} "
+            "--run-kind final --final-gate single-host --control-qualification "
+            "QUALIFICATION --cpu CPU-ID --execute"
         )
         if item.get("command") != expected_command:
             errors.append(f"{item.get('id')}: execution command drift")
@@ -276,16 +362,19 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "official_dudect": (
             "uv run --frozen python scripts/run_same_corpus_baselines.py "
             "--run-dudect --run-kind final --final-gate single-host "
-            "--cpu CPU-ID --output-root measurement_runs/host-ID/same-corpus"
+            "--control-qualification QUALIFICATION --cpu CPU-ID "
+            "--output-root measurement_runs/host-ID/same-corpus"
         ),
         "timecop": (
             "uv run --frozen python scripts/run_same_corpus_baselines.py "
             "--run-timecop --run-kind final --final-gate single-host "
-            "--prefix TIMECOP-PREFIX --output-root measurement_runs/host-ID/same-corpus"
+            "--control-qualification QUALIFICATION --prefix TIMECOP-PREFIX "
+            "--output-root measurement_runs/host-ID/same-corpus"
         ),
         "microwalk_pin": (
             "uv run --frozen python scripts/run_same_corpus_baselines.py "
             "--run-microwalk --run-kind final --final-gate single-host "
+            "--control-qualification QUALIFICATION "
             "--output-root measurement_runs/host-ID/same-corpus"
         ),
     }
@@ -293,6 +382,61 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("same-corpus execution command matrix drift")
     if baseline.get("automatic_promotion") is not False:
         errors.append("same-corpus baseline must not auto-promote")
+
+    try:
+        calibration = yaml.safe_load(CALIBRATION_PATH.read_text(encoding="utf-8"))
+        selected = calibration.get("selected_targets") if isinstance(calibration, dict) else None
+        if (
+            not isinstance(calibration, dict)
+            or calibration.get("schema_version") != "1.0"
+            or calibration.get("kind") != "ctkat-paper-control-calibration-record"
+            or calibration.get("calibration_id")
+            != "ctkat-paper-control-rehearsal-v1-calibration"
+            or calibration.get("recorded_at") != "2026-08-14"
+            or calibration.get("source_rehearsal") != EXPECTED_CALIBRATION_SOURCE
+        ):
+            errors.append("V9 control calibration identity/source provenance drift")
+        observed_overrides = {
+            (str(item.get("component")), str(item.get("target"))): tuple(
+                item.get("new_effects") or []
+            )
+            for item in selected or []
+            if isinstance(item, dict)
+        }
+        if (
+            not isinstance(selected, list)
+            or len(selected) != 9
+            or len(observed_overrides) != 9
+            or observed_overrides != V9_EFFECT_OVERRIDES
+        ):
+            errors.append("V9 control calibration selected-target matrix drift")
+        boundary = calibration.get("evidence_boundary") if isinstance(calibration, dict) else None
+        if (
+            not isinstance(boundary, dict)
+            or boundary.get("target_statistics_used_for_calibration") is not False
+            or boundary.get("source_rehearsal_reusable_in_final") is not False
+        ):
+            errors.append("V9 control calibration evidence boundary drift")
+        rule = (
+            calibration.get("uniform_remediation_rule")
+            if isinstance(calibration, dict)
+            else None
+        )
+        if (
+            not isinstance(rule, dict)
+            or rule.get("selection_unit") != "manifest-target"
+            or rule.get("select_when")
+            != "any axis in the target has largest-effect worst-repeat t_score > -20"
+            or rule.get("adjustment")
+            != "retain the first two effect points and double only the largest effect"
+            or rule.get("thresholds_unchanged") is not True
+            or rule.get("counts_unchanged") is not True
+            or rule.get("seeds_unchanged") is not True
+            or rule.get("repeats_unchanged") is not True
+        ):
+            errors.append("V9 control calibration remediation rule drift")
+    except (OSError, TypeError, yaml.YAMLError) as exc:
+        errors.append(f"V9 control calibration is unreadable: {exc}")
 
     analysis = manifest.get("analysis")
     if not isinstance(analysis, dict):
@@ -330,6 +474,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "require_automated_premeasurement_gate",
         "require_single_physical_host",
         "require_control_pass",
+        "require_two_clean_control_rehearsals",
+        "require_control_qualification_artifact",
     ):
         if promotion.get(key) is not True:
             errors.append(f"promotion.{key} must be true")
@@ -338,7 +484,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
             errors.append(f"promotion.{key} must be false")
     if promotion.get("automatic_corpus_mutation") is not False:
         errors.append("promotion.automatic_corpus_mutation must be false")
-    for key in ("preregistration",):
+    for key in ("preregistration", "control_calibration", "control_rehearsal"):
         try:
             required_path = _repo_path(promotion.get(key), f"promotion.{key}")
             if not required_path.is_file():
@@ -394,12 +540,23 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="absolute exact-pinned patched Valgrind installation prefix",
     )
+    parser.add_argument(
+        "--control-qualification",
+        type=Path,
+        help="absolute qualification JSON produced from two clean control rehearsals",
+    )
     args = parser.parse_args(argv)
-    render_args = (args.host_id, args.cpu, args.timecop_prefix)
+    render_args = (args.host_id, args.cpu, args.timecop_prefix, args.control_qualification)
     if args.print_commands and any(value is None for value in render_args):
-        parser.error("--print-commands requires --host-id, --cpu, and --timecop-prefix")
+        parser.error(
+            "--print-commands requires --host-id, --cpu, --timecop-prefix, "
+            "and --control-qualification"
+        )
     if not args.print_commands and any(value is not None for value in render_args):
-        parser.error("--host-id, --cpu, and --timecop-prefix require --print-commands")
+        parser.error(
+            "--host-id, --cpu, --timecop-prefix, and --control-qualification "
+            "require --print-commands"
+        )
     try:
         manifest = load_manifest(args.manifest)
         errors, report = validate(manifest)
@@ -417,12 +574,14 @@ def main(argv: list[str] | None = None) -> int:
         assert args.host_id is not None
         assert args.cpu is not None
         assert args.timecop_prefix is not None
+        assert args.control_qualification is not None
         try:
             commands = render_execution_commands(
                 manifest,
                 host_id=args.host_id,
                 cpu=args.cpu,
                 timecop_prefix=args.timecop_prefix,
+                control_qualification=args.control_qualification,
             )
         except ValueError as exc:
             parser.error(str(exc))

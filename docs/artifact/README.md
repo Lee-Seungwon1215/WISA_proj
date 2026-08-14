@@ -21,23 +21,30 @@ complete command stdout/stderr, tracked-file hashes, commit/worktree metadata,
 and `SHA256SUMS`. Every profile requires a clean committed worktree so the
 source manifest and automated-audit provenance cannot diverge.
 
-## Current v8 single-host result profile
+## Current v9 single-host result profile
 
-The current paper campaign is `paper_native_campaign_v8.yaml`. It supersedes
+The current paper campaign is `paper_native_campaign_v9.yaml`. It supersedes
 the two-host/reviewer execution gate below without deleting that stronger
-historical workflow. Render the seven commands for the one available host:
+historical workflow. First obtain two blocker-free V2 control rehearsals from
+the exact candidate commit and create
+`measurement_runs/host-a/v9-control-qualification.json` as documented in
+`../measurement/PAPER_CONTROL_REHEARSAL_V2.md`. Then render the seven commands
+for the one available host:
 
 ```bash
 uv run --frozen python scripts/check_paper_campaign.py \
   --print-commands \
   --host-id host-a \
   --cpu 2 \
-  --timecop-prefix /home/test/.local/ctkat/timecop
+  --timecop-prefix /home/test/.local/ctkat/timecop \
+  --control-qualification /home/test/ctkat-native/measurement_runs/host-a/v9-control-qualification.json
 ```
 
-Every rendered final command carries `--final-gate single-host`. After all four
-components, three baseline tools, and ML-KEM assembly evidence complete, hash
-the one host tree and build the schema-v5 bundle without hand-editing paths:
+Every rendered final command carries `--final-gate single-host` and the same
+qualification path. The runner reopens the qualification and both hashed source
+reports before sampling. After all four components, three baseline tools, and
+ML-KEM assembly evidence complete, hash the one host tree and build the
+schema-v5 bundle without hand-editing paths:
 
 ```bash
 uv run --frozen python scripts/build_single_host_measurement_bundle.py \
@@ -59,7 +66,7 @@ uv run --frozen python scripts/analyze_paper_native_results.py \
   --output-root /path/to/analysis/named
 ```
 
-The v8 bundle and output are paper-usable only as single-host evidence. They do
+The v9 bundle and output are paper-usable only as single-host evidence. They do
 not claim host replication, analyst blinding, independent human review, or
 automatic curated-corpus declassification.
 

@@ -133,7 +133,7 @@ nominal sensitivity 숫자는 보조 진단일 뿐 target 효과의 상한이 �
   통과했다는 주장
 
 따라서 다음 단계는 native single-CPU에서 기존 corpus를
-`native_timing_v3_campaign.yaml`로 재실행하고,
+V9 qualification을 먼저 만든 뒤 `native_timing_v4_campaign.yaml`로 재실행하고,
 target별 control artifact를 검토한 뒤 evidence v2를 재분류하는 것이다.
 6 target/8 timing axis의 paper setting, host gate, 실행 재개, 무결성 검증
 계약과 diverse v2 비교는 [`measurement/`](measurement/README.md)에 준비돼 있다.

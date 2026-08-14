@@ -35,7 +35,9 @@ from ctkat.timing_harness_generator import generate_and_compile_timing  # noqa: 
 from scripts import check_paper_campaign  # noqa: E402
 from scripts import run_same_corpus_baselines as baseline_runner  # noqa: E402
 from scripts.run_native_timing_campaign import (  # noqa: E402
-    CONTROL_REHEARSAL_PROFILE_ID,
+    CONTROL_REHEARSAL_PROFILE_ID as NATIVE_CONTROL_REHEARSAL_PROFILE_ID,
+)
+from scripts.run_native_timing_campaign import (  # noqa: E402
     CampaignError,
     _git_state,
     campaign_dudect,
@@ -44,8 +46,10 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     static_check,
 )
 
-DEFAULT_PROFILE = ROOT / "docs/measurement/paper_control_rehearsal_v1.yaml"
-DEFAULT_SCHEMA = ROOT / "docs/measurement/paper_control_rehearsal_v1.schema.json"
+REHEARSAL_PROFILE_ID = "ctkat-paper-control-rehearsal-v2"
+DEFAULT_PROFILE = ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml"
+DEFAULT_SCHEMA = ROOT / "docs/measurement/paper_control_rehearsal_v2.schema.json"
+CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
 REPORT_NAME = "rehearsal_report.json"
 MARKDOWN_NAME = "rehearsal_report.md"
 SMOKE_MEASUREMENTS = 4
@@ -83,6 +87,7 @@ CLAIM_LIMITS = (
     "rehearsal safety margins are operational headroom checks and do not replace final thresholds",
     "no rehearsal component raw trace statistic or baseline result may be relabeled as final evidence",
     "paper bundle and paper analysis are intentionally forbidden for rehearsal artifacts",
+    "v1 rehearsal artifacts are immutable diagnostic inputs and no row is reused in v2",
 )
 
 
@@ -178,6 +183,7 @@ def validate_profile(
         "kind",
         "profile_id",
         "source_paper_campaign",
+        "calibration",
         "run_kind",
         "promotion_allowed",
         "target_measurements",
@@ -190,12 +196,12 @@ def validate_profile(
         "claim_limits",
     }
     check(set(profile) == expected_keys, "rehearsal profile top-level field set drift")
-    check(profile.get("schema_version") == "1.0", "profile schema_version must be '1.0'")
+    check(profile.get("schema_version") == "2.0", "profile schema_version must be '2.0'")
     check(
         profile.get("kind") == "ctkat-paper-control-rehearsal-profile",
         "profile kind drift",
     )
-    check(profile.get("profile_id") == CONTROL_REHEARSAL_PROFILE_ID, "profile id drift")
+    check(profile.get("profile_id") == REHEARSAL_PROFILE_ID, "profile id drift")
     check(profile.get("run_kind") == "engineering", "rehearsal must be engineering")
     check(profile.get("promotion_allowed") is False, "rehearsal promotion must be false")
     target_measurements = profile.get("target_measurements")
@@ -220,7 +226,7 @@ def validate_profile(
     check(
         profile.get("qualification")
         == {
-            "required_consecutive_clean_runs": 2,
+            "required_clean_runs": 2,
             "same_candidate_commit": True,
             "distinct_rehearsal_run_ids": True,
         },
@@ -254,12 +260,44 @@ def validate_profile(
     errors.extend(f"source paper campaign: {error}" for error in paper_errors)
 
     try:
+        calibration_path = _repo_path(profile.get("calibration"), "calibration")
+        calibration = _load_yaml(calibration_path, "control calibration")
+        check(calibration_path == CALIBRATION_PATH, "control calibration path drift")
+        check(
+            calibration.get("kind") == "ctkat-paper-control-calibration-record"
+            and calibration.get("calibration_id") == "ctkat-paper-control-rehearsal-v1-calibration",
+            "control calibration identity drift",
+        )
+        boundary = _mapping(calibration.get("evidence_boundary"), "evidence_boundary")
+        check(
+            boundary.get("target_statistics_used_for_calibration") is False
+            and boundary.get("target_artifacts_promotable") is False
+            and boundary.get("source_rehearsal_reusable_in_final") is False,
+            "control calibration evidence boundary drift",
+        )
+        rule = _mapping(calibration.get("uniform_remediation_rule"), "remediation rule")
+        check(
+            rule.get("selection_unit") == "manifest-target"
+            and rule.get("select_when")
+            == "any axis in the target has largest-effect worst-repeat t_score > -20"
+            and rule.get("adjustment")
+            == "retain the first two effect points and double only the largest effect",
+            "control calibration remediation rule drift",
+        )
+        check(
+            len(_list(calibration.get("selected_targets"), "selected_targets")) == 9,
+            "control calibration must bind nine selected targets",
+        )
+    except (OSError, RehearsalError) as exc:
+        errors.append(str(exc))
+
+    try:
         components = _profile_components(profile)
     except RehearsalError as exc:
         errors.append(str(exc))
         components = []
     check([item.get("id") for item in components] == list(COMPONENT_IDS), "component order drift")
-    expected_outputs = ("committed-corpus-v3", "kyberslash-v3", "falcon", "diverse-v2")
+    expected_outputs = ("committed-corpus-v4", "kyberslash-v4", "falcon-v3", "diverse-v3")
     check(
         [item.get("output") for item in components] == list(expected_outputs),
         "component output routing drift",
@@ -334,6 +372,7 @@ def validate_profile(
         "profile_id": profile.get("profile_id"),
         "status": "valid" if not errors else "invalid",
         "source_paper_campaign": profile.get("source_paper_campaign"),
+        "calibration": profile.get("calibration"),
         "target_measurements": target_measurements,
         "components": native_summaries,
         "targets": total_targets,
@@ -387,12 +426,14 @@ def _new_report(
     commit: str,
 ) -> dict[str, Any]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "kind": "ctkat-paper-control-rehearsal-report",
         "profile_id": profile["profile_id"],
         "profile": _relative(profile_path),
         "profile_sha256": _sha256(profile_path),
         "source_paper_campaign": profile["source_paper_campaign"],
+        "calibration": profile["calibration"],
+        "calibration_sha256": _sha256(_repo_path(profile["calibration"], "calibration")),
         "target_measurements": profile["target_measurements"],
         "run_id": uuid.uuid4().hex,
         "run_kind": "engineering",
@@ -1156,7 +1197,7 @@ def _assess_native_components(
     expected_profile = {
         "schema_version": "1.0",
         "kind": "control-rehearsal",
-        "profile_id": profile["profile_id"],
+        "profile_id": NATIVE_CONTROL_REHEARSAL_PROFILE_ID,
         "target_measurements_override": profile["target_measurements"],
         "target_statistics_interpretable": False,
         "control_contract": "component-manifest-exact",
@@ -1935,6 +1976,7 @@ def qualify_reports(
     commits = {item.get("ctkat_commit") for item in reports}
     run_ids = {item.get("run_id") for item in reports}
     profile_hashes = {item.get("profile_sha256") for item in reports}
+    calibration_hashes = {item.get("calibration_sha256") for item in reports}
     if len(commits) != 1:
         errors.append("the two clean rehearsals do not share one candidate commit")
     if expected_commit is not None and commits != {expected_commit}:
@@ -1943,22 +1985,36 @@ def qualify_reports(
         errors.append("the two clean rehearsals do not have distinct run IDs")
     if len(profile_hashes) != 1:
         errors.append("the two clean rehearsals used different profile revisions")
+    if len(calibration_hashes) != 1:
+        errors.append("the two clean rehearsals used different calibration records")
+    rehearsal_records = [
+        {
+            "path": str(path.resolve()),
+            "sha256": _sha256(path.resolve()),
+            "run_id": report.get("run_id"),
+            "started_at": report.get("started_at"),
+            "finished_at": report.get("finished_at"),
+        }
+        for path, report in zip(paths, reports, strict=False)
+    ]
     result = {
-        "schema_version": "1.0",
-        "kind": "ctkat-v9-freeze-qualification",
+        "schema_version": "2.0",
+        "kind": "ctkat-v9-final-control-qualification",
         "created_at": _utc_now(),
         "candidate_commit": next(iter(commits)) if len(commits) == 1 else None,
-        "profile_id": CONTROL_REHEARSAL_PROFILE_ID,
+        "profile_id": REHEARSAL_PROFILE_ID,
         "profile_sha256": next(iter(profile_hashes)) if len(profile_hashes) == 1 else None,
+        "calibration_sha256": (
+            next(iter(calibration_hashes)) if len(calibration_hashes) == 1 else None
+        ),
         "rehearsal_run_ids": sorted(str(item) for item in run_ids),
-        "rehearsal_reports": [str(path.resolve()) for path in paths],
+        "rehearsals": rehearsal_records,
         "required_clean_runs": 2,
         "observed_clean_runs": sum(
             item.get("status") == "pass" and item.get("blockers") == [] for item in reports
         ),
-        "v9_freeze_ready": not errors,
-        "final_measurement_ready": False,
-        "next_gate": "freeze V9 preregistration, campaign, supervisor, and fresh automated audits",
+        "final_launch_ready": not errors,
+        "next_gate": "execute every V9 final component from fresh roots at candidate_commit",
         "errors": errors,
     }
     if output is not None:

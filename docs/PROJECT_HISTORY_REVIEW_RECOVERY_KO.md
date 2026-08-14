@@ -585,7 +585,10 @@ exact source + YAML + dependency/compiler lock
 - evidence schema v2와 legacy migration 완료
 - pinned official dudect backend와 calibration 완료
 - timing-harness-v2와 native runner/validator 완료
-- KyberSlash v3, Falcon v2, diverse v2, corpus native v3 동결
+- V1 통제 리허설 28축·baseline 3종·assembly·closure 완주 및 비승격 보정 기록 완료
+- V9용 KyberSlash v4, Falcon v3, diverse v3, corpus native v4 동결
+- 같은 candidate commit의 깨끗한 V2 리허설 2개 없이는 final을 시작할 수 없는
+  machine-validated qualification gate 완료
 - same-corpus 세 도구 adapter와 artifact schema 완료
 - one-command engineering/paper artifact gate 완료
 - 네 관점 자동 감사의 critical/high finding은 수정되었거나 명시적 외부 blocker로 남음
@@ -607,14 +610,15 @@ confounded/underpowered timing 숫자도 보존은 하지만 final clean evidenc
 
 다음은 코드가 없어서가 아니라 final 증거가 아직 없어서 완료가 아니다.
 
-1. V8 clean commit에서 한 physical Linux x86_64 host의 fresh final 실행
-2. 네 timing component와 same-corpus 세 도구의 control-valid artifact
-3. 새 커밋의 ML-KEM assembly bundle과 전체 host `SHA256SUMS`
-4. schema-v5 single-host bundle과 byte-deterministic named analysis
-5. 결과 수치를 논문 표·discussion·limitation에 명시적으로 반영
+1. V9 clean commit에서 blocker-free V2 control rehearsal을 서로 다른 run ID로 2회 완료
+2. 두 원본을 봉인한 qualification으로 한 physical Linux x86_64 host의 fresh final 실행
+3. 네 timing component와 same-corpus 세 도구의 control-valid artifact
+4. 새 커밋의 ML-KEM assembly bundle과 qualification 원본을 포함한 host `SHA256SUMS`
+5. schema-v5 single-host bundle과 byte-deterministic named analysis
+6. 결과 수치를 논문 표·discussion·limitation에 명시적으로 반영
 
 두 번째 host, 독립 2인 review, 사람 triage/agreement, blind rerun은 더 강한
-follow-up validation이다. 현재 V8 승격 gate인 척 꾸며내지 않으며, 없으면 해당
+follow-up validation이다. 현재 V9 승격 gate인 척 꾸며내지 않으며, 없으면 해당
 재현성·사람합의 claim만 하지 않는다.
 
 pending은 실패가 아니다. 하지만 완료도 아니다.
@@ -692,7 +696,10 @@ host 비교, 결과 기반 discussion과 conclusion이다.
 | 2026-08-11 | V7 동결 | deterministic RNG 계약, dual-read masked setup, 안정화된 same-corpus control 반영 |
 | 2026-08-12 | V7 실측 중단 | core 6 target과 KyberSlash 10 target 수집 후 header에서 RNG 의미를 추론한 validator 결함 발견; 전부 비승격 보존 |
 | 2026-08-12 | V8 동결 | header와 독립된 explicit randomness policy, expected/observed 검증, operand measured-RNG=0 계약 반영 |
-| 다음 | final gate | 한 host fresh V8, schema-v5 bundle, named analysis, 논문 결과 반영 |
+| 2026-08-12 | V8 final 진단 | core ML-KEM positive control power 2/3로 fail-fast; 전부 비승격 보존 |
+| 2026-08-12 | V1 control 리허설 | 28축·baseline 3종·assembly·closure 완주, Falcon-1024 power와 7개 headroom blocker 확인 |
+| 2026-08-14 | V9 동결 | target 통계를 배제한 uniform control-only effect 보정, V2 2회 qualification final gate 반영 |
+| 다음 | qualification/final | 한 host V2 리허설 2회, fresh V9 final, schema-v5 bundle, named analysis, 논문 결과 반영 |
 
 ## 15. 관련 source of truth
 

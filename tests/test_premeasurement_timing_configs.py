@@ -144,7 +144,7 @@ def test_committed_corpus_v3_changes_only_the_mixed_mlkem_axis():
 
 def test_paper_v8_keeps_v7_measurement_scope_and_freezes_rng_contract_correction():
     paper_v7 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v7.yaml").read_text())
-    paper_v8 = load_manifest()
+    paper_v8 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v8.yaml").read_text())
     assert paper_v8["campaign_id"] == "ctkat-paper-native-v8-single-host"
     assert paper_v8["execution_policy"]["minimum_physical_hosts"] == 1
     assert paper_v8["execution_policy"]["independent_human_review_required"] is False
@@ -158,6 +158,65 @@ def test_paper_v8_keeps_v7_measurement_scope_and_freezes_rng_contract_correction
         assert old_components[component_id]["manifest"] == new_components[component_id]["manifest"]
         assert old_components[component_id]["purpose"] == new_components[component_id]["purpose"]
         assert "--final-gate single-host" in new_components[component_id]["command"]
+
+
+def test_paper_v9_changes_only_predeclared_control_effects_and_requires_qualification():
+    paper_v8 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v8.yaml").read_text())
+    paper_v9 = load_manifest()
+    assert paper_v9["campaign_id"] == "ctkat-paper-native-v9-single-host"
+    assert paper_v9["execution_policy"]["required_clean_control_rehearsals"] == 2
+    assert paper_v9["execution_policy"]["control_qualification_required"] is True
+
+    expected_effects = {
+        ("committed-corpus-refresh", "pqclean_mlkem768"): (64, 512, 8192),
+        ("committed-corpus-refresh", "pqclean_falcon512_reference"): (
+            512,
+            8192,
+            131072,
+        ),
+        ("kyberslash-contrast", "pqclean_mlkem768"): (64, 512, 8192),
+        ("kyberslash-contrast", "pqclean_mlkem768_kyberslash2"): (64, 512, 8192),
+        ("kyberslash-contrast", "pqclean_mlkem768_kyberslash"): (64, 512, 8192),
+        ("falcon-contrast", "pqclean_falcon512_reference"): (512, 8192, 131072),
+        ("falcon-contrast", "pqclean_falcon1024_reference"): (512, 8192, 131072),
+        ("falcon-contrast", "c_fndsa512_fpr_emu"): (512, 8192, 131072),
+        ("diverse-lineages", "mlkem_native_768_portable"): (64, 512, 8192),
+    }
+    old_components = {item["id"]: item for item in paper_v8["components"]}
+    new_components = {item["id"]: item for item in paper_v9["components"]}
+    observed_effects = {}
+    for component_id, new_component in new_components.items():
+        old_campaign = load_campaign(ROOT / old_components[component_id]["manifest"])
+        new_campaign = load_campaign(ROOT / new_component["manifest"])
+        assert old_campaign.host == new_campaign.host
+        assert old_campaign.protocol == new_campaign.protocol
+        assert old_campaign.coverage_mode == new_campaign.coverage_mode
+        assert old_campaign.corpus_axis_replacements == new_campaign.corpus_axis_replacements
+        assert [target.id for target in old_campaign.targets] == [
+            target.id for target in new_campaign.targets
+        ]
+        for old_target, new_target in zip(
+            old_campaign.targets,
+            new_campaign.targets,
+            strict=True,
+        ):
+            old_without_effects = {
+                key: value
+                for key, value in old_target.__dict__.items()
+                if key != "positive_control_effects"
+            }
+            new_without_effects = {
+                key: value
+                for key, value in new_target.__dict__.items()
+                if key != "positive_control_effects"
+            }
+            assert old_without_effects == new_without_effects
+            if old_target.positive_control_effects != new_target.positive_control_effects:
+                observed_effects[(component_id, new_target.id)] = (
+                    new_target.positive_control_effects
+                )
+        assert "--control-qualification QUALIFICATION" in new_component["command"]
+    assert observed_effects == expected_effects
 
 
 def test_timing_adapters_use_seeded_interpose_not_fixed_test_vectors():
@@ -192,8 +251,7 @@ def test_null_randombytes_header_does_not_infer_the_runtime_rng_contract():
     toy = load_config(ROOT / "examples/toy_kem_ct_leak/ctkat.yaml")
     assert toy.dudect is not None
     assert {
-        (harness.randombytes_header, harness.randomness_policy)
-        for harness in toy.dudect.harnesses
+        (harness.randombytes_header, harness.randomness_policy) for harness in toy.dudect.harnesses
     } == {(None, "external-or-none")}
 
 

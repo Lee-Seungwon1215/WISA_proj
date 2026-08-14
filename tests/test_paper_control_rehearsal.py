@@ -48,6 +48,8 @@ def test_frozen_rehearsal_profile_covers_all_axes_and_baselines():
     assert report["baselines"] == 3
     assert report["target_measurements"] == 1_000
     assert report["required_clean_runs"] == 2
+    assert report["profile_id"] == "ctkat-paper-control-rehearsal-v2"
+    assert report["calibration"] == ("docs/measurement/paper_control_rehearsal_v1_calibration.yaml")
 
 
 def test_reduced_target_status_is_ignored_but_control_headroom_is_required():
@@ -159,8 +161,13 @@ def test_qualification_requires_two_distinct_clean_runs_at_one_commit(tmp_path):
         expected_commit="a" * 40,
     )
     assert errors == []
-    assert result["v9_freeze_ready"] is True
-    assert result["final_measurement_ready"] is False
+    assert result["schema_version"] == "2.0"
+    assert result["kind"] == "ctkat-v9-final-control-qualification"
+    assert result["candidate_commit"] == "a" * 40
+    assert result["profile_id"] == "ctkat-paper-control-rehearsal-v2"
+    assert result["final_launch_ready"] is True
+    assert result["observed_clean_runs"] == 2
+    assert len(result["rehearsals"]) == 2
 
     duplicate = deepcopy(_clean_report("1" * 32))
     paths[1].write_text(json.dumps(duplicate), encoding="utf-8")
@@ -169,5 +176,5 @@ def test_qualification_requires_two_distinct_clean_runs_at_one_commit(tmp_path):
         output=None,
         expected_commit="a" * 40,
     )
-    assert result["v9_freeze_ready"] is False
+    assert result["final_launch_ready"] is False
     assert any("distinct run IDs" in error for error in errors)

@@ -1,6 +1,6 @@
 # Native timing experiment preregistration
 
-Status: **v8 single-host protocol frozen; no v8 final measurement collected**
+Status: **v9 single-host protocol frozen; no v9 final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
@@ -9,12 +9,67 @@ V5 amendment freeze date: 2026-08-11
 V6 scope amendment freeze date: 2026-08-11
 V7 setup-contract amendment freeze date: 2026-08-11
 V8 explicit-RNG-contract amendment freeze date: 2026-08-12
-Machine-readable plan: `paper_native_campaign_v8.yaml`
+V9 control-qualification amendment freeze date: 2026-08-14
+Machine-readable plan: `paper_native_campaign_v9.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V9 control-qualification amendment
+
+A v8 final attempt at commit
+`cd7dc6dacf83d66b5757ae4a6e5f86388f205ba5` completed only the
+committed-corpus component (run `8b0b259d9e3f44099a5248f3be46df4b`). Its
+ML-KEM valid-tuple largest positive control detected the injected delay in two
+of three repeats, so the component was correctly non-promotable. The outer
+supervisor then stopped before KyberSlash, Falcon, diverse, or any same-corpus
+tool. The component report SHA-256 is
+`c981bf821118f9ba30835dad94afc6da84ea935ae22f03843b87a8311ea336d0`.
+No target statistic from this failed final attempt is used or promoted.
+
+Before another final, commit `0ed9ea5359c00d7e1aac115001dbd9dc270d6d9a`
+executed the non-promotable v1 control rehearsal from 2026-08-12
+11:28:26Z through 12:53:51Z. Run
+`18fc18bf328b417b9a4faf1ef2607406` completed compile/runtime smoke for all
+28 axes, all four native components and their independent validators, three
+same-corpus tools, assembly evidence, and pipeline closure. The aggregate
+report SHA-256 is
+`03385b3cb17d8103c2dacd4b9c185b02f026c1849738663bc4b885f7114fae65`.
+Reduced target traces used 1,000 samples per process, were marked
+non-interpretable in schema, and were not read or used to select this amendment.
+
+The only final-equivalent failure was Falcon-1024 reference-signature positive
+power: the 65,536-tick largest effect detected two of three repeats, with its
+weakest repeat at `t=-9.6944` against the frozen directional `t<=-10` gate.
+Seven additional blockers came from predeclared engineering safety margins,
+including one ML-DSA-44 A/A repeat at `|t|=3.7793` (inside the final 4.5 limit)
+and largest-effect repeats that passed final power but lacked the rehearsal
+`t<=-15` headroom.
+
+V9 applies one uniform **control-only** remediation rule to the complete
+rehearsal matrix: select a manifest target when any of its axes has a
+largest-effect worst-repeat `t>-20`, retain the first two injected-effect
+points, and double only the largest point. The rule selects exactly nine
+manifest targets recorded in
+`paper_control_rehearsal_v1_calibration.yaml`. Because the committed-corpus
+ML-KEM target shares one effect ladder across three harnesses, selecting its
+valid-tuple axis updates the largest control effect for all three harnesses.
+No target sample count, control count, process repeat, seed, threshold, setup,
+source, compiler, binary contract, hypothesis, multiplicity rule, or claim
+boundary changes. The single A/A safety-margin excursion causes no parameter
+change; it must disappear naturally in fresh independent rehearsals.
+
+Every v8 final and v1 rehearsal artifact remains immutable diagnostic evidence.
+No row is resumed, copied, relabeled, or promoted into V9. Before any V9 final
+command can start, the exact candidate commit must produce two distinct,
+blocker-free v2 rehearsal reports satisfying all 28 axes, four components,
+three baselines, assembly, pipeline closure, final controls, `|t|<3.5`
+A/A/placebo headroom, and `t<=-15` largest-effect headroom. The qualification
+tool hashes both reports, and the V9 final gate independently reopens and
+validates the qualification plus both reports. Final execution then starts in
+fresh empty roots at that same commit.
 
 ## V8 explicit randomness-contract amendment
 
@@ -396,10 +451,12 @@ the frozen official analysis owns its filtering and percentile tests.
 ## Review and promotion
 
 The runner writes immutable promotion candidates and never edits the curated
-corpus. V8 paper-result promotion requires:
+corpus. V9 paper-result promotion requires:
 
 1. one complete physical-host artifact tree and its recorded SHA-256 manifest;
-2. all 28 axes and three same-corpus tools at one clean frozen commit;
+2. a machine-validated qualification from two clean v2 control rehearsals at
+   the exact final commit, followed by all 28 fresh final axes and three
+   same-corpus tools;
 3. passing correctness, input, build-seal, binary-contract, A/A, placebo,
    directional power, schema, and fresh-artifact checks;
 4. a valid automated frozen-input integrity gate that explicitly records no
@@ -409,7 +466,7 @@ corpus. V8 paper-result promotion requires:
    actually measured.
 
 Independent review packets remain optional follow-up evidence. They are not a
-v8 measurement or paper-table gate, and V8 does not use them to declassify or
+v9 measurement or paper-table gate, and V9 does not use them to declassify or
 silently mutate the curated corpus.
 
 OpenSSL 3.5 is retained as a provider-API integration/build case only. It is

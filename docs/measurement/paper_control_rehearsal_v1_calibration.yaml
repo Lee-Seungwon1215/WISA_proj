@@ -1,0 +1,133 @@
+schema_version: "1.0"
+kind: ctkat-paper-control-calibration-record
+calibration_id: ctkat-paper-control-rehearsal-v1-calibration
+recorded_at: "2026-08-14"
+
+source_rehearsal:
+  profile_id: ctkat-paper-control-rehearsal-v1
+  profile_sha256: 9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5
+  candidate_commit: 0ed9ea5359c00d7e1aac115001dbd9dc270d6d9a
+  run_id: 18fc18bf328b417b9a4faf1ef2607406
+  started_at: "2026-08-12T11:28:26.861473Z"
+  finished_at: "2026-08-12T12:53:51.985878Z"
+  report_sha256: 03385b3cb17d8103c2dacd4b9c185b02f026c1849738663bc4b885f7114fae65
+  markdown_sha256: 8338741a791bf2f8aef349e53ac0db65c212028db8175acf535a3b4956fd5243
+  completed_without_interruption: true
+  smoke_axes_passed: 28
+  native_axes_assessed: 28
+  baselines_passed: 3
+  assembly_passed: true
+  pipeline_closure_passed: true
+  blocker_count: 8
+
+evidence_boundary:
+  target_measurements_per_process: 1000
+  target_statistics_interpretable: false
+  target_statistics_used_for_calibration: false
+  target_artifacts_promotable: false
+  source_rehearsal_reusable_in_final: false
+  calibration_inputs:
+    - largest-effect positive-control t-score by process repeat
+    - positive-control effect direction and final power decision
+    - A/A and setup-placebo safety-margin decisions
+  forbidden_inputs:
+    - target t-score
+    - target raw status
+    - target repeat direction or consistency
+    - same-corpus baseline result as a paper finding
+
+uniform_remediation_rule:
+  selection_unit: manifest-target
+  select_when: any axis in the target has largest-effect worst-repeat t_score > -20
+  adjustment: retain the first two effect points and double only the largest effect
+  shared_harness_effect_policy: >-
+    A manifest target with multiple harnesses has one shared effect ladder, so
+    selecting any axis updates the largest effect for all harnesses in that target.
+  thresholds_unchanged: true
+  counts_unchanged: true
+  seeds_unchanged: true
+  repeats_unchanged: true
+
+selected_targets:
+  - component: committed-corpus-refresh
+    target: pqclean_mlkem768
+    trigger_axis: kem_dec
+    worst_largest_effect_t_score: -14.20324009059536
+    old_effects: [64, 512, 4096]
+    new_effects: [64, 512, 8192]
+  - component: committed-corpus-refresh
+    target: pqclean_falcon512_reference
+    trigger_axis: sign
+    worst_largest_effect_t_score: -19.546720406170213
+    old_effects: [512, 8192, 65536]
+    new_effects: [512, 8192, 131072]
+  - component: kyberslash-contrast
+    target: pqclean_mlkem768
+    trigger_axis: kem_dec_chosen_ct
+    worst_largest_effect_t_score: -13.962295169270629
+    old_effects: [64, 512, 4096]
+    new_effects: [64, 512, 8192]
+  - component: kyberslash-contrast
+    target: pqclean_mlkem768_kyberslash2
+    trigger_axis: kem_dec_chosen_ct
+    worst_largest_effect_t_score: -13.77147300604883
+    old_effects: [64, 512, 4096]
+    new_effects: [64, 512, 8192]
+  - component: kyberslash-contrast
+    target: pqclean_mlkem768_kyberslash
+    trigger_axis: kem_dec_chosen_ct
+    worst_largest_effect_t_score: -17.00163260533741
+    old_effects: [64, 512, 4096]
+    new_effects: [64, 512, 8192]
+  - component: falcon-contrast
+    target: pqclean_falcon512_reference
+    trigger_axis: sign
+    worst_largest_effect_t_score: -15.891185519649037
+    old_effects: [512, 8192, 65536]
+    new_effects: [512, 8192, 131072]
+  - component: falcon-contrast
+    target: pqclean_falcon1024_reference
+    trigger_axis: sign
+    worst_largest_effect_t_score: -9.69440355773642
+    old_effects: [512, 8192, 65536]
+    new_effects: [512, 8192, 131072]
+  - component: falcon-contrast
+    target: c_fndsa512_fpr_emu
+    trigger_axis: sign
+    worst_largest_effect_t_score: -17.803418436867588
+    old_effects: [512, 8192, 65536]
+    new_effects: [512, 8192, 131072]
+  - component: diverse-lineages
+    target: mlkem_native_768_portable
+    trigger_axis: kem_dec_valid_tuple
+    worst_largest_effect_t_score: -14.540234224311051
+    old_effects: [64, 512, 4096]
+    new_effects: [64, 512, 8192]
+
+unmodified_null_control_observation:
+  component: committed-corpus-refresh
+  target: pqclean_mldsa44
+  axis: sign
+  process_index: 0
+  aa_t_score: -3.779344508124509
+  rehearsal_margin: abs_t_score < 3.5
+  final_threshold: abs_t_score < 4.5
+  disposition: >-
+    No count, threshold, seed, setup, or harness parameter is changed from a
+    single null-tail observation. Two fresh independent rehearsals must satisfy
+    the predeclared 3.5 safety margin.
+
+final_power_failure:
+  component: falcon-contrast
+  target: pqclean_falcon1024_reference
+  axis: sign
+  largest_effect_ticks: 65536
+  largest_effect_detections: 2
+  required_detections: 3
+  weakest_repeat_t_score: -9.69440355773642
+  disposition: covered by the uniform largest-effect doubling rule
+
+nonreuse:
+  - the failed v8 final component and every v1 rehearsal target/control trace remain diagnostic only
+  - no raw row is copied resumed relabeled or promoted into v9
+  - every v9 rehearsal and final starts in a fresh output root at its frozen commit

@@ -2958,6 +2958,11 @@ def main() -> int:
         default="human",
         help="final promotion gate; single-host claims no independent review",
     )
+    parser.add_argument(
+        "--control-qualification",
+        type=Path,
+        help="two-clean-rehearsal qualification required by the V9 single-host final gate",
+    )
     parser.add_argument("--microwalk-timeout", type=int, default=1800)
     args = parser.parse_args()
 
@@ -2990,6 +2995,8 @@ def main() -> int:
         if args.cpu is not None and not args.run_dudect:
             parser.error("--cpu is only valid with --run-dudect")
         executing = args.run_timecop or args.run_dudect or args.run_microwalk
+        if args.control_qualification is not None and not executing:
+            parser.error("--control-qualification requires an executable adapter")
         if executing and args.run_kind is None:
             parser.error("executable adapters require --run-kind")
         if args.run_timecop and args.run_kind == "final" and args.prefix is None:
@@ -2999,9 +3006,21 @@ def main() -> int:
         if executing and args.run_kind == "final":
             commit, _dirty = _git_state()
             if args.final_gate == "single-host":
-                automated_gate = _single_host_premeasurement_gate(commit)
+                if args.control_qualification is None:
+                    parser.error(
+                        "V9 --run-kind final --final-gate single-host requires "
+                        "--control-qualification"
+                    )
+                automated_gate = _single_host_premeasurement_gate(
+                    commit,
+                    control_qualification=args.control_qualification,
+                )
             else:
+                if args.control_qualification is not None:
+                    parser.error("--control-qualification requires --final-gate single-host")
                 review_gate = _human_premeasurement_gate(commit)
+        elif args.control_qualification is not None:
+            parser.error("--control-qualification requires --run-kind final")
         if executing and args.run_kind in {"pilot", "final"}:
             environment = collect_timing_environment(
                 emulated=detect_qemu_emulation(),

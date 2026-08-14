@@ -564,10 +564,10 @@ C와 Python Welch `|Δt| ≤ 1e-9`다.
 
 현재 corpus에서 timing evidence가 있는 6개 target/8개 axis를
 timing-harness-v2로 다시 재기 위한 실행 계획은
-[`docs/measurement/native_timing_v3_campaign.yaml`](docs/measurement/native_timing_v3_campaign.yaml)에
+[`docs/measurement/native_timing_v4_campaign.yaml`](docs/measurement/native_timing_v4_campaign.yaml)에
 동결돼 있다. macOS/ARM이나 Docker/QEMU에서 가짜 결론을 만드는 대신, 지금
 checkout에서 가능한 준비 상태는 다음 명령으로 계속 검사한다.
-이 v3 계획은 기존 corpus key와 맞추기 위해 KEM 하니스 ID `kem_dec`은
+이 v4 계획은 기존 corpus key와 맞추기 위해 KEM 하니스 ID `kem_dec`은
 유지하지만, machine axis는 `sk`가 아닌 `valid_tuple`로 고정한다.
 
 ```bash
@@ -582,7 +582,7 @@ CPU pinning, target별 3-process 측정, physical controls, artifact 검증과 c
 uv run python scripts/run_native_timing_campaign.py \
   --execute --run-kind engineering \
   --cpu 2 \
-  --output-root measurement_runs/corpus-native-timing-v3
+  --output-root measurement_runs/corpus-native-timing-v4
 ```
 
 engineering/pilot 중단 run은 `--resume`, 일부 target은 반복 가능한
