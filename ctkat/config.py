@@ -817,9 +817,7 @@ class DudectHarnessConfig(BaseModel):
     # that never calls the weak randombytes symbol must opt in explicitly to
     # ``external-or-none`` and cannot simultaneously include a randombytes
     # declaration header.
-    randomness_policy: Literal["seeded-interpose", "external-or-none"] = (
-        "seeded-interpose"
-    )
+    randomness_policy: Literal["seeded-interpose", "external-or-none"] = "seeded-interpose"
     # Historical SUPERCOP/PQClean-derived APIs are split between the modern
     # `int randombytes(...)` contract and an older `void randombytes(...)`
     # contract. The seeded timing interpose must match the declaration exactly;

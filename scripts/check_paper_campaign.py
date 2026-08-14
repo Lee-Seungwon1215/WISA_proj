@@ -390,8 +390,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
             not isinstance(calibration, dict)
             or calibration.get("schema_version") != "1.0"
             or calibration.get("kind") != "ctkat-paper-control-calibration-record"
-            or calibration.get("calibration_id")
-            != "ctkat-paper-control-rehearsal-v1-calibration"
+            or calibration.get("calibration_id") != "ctkat-paper-control-rehearsal-v1-calibration"
             or calibration.get("recorded_at") != "2026-08-14"
             or calibration.get("source_rehearsal") != EXPECTED_CALIBRATION_SOURCE
         ):
@@ -418,9 +417,7 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         ):
             errors.append("V9 control calibration evidence boundary drift")
         rule = (
-            calibration.get("uniform_remediation_rule")
-            if isinstance(calibration, dict)
-            else None
+            calibration.get("uniform_remediation_rule") if isinstance(calibration, dict) else None
         )
         if (
             not isinstance(rule, dict)
