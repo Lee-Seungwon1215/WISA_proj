@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ctkat.invalid/schemas/paper-control-rehearsal-v3.json",
+  "title": "CT-KAT paper control rehearsal report v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "profile_id",
+    "profile",
+    "profile_sha256",
+    "source_paper_campaign",
+    "calibration",
+    "calibration_sha256",
+    "target_measurements",
+    "run_id",
+    "run_kind",
+    "promotion_allowed",
+    "ctkat_commit",
+    "started_at",
+    "finished_at",
+    "status",
+    "phase",
+    "steps",
+    "smoke",
+    "native_components",
+    "baselines",
+    "assembly",
+    "pipeline_closure",
+    "summary",
+    "blockers",
+    "claim_limits"
+  ],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "kind": {"const": "ctkat-paper-control-rehearsal-report"},
+    "profile_id": {"const": "ctkat-paper-control-rehearsal-v3"},
+    "profile": {"type": "string", "minLength": 1},
+    "profile_sha256": {"$ref": "#/$defs/sha256"},
+    "source_paper_campaign": {"type": "string", "minLength": 1},
+    "calibration": {"type": "string", "minLength": 1},
+    "calibration_sha256": {"$ref": "#/$defs/sha256"},
+    "target_measurements": {"type": "integer", "minimum": 100, "maximum": 19999},
+    "run_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "run_kind": {"const": "engineering"},
+    "promotion_allowed": {"const": false},
+    "ctkat_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": ["string", "null"], "format": "date-time"},
+    "status": {"enum": ["running", "smoke-complete", "pass", "fail", "interrupted"]},
+    "phase": {"enum": ["smoke", "controls", "all"]},
+    "steps": {"type": "object", "additionalProperties": {"$ref": "#/$defs/step"}},
+    "smoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_axes", "completed_axes", "passed_axes", "axes"],
+      "properties": {
+        "expected_axes": {"const": 28},
+        "completed_axes": {"type": "integer", "minimum": 0, "maximum": 28},
+        "passed_axes": {"type": "integer", "minimum": 0, "maximum": 28},
+        "axes": {"type": "object", "additionalProperties": {"$ref": "#/$defs/smokeAxis"}}
+      }
+    },
+    "native_components": {"type": "object", "additionalProperties": true},
+    "baselines": {"type": "object", "additionalProperties": true},
+    "assembly": {"type": ["object", "null"], "additionalProperties": true},
+    "pipeline_closure": {"type": ["object", "null"], "additionalProperties": true},
+    "summary": {"type": "object", "additionalProperties": true},
+    "blockers": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
+    "claim_limits": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "command", "started_at", "finished_at", "status", "returncode", "log", "result"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "command": {"type": "array", "items": {"type": "string"}},
+        "started_at": {"type": "string", "format": "date-time"},
+        "finished_at": {"type": ["string", "null"], "format": "date-time"},
+        "status": {"enum": ["running", "pass", "fail", "skipped"]},
+        "returncode": {"type": ["integer", "null"]},
+        "log": {"type": "string", "minLength": 1},
+        "result": {"type": ["string", "null"]}
+      }
+    },
+    "smokeAxis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["component", "target", "harness", "axis", "status", "errors", "artifacts"],
+      "properties": {
+        "component": {"type": "string"},
+        "target": {"type": "string"},
+        "harness": {"type": "string"},
+        "axis": {"type": "string"},
+        "status": {"enum": ["pass", "fail"]},
+        "errors": {"type": "array", "items": {"type": "string"}},
+        "artifacts": {"type": "object", "additionalProperties": {"$ref": "#/$defs/sha256"}}
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "stage", "subject", "message", "observed", "required"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "stage": {"type": "string", "minLength": 1},
+        "subject": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "observed": {},
+        "required": {}
+      }
+    }
+  }
+}

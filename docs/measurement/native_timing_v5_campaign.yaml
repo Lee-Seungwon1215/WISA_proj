@@ -1,0 +1,107 @@
+schema_version: "1.0"
+campaign_id: corpus-native-timing-v5
+description: >-
+  V10 native-x86_64 timing-harness-v2 refresh for every timing row in the
+  committed evidence corpus. It preserves the v4 scope, mixed valid-tuple
+  attribution boundary, counts, seeds, and final thresholds. After the failed
+  non-promotable V2 rehearsal, every fast target whose first two positive
+  effects are 64 and 512 ticks receives the same 16384-tick sentinel. Target
+  traces from either calibration were not interpreted or reused.
+coverage_mode: committed-timing-rows
+corpus_axis_replacements:
+  - target: pqclean_mlkem768
+    harness: kem_dec
+    from_axis: sk
+    to_axis: valid_tuple
+    rationale: >-
+      The legacy class construction changes the secret key, matching public
+      ciphertext, and public key material embedded in the secret key together;
+      it is a mixed valid-tuple contrast and cannot support secret attribution.
+
+host:
+  system: Linux
+  machines: [x86_64, AMD64]
+  require_single_cpu_affinity: true
+  reject_emulation: true
+  reject_virtualization: true
+  require_smt_disabled: true
+  require_turbo_disabled: true
+  recommended_governor: performance
+
+protocol:
+  backend: official-dudect
+  clock: rdtsc
+  seed: 0xC0FFEE
+  warmup: 1000
+  batches: 10
+  process_repeats: 3
+  pool_size: 64
+  aa_abs_t_limit: 4.5
+  positive_abs_t_threshold: 10.0
+  aa_max_failures: 0
+  target_power: 0.80
+  power_alpha: 0.01
+  compiler: gcc
+  compile_timeout: 600
+  backend_timeout: 300
+
+targets:
+  - id: pqclean_mlkem768
+    family: ML-KEM
+    config: examples/pqc_mlkem768/ctkat_timing_v3.yaml
+    harnesses: [kem_dec, kem_dec_ct, kem_dec_fo]
+    axes: {kem_dec: valid_tuple, kem_dec_ct: ct, kem_dec_fo: fo}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 900
+
+  - id: pqclean_mldsa44
+    family: ML-DSA
+    config: examples/pqc_mldsa44/ctkat.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [65536, 262144, 1048576]
+    timeout: 1800
+
+  - id: pqclean_mldsa65
+    family: ML-DSA
+    config: examples/pqc_mldsa65/ctkat.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [65536, 262144, 1048576]
+    timeout: 1800
+
+  - id: pqclean_mldsa87
+    family: ML-DSA
+    config: examples/pqc_mldsa87/ctkat.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [65536, 262144, 1048576]
+    timeout: 1800
+
+  - id: pqclean_sphincs_sha2_128f_simple
+    family: SPHINCS+
+    config: examples/pqc_sphincs_sha2_128f_simple/ctkat.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 2000
+    positive_control_effects: [4096, 65536, 1048576]
+    timeout: 7200
+
+  - id: pqclean_falcon512_reference
+    family: Falcon
+    config: examples/pqc_falcon512/ctkat.yaml
+    harnesses: [sign]
+    axes: {sign: sk}
+    target_measurements: 30000
+    control_measurements: 5000
+    positive_control_effects: [512, 8192, 131072]
+    timeout: 3600

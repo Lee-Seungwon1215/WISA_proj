@@ -111,6 +111,15 @@
   재검증하도록 했다. Cortex-M bare-metal은 별도 board/clock/transport
   preregistration이 필요한 후속 범위로 분리했으며 desktop x86_64 final 정의는
   갈아엎지 않는다.
+- **M10 / paper campaign V10 control·host 교정 완료 (2026-08-14)** — V2-A가
+  28축, baseline 3종, assembly, closure를 중단 없이 완주한 뒤 사전 고정 safety
+  blocker 3건으로 비승격 종료됐다. null t에 최종 판정선보다 더 엄격한 3.5
+  headroom을 부여한 오류를 제거하되 최종 `|t|<4.5`와 0-failure 규칙은
+  그대로 뒀다. 실패 target 하나를 골라 튜닝하지 않고 `[64, 512]`로 시작하는
+  fast-control target 13개 전체에 16,384-tick 끝점을 동일 적용했다. SMT off,
+  Intel turbo off, performance governor, single-CPU affinity를 실행 전 hard gate로
+  올렸고, V1/V2 결과는 전부 calibration·진단 전용으로 봉인했다. 남은 순서는
+  fresh V3 운영 리허설 2회, qualification, fresh V10 final이다.
 - clean wheel/sdist 설치와 6개 entry template render hash + v2 shared support
   resource 포함을 확인했다.
 - Ubuntu 24.04 컨테이너의 설치본으로 gcc/clang 4개 조합, Valgrind,
@@ -119,8 +128,8 @@
   `confounded / signal / inconclusive`로 migration되어 모순이 제거됐다.
 - asm-scan 미실행 compiler/opt는 셀별 `NOT_RUN`으로 남고, legacy
   summary-only 축은 대응 cell이 없으면 structural/asm `not-run`으로 강등된다.
-- native 장비가 확보되면 다음 작업은 core native v3·KyberSlash v3·diverse v2가
-  포함된 paper campaign v5, Falcon paired
+- native 장비가 확보되면 다음 작업은 core native v5·KyberSlash v5·diverse v4가
+  포함된 paper campaign V10, Falcon v4 paired
   campaign, same-corpus official dudect를 실행해 corpus를 재분류한다.
   코드가 control을 만들 수 있다는 사실과 실제 ML-KEM/ML-DSA/Falcon
   target/host가 A/A budget과 power를 통과했다는 사실을 섞지 않는다.

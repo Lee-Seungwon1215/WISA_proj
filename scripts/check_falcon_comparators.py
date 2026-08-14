@@ -31,7 +31,7 @@ UPSTREAM = ROOT / "examples/fndsa_prospective/upstream"
 ADAPTER = ROOT / "examples/fndsa_prospective/adapter.c"
 KAT = ROOT / "examples/fndsa_prospective/kat.c"
 DETERMINISTIC_RANDOMBYTES = ROOT / "examples/falcon_comparator_support/deterministic_randombytes.c"
-TIMING_CAMPAIGN_PATH = ROOT / "docs/measurement/falcon_native_v3.yaml"
+TIMING_CAMPAIGN_PATH = ROOT / "docs/measurement/falcon_native_v4.yaml"
 TIMING_BINARY_CONTRACT_PATH = (
     ROOT / "examples/falcon_comparator_support/timing_binary_contracts_v1.yaml"
 )
@@ -216,7 +216,7 @@ def validate_timing_campaign(
     campaign = load_timing_campaign() if campaign is None else campaign
     if campaign.get("schema_version") != "1.0":
         errors.append("Falcon timing campaign schema_version must be '1.0'")
-    if campaign.get("campaign_id") != "falcon-native-v3":
+    if campaign.get("campaign_id") != "falcon-native-v4":
         errors.append("Falcon timing campaign_id drifted")
     if campaign.get("coverage_mode") != "manifest-only":
         errors.append("Falcon timing campaign coverage_mode drifted")

@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import shutil
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -98,25 +99,28 @@ def test_campaign_overrides_do_not_mutate_modest_example_defaults(tmp_path):
 
 def test_preflight_accepts_clean_pinned_native_host(monkeypatch):
     spec = campaign.load_campaign()
+    host_environment = {
+        "cpu_model": "Example CPU",
+        "machine_id_sha256": "1" * 64,
+        "boot_id_sha256": "2" * 64,
+        "timing_cpu_flags": {
+            "constant_tsc": True,
+            "nonstop_tsc": True,
+            "rdtscp": True,
+        },
+        "cpu_affinity": [2],
+        "smt_active": "0",
+        "intel_pstate_no_turbo": "1",
+        "rejected": False,
+        "rejection_reasons": [],
+    }
     monkeypatch.setattr(campaign.platform, "system", lambda: "Linux")
     monkeypatch.setattr(campaign.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(campaign, "detect_qemu_emulation", lambda: False)
     monkeypatch.setattr(
         campaign,
         "collect_timing_environment",
-        lambda **kwargs: {
-            "cpu_model": "Example CPU",
-            "machine_id_sha256": "1" * 64,
-            "boot_id_sha256": "2" * 64,
-            "timing_cpu_flags": {
-                "constant_tsc": True,
-                "nonstop_tsc": True,
-                "rdtscp": True,
-            },
-            "cpu_affinity": [2],
-            "rejected": False,
-            "rejection_reasons": [],
-        },
+        lambda **kwargs: dict(host_environment),
     )
     monkeypatch.setattr(campaign, "_detect_virtualization", lambda: {"vm": "", "container": ""})
     monkeypatch.setattr(campaign, "_git_state", lambda: ("a" * 40, False))
@@ -143,6 +147,19 @@ def test_preflight_accepts_clean_pinned_native_host(monkeypatch):
     assert result["ok"] is True
     assert result["paper_eligible"] is True
     assert version_commands == ["/usr/bin/gcc"]
+
+    host_environment["smt_active"] = "1"
+    host_environment["intel_pstate_no_turbo"] = "0"
+    rejected = campaign.preflight(
+        spec,
+        allow_dirty=False,
+        allow_virtualized=False,
+        build_adapter=False,
+    )
+    assert rejected["ok"] is False
+    assert rejected["paper_eligible"] is False
+    assert any("SMT must be disabled" in error for error in rejected["errors"])
+    assert any("Intel turbo must be disabled" in error for error in rejected["errors"])
 
 
 def test_container_marker_is_not_misreported_as_a_physical_host(monkeypatch):
@@ -186,6 +203,8 @@ def test_preflight_override_never_promotes_virtualized_or_dirty_host(monkeypatch
                 "rdtscp": True,
             },
             "cpu_affinity": [3],
+            "smt_active": "0",
+            "intel_pstate_no_turbo": "1",
             "rejected": False,
             "rejection_reasons": [],
         },
@@ -253,6 +272,8 @@ def _paper_eligible_preflight(commit):
                 "rdtscp": True,
             },
             "cpu_affinity": [2],
+            "smt_active": "0",
+            "intel_pstate_no_turbo": "1",
             "rejected": False,
             "rejection_reasons": [],
         },
@@ -289,6 +310,30 @@ def test_preflight_report_recomputes_paper_eligibility():
     )
     assert eligible is False
     assert any("paper_eligible" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("smt_active", "1", "SMT was disabled"),
+        ("intel_pstate_no_turbo", "0", "Intel turbo was disabled"),
+    ],
+)
+def test_preflight_report_rejects_unfrozen_host_controls(field, value, expected_error):
+    spec = campaign.load_campaign()
+    commit = "d" * 40
+    report = _paper_eligible_preflight(commit)
+    report["environment"] = dict(report["environment"])
+    report["environment"][field] = value
+
+    eligible, errors = campaign.validate_preflight_report(
+        spec,
+        report,
+        expected_commit=commit,
+    )
+
+    assert eligible is False
+    assert any(expected_error in error for error in errors)
 
 
 def _small_artifact_fixture(tmp_path, *, target_measurements=20_050):
@@ -1508,14 +1553,14 @@ targets:
     assert any("objdump current path differs" in error for error in wrong_path)
 
 
-def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypatch):
+def test_v10_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypatch):
     monkeypatch.setattr(campaign, "ROOT", tmp_path)
     docs = tmp_path / "docs" / "measurement"
     docs.mkdir(parents=True)
-    profile = docs / "paper_control_rehearsal_v2.yaml"
-    calibration = docs / "paper_control_rehearsal_v1_calibration.yaml"
-    profile.write_text("profile: v2\n", encoding="utf-8")
-    calibration.write_text("calibration: v1\n", encoding="utf-8")
+    profile = docs / "paper_control_rehearsal_v3.yaml"
+    calibration = docs / "paper_control_rehearsal_v2_calibration.yaml"
+    profile.write_text("profile: v3\n", encoding="utf-8")
+    calibration.write_text("calibration: v2\n", encoding="utf-8")
 
     commit = "a" * 40
     host_root = tmp_path / "measurement_runs" / "host-a"
@@ -1533,17 +1578,17 @@ def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypa
     records = []
     report_hashes = {}
     run_ids = ["1" * 32, "2" * 32]
-    for label, run_id in zip(("v2-a", "v2-b"), run_ids, strict=True):
+    for label, run_id in zip(("v3-a", "v3-b"), run_ids, strict=True):
         report_path = host_root / "control-rehearsals" / label / "rehearsal_report.json"
         report_path.parent.mkdir(parents=True)
         report = {
-            "schema_version": "2.0",
+            "schema_version": "3.0",
             "kind": "ctkat-paper-control-rehearsal-report",
-            "profile_id": "ctkat-paper-control-rehearsal-v2",
-            "profile": "docs/measurement/paper_control_rehearsal_v2.yaml",
+            "profile_id": "ctkat-paper-control-rehearsal-v3",
+            "profile": "docs/measurement/paper_control_rehearsal_v3.yaml",
             "profile_sha256": campaign._sha256(profile),
-            "source_paper_campaign": "docs/measurement/paper_native_campaign_v9.yaml",
-            "calibration": "docs/measurement/paper_control_rehearsal_v1_calibration.yaml",
+            "source_paper_campaign": "docs/measurement/paper_native_campaign_v10.yaml",
+            "calibration": "docs/measurement/paper_control_rehearsal_v2_calibration.yaml",
             "calibration_sha256": campaign._sha256(calibration),
             "target_measurements": 1000,
             "run_id": run_id,
@@ -1569,7 +1614,19 @@ def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypa
                 for tool_id in ("official_dudect", "timecop", "microwalk_pin")
             },
             "assembly": {"status": "pass"},
-            "pipeline_closure": {"status": "pass"},
+            "pipeline_closure": {
+                "status": "pass",
+                "shared_identity_values": {
+                    "machine_id_sha256": [json.dumps("3" * 64)],
+                    "boot_id_sha256": [json.dumps("4" * 64)],
+                    "cpu_model": [json.dumps("Unit Test CPU")],
+                    "smt_active": [json.dumps("0")],
+                    "intel_pstate_no_turbo": [json.dumps("1")],
+                    "system": [json.dumps("Linux")],
+                    "machine": [json.dumps("x86_64")],
+                },
+                "affinities": [json.dumps([2])],
+            },
             "summary": summary,
             "blockers": [],
         }
@@ -1586,13 +1643,13 @@ def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypa
             }
         )
 
-    qualification_path = host_root / "v9-control-qualification.json"
+    qualification_path = host_root / "v10-control-qualification.json"
     qualification = {
-        "schema_version": "2.0",
-        "kind": "ctkat-v9-final-control-qualification",
+        "schema_version": "3.0",
+        "kind": "ctkat-v10-final-control-qualification",
         "created_at": "2026-08-14T02:00:00Z",
         "candidate_commit": commit,
-        "profile_id": "ctkat-paper-control-rehearsal-v2",
+        "profile_id": "ctkat-paper-control-rehearsal-v3",
         "profile_sha256": campaign._sha256(profile),
         "calibration_sha256": campaign._sha256(calibration),
         "rehearsal_run_ids": run_ids,
@@ -1600,7 +1657,7 @@ def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypa
         "required_clean_runs": 2,
         "observed_clean_runs": 2,
         "final_launch_ready": True,
-        "next_gate": "execute every V9 final component from fresh roots at candidate_commit",
+        "next_gate": "execute every V10 final component from fresh roots at candidate_commit",
         "errors": [],
     }
     qualification_path.write_text(json.dumps(qualification), encoding="utf-8")
@@ -1612,6 +1669,25 @@ def test_v9_final_gate_reopens_two_preserved_clean_rehearsals(tmp_path, monkeypa
     assert material["ready"] is True
     assert material["rehearsal_run_ids"] == run_ids
     assert material["rehearsal_report_sha256"] == report_hashes
+
+    second_report = Path(records[1]["path"])
+    second_payload = json.loads(second_report.read_text(encoding="utf-8"))
+    original_second_payload = deepcopy(second_payload)
+    second_payload["pipeline_closure"]["shared_identity_values"]["machine_id_sha256"] = [
+        json.dumps("9" * 64)
+    ]
+    second_report.write_text(json.dumps(second_payload), encoding="utf-8")
+    records[1]["sha256"] = campaign._sha256(second_report)
+    qualification_path.write_text(json.dumps(qualification), encoding="utf-8")
+    with pytest.raises(campaign.CampaignError, match="do not share one machine_id_sha256"):
+        campaign._final_control_qualification_material(
+            qualification_path,
+            expected_commit=commit,
+        )
+
+    second_report.write_text(json.dumps(original_second_payload), encoding="utf-8")
+    records[1]["sha256"] = campaign._sha256(second_report)
+    qualification_path.write_text(json.dumps(qualification), encoding="utf-8")
 
     first_report = Path(records[0]["path"])
     first_report.write_text("{}\n", encoding="utf-8")

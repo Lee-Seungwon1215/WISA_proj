@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from scripts import run_same_corpus_baselines as baseline
 
 
@@ -297,11 +299,30 @@ def _promotable_record(manifest, tool_id):
                 "boot_id_sha256": "2" * 64,
                 "cpu_affinity": [2],
                 "governor": "performance",
+                "smt_active": "0",
+                "intel_pstate_no_turbo": "1",
                 "virtualization": {"vm": "", "container": ""},
             },
         }
     )
     return record
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("smt_active", "1", "SMT disabled"),
+        ("intel_pstate_no_turbo", "0", "Intel turbo disabled"),
+    ],
+)
+def test_official_dudect_promotion_rejects_unfrozen_host_controls(field, value, message):
+    manifest = baseline.load_manifest()
+    record = _promotable_record(manifest, "official_dudect")
+    record["host"][field] = value
+
+    errors = baseline.validate_result(record, manifest)
+
+    assert any(message in error for error in errors)
 
 
 def test_same_corpus_official_final_applies_full_raw_protocol_contract(

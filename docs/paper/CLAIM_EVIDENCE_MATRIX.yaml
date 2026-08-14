@@ -1,9 +1,9 @@
 schema_version: 2
-matrix_id: ctkat-paper-claims-v9-single-host
+matrix_id: ctkat-paper-claims-v10-single-host
 terminology:
   screening_corpus: committed PQClean/c-fn-dsa target-by-build cells used for dynamic structural and assembly screening
   source_build_corpus: separately maintained upstream lineages and production integration cases used for provenance, build, KAT, and equivalence evidence
-  timing_campaign: paper-native-v9 single-physical-host runs using timing-harness-v2, explicit runtime randomness contracts, branchless shared-buffer class setup, universal pre-measurement build seals, and a machine-validated qualification from two clean control rehearsals; a plan, rehearsal, or CI build is never final timing evidence and cross-host reproducibility is not claimed
+  timing_campaign: paper-native-v10 single-physical-host runs using timing-harness-v2, explicit runtime randomness contracts, branchless shared-buffer class setup, universal pre-measurement build seals, hard-gated SMT/turbo/governor/affinity state, and a machine-validated qualification from two clean operational control rehearsals; a plan, rehearsal, or CI build is never final timing evidence, the two rehearsals are not inferential replicates, and cross-host reproducibility is not claimed
 
 claims:
   - id: fail-closed-evidence-fold
@@ -32,11 +32,11 @@ claims:
     scope: ML-KEM/Kyber-768 frozen variants
     evidence:
       - docs/ground_truth/kyberslash/ground_truth.yaml
-      - docs/measurement/kyberslash_native_v4.yaml
+      - docs/measurement/kyberslash_native_v5.yaml
       - docs/measurement/KYBERSLASH_NATIVE_V3.md
       - docs/reviews/paper/kyberslash-ground-truth-v2.yaml
     open_gates:
-      - complete single-host v4 physical timing artifacts after control qualification
+      - complete single-host v5 physical timing artifacts after control qualification
       - pass the automated frozen-input and artifact-integrity gates
     prohibited_wording: full attack or key recovery reproduced
   - id: falcon-comparator
@@ -45,11 +45,11 @@ claims:
     scope: Falcon/FN-DSA 512 and 1024 comparators
     evidence:
       - docs/ground_truth/falcon/manifest.yaml
-      - docs/measurement/falcon_native_v3.yaml
+      - docs/measurement/falcon_native_v4.yaml
       - examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
       - docs/reviews/paper/falcon-comparator-v2.yaml
     open_gates:
-      - complete single-host v3 physical timing artifacts after control qualification
+      - complete single-host v4 physical timing artifacts after control qualification
       - pass the automated frozen-input and artifact-integrity gates
       - output-length secondary analysis
     prohibited_wording: FIPS 206 conformance
@@ -66,27 +66,28 @@ claims:
       - quantify or bound shared-code ancestry before stronger independence wording
     prohibited_wording: four from-scratch independent implementations
   - id: native-timing-results
-    statement: Paper-grade v9 native timing uses one physical x86_64 host, frozen controls, a qualification from two blocker-free control rehearsals at the exact final commit, explicit expected/observed randomness contracts, branchless shared-buffer class setup, and no automatic corpus promotion; each result is host-scoped, and each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
+    statement: Paper-grade v10 native timing uses one physical x86_64 host, frozen controls, hard-gated SMT/turbo/governor/affinity state, and a qualification from two blocker-free operational control rehearsals at the exact final commit; explicit expected/observed randomness contracts, branchless shared-buffer class setup, and no automatic corpus promotion remain mandatory. Each result is host-scoped, the rehearsals are not inferential replicates, and each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
     status: pending-physical-measurement
     scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
-      - docs/measurement/paper_native_campaign_v9.yaml
-      - docs/measurement/native_timing_v4_campaign.yaml
+      - docs/measurement/paper_native_campaign_v10.yaml
+      - docs/measurement/native_timing_v5_campaign.yaml
       - docs/measurement/NATIVE_TIMING_V3.md
-      - docs/measurement/kyberslash_native_v4.yaml
-      - docs/measurement/falcon_native_v3.yaml
-      - docs/measurement/diverse_native_v3.yaml
+      - docs/measurement/kyberslash_native_v5.yaml
+      - docs/measurement/falcon_native_v4.yaml
+      - docs/measurement/diverse_native_v4.yaml
       - docs/measurement/DIVERSE_NATIVE_V2.md
       - docs/measurement/paper_control_rehearsal_v1_calibration.yaml
-      - docs/measurement/paper_control_rehearsal_v2.yaml
-      - docs/measurement/PAPER_CONTROL_REHEARSAL_V2.md
+      - docs/measurement/paper_control_rehearsal_v2_calibration.yaml
+      - docs/measurement/paper_control_rehearsal_v3.yaml
+      - docs/measurement/PAPER_CONTROL_REHEARSAL_V3.md
       - docs/measurement/EXPERIMENT_PREREGISTRATION.md
       - ctkat/timing_input_contract.py
       - ctkat/timing_build_provenance.py
       - scripts/check_paper_campaign.py
       - docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
     open_gates:
-      - complete two blocker-free v2 rehearsals and freeze their qualification
+      - complete two blocker-free v3 operational rehearsals and freeze their qualification
       - execute the complete fresh single physical host campaign at the qualified commit
       - hash the host tree and validate the schema-v5 bundle
       - generate byte-deterministic named analysis outputs

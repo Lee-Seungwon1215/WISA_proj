@@ -80,7 +80,7 @@ def test_rendered_execution_matrix_has_seven_placeholder_free_commands():
         host_id="host-a",
         cpu=2,
         timecop_prefix=Path("/opt/ctkat/timecop"),
-        control_qualification=Path("/srv/ctkat/v9-control-qualification.json"),
+        control_qualification=Path("/srv/ctkat/v10-control-qualification.json"),
     )
     assert len(commands) == 7
     assert all(command.startswith("uv run --frozen python ") for command in commands)
@@ -94,7 +94,7 @@ def test_rendered_execution_matrix_has_seven_placeholder_free_commands():
     assert sum("--prefix /opt/ctkat/timecop" in command for command in commands) == 1
     assert (
         sum(
-            "--control-qualification /srv/ctkat/v9-control-qualification.json" in command
+            "--control-qualification /srv/ctkat/v10-control-qualification.json" in command
             for command in commands
         )
         == 7
@@ -155,7 +155,7 @@ def test_print_commands_cli_emits_only_the_seven_commands(capsys):
                 "--timecop-prefix",
                 "/srv/timecop",
                 "--control-qualification",
-                "/srv/v9-control-qualification.json",
+                "/srv/v10-control-qualification.json",
             ]
         )
         == 0

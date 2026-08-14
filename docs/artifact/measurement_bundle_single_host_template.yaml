@@ -11,10 +11,10 @@ hosts:
     artifact_root: replace/host-a
     hash_manifest: replace/host-a/SHA256SUMS
     components:
-      committed-corpus-refresh: replace/host-a/committed-corpus-v4
-      kyberslash-contrast: replace/host-a/kyberslash-v4
-      falcon-contrast: replace/host-a/falcon-v3
-      diverse-lineages: replace/host-a/diverse-v3
+      committed-corpus-refresh: replace/host-a/committed-corpus-v5
+      kyberslash-contrast: replace/host-a/kyberslash-v5
+      falcon-contrast: replace/host-a/falcon-v4
+      diverse-lineages: replace/host-a/diverse-v4
     same_corpus_results:
       official_dudect: replace/host-a/same-corpus/TIMESTAMP-official_dudect/baseline_report.json
       timecop: replace/host-a/same-corpus/TIMESTAMP-timecop/baseline_report.json

@@ -19,10 +19,10 @@ sys.path.insert(0, str(ROOT))
 from scripts.hash_artifacts import build_manifest  # noqa: E402
 
 COMPONENT_DIRS = {
-    "committed-corpus-refresh": "committed-corpus-v4",
-    "kyberslash-contrast": "kyberslash-v4",
-    "falcon-contrast": "falcon-v3",
-    "diverse-lineages": "diverse-v3",
+    "committed-corpus-refresh": "committed-corpus-v5",
+    "kyberslash-contrast": "kyberslash-v5",
+    "falcon-contrast": "falcon-v4",
+    "diverse-lineages": "diverse-v4",
 }
 BASELINE_TOOLS = ("official_dudect", "timecop", "microwalk_pin")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -84,14 +84,14 @@ def _gate_ok(report: dict[str, Any], *, label: str) -> dict[str, Any]:
         or gate.get("kind") != "automated-frozen-input-integrity-gate"
         or gate.get("ready") is not True
         or gate.get("ctkat_commit") != report.get("ctkat_commit")
-        or gate.get("plan_id") != "ctkat-paper-native-v9-single-host"
+        or gate.get("plan_id") != "ctkat-paper-native-v10-single-host"
         or gate.get("physical_host_count") != 1
         or gate.get("independent_human_review") is not False
         or gate.get("cross_host_reproducibility") is not False
         or not isinstance(qualification, dict)
         or qualification.get("kind") != "two-clean-control-rehearsal-qualification"
         or qualification.get("ready") is not True
-        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v3"
         or not isinstance(qualification.get("sha256"), str)
         or SHA256_RE.fullmatch(qualification["sha256"]) is None
         or not isinstance(qualification.get("profile_sha256"), str)
@@ -139,8 +139,8 @@ def _verify_preserved_qualification(
     source = _read_json(qualification_path, "control qualification")
     records = source.get("rehearsals")
     if (
-        source.get("schema_version") != "2.0"
-        or source.get("kind") != "ctkat-v9-final-control-qualification"
+        source.get("schema_version") != "3.0"
+        or source.get("kind") != "ctkat-v10-final-control-qualification"
         or source.get("candidate_commit") != commit
         or source.get("profile_id") != qualification.get("profile_id")
         or source.get("profile_sha256") != qualification.get("profile_sha256")
@@ -341,7 +341,7 @@ def build_bundle(
     bundle = {
         "schema_version": 5,
         "evidence_scope": "single-physical-host",
-        "bundle_id": f"ctkat-v9-{commit[:12]}-{manifest_sha[:12]}",
+        "bundle_id": f"ctkat-v10-{commit[:12]}-{manifest_sha[:12]}",
         "measurement_commit": commit,
         "verification_commit": commit,
         "hosts": [

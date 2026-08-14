@@ -132,7 +132,7 @@
     },
     {
       "claim_id": "native-timing-results",
-      "evidence_items": 15,
+      "evidence_items": 16,
       "open_gates": 4,
       "prohibited_wording": "valid-tuple signal means secret-key leakage; no finding means proven constant-time",
       "scope": "28 predeclared timing axes plus all three same-corpus baseline tools",
@@ -148,11 +148,11 @@
   },
   "kind": "ctkat-premeasurement-paper-artifacts",
   "measurement_campaign": {
-    "campaign_id": "ctkat-paper-native-v9-single-host",
+    "campaign_id": "ctkat-paper-native-v10-single-host",
     "component_count": 4,
     "components": [
       {
-        "campaign_id": "corpus-native-timing-v4",
+        "campaign_id": "corpus-native-timing-v5",
         "coverage_mode": "committed-timing-rows",
         "id": "committed-corpus-refresh",
         "protocol_rows": 2220000,
@@ -161,7 +161,7 @@
         "timing_axes": 8
       },
       {
-        "campaign_id": "kyberslash-native-v4",
+        "campaign_id": "kyberslash-native-v5",
         "coverage_mode": "manifest-only",
         "id": "kyberslash-contrast",
         "protocol_rows": 3300000,
@@ -170,7 +170,7 @@
         "timing_axes": 10
       },
       {
-        "campaign_id": "falcon-native-v3",
+        "campaign_id": "falcon-native-v4",
         "coverage_mode": "manifest-only",
         "id": "falcon-contrast",
         "protocol_rows": 1530000,
@@ -179,7 +179,7 @@
         "timing_axes": 6
       },
       {
-        "campaign_id": "diverse-native-v3",
+        "campaign_id": "diverse-native-v4",
         "coverage_mode": "manifest-only",
         "id": "diverse-lineages",
         "protocol_rows": 1170000,

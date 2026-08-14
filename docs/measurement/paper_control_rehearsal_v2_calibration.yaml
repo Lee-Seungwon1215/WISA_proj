@@ -1,0 +1,133 @@
+schema_version: "1.0"
+kind: ctkat-paper-control-calibration-record
+calibration_id: ctkat-paper-control-rehearsal-v2-calibration
+recorded_at: "2026-08-14"
+
+source_rehearsal:
+  profile_id: ctkat-paper-control-rehearsal-v2
+  profile_sha256: 15119eb11e49867738a2abbd807a0582057f83e536527c18b761788441075b44
+  source_calibration_sha256: f7536da19b9d3c1f9e383de1ed288f8f5014fa948b075415af0a2713b7dc4326
+  source_campaign_sha256: 8293e5ac2d7122f9a2bf9886a70e915a5286a266e38a76ea44dabe54872b3335
+  candidate_commit: 39a1cdeb94e768300e4d5bab5adbe0f14130d47c
+  run_id: 34a8f9e74c094c0b97e5fc94e74a8777
+  started_at: "2026-08-14T02:02:21.044489Z"
+  finished_at: "2026-08-14T03:26:04.602398Z"
+  report_sha256: 8371676e0290568a450e67fa33905f85e94b189f5cacd55cf8ccda1490b38023
+  markdown_sha256: 06b7fab51fc9f9e602bc152f1b8c116849c95dcdc591d49b055e579204a14cf3
+  completed_without_interruption: true
+  all_execution_steps_returncode_zero: true
+  smoke_axes_passed: 28
+  native_axes_assessed: 28
+  native_components_passing_qualification: 2
+  baselines_passed: 3
+  assembly_passed: true
+  pipeline_closure_passed: true
+  blocker_count: 3
+
+evidence_boundary:
+  target_measurements_per_process: 1000
+  target_statistics_interpretable: false
+  target_statistics_used_for_calibration: false
+  target_artifacts_promotable: false
+  source_rehearsal_reusable_in_final: false
+  calibration_inputs:
+    - A/A and setup-placebo control validity decisions
+    - largest-effect positive-control t-score and direction by process repeat
+    - recorded host SMT turbo governor and affinity state
+  forbidden_inputs:
+    - target t-score
+    - target raw status
+    - target repeat direction or consistency
+    - same-corpus baseline result as a paper finding
+
+observed_blockers:
+  - code: control.aa-margin
+    component: committed-corpus-refresh
+    target: pqclean_mldsa44
+    harness: sign
+    process_index: 0
+    observed_abs_t_score: 3.7920758863707618
+    v1_observed_abs_t_score: 3.779344508124509
+    failed_rehearsal_rule: abs_t_score < 3.5
+    unchanged_final_rule: abs_t_score < 4.5
+  - code: control.positive-margin
+    component: kyberslash-contrast
+    target: pqclean_mlkem768_kyberslash1
+    harness: kem_dec_chosen_ct
+    process_index: 1
+    effect_ticks: 4096
+    observed_t_score: -10.205320807745164
+    rehearsal_rule: t_score <= -15.0
+    unchanged_final_rule: abs_t_score >= 10.0 with expected direction
+  - code: control.positive-margin
+    component: kyberslash-contrast
+    target: pqclean_mlkem768_kyberslash1
+    harness: kem_dec_chosen_ct
+    process_index: 2
+    effect_ticks: 4096
+    observed_t_score: -13.650128151544706
+    rehearsal_rule: t_score <= -15.0
+    unchanged_final_rule: abs_t_score >= 10.0 with expected direction
+
+null_control_correction:
+  applies_to: all A/A and setup-placebo controls in every V10 component
+  old_rehearsal_ceiling_exclusive: 3.5
+  new_rehearsal_ceiling_exclusive: 4.5
+  final_ceiling_exclusive: 4.5
+  final_aa_max_failures: 0
+  null_tests_per_rehearsal: 168
+  rationale: >-
+    A null t statistic is not a monotone power or headroom measure. Reusing the
+    same manifest seeds also reuses the label and pool schedule, so the two
+    operational runs are not independent null draws. Applying an extra 3.5
+    per-test cutoff over 168 null checks creates avoidable family-wise rejection
+    and encourages rerun-until-pass selection. V3 therefore uses the unchanged
+    final 4.5 validity limit and zero-failure budget for both null controls.
+  counts_unchanged: true
+  seeds_unchanged: true
+  repeats_unchanged: true
+  final_threshold_unchanged: true
+
+fast_positive_control_rule:
+  selection_unit: manifest-target
+  select_when: the first two positive control effects are exactly 64 and 512 ticks
+  adjustment: retain 64 and 512 and set the largest effect to 16384 ticks
+  applies_without_failed_target_selection: true
+  largest_positive_rehearsal_t_ceiling_inclusive: -15.0
+  final_positive_abs_t_threshold: 10.0
+  counts_unchanged: true
+  seeds_unchanged: true
+  repeats_unchanged: true
+  final_threshold_unchanged: true
+
+selected_targets:
+  - {component: committed-corpus-refresh, target: pqclean_mlkem768, old_effects: [64, 512, 8192], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: pqclean_mlkem768, old_effects: [64, 512, 8192], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: pqclean_mlkem768_kyberslash1, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: pqclean_mlkem768_kyberslash2, old_effects: [64, 512, 8192], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: pqclean_mlkem768_kyberslash, old_effects: [64, 512, 8192], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: kyberslash_operand_ks1_vulnerable, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: kyberslash_operand_ks1_patched, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: kyberslash_operand_ks2_poly_vulnerable, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: kyberslash_operand_ks2_poly_patched, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: kyberslash_operand_ks2_polyvec_vulnerable, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: kyberslash-contrast, target: kyberslash_operand_ks2_polyvec_patched, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+  - {component: diverse-lineages, target: mlkem_native_768_portable, old_effects: [64, 512, 8192], new_effects: [64, 512, 16384]}
+  - {component: diverse-lineages, target: mlkem_native_768_x86_64, old_effects: [64, 512, 4096], new_effects: [64, 512, 16384]}
+
+host_hygiene_correction:
+  source_smt_active: "1"
+  source_intel_pstate_no_turbo: "0"
+  require_smt_disabled: true
+  require_turbo_disabled: true
+  require_performance_governor: true
+  require_single_cpu_affinity: true
+  rationale: >-
+    The final campaign should reject avoidable sibling-thread and frequency
+    variability before sampling rather than compensating for it after observing
+    target results.
+
+nonreuse:
+  - failed V2-A remains an immutable diagnostic and calibration source
+  - no V2 target or control row is copied resumed relabeled or promoted into V10
+  - every V3 rehearsal and V10 final starts in a fresh output root at its frozen commit

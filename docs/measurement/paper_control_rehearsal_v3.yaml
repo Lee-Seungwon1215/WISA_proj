@@ -1,0 +1,85 @@
+schema_version: "3.0"
+kind: ctkat-paper-control-rehearsal-profile
+profile_id: ctkat-paper-control-rehearsal-v3
+source_paper_campaign: docs/measurement/paper_native_campaign_v10.yaml
+calibration: docs/measurement/paper_control_rehearsal_v2_calibration.yaml
+
+run_kind: engineering
+promotion_allowed: false
+target_measurements: 1000
+
+preserve_from_component_manifests:
+  - process_repeats
+  - control_measurements
+  - positive_control_effects
+  - seed
+  - warmup
+  - batches
+  - pool_size
+  - aa_abs_t_limit
+  - positive_abs_t_threshold
+  - aa_max_failures
+  - target_power
+  - power_alpha
+  - compiler
+  - compiler_flags
+  - build_and_binary_contracts
+  - randomness_policy
+
+safety_margins:
+  aa_abs_t_ceiling_exclusive: 4.5
+  setup_placebo_abs_t_ceiling_exclusive: 4.5
+  largest_positive_t_ceiling_inclusive: -15.0
+  largest_positive_mean_delta_floor_exclusive: 0.0
+
+qualification:
+  required_clean_runs: 2
+  same_candidate_commit: true
+  distinct_rehearsal_run_ids: true
+  same_physical_host_identity: true
+  same_cpu_model_and_affinity: true
+  operational_repeats_not_inferential_replicates: true
+
+execution:
+  continue_after_step_failure: true
+  continue_after_target_failure: true
+  run_compile_contract_smoke: true
+  run_full_assembly_evidence: true
+  run_all_native_components: true
+  run_all_same_corpus_baselines: true
+  build_paper_bundle: false
+  run_paper_analysis: false
+
+components:
+  - id: committed-corpus-refresh
+    manifest: docs/measurement/native_timing_v5_campaign.yaml
+    output: committed-corpus-v5
+  - id: kyberslash-contrast
+    manifest: docs/measurement/kyberslash_native_v5.yaml
+    output: kyberslash-v5
+  - id: falcon-contrast
+    manifest: docs/measurement/falcon_native_v4.yaml
+    output: falcon-v4
+  - id: diverse-lineages
+    manifest: docs/measurement/diverse_native_v4.yaml
+    output: diverse-v4
+
+same_corpus_baselines:
+  - id: official_dudect
+    action: run_dudect
+  - id: timecop
+    action: run_timecop
+  - id: microwalk_pin
+    action: run_microwalk
+
+claim_limits:
+  - every artifact produced by this profile is engineering-only and non-promotable
+  - reduced target traces are execution and contract smoke only and must not be interpreted
+  - target status consistency and official target power are deliberately not rehearsal gates
+  - control counts seeds effects thresholds and process repeats remain final-equivalent
+  - A/A and setup-placebo use the unchanged final null limit because a null t statistic has no monotone headroom interpretation
+  - the largest positive sentinel retains a stricter operational headroom check and does not replace the final threshold
+  - the two clean runs are operational reruns with distinct artifacts and are not independent inferential replicates
+  - no rehearsal component raw trace statistic or baseline result may be relabeled as final evidence
+  - paper bundle and paper analysis are intentionally forbidden for rehearsal artifacts
+  - v1 and failed v2 rehearsal artifacts are immutable diagnostic inputs and no row is reused in v3

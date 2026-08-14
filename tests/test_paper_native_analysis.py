@@ -14,17 +14,17 @@ COMMIT = "a" * 40
 
 def test_analysis_routes_only_current_replacement_campaigns():
     assert analysis.COMPONENT_PLANS["committed-corpus-refresh"].manifest.name == (
-        "native_timing_v4_campaign.yaml"
+        "native_timing_v5_campaign.yaml"
     )
     assert analysis.COMPONENT_PLANS["committed-corpus-refresh"].campaign_id == (
-        "corpus-native-timing-v4"
+        "corpus-native-timing-v5"
     )
-    assert analysis.COMPONENT_PLANS["diverse-lineages"].manifest.name == ("diverse_native_v3.yaml")
-    assert analysis.COMPONENT_PLANS["diverse-lineages"].campaign_id == "diverse-native-v3"
+    assert analysis.COMPONENT_PLANS["diverse-lineages"].manifest.name == ("diverse_native_v4.yaml")
+    assert analysis.COMPONENT_PLANS["diverse-lineages"].campaign_id == "diverse-native-v4"
     assert analysis.COMPONENT_PLANS["kyberslash-contrast"].manifest.name == (
-        "kyberslash_native_v4.yaml"
+        "kyberslash_native_v5.yaml"
     )
-    assert analysis.COMPONENT_PLANS["kyberslash-contrast"].campaign_id == ("kyberslash-native-v4")
+    assert analysis.COMPONENT_PLANS["kyberslash-contrast"].campaign_id == ("kyberslash-native-v5")
     assert analysis.PAIRWISE_FAMILIES["mlkem-native-valid-tuple"] == (
         analysis.AxisKey(
             "diverse-lineages",

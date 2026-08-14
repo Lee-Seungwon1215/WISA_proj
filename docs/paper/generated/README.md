@@ -19,7 +19,7 @@ Final timing requires 1 physical hosts; the frozen plan contains 28 component-ax
 
 ## Optional independent review readiness
 
-Packets: 8; premeasurement ready: false; paper ready: false. Pending means v9 makes no independent-review claim; it is not a v9 execution gate.
+Packets: 8; premeasurement ready: false; paper ready: false. Pending means v10 makes no independent-review claim; it is not a v10 execution gate.
 
 ## Claim readiness
 
@@ -30,4 +30,4 @@ Packets: 8; premeasurement ready: false; paper ready: false. Pending means v9 ma
 | kyberslash-attribution | pending-physical-measurement | 4 | 2 |
 | falcon-comparator | pending-physical-measurement | 4 | 3 |
 | diverse-upstream-builds | implemented-premeasurement | 3 | 2 |
-| native-timing-results | pending-physical-measurement | 15 | 4 |
+| native-timing-results | pending-physical-measurement | 16 | 4 |

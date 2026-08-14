@@ -1,0 +1,130 @@
+schema_version: "1.0"
+campaign_id: kyberslash-native-v5
+description: >-
+  V10 fixed-secret-key chosen-ciphertext contrasts and paired direct
+  numerator-bin vulnerable/patched canaries. It preserves every v4 target,
+  setup, input, RNG, build, binary contract, count, seed, and final threshold.
+  After the failed non-promotable V2 rehearsal, every fast target whose first
+  two positive effects are 64 and 512 ticks receives the same 16384-tick
+  sentinel. Calibration target traces are ignored.
+coverage_mode: manifest-only
+
+host:
+  system: Linux
+  machines: [x86_64, AMD64]
+  require_single_cpu_affinity: true
+  reject_emulation: true
+  reject_virtualization: true
+  require_smt_disabled: true
+  require_turbo_disabled: true
+  recommended_governor: performance
+
+protocol:
+  backend: official-dudect
+  clock: rdtsc
+  seed: 0xC0FFEE
+  warmup: 1000
+  batches: 10
+  process_repeats: 3
+  pool_size: 64
+  aa_abs_t_limit: 4.5
+  positive_abs_t_threshold: 10.0
+  aa_max_failures: 0
+  target_power: 0.80
+  power_alpha: 0.01
+  compiler: gcc
+  compile_timeout: 600
+  backend_timeout: 300
+
+targets:
+  - id: pqclean_mlkem768
+    family: ML-KEM/KyberSlash-stock-fixed-sk-chosen-ct
+    config: examples/pqc_mlkem768/ctkat_timing_kyberslash_v2.yaml
+    harnesses: [kem_dec_chosen_ct]
+    axes: {kem_dec_chosen_ct: chosen_ct}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 900
+  - id: pqclean_mlkem768_kyberslash1
+    family: ML-KEM/KyberSlash1-fixed-sk-chosen-ct
+    config: examples/pqc_mlkem768_kyberslash1/ctkat_timing_v2.yaml
+    harnesses: [kem_dec_chosen_ct]
+    axes: {kem_dec_chosen_ct: chosen_ct}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 900
+  - id: pqclean_mlkem768_kyberslash2
+    family: ML-KEM/KyberSlash2-fixed-sk-chosen-ct
+    config: examples/pqc_mlkem768_kyberslash2/ctkat_timing_v2.yaml
+    harnesses: [kem_dec_chosen_ct]
+    axes: {kem_dec_chosen_ct: chosen_ct}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 900
+  - id: pqclean_mlkem768_kyberslash
+    family: ML-KEM/KyberSlash1+2-fixed-sk-chosen-ct
+    config: examples/pqc_mlkem768_kyberslash/ctkat_timing_v2.yaml
+    harnesses: [kem_dec_chosen_ct]
+    axes: {kem_dec_chosen_ct: chosen_ct}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 900
+
+  - id: kyberslash_operand_ks1_vulnerable
+    family: KyberSlash1/direct-operand/vulnerable-v3
+    config: examples/kyberslash_operand_latency/ctkat_ks1_vulnerable_v3.yaml
+    harnesses: [operand_bin]
+    axes: {operand_bin: operand_bin}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 300
+  - id: kyberslash_operand_ks1_patched
+    family: KyberSlash1/direct-operand/patched-v3
+    config: examples/kyberslash_operand_latency/ctkat_ks1_patched_v3.yaml
+    harnesses: [operand_bin]
+    axes: {operand_bin: operand_bin}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 300
+  - id: kyberslash_operand_ks2_poly_vulnerable
+    family: KyberSlash2-poly/direct-operand/vulnerable-v3
+    config: examples/kyberslash_operand_latency/ctkat_ks2_poly_vulnerable_v3.yaml
+    harnesses: [operand_bin]
+    axes: {operand_bin: operand_bin}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 300
+  - id: kyberslash_operand_ks2_poly_patched
+    family: KyberSlash2-poly/direct-operand/patched-v3
+    config: examples/kyberslash_operand_latency/ctkat_ks2_poly_patched_v3.yaml
+    harnesses: [operand_bin]
+    axes: {operand_bin: operand_bin}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 300
+  - id: kyberslash_operand_ks2_polyvec_vulnerable
+    family: KyberSlash2-polyvec/direct-operand/vulnerable-v3
+    config: examples/kyberslash_operand_latency/ctkat_ks2_polyvec_vulnerable_v3.yaml
+    harnesses: [operand_bin]
+    axes: {operand_bin: operand_bin}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 300
+  - id: kyberslash_operand_ks2_polyvec_patched
+    family: KyberSlash2-polyvec/direct-operand/patched-v3
+    config: examples/kyberslash_operand_latency/ctkat_ks2_polyvec_patched_v3.yaml
+    harnesses: [operand_bin]
+    axes: {operand_bin: operand_bin}
+    target_measurements: 30000
+    control_measurements: 10000
+    positive_control_effects: [64, 512, 16384]
+    timeout: 300

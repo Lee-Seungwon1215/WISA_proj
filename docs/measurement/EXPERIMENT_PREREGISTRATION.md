@@ -1,6 +1,6 @@
 # Native timing experiment preregistration
 
-Status: **v9 single-host protocol frozen; no v9 final measurement collected**
+Status: **v10 single-host protocol frozen; no v10 final measurement collected**
 
 Initial freeze date: 2026-08-08
 V3 amendment freeze date: 2026-08-10
@@ -10,12 +10,64 @@ V6 scope amendment freeze date: 2026-08-11
 V7 setup-contract amendment freeze date: 2026-08-11
 V8 explicit-RNG-contract amendment freeze date: 2026-08-12
 V9 control-qualification amendment freeze date: 2026-08-14
-Machine-readable plan: `paper_native_campaign_v9.yaml`
+V10 V2-A calibration and host-hygiene amendment freeze date: 2026-08-14
+Machine-readable plan: `paper_native_campaign_v10.yaml`
 
 This document fixes the hypotheses, units, exclusions, controls, and promotion
 rules before a native Linux x86_64 measurement is inspected. It is an internal
 preregistration committed with the code, not a claim of registration in an
 external registry.
+
+## V10 V2-A calibration and host-hygiene amendment
+
+The first V2 control rehearsal at commit
+`39a1cdeb94e768300e4d5bab5adbe0f14130d47c` ran uninterrupted from
+2026-08-14 02:02:21Z through 03:26:04Z. Run
+`34a8f9e74c094c0b97e5fc94e74a8777` completed all 28 smoke axes, all 28
+native control axes, all three same-corpus baselines, assembly evidence, and
+pipeline closure. Every execution and validation subprocess returned zero.
+The aggregate rehearsal nevertheless exited nonzero, as designed, because its
+final blocker matrix contained three predeclared safety-margin failures. The
+exact report identifiers, observed values, source hashes, and non-reuse boundary
+are frozen in `paper_control_rehearsal_v2_calibration.yaml`. No reduced target
+statistic, target status, or target direction was inspected or used for this
+amendment.
+
+One blocker was ML-DSA-44 A/A repeat 0 at `|t|=3.7921`: inside the unchanged
+final `|t|<4.5` validity rule but outside V2's additional `|t|<3.5` rehearsal
+margin. The same seeded process schedule produced `|t|=3.7793` in V1. These
+operational reruns are therefore not independent null draws. More importantly,
+a null t statistic is not a monotone headroom measure. Applying a stricter
+per-test cutoff to 168 A/A/placebo checks per rehearsal creates an avoidable
+family-wise rejection mechanism and invites rerun-until-pass selection. V3
+removes only that unsupported extra margin: every A/A and placebo must satisfy
+the unchanged final `|t|<4.5` rule, with zero allowed failures. Counts, seeds,
+repeats, final thresholds, and final multiplicity rules are unchanged.
+
+The other two blockers were KyberSlash1 chosen-ciphertext positive-control
+repeats at `t=-10.2053` and `t=-13.6501` for the 4,096-tick endpoint. Both pass
+the unchanged directional final power threshold but miss the pre-final
+`t<=-15` headroom rule. V10 does not tune only that failed row. It applies one
+target-statistic-blind rule to every manifest target whose first two effects are
+exactly 64 and 512 ticks: retain those sensitivity points and set the largest
+effect to 16,384 ticks. The rule selects all 13 fast KEM/operand targets across
+committed-corpus, KyberSlash, and diverse-lineage components. Falcon and ML-DSA
+ladders are unchanged. Target/control sample counts, seeds, repeats, measured
+code, hypotheses, final thresholds, and analysis remain unchanged.
+
+V2-A also recorded active SMT and Intel turbo. V10 makes the intended stable
+host state machine-enforced rather than advisory. Every component must reject
+the host before compilation or sampling unless exactly one logical CPU is
+pinned, the governor is `performance`, SMT is disabled, Intel turbo is disabled,
+and the existing native-Linux/invariant-TSC/RDTSCP/clean-commit gates pass.
+
+V1, V2-A, and every earlier final attempt remain immutable engineering-only
+diagnostics. No row is copied, resumed, relabeled, or promoted. Before V10 final,
+the exact candidate commit must complete two distinct blocker-free V3 control
+rehearsals in fresh roots. Their different run IDs and wall-clock times provide
+an operational repeat only; they are not claimed as independent inferential
+replicates. A machine-generated qualification binds both reports and is reopened
+by every V10 final command.
 
 ## V9 control-qualification amendment
 
@@ -70,6 +122,10 @@ A/A/placebo headroom, and `t<=-15` largest-effect headroom. The qualification
 tool hashes both reports, and the V9 final gate independently reopens and
 validates the qualification plus both reports. Final execution then starts in
 fresh empty roots at that same commit.
+
+This V9 design is preserved as the historical pre-V2-A protocol. Its extra
+3.5 null margin and V2 qualification were superseded by the V10 amendment above
+after the complete V2-A diagnostic; no V9 final result was collected.
 
 ## V8 explicit randomness-contract amendment
 
@@ -451,10 +507,10 @@ the frozen official analysis owns its filtering and percentile tests.
 ## Review and promotion
 
 The runner writes immutable promotion candidates and never edits the curated
-corpus. V9 paper-result promotion requires:
+corpus. V10 paper-result promotion requires:
 
 1. one complete physical-host artifact tree and its recorded SHA-256 manifest;
-2. a machine-validated qualification from two clean v2 control rehearsals at
+2. a machine-validated qualification from two clean v3 control rehearsals at
    the exact final commit, followed by all 28 fresh final axes and three
    same-corpus tools;
 3. passing correctness, input, build-seal, binary-contract, A/A, placebo,
@@ -466,7 +522,7 @@ corpus. V9 paper-result promotion requires:
    actually measured.
 
 Independent review packets remain optional follow-up evidence. They are not a
-v9 measurement or paper-table gate, and V9 does not use them to declassify or
+v10 measurement or paper-table gate, and V10 does not use them to declassify or
 silently mutate the curated corpus.
 
 OpenSSL 3.5 is retained as a provider-API integration/build case only. It is

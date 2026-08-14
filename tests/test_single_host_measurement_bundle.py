@@ -16,7 +16,7 @@ def _gate(host_root: Path):
     rehearsal_records = []
     report_hashes = {}
     rehearsal_run_ids = ["8" * 32, "9" * 32]
-    for label, run_id in zip(("v2-a", "v2-b"), rehearsal_run_ids, strict=True):
+    for label, run_id in zip(("v3-a", "v3-b"), rehearsal_run_ids, strict=True):
         report_path = host_root / "control-rehearsals" / label / "rehearsal_report.json"
         _write_json(report_path, {"run_id": run_id, "status": "pass"})
         report_sha = hashlib.sha256(report_path.read_bytes()).hexdigest()
@@ -30,15 +30,15 @@ def _gate(host_root: Path):
                 "finished_at": "2026-08-14T01:00:00Z",
             }
         )
-    qualification_path = host_root / "v9-control-qualification.json"
+    qualification_path = host_root / "v10-control-qualification.json"
     _write_json(
         qualification_path,
         {
-            "schema_version": "2.0",
-            "kind": "ctkat-v9-final-control-qualification",
+            "schema_version": "3.0",
+            "kind": "ctkat-v10-final-control-qualification",
             "created_at": "2026-08-14T02:00:00Z",
             "candidate_commit": COMMIT,
-            "profile_id": "ctkat-paper-control-rehearsal-v2",
+            "profile_id": "ctkat-paper-control-rehearsal-v3",
             "profile_sha256": "d" * 64,
             "calibration_sha256": "e" * 64,
             "rehearsal_run_ids": rehearsal_run_ids,
@@ -46,7 +46,7 @@ def _gate(host_root: Path):
             "required_clean_runs": 2,
             "observed_clean_runs": 2,
             "final_launch_ready": True,
-            "next_gate": "execute fresh V9 final roots",
+            "next_gate": "execute fresh V10 final roots",
             "errors": [],
         },
     )
@@ -54,7 +54,7 @@ def _gate(host_root: Path):
         "kind": "automated-frozen-input-integrity-gate",
         "ready": True,
         "ctkat_commit": COMMIT,
-        "plan_id": "ctkat-paper-native-v9-single-host",
+        "plan_id": "ctkat-paper-native-v10-single-host",
         "physical_host_count": 1,
         "independent_human_review": False,
         "cross_host_reproducibility": False,
@@ -63,7 +63,7 @@ def _gate(host_root: Path):
             "ready": True,
             "path": str(qualification_path.resolve()),
             "sha256": hashlib.sha256(qualification_path.read_bytes()).hexdigest(),
-            "profile_id": "ctkat-paper-control-rehearsal-v2",
+            "profile_id": "ctkat-paper-control-rehearsal-v3",
             "profile_sha256": "d" * 64,
             "calibration_sha256": "e" * 64,
             "rehearsal_run_ids": rehearsal_run_ids,

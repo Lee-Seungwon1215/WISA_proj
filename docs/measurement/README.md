@@ -1,6 +1,6 @@
 # Native timing campaign
 
-논문용 최상위 동결본은 `paper_native_campaign_v9.yaml`이다. 기존 corpus refresh
+논문용 최상위 동결본은 `paper_native_campaign_v10.yaml`이다. 기존 corpus refresh
 외에 KyberSlash, Falcon, diverse-upstream 비교를 독립 component로 묶으며,
 한 대의 physical x86_64 Linux host에서 같은 clean commit으로 전부 실행한다.
 결과는 해당 host 범위에서만 승격하며 cross-host 재현성과 독립 사람 리뷰를
@@ -9,7 +9,7 @@
 ## 장시간 final 전 control 리허설
 
 긴 final을 디버거처럼 여러 번 태우지 않도록
-`paper_control_rehearsal_v2.yaml`과 `run_paper_control_rehearsal.py`를 먼저 쓴다.
+`paper_control_rehearsal_v3.yaml`과 `run_paper_control_rehearsal.py`를 먼저 쓴다.
 이 프로필은 28개 축, 네 component, 세 same-corpus baseline, assembly 경로를
 끝까지 실행하고 중간 실패를 전부 blocker matrix 하나로 모으는 engineering
 전용 절차다. target/calibration trace만 process당 1,000회로 줄이고 A/A,
@@ -23,55 +23,59 @@ uv run --frozen python scripts/run_paper_control_rehearsal.py --check
 uv run --frozen python scripts/run_paper_control_rehearsal.py \
   --execute --phase smoke --cpu 2 \
   --timecop-prefix /home/test/.local/ctkat/timecop \
-  --output-root measurement_runs/host-a/control-rehearsals/v2-a
+  --output-root measurement_runs/host-a/control-rehearsals/v3-a
 
 uv run --frozen python scripts/run_paper_control_rehearsal.py \
   --execute --phase controls --resume --cpu 2 \
   --timecop-prefix /home/test/.local/ctkat/timecop \
-  --output-root measurement_runs/host-a/control-rehearsals/v2-a
+  --output-root measurement_runs/host-a/control-rehearsals/v3-a
 ```
 
 같은 candidate commit에서 blocker 0인 서로 다른 리허설을 두 번 얻고
-qualification JSON을 만든 뒤에만 V9 final을 실행한다. 리허설의 정확한 비승격
-경계와 안전 여유는 `PAPER_CONTROL_REHEARSAL_V2.md`를 따른다.
+qualification JSON을 만든 뒤에만 V10 final을 실행한다. 리허설의 정확한 비승격
+경계와 안전 여유는 `PAPER_CONTROL_REHEARSAL_V3.md`를 따른다. V2-A의 세 blocker와
+V10 교정 근거는 `paper_control_rehearsal_v2_calibration.yaml`에 원문 수치로
+동결돼 있다.
 
 ```bash
 uv run --frozen python scripts/run_paper_control_rehearsal.py \
   --qualify --expected-commit COMMIT \
-  --rehearsal-report measurement_runs/host-a/control-rehearsals/v2-a/rehearsal_report.json \
-  --rehearsal-report measurement_runs/host-a/control-rehearsals/v2-b/rehearsal_report.json \
-  --qualification-output measurement_runs/host-a/v9-control-qualification.json
+  --rehearsal-report measurement_runs/host-a/control-rehearsals/v3-a/rehearsal_report.json \
+  --rehearsal-report measurement_runs/host-a/control-rehearsals/v3-b/rehearsal_report.json \
+  --qualification-output measurement_runs/host-a/v10-control-qualification.json
 ```
 
 ```bash
 uv run python scripts/check_paper_campaign.py
 
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/native_timing_v4_campaign.yaml --check
+  --manifest docs/measurement/native_timing_v5_campaign.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/kyberslash_native_v4.yaml --check
+  --manifest docs/measurement/kyberslash_native_v5.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/falcon_native_v3.yaml --check
+  --manifest docs/measurement/falcon_native_v4.yaml --check
 uv run python scripts/run_native_timing_campaign.py \
-  --manifest docs/measurement/diverse_native_v3.yaml --check
+  --manifest docs/measurement/diverse_native_v4.yaml --check
 ```
 
 현재 정적 범위는 4 component, 26 target execution, 28 timing axis다. 이 숫자는
 독립 구현 수가 아니다. 같은 target이 비교/control 목적으로 여러 component에
 나올 수 있고 portable/native profile도 하나의 lineage 안에 있다.
 
-- `native_timing_v4_campaign.yaml`: committed timing row 8축의 replacement;
+- `native_timing_v5_campaign.yaml`: committed timing row 8축의 replacement;
   corpus key용 `kem_dec` 하니스 ID는 유지하지만 KEM machine axis는
-  mixed `valid_tuple`로 교정
-- `kyberslash_native_v4.yaml`: 고정키 chosen-ct 4축 + 같은 주소/유효 placebo/
+  mixed `valid_tuple`로 교정하고 fast KEM control ladder를 V10 규칙으로 보강
+- `kyberslash_native_v5.yaml`: 고정키 chosen-ct 4축 + 같은 주소/유효 placebo/
   전 bin 반환값 witness를 강제한 취약·패치 operand canary 6축. v2 operand
-  engineering trace는 setup confound 때문에 재사용 금지
-- `falcon_native_v3.yaml`: 512/1024 reference/native-FP/integer-FPR 6축;
+  engineering trace는 setup confound 때문에 재사용 금지. 열 target 모두 같은
+  fast-control 규칙을 적용
+- `falcon_native_v4.yaml`: 512/1024 reference/native-FP/integer-FPR 6축;
   V1 통제 리허설의 동일 규칙으로 reference 512/1024와 512 integer-FPR
-  target의 가장 큰 positive-control effect만 상향한 final 동결본
-- `diverse_native_v3.yaml`: mlkem-native의 혼합 valid-tuple 축과 mldsa-native
+  target의 가장 큰 positive-control effect만 상향한 ladder를 그대로 유지
+- `diverse_native_v4.yaml`: mlkem-native의 혼합 valid-tuple 축과 mldsa-native
   sign 축을 portable/x86_64로 비교하는 4축; v1 engineering 결과는 attribution
-  calibration 전용이며 final 재사용 금지
+  calibration 전용이며 final 재사용 금지. 두 ML-KEM target은 V10 fast-control
+  규칙을 적용
 
 가설, sample/control 수, 제외 기준, multiplicity, host disagreement,
 promotion 문구는 `EXPERIMENT_PREREGISTRATION.md`에 측정 전에 고정했다. static
@@ -83,26 +87,27 @@ config, generated C, measured binary, linked source, compiler와 replay argv를
 각 subprocess 전후로 이를 확인하고 native validator는 target attestation에
 해시를 다시 묶는다.
 
-`native_timing_v4_campaign.yaml`은 기존 corpus의 timing 8개 축을
+`native_timing_v5_campaign.yaml`은 기존 corpus의 timing 8개 축을
 timing-harness-v2로 다시 측정하기 위한 동결된 실행 계획이다. v2의
 ML-KEM `sk` machine label은 secret key와 matching public ciphertext를 함께
 바꾸는 혼합 입력을 잘못 요약했다. v3에서 corpus row key용 하니스 ID
 `kem_dec`은 유지하되 machine axis를 `valid_tuple`로 바꾸고 fail-closed
 input contract를 적용했고, v4는 V1 리허설의 통제군에만 적용한 동결 규칙으로
-일부 target의 가장 큰 positive-control effect만 상향했다. v2/v3 engineering
-trace는 역사 calibration이며 v4 final에 재사용·resume·relabel할 수 없다. 자동화 검증을
-마친 clean commit에서는 engineering/pilot을 실행할 수 있다. v9 논문 승격용
+일부 target의 가장 큰 positive-control effect를 상향했다. v5는 V2-A 이후
+사전 명시한 fast-control 분류 전체에 같은 16,384-tick 끝점을 적용한다. 과거
+engineering trace는 calibration이며 v5 final에 재사용·resume·relabel할 수 없다. 자동화 검증을
+마친 clean commit에서는 engineering/pilot을 실행할 수 있다. v10 논문 승격용
 final은 `--final-gate single-host`와 두 clean rehearsal의 qualification을 명시한다.
-runner는 v9 plan,
+runner는 v10 plan,
 preregistration, analysis contract, 네 component manifest, baseline manifest,
 실행/분석 코드와 lock file의 SHA-256을 campaign report에 묶는다. 이 gate는
 input integrity 검증이며 사람 리뷰라고 부르지 않는다.
 
-V9은 모든 비-operand KEM/서명 하니스의 class 준비를
+V10은 모든 비-operand KEM/서명 하니스의 class 준비를
 `dual-read-masked-select-v4`로 고정한다. 두 class pool을 모두 읽고 마스크로
 같은 work buffer에 선택하므로 `t0` 직전 class-dependent pointer branch가 없다.
 각 raw trace가 이 계약을 기록하지 않으면 validity가 실패한다. V6 final tree와
-V7/V8 final 실패 tree는 재사용하지 않는다. V9은 `randombytes_header`와 별개인
+V7/V8/V9 진단 tree는 재사용하지 않는다. V10은 `randombytes_header`와 별개인
 `randomness_policy`를 검증한다. operand와 c-fn-dsa는 헤더가 null이어도 setup에서
 seeded interpose를 사용하며, operand 측정 구간의 RNG 호출 수는 0이어야 한다.
 오직 결정적 toy baseline만 `external-or-none`을 명시한다.
@@ -143,8 +148,8 @@ uv run python scripts/run_native_timing_campaign.py --preflight --cpu 2
 uv run python scripts/run_native_timing_campaign.py \
   --execute --run-kind final --final-gate single-host \
   --cpu 2 \
-  --control-qualification measurement_runs/host-a/v9-control-qualification.json \
-  --output-root measurement_runs/corpus-native-timing-v4
+  --control-qualification measurement_runs/host-a/v10-control-qualification.json \
+  --output-root measurement_runs/corpus-native-timing-v5
 ```
 
 `--cpu`는 명시적으로 현재 campaign process와 그 자식만 해당 logical CPU에
@@ -166,9 +171,11 @@ preflight hard gate:
 - affinity CPU 정확히 1개
 - clean git worktree
 - `gcc`와 official dudect adapter build 가능
+- SMT disabled
+- Intel turbo disabled
 
 governor, invariant TSC, RDTSCP, exact CPU/machine/boot identity도 기록한다. pilot과
-final은 performance governor와 timing capability를 hard gate로 요구한다. 실제
+final은 performance governor, SMT off, Intel turbo off와 timing capability를 hard gate로 요구한다. 실제
 timing-harness-v2의 environment/control gate도 별도로 적용된다.
 `machine-id` hash와 VM/container probe는 artifact 내부 일관성 검사이지 TPM quote나
 물리 장비 소유 증명이 아니다. 따라서 bundle의 `physical: true`는 host probe와

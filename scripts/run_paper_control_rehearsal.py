@@ -46,10 +46,10 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     static_check,
 )
 
-REHEARSAL_PROFILE_ID = "ctkat-paper-control-rehearsal-v2"
-DEFAULT_PROFILE = ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml"
-DEFAULT_SCHEMA = ROOT / "docs/measurement/paper_control_rehearsal_v2.schema.json"
-CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+REHEARSAL_PROFILE_ID = "ctkat-paper-control-rehearsal-v3"
+DEFAULT_PROFILE = ROOT / "docs/measurement/paper_control_rehearsal_v3.yaml"
+DEFAULT_SCHEMA = ROOT / "docs/measurement/paper_control_rehearsal_v3.schema.json"
+CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v2_calibration.yaml"
 REPORT_NAME = "rehearsal_report.json"
 MARKDOWN_NAME = "rehearsal_report.md"
 SMOKE_MEASUREMENTS = 4
@@ -84,10 +84,24 @@ CLAIM_LIMITS = (
     "reduced target traces are execution and contract smoke only and must not be interpreted",
     "target status consistency and official target power are deliberately not rehearsal gates",
     "control counts seeds effects thresholds and process repeats remain final-equivalent",
-    "rehearsal safety margins are operational headroom checks and do not replace final thresholds",
+    (
+        "A/A and setup-placebo use the unchanged final null limit because a null t "
+        "statistic has no monotone headroom interpretation"
+    ),
+    (
+        "the largest positive sentinel retains a stricter operational headroom check "
+        "and does not replace the final threshold"
+    ),
+    (
+        "the two clean runs are operational reruns with distinct artifacts and are not "
+        "independent inferential replicates"
+    ),
     "no rehearsal component raw trace statistic or baseline result may be relabeled as final evidence",
     "paper bundle and paper analysis are intentionally forbidden for rehearsal artifacts",
-    "v1 rehearsal artifacts are immutable diagnostic inputs and no row is reused in v2",
+    (
+        "v1 and failed v2 rehearsal artifacts are immutable diagnostic inputs and no row "
+        "is reused in v3"
+    ),
 )
 
 
@@ -196,7 +210,7 @@ def validate_profile(
         "claim_limits",
     }
     check(set(profile) == expected_keys, "rehearsal profile top-level field set drift")
-    check(profile.get("schema_version") == "2.0", "profile schema_version must be '2.0'")
+    check(profile.get("schema_version") == "3.0", "profile schema_version must be '3.0'")
     check(
         profile.get("kind") == "ctkat-paper-control-rehearsal-profile",
         "profile kind drift",
@@ -217,8 +231,8 @@ def validate_profile(
     )
     margins = profile.get("safety_margins")
     expected_margins = {
-        "aa_abs_t_ceiling_exclusive": 3.5,
-        "setup_placebo_abs_t_ceiling_exclusive": 3.5,
+        "aa_abs_t_ceiling_exclusive": 4.5,
+        "setup_placebo_abs_t_ceiling_exclusive": 4.5,
         "largest_positive_t_ceiling_inclusive": -15.0,
         "largest_positive_mean_delta_floor_exclusive": 0.0,
     }
@@ -229,6 +243,9 @@ def validate_profile(
             "required_clean_runs": 2,
             "same_candidate_commit": True,
             "distinct_rehearsal_run_ids": True,
+            "same_physical_host_identity": True,
+            "same_cpu_model_and_affinity": True,
+            "operational_repeats_not_inferential_replicates": True,
         },
         "rehearsal qualification contract drift",
     )
@@ -264,8 +281,9 @@ def validate_profile(
         calibration = _load_yaml(calibration_path, "control calibration")
         check(calibration_path == CALIBRATION_PATH, "control calibration path drift")
         check(
-            calibration.get("kind") == "ctkat-paper-control-calibration-record"
-            and calibration.get("calibration_id") == "ctkat-paper-control-rehearsal-v1-calibration",
+            calibration.get("schema_version") == "1.0"
+            and calibration.get("kind") == "ctkat-paper-control-calibration-record"
+            and calibration.get("calibration_id") == "ctkat-paper-control-rehearsal-v2-calibration",
             "control calibration identity drift",
         )
         boundary = _mapping(calibration.get("evidence_boundary"), "evidence_boundary")
@@ -275,18 +293,52 @@ def validate_profile(
             and boundary.get("source_rehearsal_reusable_in_final") is False,
             "control calibration evidence boundary drift",
         )
-        rule = _mapping(calibration.get("uniform_remediation_rule"), "remediation rule")
+        source = _mapping(calibration.get("source_rehearsal"), "source_rehearsal")
+        check(
+            source.get("candidate_commit") == "39a1cdeb94e768300e4d5bab5adbe0f14130d47c"
+            and source.get("run_id") == "34a8f9e74c094c0b97e5fc94e74a8777"
+            and source.get("blocker_count") == 3
+            and source.get("completed_without_interruption") is True
+            and source.get("all_execution_steps_returncode_zero") is True,
+            "control calibration source rehearsal drift",
+        )
+        for field in ("report_sha256", "markdown_sha256"):
+            check(
+                isinstance(source.get(field), str)
+                and len(source.get(field, "")) == 64
+                and all(char in "0123456789abcdef" for char in source.get(field, "")),
+                f"control calibration {field} is not a SHA-256",
+            )
+        null_rule = _mapping(calibration.get("null_control_correction"), "null control correction")
+        check(
+            null_rule.get("old_rehearsal_ceiling_exclusive") == 3.5
+            and null_rule.get("new_rehearsal_ceiling_exclusive") == 4.5
+            and null_rule.get("final_ceiling_exclusive") == 4.5
+            and null_rule.get("final_aa_max_failures") == 0
+            and null_rule.get("final_threshold_unchanged") is True,
+            "null control correction drift",
+        )
+        rule = _mapping(calibration.get("fast_positive_control_rule"), "remediation rule")
         check(
             rule.get("selection_unit") == "manifest-target"
             and rule.get("select_when")
-            == "any axis in the target has largest-effect worst-repeat t_score > -20"
+            == "the first two positive control effects are exactly 64 and 512 ticks"
             and rule.get("adjustment")
-            == "retain the first two effect points and double only the largest effect",
+            == "retain 64 and 512 and set the largest effect to 16384 ticks"
+            and rule.get("applies_without_failed_target_selection") is True,
             "control calibration remediation rule drift",
         )
         check(
-            len(_list(calibration.get("selected_targets"), "selected_targets")) == 9,
-            "control calibration must bind nine selected targets",
+            len(_list(calibration.get("selected_targets"), "selected_targets")) == 13,
+            "control calibration must bind thirteen selected targets",
+        )
+        hygiene = _mapping(calibration.get("host_hygiene_correction"), "host hygiene correction")
+        check(
+            hygiene.get("require_smt_disabled") is True
+            and hygiene.get("require_turbo_disabled") is True
+            and hygiene.get("require_performance_governor") is True
+            and hygiene.get("require_single_cpu_affinity") is True,
+            "host hygiene correction drift",
         )
     except (OSError, RehearsalError) as exc:
         errors.append(str(exc))
@@ -297,7 +349,7 @@ def validate_profile(
         errors.append(str(exc))
         components = []
     check([item.get("id") for item in components] == list(COMPONENT_IDS), "component order drift")
-    expected_outputs = ("committed-corpus-v4", "kyberslash-v4", "falcon-v3", "diverse-v3")
+    expected_outputs = ("committed-corpus-v5", "kyberslash-v5", "falcon-v4", "diverse-v4")
     check(
         [item.get("output") for item in components] == list(expected_outputs),
         "component output routing drift",
@@ -426,7 +478,7 @@ def _new_report(
     commit: str,
 ) -> dict[str, Any]:
     return {
-        "schema_version": "2.0",
+        "schema_version": "3.0",
         "kind": "ctkat-paper-control-rehearsal-report",
         "profile_id": profile["profile_id"],
         "profile": _relative(profile_path),
@@ -1267,6 +1319,8 @@ def _assess_native_components(
                     "boot_id_sha256": environment.get("boot_id_sha256"),
                     "cpu_model": environment.get("cpu_model"),
                     "cpu_affinity": environment.get("cpu_affinity"),
+                    "smt_active": environment.get("smt_active"),
+                    "intel_pstate_no_turbo": environment.get("intel_pstate_no_turbo"),
                     "system": environment.get("system"),
                     "machine": environment.get("machine"),
                 }
@@ -1508,6 +1562,8 @@ def _assess_baselines(
                     "boot_id_sha256": host.get("boot_id_sha256"),
                     "cpu_model": host.get("cpu_model"),
                     "cpu_affinity": host.get("cpu_affinity"),
+                    "smt_active": host.get("smt_active"),
+                    "intel_pstate_no_turbo": host.get("intel_pstate_no_turbo"),
                     "system": host.get("system"),
                     "machine": host.get("machine"),
                 }
@@ -1651,7 +1707,15 @@ def _assess_pipeline_closure(
                 sorted(expected_sources),
             )
         )
-    identity_fields = ("machine_id_sha256", "boot_id_sha256", "cpu_model", "system", "machine")
+    identity_fields = (
+        "machine_id_sha256",
+        "boot_id_sha256",
+        "cpu_model",
+        "smt_active",
+        "intel_pstate_no_turbo",
+        "system",
+        "machine",
+    )
     field_values = {
         field: sorted({json.dumps(item.get(field), sort_keys=True) for item in hosts})
         for field in identity_fields
@@ -1666,6 +1730,21 @@ def _assess_pipeline_closure(
                     f"{field} differs or is missing across rehearsal steps",
                     values,
                     "one shared non-null value",
+                )
+            )
+    for field, expected in (
+        ("smt_active", "0"),
+        ("intel_pstate_no_turbo", "1"),
+    ):
+        if field_values.get(field) != [json.dumps(expected)]:
+            blockers.append(
+                _blocker(
+                    f"closure.{field}-policy",
+                    "pipeline-closure",
+                    "host-hygiene",
+                    f"{field} does not match the frozen V10 host state",
+                    field_values.get(field),
+                    [json.dumps(expected)],
                 )
             )
     affinities = sorted({json.dumps(item.get("cpu_affinity"), sort_keys=True) for item in hosts})
@@ -1768,7 +1847,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
             ]
         )
     else:
-        lines.append("아래 blocker를 모두 해결하기 전에는 V9 동결이나 final 실행을 금지한다.")
+        lines.append(
+            "아래 blocker를 모두 해결하기 전에는 V10 qualification이나 final 실행을 금지한다."
+        )
     lines.extend(["", "## Blocker matrix", ""])
     blockers = report.get("blockers", [])
     if not blockers:
@@ -1987,6 +2068,51 @@ def qualify_reports(
         errors.append("the two clean rehearsals used different profile revisions")
     if len(calibration_hashes) != 1:
         errors.append("the two clean rehearsals used different calibration records")
+    shared_host_fields = (
+        "machine_id_sha256",
+        "cpu_model",
+        "smt_active",
+        "intel_pstate_no_turbo",
+        "system",
+        "machine",
+    )
+    host_values: dict[str, set[str]] = {field: set() for field in shared_host_fields}
+    affinity_values: set[str] = set()
+    for path, report in zip(paths, reports, strict=False):
+        closure = report.get("pipeline_closure")
+        identities = closure.get("shared_identity_values") if isinstance(closure, dict) else None
+        for field in shared_host_fields:
+            values = identities.get(field) if isinstance(identities, dict) else None
+            if (
+                not isinstance(values, list)
+                or len(values) != 1
+                or not isinstance(values[0], str)
+                or values[0] == "null"
+            ):
+                errors.append(f"{path}: pipeline closure lacks one shared {field}")
+            else:
+                host_values[field].add(values[0])
+        affinities = closure.get("affinities") if isinstance(closure, dict) else None
+        if (
+            not isinstance(affinities, list)
+            or len(affinities) != 1
+            or not isinstance(affinities[0], str)
+        ):
+            errors.append(f"{path}: pipeline closure lacks one shared CPU affinity")
+        else:
+            affinity_values.add(affinities[0])
+    for field, values in host_values.items():
+        if len(values) != 1:
+            errors.append(f"the two clean rehearsals do not share one {field}")
+    expected_host_values = {
+        "smt_active": json.dumps("0"),
+        "intel_pstate_no_turbo": json.dumps("1"),
+    }
+    for field, expected in expected_host_values.items():
+        if host_values[field] != {expected}:
+            errors.append(f"the two clean rehearsals do not prove frozen {field}={expected}")
+    if len(affinity_values) != 1:
+        errors.append("the two clean rehearsals do not share one logical CPU affinity")
     rehearsal_records = [
         {
             "path": str(path.resolve()),
@@ -1998,8 +2124,8 @@ def qualify_reports(
         for path, report in zip(paths, reports, strict=False)
     ]
     result = {
-        "schema_version": "2.0",
-        "kind": "ctkat-v9-final-control-qualification",
+        "schema_version": "3.0",
+        "kind": "ctkat-v10-final-control-qualification",
         "created_at": _utc_now(),
         "candidate_commit": next(iter(commits)) if len(commits) == 1 else None,
         "profile_id": REHEARSAL_PROFILE_ID,
@@ -2014,7 +2140,7 @@ def qualify_reports(
             item.get("status") == "pass" and item.get("blockers") == [] for item in reports
         ),
         "final_launch_ready": not errors,
-        "next_gate": "execute every V9 final component from fresh roots at candidate_commit",
+        "next_gate": "execute every V10 final component from fresh roots at candidate_commit",
         "errors": errors,
     }
     if output is not None:

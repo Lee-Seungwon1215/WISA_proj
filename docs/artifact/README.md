@@ -21,14 +21,15 @@ complete command stdout/stderr, tracked-file hashes, commit/worktree metadata,
 and `SHA256SUMS`. Every profile requires a clean committed worktree so the
 source manifest and automated-audit provenance cannot diverge.
 
-## Current v9 single-host result profile
+## Current v10 single-host result profile
 
-The current paper campaign is `paper_native_campaign_v9.yaml`. It supersedes
+The current paper campaign is `paper_native_campaign_v10.yaml`. It supersedes
 the two-host/reviewer execution gate below without deleting that stronger
-historical workflow. First obtain two blocker-free V2 control rehearsals from
+historical workflow. First obtain two blocker-free V3 operational control rehearsals from
 the exact candidate commit and create
-`measurement_runs/host-a/v9-control-qualification.json` as documented in
-`../measurement/PAPER_CONTROL_REHEARSAL_V2.md`. Then render the seven commands
+`measurement_runs/host-a/v10-control-qualification.json` as documented in
+`../measurement/PAPER_CONTROL_REHEARSAL_V3.md`. The qualification does not turn
+the two same-seed rehearsals into independent inferential replicates. Then render the seven commands
 for the one available host:
 
 ```bash
@@ -37,7 +38,7 @@ uv run --frozen python scripts/check_paper_campaign.py \
   --host-id host-a \
   --cpu 2 \
   --timecop-prefix /home/test/.local/ctkat/timecop \
-  --control-qualification /home/test/ctkat-native/measurement_runs/host-a/v9-control-qualification.json
+  --control-qualification /home/test/ctkat-native/measurement_runs/host-a/v10-control-qualification.json
 ```
 
 Every rendered final command carries `--final-gate single-host` and the same
@@ -66,7 +67,7 @@ uv run --frozen python scripts/analyze_paper_native_results.py \
   --output-root /path/to/analysis/named
 ```
 
-The v9 bundle and output are paper-usable only as single-host evidence. They do
+The v10 bundle and output are paper-usable only as single-host evidence. They do
 not claim host replication, analyst blinding, independent human review, or
 automatic curated-corpus declassification.
 

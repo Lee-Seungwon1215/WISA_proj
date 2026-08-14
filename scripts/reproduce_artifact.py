@@ -21,10 +21,10 @@ sys.path.insert(0, str(ROOT))
 from scripts.hash_artifacts import build_manifest  # noqa: E402
 
 COMPONENTS = {
-    "committed-corpus-refresh": "docs/measurement/native_timing_v4_campaign.yaml",
-    "kyberslash-contrast": "docs/measurement/kyberslash_native_v4.yaml",
-    "falcon-contrast": "docs/measurement/falcon_native_v3.yaml",
-    "diverse-lineages": "docs/measurement/diverse_native_v3.yaml",
+    "committed-corpus-refresh": "docs/measurement/native_timing_v5_campaign.yaml",
+    "kyberslash-contrast": "docs/measurement/kyberslash_native_v5.yaml",
+    "falcon-contrast": "docs/measurement/falcon_native_v4.yaml",
+    "diverse-lineages": "docs/measurement/diverse_native_v4.yaml",
 }
 SAME_CORPUS_TOOLS = ("official_dudect", "timecop", "microwalk_pin")
 MEASUREMENT_CRITICAL_PATHS = (

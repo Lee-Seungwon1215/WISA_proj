@@ -48,8 +48,8 @@ def test_frozen_rehearsal_profile_covers_all_axes_and_baselines():
     assert report["baselines"] == 3
     assert report["target_measurements"] == 1_000
     assert report["required_clean_runs"] == 2
-    assert report["profile_id"] == "ctkat-paper-control-rehearsal-v2"
-    assert report["calibration"] == ("docs/measurement/paper_control_rehearsal_v1_calibration.yaml")
+    assert report["profile_id"] == "ctkat-paper-control-rehearsal-v3"
+    assert report["calibration"] == ("docs/measurement/paper_control_rehearsal_v2_calibration.yaml")
 
 
 def test_reduced_target_status_is_ignored_but_control_headroom_is_required():
@@ -102,6 +102,23 @@ def test_reversed_positive_direction_never_passes_rehearsal_margin():
     assert any(blocker["code"] == "control.positive-direction" for blocker in blockers)
 
 
+def test_null_control_uses_unchanged_final_limit_not_arbitrary_headroom():
+    protocol = _passing_protocol()
+    protocol["aa_controls"][0]["abs_t_score"] = 3.7920758863707618
+    summary, blockers = rehearsal._assess_control_protocol(
+        protocol,
+        subject="component/target/harness",
+        target_measurements=1_000,
+        control_measurements=10_000,
+        effects=(64, 512, 4096),
+        process_repeats=3,
+        randomness_policy="seeded-interpose",
+        margins=rehearsal.load_profile()["safety_margins"],
+    )
+    assert not any(blocker["code"] == "control.aa-margin" for blocker in blockers)
+    assert summary["aa_max_abs_t"] == 3.7920758863707618
+
+
 def _clean_report(run_id):
     profile = rehearsal.load_profile()
     report = rehearsal._new_report(
@@ -135,7 +152,19 @@ def _clean_report(run_id):
     }
     report["baselines"] = {baseline: {"status": "pass"} for baseline in rehearsal.BASELINE_IDS}
     report["assembly"] = {"status": "pass"}
-    report["pipeline_closure"] = {"status": "pass"}
+    report["pipeline_closure"] = {
+        "status": "pass",
+        "shared_identity_values": {
+            "machine_id_sha256": [json.dumps("1" * 64)],
+            "boot_id_sha256": [json.dumps("2" * 64)],
+            "cpu_model": [json.dumps("Unit Test CPU")],
+            "smt_active": [json.dumps("0")],
+            "intel_pstate_no_turbo": [json.dumps("1")],
+            "system": [json.dumps("Linux")],
+            "machine": [json.dumps("x86_64")],
+        },
+        "affinities": [json.dumps([2])],
+    }
     report["summary"] = {
         "smoke_axes_passed": 28,
         "native_axes_assessed": 28,
@@ -161,10 +190,10 @@ def test_qualification_requires_two_distinct_clean_runs_at_one_commit(tmp_path):
         expected_commit="a" * 40,
     )
     assert errors == []
-    assert result["schema_version"] == "2.0"
-    assert result["kind"] == "ctkat-v9-final-control-qualification"
+    assert result["schema_version"] == "3.0"
+    assert result["kind"] == "ctkat-v10-final-control-qualification"
     assert result["candidate_commit"] == "a" * 40
-    assert result["profile_id"] == "ctkat-paper-control-rehearsal-v2"
+    assert result["profile_id"] == "ctkat-paper-control-rehearsal-v3"
     assert result["final_launch_ready"] is True
     assert result["observed_clean_runs"] == 2
     assert len(result["rehearsals"]) == 2
@@ -178,3 +207,22 @@ def test_qualification_requires_two_distinct_clean_runs_at_one_commit(tmp_path):
     )
     assert result["final_launch_ready"] is False
     assert any("distinct run IDs" in error for error in errors)
+
+
+def test_qualification_rejects_rehearsals_from_different_physical_hosts(tmp_path):
+    paths = [tmp_path / "first.json", tmp_path / "second.json"]
+    reports = [_clean_report("1" * 32), _clean_report("2" * 32)]
+    reports[1]["pipeline_closure"]["shared_identity_values"]["machine_id_sha256"] = [
+        json.dumps("9" * 64)
+    ]
+    for path, report in zip(paths, reports, strict=True):
+        rehearsal._write_json_atomic(path, report, validate=True)
+
+    result, errors = rehearsal.qualify_reports(
+        paths,
+        output=None,
+        expected_commit="a" * 40,
+    )
+
+    assert result["final_launch_ready"] is False
+    assert any("one machine_id_sha256" in error for error in errors)

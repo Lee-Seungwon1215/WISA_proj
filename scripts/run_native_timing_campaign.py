@@ -60,7 +60,7 @@ from ctkat.timing_input_contract import (  # noqa: E402
     validate_valid_tuple_harness_report,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v4_campaign.yaml"
+DEFAULT_MANIFEST = ROOT / "docs" / "measurement" / "native_timing_v5_campaign.yaml"
 CORPUS_SUMMARY = ROOT / "docs" / "corpus" / "corpus_summary.csv"
 OFFICIAL_TIMING_THRESHOLD = OFFICIAL_DUDECT_THRESHOLD_LABEL
 RUN_KINDS = ("engineering", "pilot", "final")
@@ -378,6 +378,8 @@ def load_campaign(path: Path = DEFAULT_MANIFEST) -> CampaignSpec:
             "require_single_cpu_affinity",
             "reject_emulation",
             "reject_virtualization",
+            "require_smt_disabled",
+            "require_turbo_disabled",
             "recommended_governor",
         },
         "host",
@@ -554,6 +556,9 @@ def static_check(campaign: CampaignSpec) -> list[str]:
         errors.append("host.machines must contain x86_64 and AMD64")
     if campaign.host.get("recommended_governor") != "performance":
         errors.append("host.recommended_governor must be performance")
+    for flag in ("require_smt_disabled", "require_turbo_disabled"):
+        if flag in campaign.host and campaign.host.get(flag) is not True:
+            errors.append(f"host.{flag} must be true when declared")
     if protocol.backend != "official-dudect":
         errors.append("protocol.backend must be official-dudect")
     if protocol.compiler != "gcc":
@@ -992,11 +997,23 @@ def preflight(
         warnings.append(f"CPU {selected_cpu} governor is {governor!r}, recommended {recommended!r}")
     if not governor:
         warnings.append("CPU governor metadata unavailable")
+    if campaign.host.get("require_smt_disabled") is True:
+        smt_active = environment.get("smt_active")
+        if smt_active != "0":
+            errors.append(
+                "SMT must be disabled for this campaign "
+                f"(observed /sys/devices/system/cpu/smt/active={smt_active!r})"
+            )
+    if campaign.host.get("require_turbo_disabled") is True:
+        no_turbo = environment.get("intel_pstate_no_turbo")
+        if no_turbo != "1":
+            errors.append(
+                "Intel turbo must be disabled for this campaign "
+                f"(observed intel_pstate/no_turbo={no_turbo!r})"
+            )
 
     adapter_ok = False
-    if build_adapter and not any(
-        reason.startswith(("requires ", "cross-architecture", "gcc is")) for reason in errors
-    ):
+    if build_adapter and not errors:
         try:
             with tempfile.TemporaryDirectory(prefix="ctkat-native-preflight-") as temp_dir:
                 build_official_dudect_adapter(
@@ -1111,6 +1128,16 @@ def validate_preflight_report(
             errors.append("host preflight does not record one pinned logical CPU")
         if environment.get("rejected") is not False:
             errors.append("host timing environment was rejected")
+        if (
+            campaign.host.get("require_smt_disabled") is True
+            and environment.get("smt_active") != "0"
+        ):
+            errors.append("host preflight does not prove SMT was disabled")
+        if (
+            campaign.host.get("require_turbo_disabled") is True
+            and environment.get("intel_pstate_no_turbo") != "1"
+        ):
+            errors.append("host preflight does not prove Intel turbo was disabled")
 
     warnings = report.get("warnings")
     if not isinstance(warnings, list) or any(not isinstance(value, str) for value in warnings):
@@ -2892,21 +2919,25 @@ def _human_premeasurement_gate(expected_commit: str) -> dict[str, Any]:
     }
 
 
-SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v9.yaml"
+SINGLE_HOST_PLAN = ROOT / "docs/measurement/paper_native_campaign_v10.yaml"
 SINGLE_HOST_GATE_INPUTS = (
     ROOT / "docs/measurement/EXPERIMENT_PREREGISTRATION.md",
     ROOT / "docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md",
     ROOT / "docs/measurement/PAPER_CONTROL_REHEARSAL_V1.md",
     ROOT / "docs/measurement/PAPER_CONTROL_REHEARSAL_V2.md",
+    ROOT / "docs/measurement/PAPER_CONTROL_REHEARSAL_V3.md",
     ROOT / "docs/measurement/paper_control_rehearsal_v1.yaml",
     ROOT / "docs/measurement/paper_control_rehearsal_v1.schema.json",
     ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml",
     ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml",
     ROOT / "docs/measurement/paper_control_rehearsal_v2.schema.json",
-    ROOT / "docs/measurement/native_timing_v4_campaign.yaml",
-    ROOT / "docs/measurement/kyberslash_native_v4.yaml",
-    ROOT / "docs/measurement/falcon_native_v3.yaml",
-    ROOT / "docs/measurement/diverse_native_v3.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v2_calibration.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v3.yaml",
+    ROOT / "docs/measurement/paper_control_rehearsal_v3.schema.json",
+    ROOT / "docs/measurement/native_timing_v5_campaign.yaml",
+    ROOT / "docs/measurement/kyberslash_native_v5.yaml",
+    ROOT / "docs/measurement/falcon_native_v4.yaml",
+    ROOT / "docs/measurement/diverse_native_v4.yaml",
     ROOT / "docs/measurement/mlkem_asm_evidence_v1.yaml",
     ROOT / "docs/baselines/same_corpus_v1.yaml",
     ROOT / "docs/baselines/baseline-result-v1.schema.json",
@@ -2936,7 +2967,7 @@ def _final_control_qualification_material(
     *,
     expected_commit: str,
 ) -> dict[str, Any]:
-    """Validate and bind the two clean non-promotable V9 rehearsals."""
+    """Validate and bind the two clean non-promotable V10 rehearsals."""
 
     resolved = path.resolve()
     measurement_root = (ROOT / "measurement_runs").resolve()
@@ -2974,15 +3005,15 @@ def _final_control_qualification_material(
     if set(qualification) != required_keys:
         raise CampaignError("final control qualification field set drift")
     if (
-        qualification.get("schema_version") != "2.0"
-        or qualification.get("kind") != "ctkat-v9-final-control-qualification"
+        qualification.get("schema_version") != "3.0"
+        or qualification.get("kind") != "ctkat-v10-final-control-qualification"
         or qualification.get("candidate_commit") != expected_commit
-        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v3"
         or qualification.get("required_clean_runs") != 2
         or qualification.get("observed_clean_runs") != 2
         or qualification.get("final_launch_ready") is not True
         or qualification.get("next_gate")
-        != "execute every V9 final component from fresh roots at candidate_commit"
+        != "execute every V10 final component from fresh roots at candidate_commit"
         or qualification.get("errors") != []
     ):
         raise CampaignError("final control qualification identity/readiness drift")
@@ -2994,8 +3025,8 @@ def _final_control_qualification_material(
     if parsed_created.tzinfo is None:
         raise CampaignError("final control qualification timestamp lacks a timezone")
 
-    profile_path = ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml"
-    calibration_path = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+    profile_path = ROOT / "docs/measurement/paper_control_rehearsal_v3.yaml"
+    calibration_path = ROOT / "docs/measurement/paper_control_rehearsal_v2_calibration.yaml"
     if qualification.get("profile_sha256") != _sha256(profile_path):
         raise CampaignError("final control qualification profile hash drift")
     if qualification.get("calibration_sha256") != _sha256(calibration_path):
@@ -3017,6 +3048,16 @@ def _final_control_qualification_material(
         raise CampaignError("final control qualification run matrix is malformed")
     report_hashes: dict[str, str] = {}
     observed_run_ids: set[str] = set()
+    shared_host_fields = (
+        "machine_id_sha256",
+        "cpu_model",
+        "smt_active",
+        "intel_pstate_no_turbo",
+        "system",
+        "machine",
+    )
+    host_values: dict[str, set[str]] = {field: set() for field in shared_host_fields}
+    affinity_values: set[str] = set()
     expected_summary = {
         "smoke_axes_passed": 28,
         "native_axes_assessed": 28,
@@ -3067,14 +3108,14 @@ def _final_control_qualification_material(
             )
         run_id = record.get("run_id")
         if (
-            report.get("schema_version") != "2.0"
+            report.get("schema_version") != "3.0"
             or report.get("kind") != "ctkat-paper-control-rehearsal-report"
-            or report.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
-            or report.get("profile") != "docs/measurement/paper_control_rehearsal_v2.yaml"
+            or report.get("profile_id") != "ctkat-paper-control-rehearsal-v3"
+            or report.get("profile") != "docs/measurement/paper_control_rehearsal_v3.yaml"
             or report.get("source_paper_campaign")
-            != "docs/measurement/paper_native_campaign_v9.yaml"
+            != "docs/measurement/paper_native_campaign_v10.yaml"
             or report.get("calibration")
-            != "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+            != "docs/measurement/paper_control_rehearsal_v2_calibration.yaml"
             or report.get("target_measurements") != 1000
             or report.get("ctkat_commit") != expected_commit
             or report.get("run_id") != run_id
@@ -3090,10 +3131,53 @@ def _final_control_qualification_material(
             or report.get("finished_at") != record.get("finished_at")
         ):
             raise CampaignError(f"final control qualification rehearsal[{index}] content drift")
+        closure = report.get("pipeline_closure")
+        identities = closure.get("shared_identity_values") if isinstance(closure, dict) else None
+        for host_field in shared_host_fields:
+            values = identities.get(host_field) if isinstance(identities, dict) else None
+            if (
+                not isinstance(values, list)
+                or len(values) != 1
+                or not isinstance(values[0], str)
+                or values[0] == "null"
+            ):
+                raise CampaignError(
+                    f"final control qualification rehearsal[{index}] lacks one shared {host_field}"
+                )
+            host_values[host_field].add(values[0])
+        affinities = closure.get("affinities") if isinstance(closure, dict) else None
+        if (
+            not isinstance(affinities, list)
+            or len(affinities) != 1
+            or not isinstance(affinities[0], str)
+        ):
+            raise CampaignError(
+                f"final control qualification rehearsal[{index}] lacks one shared CPU affinity"
+            )
+        affinity_values.add(affinities[0])
         observed_run_ids.add(str(run_id))
         report_hashes[str(report_resolved)] = report_sha
     if observed_run_ids != set(run_ids):
         raise CampaignError("final control qualification run ids differ from rehearsal reports")
+    for host_field, values in host_values.items():
+        if len(values) != 1:
+            raise CampaignError(
+                f"final control qualification rehearsals do not share one {host_field}"
+            )
+    expected_host_values = {
+        "smt_active": json.dumps("0"),
+        "intel_pstate_no_turbo": json.dumps("1"),
+    }
+    for host_field, expected in expected_host_values.items():
+        if host_values[host_field] != {expected}:
+            raise CampaignError(
+                "final control qualification rehearsals do not prove frozen "
+                f"{host_field}={expected}"
+            )
+    if len(affinity_values) != 1:
+        raise CampaignError(
+            "final control qualification rehearsals do not share one logical CPU affinity"
+        )
     return {
         "schema_version": "1.0",
         "kind": "two-clean-control-rehearsal-qualification",
@@ -3176,7 +3260,7 @@ def _single_host_premeasurement_gate_material(
     promotion = plan.get("promotion")
     if (
         plan.get("schema_version") != 3
-        or plan.get("campaign_id") != "ctkat-paper-native-v9-single-host"
+        or plan.get("campaign_id") != "ctkat-paper-native-v10-single-host"
         or plan.get("status") != "premeasurement-frozen"
         or not isinstance(policy, dict)
         or policy.get("minimum_physical_hosts") != 1
@@ -3185,6 +3269,8 @@ def _single_host_premeasurement_gate_material(
         or policy.get("premeasurement_gate") != "automated-frozen-input-integrity"
         or policy.get("required_clean_control_rehearsals") != 2
         or policy.get("control_qualification_required") is not True
+        or policy.get("require_smt_disabled") is not True
+        or policy.get("require_turbo_disabled") is not True
         or not isinstance(promotion, dict)
         or promotion.get("require_automated_premeasurement_gate") is not True
         or promotion.get("require_two_clean_control_rehearsals") is not True
@@ -3205,10 +3291,10 @@ def _single_host_premeasurement_gate_material(
         if isinstance(item, dict) and isinstance(item.get("manifest"), str)
     }
     required_components = {
-        "docs/measurement/native_timing_v4_campaign.yaml",
-        "docs/measurement/kyberslash_native_v4.yaml",
-        "docs/measurement/falcon_native_v3.yaml",
-        "docs/measurement/diverse_native_v3.yaml",
+        "docs/measurement/native_timing_v5_campaign.yaml",
+        "docs/measurement/kyberslash_native_v5.yaml",
+        "docs/measurement/falcon_native_v4.yaml",
+        "docs/measurement/diverse_native_v4.yaml",
     }
     if component_manifests != required_components:
         raise CampaignError("single-host paper component set drift")
@@ -3888,7 +3974,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--control-qualification",
         type=Path,
-        help="two-clean-rehearsal qualification required by the V9 single-host final gate",
+        help="two-clean-rehearsal qualification required by the V10 single-host final gate",
     )
     args = parser.parse_args(argv)
     if args.target_measurements_override is not None and not args.execute:
@@ -3945,7 +4031,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.final_gate == "single-host":
                 if args.control_qualification is None:
                     parser.error(
-                        "V9 --run-kind final --final-gate single-host requires "
+                        "V10 --run-kind final --final-gate single-host requires "
                         "--control-qualification"
                     )
                 automated_gate = _single_host_premeasurement_gate(

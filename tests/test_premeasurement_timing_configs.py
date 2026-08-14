@@ -162,7 +162,7 @@ def test_paper_v8_keeps_v7_measurement_scope_and_freezes_rng_contract_correction
 
 def test_paper_v9_changes_only_predeclared_control_effects_and_requires_qualification():
     paper_v8 = yaml.safe_load((ROOT / "docs/measurement/paper_native_campaign_v8.yaml").read_text())
-    paper_v9 = load_manifest()
+    paper_v9 = load_manifest(ROOT / "docs/measurement/paper_native_campaign_v9.yaml")
     assert paper_v9["campaign_id"] == "ctkat-paper-native-v9-single-host"
     assert paper_v9["execution_policy"]["required_clean_control_rehearsals"] == 2
     assert paper_v9["execution_policy"]["control_qualification_required"] is True
@@ -217,6 +217,56 @@ def test_paper_v9_changes_only_predeclared_control_effects_and_requires_qualific
                 )
         assert "--control-qualification QUALIFICATION" in new_component["command"]
     assert observed_effects == expected_effects
+
+
+def test_paper_v10_applies_uniform_fast_sentinel_and_host_hygiene():
+    paper_v9 = load_manifest(ROOT / "docs/measurement/paper_native_campaign_v9.yaml")
+    paper_v10 = load_manifest()
+    assert paper_v10["campaign_id"] == "ctkat-paper-native-v10-single-host"
+    assert paper_v10["execution_policy"]["require_smt_disabled"] is True
+    assert paper_v10["execution_policy"]["require_turbo_disabled"] is True
+
+    expected_fast = {
+        ("committed-corpus-refresh", "pqclean_mlkem768"),
+        ("kyberslash-contrast", "pqclean_mlkem768"),
+        ("kyberslash-contrast", "pqclean_mlkem768_kyberslash1"),
+        ("kyberslash-contrast", "pqclean_mlkem768_kyberslash2"),
+        ("kyberslash-contrast", "pqclean_mlkem768_kyberslash"),
+        ("kyberslash-contrast", "kyberslash_operand_ks1_vulnerable"),
+        ("kyberslash-contrast", "kyberslash_operand_ks1_patched"),
+        ("kyberslash-contrast", "kyberslash_operand_ks2_poly_vulnerable"),
+        ("kyberslash-contrast", "kyberslash_operand_ks2_poly_patched"),
+        ("kyberslash-contrast", "kyberslash_operand_ks2_polyvec_vulnerable"),
+        ("kyberslash-contrast", "kyberslash_operand_ks2_polyvec_patched"),
+        ("diverse-lineages", "mlkem_native_768_portable"),
+        ("diverse-lineages", "mlkem_native_768_x86_64"),
+    }
+    old_components = {item["id"]: item for item in paper_v9["components"]}
+    new_components = {item["id"]: item for item in paper_v10["components"]}
+    observed_fast = set()
+    for component_id, new_component in new_components.items():
+        old_campaign = load_campaign(ROOT / old_components[component_id]["manifest"])
+        new_campaign = load_campaign(ROOT / new_component["manifest"])
+        assert new_campaign.host == {
+            **old_campaign.host,
+            "require_smt_disabled": True,
+            "require_turbo_disabled": True,
+        }
+        assert old_campaign.protocol == new_campaign.protocol
+        assert [target.id for target in old_campaign.targets] == [
+            target.id for target in new_campaign.targets
+        ]
+        for old_target, new_target in zip(
+            old_campaign.targets,
+            new_campaign.targets,
+            strict=True,
+        ):
+            if old_target.positive_control_effects[:2] == (64, 512):
+                assert new_target.positive_control_effects == (64, 512, 16384)
+                observed_fast.add((component_id, new_target.id))
+            else:
+                assert new_target.positive_control_effects == old_target.positive_control_effects
+    assert observed_fast == expected_fast
 
 
 def test_timing_adapters_use_seeded_interpose_not_fixed_test_vectors():

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shlex
@@ -24,55 +25,111 @@ from scripts.run_native_timing_campaign import (  # noqa: E402
     load_campaign as load_native_manifest,
 )
 
-DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v9.yaml"
+DEFAULT_MANIFEST = ROOT / "docs/measurement/paper_native_campaign_v10.yaml"
 DIVERSE_MANIFEST = ROOT / "docs/corpus/diverse_upstreams_v1.yaml"
 EXPECTED_COMPONENTS = (
-    ("committed-corpus-refresh", "docs/measurement/native_timing_v4_campaign.yaml"),
-    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v4.yaml"),
-    ("falcon-contrast", "docs/measurement/falcon_native_v3.yaml"),
-    ("diverse-lineages", "docs/measurement/diverse_native_v3.yaml"),
+    ("committed-corpus-refresh", "docs/measurement/native_timing_v5_campaign.yaml"),
+    ("kyberslash-contrast", "docs/measurement/kyberslash_native_v5.yaml"),
+    ("falcon-contrast", "docs/measurement/falcon_native_v4.yaml"),
+    ("diverse-lineages", "docs/measurement/diverse_native_v4.yaml"),
 )
 PREVIOUS_COMPONENTS = {
-    "committed-corpus-refresh": "docs/measurement/native_timing_v3_campaign.yaml",
-    "kyberslash-contrast": "docs/measurement/kyberslash_native_v3.yaml",
-    "falcon-contrast": "docs/measurement/falcon_native_v2.yaml",
-    "diverse-lineages": "docs/measurement/diverse_native_v2.yaml",
+    "committed-corpus-refresh": "docs/measurement/native_timing_v4_campaign.yaml",
+    "kyberslash-contrast": "docs/measurement/kyberslash_native_v4.yaml",
+    "falcon-contrast": "docs/measurement/falcon_native_v3.yaml",
+    "diverse-lineages": "docs/measurement/diverse_native_v3.yaml",
 }
 EXPECTED_OUTPUT_DIRS = {
-    "committed-corpus-refresh": "committed-corpus-v4",
-    "kyberslash-contrast": "kyberslash-v4",
-    "falcon-contrast": "falcon-v3",
-    "diverse-lineages": "diverse-v3",
+    "committed-corpus-refresh": "committed-corpus-v5",
+    "kyberslash-contrast": "kyberslash-v5",
+    "falcon-contrast": "falcon-v4",
+    "diverse-lineages": "diverse-v4",
 }
-CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
-V9_EFFECT_OVERRIDES = {
+CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v2_calibration.yaml"
+V2_PROFILE_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v2.yaml"
+V1_CALIBRATION_PATH = ROOT / "docs/measurement/paper_control_rehearsal_v1_calibration.yaml"
+V9_PLAN_PATH = ROOT / "docs/measurement/paper_native_campaign_v9.yaml"
+V10_EFFECT_OVERRIDES = {
+    ("committed-corpus-refresh", "pqclean_mlkem768"): (64, 512, 16384),
+    ("kyberslash-contrast", "pqclean_mlkem768"): (64, 512, 16384),
+    ("kyberslash-contrast", "pqclean_mlkem768_kyberslash1"): (64, 512, 16384),
+    ("kyberslash-contrast", "pqclean_mlkem768_kyberslash2"): (64, 512, 16384),
+    ("kyberslash-contrast", "pqclean_mlkem768_kyberslash"): (64, 512, 16384),
+    ("kyberslash-contrast", "kyberslash_operand_ks1_vulnerable"): (64, 512, 16384),
+    ("kyberslash-contrast", "kyberslash_operand_ks1_patched"): (64, 512, 16384),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_poly_vulnerable"): (64, 512, 16384),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_poly_patched"): (64, 512, 16384),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_polyvec_vulnerable"): (
+        64,
+        512,
+        16384,
+    ),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_polyvec_patched"): (
+        64,
+        512,
+        16384,
+    ),
+    ("diverse-lineages", "mlkem_native_768_portable"): (64, 512, 16384),
+    ("diverse-lineages", "mlkem_native_768_x86_64"): (64, 512, 16384),
+}
+V10_OLD_EFFECTS = {
     ("committed-corpus-refresh", "pqclean_mlkem768"): (64, 512, 8192),
-    ("committed-corpus-refresh", "pqclean_falcon512_reference"): (512, 8192, 131072),
     ("kyberslash-contrast", "pqclean_mlkem768"): (64, 512, 8192),
+    ("kyberslash-contrast", "pqclean_mlkem768_kyberslash1"): (64, 512, 4096),
     ("kyberslash-contrast", "pqclean_mlkem768_kyberslash2"): (64, 512, 8192),
     ("kyberslash-contrast", "pqclean_mlkem768_kyberslash"): (64, 512, 8192),
-    ("falcon-contrast", "pqclean_falcon512_reference"): (512, 8192, 131072),
-    ("falcon-contrast", "pqclean_falcon1024_reference"): (512, 8192, 131072),
-    ("falcon-contrast", "c_fndsa512_fpr_emu"): (512, 8192, 131072),
+    ("kyberslash-contrast", "kyberslash_operand_ks1_vulnerable"): (64, 512, 4096),
+    ("kyberslash-contrast", "kyberslash_operand_ks1_patched"): (64, 512, 4096),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_poly_vulnerable"): (64, 512, 4096),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_poly_patched"): (64, 512, 4096),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_polyvec_vulnerable"): (
+        64,
+        512,
+        4096,
+    ),
+    ("kyberslash-contrast", "kyberslash_operand_ks2_polyvec_patched"): (
+        64,
+        512,
+        4096,
+    ),
     ("diverse-lineages", "mlkem_native_768_portable"): (64, 512, 8192),
+    ("diverse-lineages", "mlkem_native_768_x86_64"): (64, 512, 4096),
 }
-EXPECTED_CALIBRATION_SOURCE = {
-    "profile_id": "ctkat-paper-control-rehearsal-v1",
-    "profile_sha256": "9bce1506848b6f23b9624b8b344c193771da6df76cb756e72fbc4d77970d0ea5",
-    "candidate_commit": "0ed9ea5359c00d7e1aac115001dbd9dc270d6d9a",
-    "run_id": "18fc18bf328b417b9a4faf1ef2607406",
-    "started_at": "2026-08-12T11:28:26.861473Z",
-    "finished_at": "2026-08-12T12:53:51.985878Z",
-    "report_sha256": "03385b3cb17d8103c2dacd4b9c185b02f026c1849738663bc4b885f7114fae65",
-    "markdown_sha256": "8338741a791bf2f8aef349e53ac0db65c212028db8175acf535a3b4956fd5243",
-    "completed_without_interruption": True,
-    "smoke_axes_passed": 28,
-    "native_axes_assessed": 28,
-    "baselines_passed": 3,
-    "assembly_passed": True,
-    "pipeline_closure_passed": True,
-    "blocker_count": 8,
-}
+V2_EXPECTED_BLOCKERS = [
+    {
+        "code": "control.aa-margin",
+        "component": "committed-corpus-refresh",
+        "target": "pqclean_mldsa44",
+        "harness": "sign",
+        "process_index": 0,
+        "observed_abs_t_score": 3.7920758863707618,
+        "v1_observed_abs_t_score": 3.779344508124509,
+        "failed_rehearsal_rule": "abs_t_score < 3.5",
+        "unchanged_final_rule": "abs_t_score < 4.5",
+    },
+    {
+        "code": "control.positive-margin",
+        "component": "kyberslash-contrast",
+        "target": "pqclean_mlkem768_kyberslash1",
+        "harness": "kem_dec_chosen_ct",
+        "process_index": 1,
+        "effect_ticks": 4096,
+        "observed_t_score": -10.205320807745164,
+        "rehearsal_rule": "t_score <= -15.0",
+        "unchanged_final_rule": "abs_t_score >= 10.0 with expected direction",
+    },
+    {
+        "code": "control.positive-margin",
+        "component": "kyberslash-contrast",
+        "target": "pqclean_mlkem768_kyberslash1",
+        "harness": "kem_dec_chosen_ct",
+        "process_index": 2,
+        "effect_ticks": 4096,
+        "observed_t_score": -13.650128151544706,
+        "rehearsal_rule": "t_score <= -15.0",
+        "unchanged_final_rule": "abs_t_score >= 10.0 with expected direction",
+    },
+]
 BASELINE_COMMAND_ORDER = ("official_dudect", "timecop", "microwalk_pin")
 EXECUTION_PLACEHOLDERS = ("host-ID", "CPU-ID", "TIMECOP-PREFIX", "QUALIFICATION")
 HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -85,14 +142,29 @@ EXPECTED_CLAIM_LIMITS = (
     ),
     "no independent review, declassification, or inter-rater agreement claim is made",
     (
-        "v6 final, pre-v7 engineering, failed v7 and v8 final attempts, and both v1 "
-        "control-rehearsal artifacts are diagnostic or calibration evidence and are not "
-        "reusable in v9"
+        "v6 final, pre-v7 engineering, failed v7 and v8 final attempts, v1 artifacts, "
+        "and failed v2-a are diagnostic or calibration evidence and are not reusable "
+        "in v10"
     ),
-    "the v9 largest-effect changes use one uniform control-only rule and no reduced target statistic",
     (
-        "every v9 final command requires a machine-validated qualification from two "
-        "blocker-free v2 control rehearsals at the exact final commit"
+        "v10 uses the unchanged final 4.5 null limit because null t has no monotone "
+        "headroom interpretation"
+    ),
+    (
+        "v10 assigns the same 16384-tick largest sentinel to every target whose first "
+        "two effects are 64 and 512 without using reduced target statistics"
+    ),
+    (
+        "every v10 final command requires a machine-validated qualification from two "
+        "blocker-free v3 control rehearsals at the exact final commit"
+    ),
+    (
+        "the two v3 clean runs are operational reruns and are not claimed as independent "
+        "inferential replicates"
+    ),
+    (
+        "every v10 native component and the same-corpus official dudect run require "
+        "SMT and turbo disabled before sampling"
     ),
     (
         "v1 Falcon and diverse plus v2 committed-corpus engineering traces are "
@@ -100,7 +172,7 @@ EXPECTED_CLAIM_LIMITS = (
     ),
     (
         "KyberSlash v2 operand traces have invalid-placebo and class-address setup "
-        "confounds and are not reusable in v3 or v4"
+        "confounds and are not reusable in v3, v4, or v5"
     ),
     (
         "every final timing axis requires a pre-measurement source, binary, compiler, "
@@ -141,6 +213,14 @@ def _repo_path(value: Any, label: str) -> Path:
     except ValueError as exc:
         raise ValueError(f"{label} escapes repository: {value}") from exc
     return path
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, Any]:
@@ -220,8 +300,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         errors.append("paper campaign top-level field set drift")
     if manifest.get("schema_version") != 3:
         errors.append("schema_version must be 3")
-    if manifest.get("campaign_id") != "ctkat-paper-native-v9-single-host":
-        errors.append("campaign_id must be ctkat-paper-native-v9-single-host")
+    if manifest.get("campaign_id") != "ctkat-paper-native-v10-single-host":
+        errors.append("campaign_id must be ctkat-paper-native-v10-single-host")
     if manifest.get("status") != "premeasurement-frozen":
         errors.append("status must remain premeasurement-frozen")
     if manifest.get("claim_limits") != list(EXPECTED_CLAIM_LIMITS):
@@ -251,6 +331,8 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         "cross_host_reproducibility_claimed": False,
         "required_clean_control_rehearsals": 2,
         "control_qualification_required": True,
+        "require_smt_disabled": True,
+        "require_turbo_disabled": True,
     }
     for key, expected in required_policy.items():
         if policy.get(key) != expected:
@@ -294,12 +376,18 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
         if (
             native.coverage_mode != previous.coverage_mode
             or native.corpus_axis_replacements != previous.corpus_axis_replacements
-            or native.host != previous.host
             or native.protocol != previous.protocol
             or [target.id for target in native.targets]
             != [target.id for target in previous.targets]
         ):
-            errors.append(f"{item.get('id')}: V9 changed scope or non-effect protocol fields")
+            errors.append(f"{item.get('id')}: V10 changed scope or non-effect protocol fields")
+        expected_host = {
+            **previous.host,
+            "require_smt_disabled": True,
+            "require_turbo_disabled": True,
+        }
+        if native.host != expected_host:
+            errors.append(f"{item.get('id')}: V10 host hygiene contract drift")
         for old_target, new_target in zip(previous.targets, native.targets, strict=True):
             if (
                 old_target.family != new_target.family
@@ -311,14 +399,14 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
                 or old_target.timeout != new_target.timeout
             ):
                 errors.append(
-                    f"{item.get('id')}/{new_target.id}: V9 changed a non-effect target field"
+                    f"{item.get('id')}/{new_target.id}: V10 changed a non-effect target field"
                 )
-            expected_effects = V9_EFFECT_OVERRIDES.get(
+            expected_effects = V10_EFFECT_OVERRIDES.get(
                 (str(component_id), new_target.id),
                 old_target.positive_control_effects,
             )
             if new_target.positive_control_effects != expected_effects:
-                errors.append(f"{item.get('id')}/{new_target.id}: V9 effect calibration drift")
+                errors.append(f"{item.get('id')}/{new_target.id}: V10 effect calibration drift")
         expected_command = (
             "uv run --frozen python scripts/run_native_timing_campaign.py --manifest "
             f"{item['manifest']} --output-root measurement_runs/host-ID/"
@@ -386,54 +474,145 @@ def validate(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
     try:
         calibration = yaml.safe_load(CALIBRATION_PATH.read_text(encoding="utf-8"))
         selected = calibration.get("selected_targets") if isinstance(calibration, dict) else None
+        source = calibration.get("source_rehearsal") if isinstance(calibration, dict) else None
         if (
             not isinstance(calibration, dict)
             or calibration.get("schema_version") != "1.0"
             or calibration.get("kind") != "ctkat-paper-control-calibration-record"
-            or calibration.get("calibration_id") != "ctkat-paper-control-rehearsal-v1-calibration"
+            or calibration.get("calibration_id") != "ctkat-paper-control-rehearsal-v2-calibration"
             or calibration.get("recorded_at") != "2026-08-14"
-            or calibration.get("source_rehearsal") != EXPECTED_CALIBRATION_SOURCE
         ):
-            errors.append("V9 control calibration identity/source provenance drift")
-        observed_overrides = {
-            (str(item.get("component")), str(item.get("target"))): tuple(
-                item.get("new_effects") or []
+            errors.append("V10 control calibration identity drift")
+        if (
+            not isinstance(source, dict)
+            or source.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+            or source.get("profile_sha256")
+            != "15119eb11e49867738a2abbd807a0582057f83e536527c18b761788441075b44"
+            or source.get("profile_sha256") != _sha256(V2_PROFILE_PATH)
+            or source.get("source_calibration_sha256")
+            != "f7536da19b9d3c1f9e383de1ed288f8f5014fa948b075415af0a2713b7dc4326"
+            or source.get("source_calibration_sha256") != _sha256(V1_CALIBRATION_PATH)
+            or source.get("source_campaign_sha256")
+            != "8293e5ac2d7122f9a2bf9886a70e915a5286a266e38a76ea44dabe54872b3335"
+            or source.get("source_campaign_sha256") != _sha256(V9_PLAN_PATH)
+            or source.get("candidate_commit") != "39a1cdeb94e768300e4d5bab5adbe0f14130d47c"
+            or source.get("run_id") != "34a8f9e74c094c0b97e5fc94e74a8777"
+            or source.get("started_at") != "2026-08-14T02:02:21.044489Z"
+            or source.get("finished_at") != "2026-08-14T03:26:04.602398Z"
+            or source.get("completed_without_interruption") is not True
+            or source.get("all_execution_steps_returncode_zero") is not True
+            or source.get("smoke_axes_passed") != 28
+            or source.get("native_axes_assessed") != 28
+            or source.get("native_components_passing_qualification") != 2
+            or source.get("baselines_passed") != 3
+            or source.get("assembly_passed") is not True
+            or source.get("pipeline_closure_passed") is not True
+            or source.get("blocker_count") != 3
+            or any(
+                not isinstance(source.get(field), str)
+                or re.fullmatch(r"[0-9a-f]{64}", source.get(field, "")) is None
+                for field in ("report_sha256", "markdown_sha256")
+            )
+        ):
+            errors.append("V10 control calibration source provenance drift")
+        observed_selection = {
+            (str(item.get("component")), str(item.get("target"))): (
+                tuple(item.get("old_effects") or []),
+                tuple(item.get("new_effects") or []),
             )
             for item in selected or []
             if isinstance(item, dict)
         }
+        expected_selection = {
+            key: (V10_OLD_EFFECTS[key], V10_EFFECT_OVERRIDES[key]) for key in V10_EFFECT_OVERRIDES
+        }
         if (
             not isinstance(selected, list)
-            or len(selected) != 9
-            or len(observed_overrides) != 9
-            or observed_overrides != V9_EFFECT_OVERRIDES
+            or len(selected) != 13
+            or any(
+                not isinstance(item, dict)
+                or set(item) != {"component", "target", "old_effects", "new_effects"}
+                for item in selected
+            )
+            or len(observed_selection) != 13
+            or observed_selection != expected_selection
         ):
-            errors.append("V9 control calibration selected-target matrix drift")
+            errors.append("V10 control calibration selected-target matrix drift")
         boundary = calibration.get("evidence_boundary") if isinstance(calibration, dict) else None
         if (
             not isinstance(boundary, dict)
+            or boundary.get("target_measurements_per_process") != 1000
+            or boundary.get("target_statistics_interpretable") is not False
             or boundary.get("target_statistics_used_for_calibration") is not False
+            or boundary.get("target_artifacts_promotable") is not False
             or boundary.get("source_rehearsal_reusable_in_final") is not False
+            or boundary.get("calibration_inputs")
+            != [
+                "A/A and setup-placebo control validity decisions",
+                "largest-effect positive-control t-score and direction by process repeat",
+                "recorded host SMT turbo governor and affinity state",
+            ]
+            or boundary.get("forbidden_inputs")
+            != [
+                "target t-score",
+                "target raw status",
+                "target repeat direction or consistency",
+                "same-corpus baseline result as a paper finding",
+            ]
         ):
-            errors.append("V9 control calibration evidence boundary drift")
+            errors.append("V10 control calibration evidence boundary drift")
+        if calibration.get("observed_blockers") != V2_EXPECTED_BLOCKERS:
+            errors.append("V10 control calibration blocker matrix drift")
+        null_rule = (
+            calibration.get("null_control_correction") if isinstance(calibration, dict) else None
+        )
+        if (
+            not isinstance(null_rule, dict)
+            or null_rule.get("old_rehearsal_ceiling_exclusive") != 3.5
+            or null_rule.get("new_rehearsal_ceiling_exclusive") != 4.5
+            or null_rule.get("final_ceiling_exclusive") != 4.5
+            or null_rule.get("final_aa_max_failures") != 0
+            or null_rule.get("null_tests_per_rehearsal") != 168
+            or null_rule.get("counts_unchanged") is not True
+            or null_rule.get("seeds_unchanged") is not True
+            or null_rule.get("repeats_unchanged") is not True
+            or null_rule.get("final_threshold_unchanged") is not True
+        ):
+            errors.append("V10 null-control correction drift")
         rule = (
-            calibration.get("uniform_remediation_rule") if isinstance(calibration, dict) else None
+            calibration.get("fast_positive_control_rule") if isinstance(calibration, dict) else None
         )
         if (
             not isinstance(rule, dict)
             or rule.get("selection_unit") != "manifest-target"
             or rule.get("select_when")
-            != "any axis in the target has largest-effect worst-repeat t_score > -20"
+            != "the first two positive control effects are exactly 64 and 512 ticks"
             or rule.get("adjustment")
-            != "retain the first two effect points and double only the largest effect"
-            or rule.get("thresholds_unchanged") is not True
+            != "retain 64 and 512 and set the largest effect to 16384 ticks"
+            or rule.get("applies_without_failed_target_selection") is not True
+            or rule.get("largest_positive_rehearsal_t_ceiling_inclusive") != -15.0
+            or rule.get("final_positive_abs_t_threshold") != 10.0
             or rule.get("counts_unchanged") is not True
             or rule.get("seeds_unchanged") is not True
             or rule.get("repeats_unchanged") is not True
+            or rule.get("final_threshold_unchanged") is not True
         ):
-            errors.append("V9 control calibration remediation rule drift")
+            errors.append("V10 positive-control remediation rule drift")
+        hygiene = (
+            calibration.get("host_hygiene_correction") if isinstance(calibration, dict) else None
+        )
+        if (
+            not isinstance(hygiene, dict)
+            or hygiene.get("source_smt_active") != "1"
+            or hygiene.get("source_intel_pstate_no_turbo") != "0"
+            or hygiene.get("require_smt_disabled") is not True
+            or hygiene.get("require_turbo_disabled") is not True
+            or hygiene.get("require_performance_governor") is not True
+            or hygiene.get("require_single_cpu_affinity") is not True
+        ):
+            errors.append("V10 host hygiene correction drift")
     except (OSError, TypeError, yaml.YAMLError) as exc:
-        errors.append(f"V9 control calibration is unreadable: {exc}")
+        errors.append(f"V10 control calibration is unreadable: {exc}")
 
     analysis = manifest.get("analysis")
     if not isinstance(analysis, dict):

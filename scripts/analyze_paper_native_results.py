@@ -207,23 +207,23 @@ class HostAxis:
 COMPONENT_PLANS = {
     "committed-corpus-refresh": ComponentPlan(
         "committed-corpus-refresh",
-        ROOT / "docs/measurement/native_timing_v4_campaign.yaml",
-        "corpus-native-timing-v4",
+        ROOT / "docs/measurement/native_timing_v5_campaign.yaml",
+        "corpus-native-timing-v5",
     ),
     "kyberslash-contrast": ComponentPlan(
         "kyberslash-contrast",
-        ROOT / "docs/measurement/kyberslash_native_v4.yaml",
-        "kyberslash-native-v4",
+        ROOT / "docs/measurement/kyberslash_native_v5.yaml",
+        "kyberslash-native-v5",
     ),
     "falcon-contrast": ComponentPlan(
         "falcon-contrast",
-        ROOT / "docs/measurement/falcon_native_v3.yaml",
-        "falcon-native-v3",
+        ROOT / "docs/measurement/falcon_native_v4.yaml",
+        "falcon-native-v4",
     ),
     "diverse-lineages": ComponentPlan(
         "diverse-lineages",
-        ROOT / "docs/measurement/diverse_native_v3.yaml",
-        "diverse-native-v3",
+        ROOT / "docs/measurement/diverse_native_v4.yaml",
+        "diverse-native-v4",
     ),
 }
 
@@ -673,11 +673,11 @@ def _single_host_qualification_fingerprint(
     )
     if (
         gate.get("ctkat_commit") != expected_commit
-        or gate.get("plan_id") != "ctkat-paper-native-v9-single-host"
+        or gate.get("plan_id") != "ctkat-paper-native-v10-single-host"
         or not isinstance(qualification, dict)
         or qualification.get("kind") != "two-clean-control-rehearsal-qualification"
         or qualification.get("ready") is not True
-        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v2"
+        or qualification.get("profile_id") != "ctkat-paper-control-rehearsal-v3"
         or any(
             not isinstance(qualification.get(field), str)
             or not re.fullmatch(r"[0-9a-f]{64}", qualification.get(field, ""))
@@ -697,7 +697,7 @@ def _single_host_qualification_fingerprint(
             for value in report_hashes.values()
         )
     ):
-        raise AnalysisError(f"{label}: V9 control qualification is missing or malformed")
+        raise AnalysisError(f"{label}: V10 control qualification is missing or malformed")
     return json.dumps(qualification, sort_keys=True, separators=(",", ":"))
 
 
@@ -1095,7 +1095,7 @@ def load_host_axes(
         required_gate_kind == "automated-frozen-input-integrity-gate"
         and len(qualification_fingerprints) != 1
     ):
-        raise AnalysisError(f"{host_id}: components do not share one V9 control qualification")
+        raise AnalysisError(f"{host_id}: components do not share one V10 control qualification")
     return observations
 
 
@@ -2261,7 +2261,7 @@ def _prepare_blinded_bundle(
             baselines[tool_id] = str(baseline)
         if single_host and len(qualification_fingerprints) != 1:
             raise AnalysisError(
-                f"{host_id}: final results do not share one V9 control qualification"
+                f"{host_id}: final results do not share one V10 control qualification"
             )
         if single_host:
             qualification = json.loads(next(iter(qualification_fingerprints)))

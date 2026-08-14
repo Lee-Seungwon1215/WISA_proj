@@ -66,6 +66,8 @@
           "items": {"type": "integer", "minimum": 0}
         },
         "governor": {"type": ["string", "null"]},
+        "smt_active": {"type": ["string", "null"]},
+        "intel_pstate_no_turbo": {"type": ["string", "null"]},
         "virtualization": {
           "type": "object",
           "additionalProperties": false,

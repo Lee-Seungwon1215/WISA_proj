@@ -456,6 +456,8 @@ def _host(*, timing_evidence: bool) -> dict[str, Any]:
         "timing_cpu_flags": environment.get("timing_cpu_flags"),
         "cpu_affinity": environment.get("cpu_affinity"),
         "governor": environment.get("governor"),
+        "smt_active": environment.get("smt_active"),
+        "intel_pstate_no_turbo": environment.get("intel_pstate_no_turbo"),
         "virtualization": _detect_virtualization(),
     }
 
@@ -1266,6 +1268,14 @@ def validate_result(
             check(
                 host.get("governor") == "performance",
                 "official dudect promotion requires the performance governor",
+            )
+            check(
+                host.get("smt_active") == "0",
+                "official dudect promotion requires SMT disabled",
+            )
+            check(
+                host.get("intel_pstate_no_turbo") == "1",
+                "official dudect promotion requires Intel turbo disabled",
             )
             virtualization = host.get("virtualization")
             check(
@@ -2413,6 +2423,10 @@ def run_dudect(
         host_reasons.append("process is not pinned to exactly one logical CPU")
     if governor != "performance":
         host_reasons.append("selected CPU governor is not performance")
+    if timing_environment.get("smt_active") != "0":
+        host_reasons.append("SMT is not disabled")
+    if timing_environment.get("intel_pstate_no_turbo") != "1":
+        host_reasons.append("Intel turbo is not disabled")
     if not isinstance(cpu_model, str) or not cpu_model.strip():
         host_reasons.append("exact CPU model metadata is unavailable")
     if not isinstance(timing_environment.get("machine_id_sha256"), str):
@@ -2961,7 +2975,7 @@ def main() -> int:
     parser.add_argument(
         "--control-qualification",
         type=Path,
-        help="two-clean-rehearsal qualification required by the V9 single-host final gate",
+        help="two-clean-rehearsal qualification required by the V10 single-host final gate",
     )
     parser.add_argument("--microwalk-timeout", type=int, default=1800)
     args = parser.parse_args()
@@ -3008,7 +3022,7 @@ def main() -> int:
             if args.final_gate == "single-host":
                 if args.control_qualification is None:
                     parser.error(
-                        "V9 --run-kind final --final-gate single-host requires "
+                        "V10 --run-kind final --final-gate single-host requires "
                         "--control-qualification"
                     )
                 automated_gate = _single_host_premeasurement_gate(
@@ -3065,6 +3079,10 @@ def main() -> int:
                 readiness_errors.append("exactly one pinned logical CPU is required")
             if environment.get("governor") != "performance":
                 readiness_errors.append("performance governor is required")
+            if environment.get("smt_active") != "0":
+                readiness_errors.append("SMT must be disabled")
+            if environment.get("intel_pstate_no_turbo") != "1":
+                readiness_errors.append("Intel turbo must be disabled")
             if not environment.get("cpu_model"):
                 readiness_errors.append("exact CPU model metadata is required")
             if not environment.get("machine_id_sha256"):
