@@ -1,0 +1,106 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v7
+status: complete
+title: Automated audit of V10 Falcon and signature contracts
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-v10-v7-audit
+audited_at: "2026-08-14T07:39:21Z"
+audited_commit: 9d0d15aaaeb6ddf2c84a8f30b15bd7b0383ddb38
+scope:
+  - V9-to-V10 Falcon and ML-DSA effect-ladder preservation
+  - full-signature output, correctness, RNG, build-seal, and binary-contract preservation
+  - host-hygiene and two-clean-rehearsal launch gates for every signature axis
+findings:
+  - finding_id: shv10-001
+    severity: critical
+    title: The KyberSlash V2-A failure must not retune unrelated signature ladders
+    description: V10 could become post-outcome tuning if Falcon or ML-DSA effects changed without satisfying the uniform fast-target rule.
+    evidence_ids: [shv10-falcon, shv10-diverse, shv10-checker, shv10-tests]
+  - finding_id: shv10-002
+    severity: high
+    title: Host stabilization must be enforced rather than merely documented
+    description: Active SMT or turbo could add avoidable variance to Falcon and ML-DSA controls and target traces.
+    evidence_ids: [shv10-profile, shv10-native-runner, shv10-native-tests]
+  - finding_id: shv10-003
+    severity: high
+    title: Host and control changes must not weaken full-signature semantics
+    description: Verification, return-code, output-length, randomness, build seals, linked binaries, and the FIPS 206 claim limit must remain intact.
+    evidence_ids: [shv10-falcon, shv10-diverse, shv10-falcon-checker, shv10-analysis, shv10-claims]
+  - finding_id: shv10-004
+    severity: high
+    title: Fresh V10 signature evidence remains pending
+    description: Static closure cannot demonstrate two blocker-free rehearsals or any promotion-ready signature axis.
+    evidence_ids: [shv10-profile, shv10-falcon, shv10-diverse]
+dispositions:
+  - finding_id: shv10-001
+    status: addressed
+    rationale: Falcon V4 is Falcon V3 plus only the two host requirements; both diverse ML-DSA ladders are unchanged, and the checker rejects every undeclared effect or target-field delta.
+    blocker: ""
+    evidence_ids: [shv10-falcon, shv10-diverse, shv10-checker, shv10-tests]
+  - finding_id: shv10-002
+    status: addressed
+    rationale: Every signature component rejects sampling unless SMT and turbo are disabled, and rehearsal closure plus qualification bind the same host state across all seven steps and both operational runs.
+    blocker: ""
+    evidence_ids: [shv10-profile, shv10-native-runner, shv10-rehearsal, shv10-native-tests]
+  - finding_id: shv10-003
+    status: addressed
+    rationale: Falcon V4 and diverse V4 preserve their predecessor target contracts; comparator and named-analysis gates retain full-signature and non-conformance boundaries.
+    blocker: ""
+    evidence_ids: [shv10-falcon, shv10-diverse, shv10-falcon-checker, shv10-analysis, shv10-claims]
+  - finding_id: shv10-004
+    status: accepted-with-blocker
+    rationale: The audited source declares signature timing pending and supplies no final values.
+    blocker: Complete two blocker-free V3 rehearsals, then execute Falcon V4 and diverse V4 from fresh final roots and report every predeclared signature axis.
+    evidence_ids: [shv10-profile, shv10-falcon, shv10-diverse]
+evidence:
+  - evidence_id: shv10-profile
+    path: docs/measurement/paper_control_rehearsal_v3.yaml
+    sha256: cd57434cbdf45688b8aaabe9e5b2c7c594b221222f8a02e65f179a7dcd3b7bce
+    purpose: All-axis operational qualification and frozen host contract.
+  - evidence_id: shv10-falcon
+    path: docs/measurement/falcon_native_v4.yaml
+    sha256: 27cb175b52a483637570b432a6e6b026f05c0997b8072835314a7b3a6027848a
+    purpose: Six predecessor-identical Falcon/FN-DSA ladders plus host hard gates.
+  - evidence_id: shv10-diverse
+    path: docs/measurement/diverse_native_v4.yaml
+    sha256: cf99bd7c43475bebc0ec943fc2f93837dfb217964c1ec1160a16d20daa271da3
+    purpose: Portable/native ML-DSA preservation and uniformly calibrated ML-KEM controls.
+  - evidence_id: shv10-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 060d33c4ad2eca27d01fc112748ce7fe3f33e0a906b8f07552cf6390579b4774
+    purpose: Exact predecessor comparison and allowed-effect matrix.
+  - evidence_id: shv10-falcon-checker
+    path: scripts/check_falcon_comparators.py
+    sha256: 73dce88c4bc2bca95a62d2f7bbb00ce7f8a76e832f1a19fc2bf4e176c42745a7
+    purpose: Falcon source, KAT, taint, profile, and six binary-contract closure.
+  - evidence_id: shv10-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 66d657aa27293edd2e2e96348ede5e950985721ef09e5988e9341fc8f5bd6c61
+    purpose: SMT/turbo preflight and final qualification enforcement.
+  - evidence_id: shv10-rehearsal
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: 5a97a123c9bc253307c3806f48d14e53963f8b00ce31e51617fc219791ed854f
+    purpose: Cross-component host closure and same-host qualification.
+  - evidence_id: shv10-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 9094a25c5fffa28d83c8a6fb5a5698a24507d417f11f1d597e8933b7f4442d9a
+    purpose: Full-signature output-length diagnostics and host-scoped wording.
+  - evidence_id: shv10-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: c6b0803287f990edd9dae319f9c2ef8da2d4080667ab32f329792d067b7d09dd
+    purpose: Pending Falcon claim and FIPS-conformance prohibition.
+  - evidence_id: shv10-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: ace96f4d4b774ce26a4ecfbb860ccb569768c07c7166a274ff9930c6a1881976
+    purpose: V9-to-V10 effect and host-only regression coverage.
+  - evidence_id: shv10-native-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: c74d935366d2c43f71cc335cb49045cf93708e5be511c825fa1e25b7d017cfc1
+    purpose: Host-control and qualification-source adversarial tests.
+limitations:
+  - Full-signature timing includes variable-length encoding and does not isolate the sampler core.
+  - c-fn-dsa is a prospective comparator, not a FIPS 206 conformance claim.
+  - No blocker-free V3 or V10 signature result is supplied here.
+human_gate_effect: none

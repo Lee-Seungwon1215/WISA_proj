@@ -1,0 +1,96 @@
+schema_version: "1.0"
+audit_id: automated-artifact-integrity-v10-qualification-v7
+status: complete
+title: Automated adversarial audit of V10 qualification and artifact preservation
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-integrity-v10-v7-audit
+audited_at: "2026-08-14T07:39:21Z"
+audited_commit: 9d0d15aaaeb6ddf2c84a8f30b15bd7b0383ddb38
+scope:
+  - exact-commit two-rehearsal qualification before every V10 final component or baseline
+  - same-host and frozen-SMT/turbo lineage across rehearsal steps and operational repeats
+  - preservation of qualification and both source reports inside the single-host hash tree
+findings:
+  - finding_id: aiv10-001
+    severity: critical
+    title: A self-declared ready qualification could bypass its source reports
+    description: Final launch must reopen both reports and recompute their hashes, identities, commit, profile, calibration, complete summary, and blocker-free state.
+    evidence_ids: [aiv10-native-runner, aiv10-rehearsal, aiv10-profile, aiv10-schema]
+  - finding_id: aiv10-002
+    severity: high
+    title: Two clean reports could come from different hosts or unstable host controls
+    description: Distinct run IDs alone do not prove one physical host, one CPU model and affinity, or SMT-off and turbo-off state.
+    evidence_ids: [aiv10-rehearsal, aiv10-native-runner, aiv10-rehearsal-tests, aiv10-native-tests]
+  - finding_id: aiv10-003
+    severity: high
+    title: V10 qualification and final physical evidence remain pending
+    description: Source closure and a failed diagnostic V2-A report do not establish that two V3 rehearsals or any V10 final result pass.
+    evidence_ids: [aiv10-plan, aiv10-contract, aiv10-calibration]
+dispositions:
+  - finding_id: aiv10-001
+    status: addressed
+    rationale: The final gate independently opens two regular report files under the same host tree, verifies exact hashes and distinct run IDs, and recomputes all frozen identity and readiness fields before sampling.
+    blocker: ""
+    evidence_ids: [aiv10-native-runner, aiv10-rehearsal, aiv10-profile, aiv10-schema, aiv10-native-tests]
+  - finding_id: aiv10-002
+    status: addressed
+    rationale: Rehearsal closure compares all four components and three baselines; qualification and final launch independently require one machine-id hash, CPU model, architecture, affinity, SMT-off readback, and turbo-off readback across both runs.
+    blocker: ""
+    evidence_ids: [aiv10-rehearsal, aiv10-native-runner, aiv10-baseline, aiv10-rehearsal-tests, aiv10-native-tests]
+  - finding_id: aiv10-003
+    status: accepted-with-blocker
+    rationale: The audited commit is deliberately premeasurement and labels every rehearsal artifact non-promotable.
+    blocker: Execute two blocker-free V3 rehearsals on the same physical host at this exact commit, retain their qualification, then execute all fresh V10 final commands and assembly evidence before building the host bundle.
+    evidence_ids: [aiv10-plan, aiv10-contract, aiv10-calibration, aiv10-bundle]
+evidence:
+  - evidence_id: aiv10-plan
+    path: docs/measurement/paper_native_campaign_v10.yaml
+    sha256: a1b1ee10f503f521f643c9ff668c66ccb215a9e96e8b7c513399ad2bcbcb04b2
+    purpose: Exact V10 scope, host policy, qualification, promotion, and non-reuse boundary.
+  - evidence_id: aiv10-calibration
+    path: docs/measurement/paper_control_rehearsal_v2_calibration.yaml
+    sha256: 3326a40dcea1a4ecd13e2a50c46e26d75d3ea6b2308588337d9c0204781bc508
+    purpose: Exact V2-A provenance, three blockers, host state, and forbidden target inputs.
+  - evidence_id: aiv10-profile
+    path: docs/measurement/paper_control_rehearsal_v3.yaml
+    sha256: cd57434cbdf45688b8aaabe9e5b2c7c594b221222f8a02e65f179a7dcd3b7bce
+    purpose: Non-promotable all-axis V3 execution and same-host operational-repeat contract.
+  - evidence_id: aiv10-schema
+    path: docs/measurement/paper_control_rehearsal_v3.schema.json
+    sha256: 2a7f13fced985ab0b65ec8f1fd3be829ab81afec78e4772542e4dc004be0578e
+    purpose: Fail-closed aggregate report structure.
+  - evidence_id: aiv10-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V3.md
+    sha256: c2ea9c2ab8b635b7fe97d400e70f10aaac85da39699bd9871c230dc924c59ff7
+    purpose: Operator setup, fresh-root routing, claim limits, and qualification procedure.
+  - evidence_id: aiv10-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 66d657aa27293edd2e2e96348ede5e950985721ef09e5988e9341fc8f5bd6c61
+    purpose: Host hard gates and independent final qualification revalidation.
+  - evidence_id: aiv10-rehearsal
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: 5a97a123c9bc253307c3806f48d14e53963f8b00ce31e51617fc219791ed854f
+    purpose: V3 production, seven-step host closure, assessment, and qualification.
+  - evidence_id: aiv10-baseline
+    path: scripts/run_same_corpus_baselines.py
+    sha256: 6c028150cbbf967a72a4ca483fb2401b63c76a586fb0b4112b964adca73e733b
+    purpose: Same-corpus official-dudect SMT/turbo preflight and report binding.
+  - evidence_id: aiv10-bundle
+    path: scripts/build_single_host_measurement_bundle.py
+    sha256: 9856635f235cd22ea99aeb58de03e0b57948d7bb04144dd522efd81d341a750d
+    purpose: Qualification and source-report preservation in the host hash tree.
+  - evidence_id: aiv10-rehearsal-tests
+    path: tests/test_paper_control_rehearsal.py
+    sha256: 2e463cea330ca0451b05e1085672e60bec69f82b81354f4d5a596ca3898cc572
+    purpose: Distinct-run and same-physical-host qualification regression coverage.
+  - evidence_id: aiv10-native-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: c74d935366d2c43f71cc335cb49045cf93708e5be511c825fa1e25b7d017cfc1
+    purpose: Host-control rejection and independent source-report reopening tests.
+limitations:
+  - This automated audit grants no independent human-review credit.
+  - Hash closure is not TPM-backed remote hardware attestation.
+  - No blocker-free V3 qualification or V10 final result is supplied here.
+human_gate_effect: none

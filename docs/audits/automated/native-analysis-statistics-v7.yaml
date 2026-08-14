@@ -1,0 +1,124 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v7
+status: complete
+title: Automated statistical audit of V10 control calibration and qualification
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: native-statistics-v10-v7-audit
+audited_at: "2026-08-14T07:39:21Z"
+audited_commit: 9d0d15aaaeb6ddf2c84a8f30b15bd7b0383ddb38
+scope:
+  - interpretation of the complete failed V2-A control rehearsal
+  - null-control validity, positive-control headroom, and post-diagnostic calibration
+  - operational-repeat, multiplicity, single-host, and final-inference boundaries
+findings:
+  - finding_id: nsv10-001
+    severity: critical
+    title: Null t statistics are not monotone headroom measures
+    description: Requiring absolute t below 3.5 on each of 168 null checks, in addition to the unchanged final 4.5 rule, creates avoidable family-wise rejection and encourages rerun-until-pass selection.
+    evidence_ids: [nsv10-calibration, nsv10-profile, nsv10-prereg]
+  - finding_id: nsv10-002
+    severity: critical
+    title: The V2-A target traces must not select the V10 method
+    description: Reduced 1000-sample target t scores, statuses, directions, consistency, and baseline outcomes are non-inferential and cannot choose parameters or conclusions.
+    evidence_ids: [nsv10-calibration, nsv10-checker, nsv10-tests]
+  - finding_id: nsv10-003
+    severity: high
+    title: Two same-seed rehearsals are not independent inferential replicates
+    description: Different wall-clock times and run IDs demonstrate operational rerun behavior but do not provide independent null draws, host replication, or additional paper sample size.
+    evidence_ids: [nsv10-profile, nsv10-contract, nsv10-prereg, nsv10-claims]
+  - finding_id: nsv10-004
+    severity: high
+    title: Qualification reports could be duplicated or cross-host
+    description: Final launch must independently bind exact hashes, distinct IDs, one commit, one physical identity, one CPU affinity, and frozen SMT/turbo state.
+    evidence_ids: [nsv10-rehearsal, nsv10-native-runner, nsv10-rehearsal-tests, nsv10-native-tests]
+  - finding_id: nsv10-005
+    severity: high
+    title: V10 inferential results remain unavailable
+    description: Rehearsals cannot supply final target findings, Holm-adjusted contrasts, output-length diagnostics, or cross-host evidence.
+    evidence_ids: [nsv10-plan, nsv10-analysis, nsv10-claims]
+dispositions:
+  - finding_id: nsv10-001
+    status: addressed
+    rationale: V3 removes only the unsupported 3.5 rehearsal margin and requires zero failures under the unchanged final absolute-t-below-4.5 rule; counts, seeds, repeats, and final thresholds remain unchanged.
+    blocker: ""
+    evidence_ids: [nsv10-calibration, nsv10-profile, nsv10-prereg, nsv10-checker]
+  - finding_id: nsv10-002
+    status: addressed
+    rationale: The calibration enumerates forbidden target inputs, freezes the exact V2-A blocker matrix, and the checker accepts only the manifest-shape rule and exact 13 old/new control ladders.
+    blocker: ""
+    evidence_ids: [nsv10-calibration, nsv10-checker, nsv10-tests]
+  - finding_id: nsv10-003
+    status: addressed
+    rationale: Profile, preregistration, claim matrix, and operator contract call the two runs operational reruns and explicitly prohibit treating them as independent inferential replicates.
+    blocker: ""
+    evidence_ids: [nsv10-profile, nsv10-contract, nsv10-prereg, nsv10-claims]
+  - finding_id: nsv10-004
+    status: addressed
+    rationale: Qualification and final launch separately reopen both complete reports and reject duplicate IDs, source mutation, commit drift, cross-host identity, CPU-affinity drift, or non-frozen SMT/turbo readbacks.
+    blocker: ""
+    evidence_ids: [nsv10-rehearsal, nsv10-native-runner, nsv10-rehearsal-tests, nsv10-native-tests]
+  - finding_id: nsv10-005
+    status: accepted-with-blocker
+    rationale: The campaign and claim matrix remain pending-physical-measurement and prohibit constant-time or cross-host claims.
+    blocker: After two clean V3 rehearsals, collect every fresh V10 final axis and baseline, build the preserved single-host bundle, and run deterministic named analysis before populating a paper result table.
+    evidence_ids: [nsv10-plan, nsv10-analysis, nsv10-claims]
+evidence:
+  - evidence_id: nsv10-calibration
+    path: docs/measurement/paper_control_rehearsal_v2_calibration.yaml
+    sha256: 3326a40dcea1a4ecd13e2a50c46e26d75d3ea6b2308588337d9c0204781bc508
+    purpose: Exact V2-A provenance, blocker observations, null correction, and forbidden inputs.
+  - evidence_id: nsv10-profile
+    path: docs/measurement/paper_control_rehearsal_v3.yaml
+    sha256: cd57434cbdf45688b8aaabe9e5b2c7c594b221222f8a02e65f179a7dcd3b7bce
+    purpose: Final-equivalent control counts and operational-repeat qualification contract.
+  - evidence_id: nsv10-contract
+    path: docs/measurement/PAPER_CONTROL_REHEARSAL_V3.md
+    sha256: c2ea9c2ab8b635b7fe97d400e70f10aaac85da39699bd9871c230dc924c59ff7
+    purpose: Human-readable null, positive-control, host, and non-inference boundaries.
+  - evidence_id: nsv10-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 9bd8a6cfa3cca7a8fce5b0c99d7a43dce59ece4a45d11dbe18b32f3c8026f11d
+    purpose: V2-A disclosure and post-diagnostic V10 amendment.
+  - evidence_id: nsv10-plan
+    path: docs/measurement/paper_native_campaign_v10.yaml
+    sha256: a1b1ee10f503f521f643c9ff668c66ccb215a9e96e8b7c513399ad2bcbcb04b2
+    purpose: Single-host final scope, qualification, multiplicity, and claim limits.
+  - evidence_id: nsv10-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: c6b0803287f990edd9dae319f9c2ef8da2d4080667ab32f329792d067b7d09dd
+    purpose: Pending state and prohibited statistical overclaims.
+  - evidence_id: nsv10-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 060d33c4ad2eca27d01fc112748ce7fe3f33e0a906b8f07552cf6390579b4774
+    purpose: Exact V2-A provenance, blocker matrix, and predecessor-only delta validation.
+  - evidence_id: nsv10-rehearsal
+    path: scripts/run_paper_control_rehearsal.py
+    sha256: 5a97a123c9bc253307c3806f48d14e53963f8b00ce31e51617fc219791ed854f
+    purpose: Control assessment, seven-step closure, and two-report qualification.
+  - evidence_id: nsv10-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 66d657aa27293edd2e2e96348ede5e950985721ef09e5988e9341fc8f5bd6c61
+    purpose: Independent final qualification and host-state revalidation.
+  - evidence_id: nsv10-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 9094a25c5fffa28d83c8a6fb5a5698a24507d417f11f1d597e8933b7f4442d9a
+    purpose: Host-scoped primary decisions, Holm families, and qualification preservation.
+  - evidence_id: nsv10-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: ace96f4d4b774ce26a4ecfbb860ccb569768c07c7166a274ff9930c6a1881976
+    purpose: Exact eligible-target and unchanged-protocol regression coverage.
+  - evidence_id: nsv10-rehearsal-tests
+    path: tests/test_paper_control_rehearsal.py
+    sha256: 2e463cea330ca0451b05e1085672e60bec69f82b81354f4d5a596ca3898cc572
+    purpose: Distinct-run and same-host qualification rejection tests.
+  - evidence_id: nsv10-native-tests
+    path: tests/test_native_timing_campaign.py
+    sha256: c74d935366d2c43f71cc335cb49045cf93708e5be511c825fa1e25b7d017cfc1
+    purpose: Final gate source reopening and host-state rejection tests.
+limitations:
+  - V10 is an internally frozen post-diagnostic amendment, not external preregistration.
+  - One physical host cannot estimate cross-host heterogeneity or reproducibility.
+  - No V10 final target statistic exists at the audited commit.
+human_gate_effect: none

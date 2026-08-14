@@ -1,0 +1,102 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v7
+status: complete
+title: Automated audit of V10 ML-KEM and KyberSlash calibration
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-v10-v7-audit
+audited_at: "2026-08-14T07:39:21Z"
+audited_commit: 9d0d15aaaeb6ddf2c84a8f30b15bd7b0383ddb38
+scope:
+  - exact V2-A control-only inputs and V9-to-V10 effect deltas
+  - uniform fast-control rule across committed-corpus, KyberSlash, and diverse targets
+  - preservation of valid-tuple, chosen-ciphertext, and operand attribution boundaries
+findings:
+  - finding_id: mkv10-001
+    severity: critical
+    title: Tuning only the visibly failed KyberSlash1 row would be selective
+    description: The failed V2-A report contains reduced target traces and a weak KyberSlash1 sentinel, so target statistics or a failed-row exception must not choose V10 parameters.
+    evidence_ids: [mkv10-calibration, mkv10-prereg, mkv10-checker]
+  - finding_id: mkv10-002
+    severity: high
+    title: A uniform rule must cover every matching fast target and no others
+    description: The V10 rule is defensible only if all and exactly the targets beginning with 64 and 512 ticks receive the same 16384-tick endpoint while every other field remains predecessor-identical.
+    evidence_ids: [mkv10-core, mkv10-kyberslash, mkv10-diverse, mkv10-checker, mkv10-tests]
+  - finding_id: mkv10-003
+    severity: high
+    title: Stronger sentinels do not strengthen leakage attribution
+    description: Valid-tuple remains mixed public-and-secret input, chosen ciphertext remains public input, and operand-bin remains a hardware-latency canary rather than key recovery.
+    evidence_ids: [mkv10-plan, mkv10-claims, mkv10-kyberslash]
+  - finding_id: mkv10-004
+    severity: high
+    title: Fresh V10 ML-KEM and KyberSlash evidence is pending
+    description: Static equality and calibration provenance cannot establish physical-host target or control outcomes.
+    evidence_ids: [mkv10-profile, mkv10-core, mkv10-kyberslash]
+dispositions:
+  - finding_id: mkv10-001
+    status: addressed
+    rationale: The calibration forbids every reduced-target and baseline finding, freezes the exact three V2-A blockers, and selects by predecessor manifest shape rather than failed target identity.
+    blocker: ""
+    evidence_ids: [mkv10-calibration, mkv10-prereg, mkv10-checker]
+  - finding_id: mkv10-002
+    status: addressed
+    rationale: The checker binds exact old and new ladders for all 13 targets and rejects scope, host, protocol, source, compiler, binary, count, seed, repeat, threshold, or undeclared effect drift.
+    blocker: ""
+    evidence_ids: [mkv10-core, mkv10-kyberslash, mkv10-diverse, mkv10-checker, mkv10-tests]
+  - finding_id: mkv10-003
+    status: addressed
+    rationale: The V10 plan and claim matrix retain all mixed-input, public-input, site-canary, and no-key-recovery wording limits.
+    blocker: ""
+    evidence_ids: [mkv10-plan, mkv10-claims, mkv10-kyberslash]
+  - finding_id: mkv10-004
+    status: accepted-with-blocker
+    rationale: The audited commit makes no final ML-KEM or KyberSlash timing claim.
+    blocker: Complete two blocker-free V3 rehearsals, then execute core V5 and KyberSlash V5 from fresh V10 final roots with the shared qualification.
+    evidence_ids: [mkv10-profile, mkv10-core, mkv10-kyberslash]
+evidence:
+  - evidence_id: mkv10-calibration
+    path: docs/measurement/paper_control_rehearsal_v2_calibration.yaml
+    sha256: 3326a40dcea1a4ecd13e2a50c46e26d75d3ea6b2308588337d9c0204781bc508
+    purpose: V2-A provenance, forbidden inputs, exact blockers, and 13 old/new ladders.
+  - evidence_id: mkv10-profile
+    path: docs/measurement/paper_control_rehearsal_v3.yaml
+    sha256: cd57434cbdf45688b8aaabe9e5b2c7c594b221222f8a02e65f179a7dcd3b7bce
+    purpose: Final-equivalent controls and non-interpretable reduced target execution.
+  - evidence_id: mkv10-prereg
+    path: docs/measurement/EXPERIMENT_PREREGISTRATION.md
+    sha256: 9bd8a6cfa3cca7a8fce5b0c99d7a43dce59ece4a45d11dbe18b32f3c8026f11d
+    purpose: V2-A disclosure, statistical rationale, post-diagnostic amendment, and non-reuse rule.
+  - evidence_id: mkv10-core
+    path: docs/measurement/native_timing_v5_campaign.yaml
+    sha256: 85d3263a9ec56aa69056cebf46896b68bd4c102c432bbddb738c675961d16b0a
+    purpose: Committed-corpus V5 target matrix and uniform eligible effect change.
+  - evidence_id: mkv10-kyberslash
+    path: docs/measurement/kyberslash_native_v5.yaml
+    sha256: 093f9a1c1c056cd070672e155e4b41cef4f5158797aca1d1a35c85725fe65825
+    purpose: Ten chosen-ciphertext and operand targets under the same fast-control rule.
+  - evidence_id: mkv10-diverse
+    path: docs/measurement/diverse_native_v4.yaml
+    sha256: cf99bd7c43475bebc0ec943fc2f93837dfb217964c1ec1160a16d20daa271da3
+    purpose: Two ML-KEM native profiles and two unchanged ML-DSA profiles.
+  - evidence_id: mkv10-plan
+    path: docs/measurement/paper_native_campaign_v10.yaml
+    sha256: a1b1ee10f503f521f643c9ff668c66ccb215a9e96e8b7c513399ad2bcbcb04b2
+    purpose: V10 execution, qualification, non-reuse, and attribution limits.
+  - evidence_id: mkv10-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: c6b0803287f990edd9dae319f9c2ef8da2d4080667ab32f329792d067b7d09dd
+    purpose: Pending-measurement state and prohibited ML-KEM/KyberSlash wording.
+  - evidence_id: mkv10-checker
+    path: scripts/check_paper_campaign.py
+    sha256: 060d33c4ad2eca27d01fc112748ce7fe3f33e0a906b8f07552cf6390579b4774
+    purpose: Exact source provenance, blocker matrix, predecessor, and 13-target allowlist gate.
+  - evidence_id: mkv10-tests
+    path: tests/test_premeasurement_timing_configs.py
+    sha256: ace96f4d4b774ce26a4ecfbb860ccb569768c07c7166a274ff9930c6a1881976
+    purpose: Uniform eligible-target and host-only predecessor regression proof.
+limitations:
+  - A positive sentinel validates protocol sensitivity, not target constant-time behavior.
+  - This is an internally frozen post-diagnostic amendment, not external preregistration.
+  - No blocker-free V3 or V10 physical result is supplied here.
+human_gate_effect: none
