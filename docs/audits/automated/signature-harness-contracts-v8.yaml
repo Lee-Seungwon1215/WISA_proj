@@ -1,0 +1,80 @@
+schema_version: "1.0"
+audit_id: automated-signature-harness-contracts-v8
+status: complete
+title: Automated audit of V10 signature contracts and MDPI result presentation
+perspective: signature-harness-contracts
+automated_agent: true
+human_reviewer: false
+automated_agent_id: signature-v10-v8-audit
+audited_at: "2026-08-17T07:57:24Z"
+audited_commit: d6e3a75f21c8664b377d1daf810366c7507a9d8b
+scope:
+  - frozen Falcon and ML-DSA signature timing profiles
+  - full-signature correctness, output-length, and conformance claim boundaries
+  - complete six-axis Falcon and four-axis diverse result presentation
+findings:
+  - finding_id: shv10p-001
+    severity: critical
+    title: Publication changes could erase signature harness semantics
+    description: Full-signature verification, variable-length output, comparator status, and the no-FIPS-conformance boundary must survive from frozen profiles to the manuscript.
+    evidence_ids: [shv10p-falcon, shv10p-diverse, shv10p-claims, shv10p-manuscript]
+  - finding_id: shv10p-002
+    severity: high
+    title: Result aggregation could omit signature axes or overstate the measured path
+    description: The renderer must require all six Falcon axes and four diverse axes and preserve per-axis classifications and output-length diagnostics.
+    evidence_ids: [shv10p-renderer, shv10p-manuscript, shv10p-checker, shv10p-tests]
+  - finding_id: shv10p-003
+    severity: high
+    title: Fresh physical signature results remain pending
+    description: Harness closure and a result-ready manuscript do not establish Falcon or ML-DSA timing outcomes.
+    evidence_ids: [shv10p-falcon, shv10p-diverse, shv10p-manuscript]
+dispositions:
+  - finding_id: shv10p-001
+    status: addressed
+    rationale: Frozen profiles, the claim matrix, and manuscript retain correctness, output-length, comparator, and non-conformance boundaries without retuning signature effects.
+    blocker: ""
+    evidence_ids: [shv10p-falcon, shv10p-diverse, shv10p-claims, shv10p-manuscript]
+  - finding_id: shv10p-002
+    status: addressed
+    rationale: Exact per-component counts and complete per-axis identities are mandatory in the renderer, while the manuscript checker and mutation tests reject omission and drift.
+    blocker: ""
+    evidence_ids: [shv10p-renderer, shv10p-manuscript, shv10p-checker, shv10p-tests]
+  - finding_id: shv10p-003
+    status: accepted-with-blocker
+    rationale: The manuscript contains an explicit native-results-pending marker and no signature timing values.
+    blocker: Complete all frozen Falcon and diverse V10 executions, retain verification and output-length evidence, and ingest every predeclared signature axis.
+    evidence_ids: [shv10p-falcon, shv10p-diverse, shv10p-renderer]
+evidence:
+  - evidence_id: shv10p-falcon
+    path: docs/measurement/falcon_native_v4.yaml
+    sha256: 27cb175b52a483637570b432a6e6b026f05c0997b8072835314a7b3a6027848a
+    purpose: Six frozen Falcon and FN-DSA full-signature contracts.
+  - evidence_id: shv10p-diverse
+    path: docs/measurement/diverse_native_v4.yaml
+    sha256: cf99bd7c43475bebc0ec943fc2f93837dfb217964c1ec1160a16d20daa271da3
+    purpose: Portable and native ML-DSA plus diverse ML-KEM contracts.
+  - evidence_id: shv10p-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: c6b0803287f990edd9dae319f9c2ef8da2d4080667ab32f329792d067b7d09dd
+    purpose: Pending Falcon claim and conformance prohibition.
+  - evidence_id: shv10p-renderer
+    path: scripts/render_mdpi_results.py
+    sha256: c16694903a4efd0822eaff9a561b343a2b17ffb19dd6cc7b88c4f700a30c401d
+    purpose: Exact component and per-axis completeness gate.
+  - evidence_id: shv10p-manuscript
+    path: paper/mdpi_working/main.tex
+    sha256: 797a01e2e664a98c003bf3bcad9724aeda342f734348c62dd3d4d56f3e27d668
+    purpose: Full-signature, output-length, and non-conformance wording.
+  - evidence_id: shv10p-checker
+    path: scripts/check_mdpi_paper.py
+    sha256: f39daa1ddbae01b10b4b159061df54cd8a45d3281003b5ec43b25d329762d2f7
+    purpose: Fail-closed MDPI manuscript and generated-state validation.
+  - evidence_id: shv10p-tests
+    path: tests/test_mdpi_results.py
+    sha256: 5444063e6d4bc5b4bc8a5b73368ec5d442148cebeceba8f671c6395522434f05
+    purpose: Complete component inventory and malformed-result rejection coverage.
+limitations:
+  - Full-signature timing does not isolate the sampler core.
+  - The prospective c-fn-dsa comparator is not a FIPS 206 conformance claim.
+  - No physical V10 signature result is supplied or inferred by this audit.
+human_gate_effect: none

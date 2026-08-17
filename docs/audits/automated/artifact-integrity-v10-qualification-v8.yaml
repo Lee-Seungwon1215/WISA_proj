@@ -1,0 +1,80 @@
+schema_version: "1.0"
+audit_id: automated-artifact-integrity-v10-qualification-v8
+status: complete
+title: Automated adversarial audit of frozen V10 evidence and MDPI result ingestion
+perspective: artifact-blind-integrity
+automated_agent: true
+human_reviewer: false
+automated_agent_id: artifact-integrity-v10-v8-audit
+audited_at: "2026-08-17T07:57:24Z"
+audited_commit: d6e3a75f21c8664b377d1daf810366c7507a9d8b
+scope:
+  - preservation of the frozen V10 single-host measurement identity and host bundle
+  - rejection of incomplete, fabricated, stale, or mismatched native analysis at publication time
+  - separation of explicit pre-result placeholders from complete MDPI result tables
+findings:
+  - finding_id: aiv10p-001
+    severity: critical
+    title: Physical evidence could lose its frozen source and host provenance
+    description: Final evidence must remain bound to the frozen measurement commit, one physical host, its qualification reports, and the preserved aggregate hash tree.
+    evidence_ids: [aiv10p-plan, aiv10p-native-runner, aiv10p-bundle]
+  - finding_id: aiv10p-002
+    severity: critical
+    title: A publication renderer could silently accept synthetic or mismatched results
+    description: The paper path must reject wrong schemas, axis drift, commit drift, incomplete identities, inconsistent counts, stale generated files, and absolute local paths.
+    evidence_ids: [aiv10p-renderer, aiv10p-checker, aiv10p-tests, aiv10p-runbook]
+  - finding_id: aiv10p-003
+    severity: high
+    title: Promotion-ready physical V10 evidence is still pending
+    description: A structurally valid manuscript and a tested renderer do not establish any native timing result.
+    evidence_ids: [aiv10p-plan, aiv10p-renderer, aiv10p-runbook]
+dispositions:
+  - finding_id: aiv10p-001
+    status: addressed
+    rationale: The runner and bundle builder independently bind the frozen commit, qualification sources, host identity, component reports, and aggregate hashes before promotion.
+    blocker: ""
+    evidence_ids: [aiv10p-plan, aiv10p-native-runner, aiv10p-bundle]
+  - finding_id: aiv10p-002
+    status: addressed
+    rationale: The deterministic renderer and fail-closed checker require the exact named-analysis contract and are covered by acceptance, mutation, stale-output, and path-leakage tests.
+    blocker: ""
+    evidence_ids: [aiv10p-renderer, aiv10p-checker, aiv10p-tests, aiv10p-runbook]
+  - finding_id: aiv10p-003
+    status: accepted-with-blocker
+    rationale: The committed manuscript displays an explicit pending marker and contains no promoted native values.
+    blocker: Finish the frozen V10 campaign at measurement commit 1aeadb97e0409227aa203ba825a6bfc1d90445bc, validate the single-host bundle, and ingest only its deterministic named analysis.
+    evidence_ids: [aiv10p-plan, aiv10p-renderer, aiv10p-runbook]
+evidence:
+  - evidence_id: aiv10p-plan
+    path: docs/measurement/paper_native_campaign_v10.yaml
+    sha256: a1b1ee10f503f521f643c9ff668c66ccb215a9e96e8b7c513399ad2bcbcb04b2
+    purpose: Frozen V10 scope, host policy, qualification, and promotion boundary.
+  - evidence_id: aiv10p-native-runner
+    path: scripts/run_native_timing_campaign.py
+    sha256: 66d657aa27293edd2e2e96348ede5e950985721ef09e5988e9341fc8f5bd6c61
+    purpose: Final host, qualification, source, and execution hard gates.
+  - evidence_id: aiv10p-bundle
+    path: scripts/build_single_host_measurement_bundle.py
+    sha256: 9856635f235cd22ea99aeb58de03e0b57948d7bb04144dd522efd81d341a750d
+    purpose: Preserved single-host component and qualification hash tree.
+  - evidence_id: aiv10p-renderer
+    path: scripts/render_mdpi_results.py
+    sha256: c16694903a4efd0822eaff9a561b343a2b17ffb19dd6cc7b88c4f700a30c401d
+    purpose: Deterministic and fail-closed native-analysis to MDPI transformation.
+  - evidence_id: aiv10p-checker
+    path: scripts/check_mdpi_paper.py
+    sha256: f39daa1ddbae01b10b4b159061df54cd8a45d3281003b5ec43b25d329762d2f7
+    purpose: Upstream-template, manuscript, generated-state, citation, and log gate.
+  - evidence_id: aiv10p-tests
+    path: tests/test_mdpi_results.py
+    sha256: 5444063e6d4bc5b4bc8a5b73368ec5d442148cebeceba8f671c6395522434f05
+    purpose: Complete-analysis acceptance and malformed-evidence rejection coverage.
+  - evidence_id: aiv10p-runbook
+    path: docs/measurement/V10_RESULT_INGESTION_RUNBOOK.md
+    sha256: 239bfc1e32e138d0fa71688ddd1edd8af7acf96dd1a79bbc4c7979269ced24d1
+    purpose: Operator-side evidence recovery, validation, and paper-ingestion sequence.
+limitations:
+  - This automated audit grants no independent human-review credit.
+  - Hash closure is not TPM-backed remote hardware attestation.
+  - No physical V10 result is supplied or inferred by this audit.
+human_gate_effect: none
