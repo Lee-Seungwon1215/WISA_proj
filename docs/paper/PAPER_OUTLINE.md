@@ -1,102 +1,140 @@
-# Paper outline (premeasurement freeze)
+# CT-KAT MDPI paper outline (V10 pre-result)
+
+Status: implemented in `paper/mdpi_working/main.tex`
+Measurement commit: `1aeadb97e0409227aa203ba825a6bfc1d90445bc`
 
 ## Working contribution
 
-CT-KAT is presented as an evidence pipeline for reproducible, fail-closed
-constant-time screening of post-quantum C implementations. The contribution is
-not a claim that one dynamic tool proves constant-time behaviour. It is the
-explicit composition of correctness, dynamic structural observations,
-build-sensitive assembly candidates, operand attribution, controlled timing,
-  and explicit claim-scoped validation.
+CT-KAT is an auditable, fail-closed evidence pipeline for constant-time risk
+screening of post-quantum C implementations. It does not claim that one
+dynamic tool proves constant-time behavior. The contribution is the scoped
+composition of correctness, branch/address observation, compiler-sensitive
+assembly candidates, operand attribution, controlled timing, and immutable
+artifact validation.
 
 ## 1. Introduction
 
-- Why branch/address-only dynamic analysis misses variable-latency operands.
-- Why timing-only testing is confounded without correctness, setup separation,
-  controls, exact build provenance, and review.
-- Contributions: evidence schema, compiler/optimization matrix, KyberSlash
-  ground truth, Falcon comparator, diverse source/build corpus, and a frozen
-  single-physical-host timing protocol.
+- Functional KATs do not answer side-channel questions.
+- Branch/address tools, assembly inspection, and timing answer different
+  questions and must not be collapsed into one Boolean tool verdict.
+- KyberSlash motivates operand-dependent latency outside ordinary
+  branch/address observations.
+- Contributions: declarative pipeline, four-state claim vocabulary,
+  ground-truth/comparator suites, and frozen 28-axis single-host protocol.
 
-## 2. Threat model and claim vocabulary
+## 2. Background and Related Work
 
-- Secret-dependent branches, addresses, and variable-latency operands.
-- Screening corpus versus source/build corpus versus timing campaign.
+- Threat model: secret-dependent control flow, memory addresses, and
+  variable-latency instruction operands.
 - `risk-detected`, `needs-review`, `inconclusive`, and
   `no-finding-observed`; never “proved constant-time.”
-- The v6 timing tables claim neither independent human declassification nor
-  cross-host reproducibility; public/mixed-input attribution boundaries stay
-  explicit in every result.
+- ctgrind/Valgrind, dudect/TVLA, MicroWalk, compiler/build sensitivity.
+- Scope separates screening corpus, source/build evidence, and physical
+  timing campaign.
 
-## 3. System design
+## 3. Materials and Methods
 
-- Deterministic KAT/correctness gate.
-- Valgrind/TIMECOP structural observation and compiler × flag sweep.
-- Assembly candidate scan and attribution layer.
-- timing-harness-v2: pre-generated pools, timed API boundary, seeded interpose,
-  A/A, placebo, positive controls, process repeats, and artifact hashes.
-- Fail-closed evidence fold and immutable promotion candidates.
+### 3.1 System overview
 
-## 4. Experimental design
+Single specification → build → correctness → generated harness → structural
+screen → matrix/assembly attribution → controlled timing → fail-closed fold.
 
-- Frozen targets and upstream revisions from the machine-readable campaign.
-- One physical Linux x86_64 host; pilot/final separation; no hardware
-  replication claim.
-- Primary and secondary endpoints, sample sizes, exclusions, and Holm-adjusted
-  within-family secondary contrasts from the preregistration.
-- Full-signature Falcon scope and separate output-length association analysis.
+### 3.2 Correctness and harness generation
 
-## 5. Evaluation
+- Deterministic KAT/equivalence before security evidence.
+- Exact measured API boundary and separated setup.
+- Missing correctness is `inconclusive`, never clean.
 
-### 5.1 Screening-corpus coverage and evidence states
+### 3.3 Structural/build evidence
 
-Use generated corpus counts, family counts, review readiness, and explicit
-correctness gaps. Do not combine unlike threat models into an “accuracy” rate.
+- Valgrind/TIMECOP branch/address observation.
+- Compiler × optimization matrix.
+- Assembly variable-latency candidate scan and semantic attribution.
+- Candidate count measures reviewer burden, not accuracy/FPR.
 
-### 5.2 Ablation
+### 3.4 Ground truth and comparators
 
-Compare single gcc/O2 structural screening, full build matrix, matrix plus
-assembly candidates, and the reviewed evidence fold. Candidate burden is not
-labelled false-positive rate without an independently labelled oracle.
+- KyberSlash stock, KS1, KS2, combined, patched variants.
+- Falcon reference, native-FP, integer-FPR for 512 and 1024.
+- c-fn-dsa is prospective comparator evidence, not FIPS 206 conformance.
+- Diverse upstream provenance and OpenSSL provider integration remain distinct.
 
-### 5.3 KyberSlash ground truth
+### 3.5 V10 native timing
 
-Report stock, KS1-only, KS2-only, combined, and historical provenance/KAT
-equivalence first; then report host-scoped timing without collapsing variants.
+- One physical, non-virtualized Linux x86_64 host.
+- Four components, 26 target executions, 28 axes, 8,220,000 rows.
+- A/A, setup-placebo, positive controls, three process repeats.
+- SMT/turbo policy, build seals, semantic randomness contracts.
+- Named deterministic single-host analysis; no cross-host or independent
+  analyst claim.
 
-### 5.4 Falcon comparator
+### 3.6 Integrity and disclosure
 
-Report reference and prospective native-FP/integer-FPR profiles for 512 and
-1024 separately. Report signature-length distributions alongside full-API
-timing; make no FIPS 206 conformance claim for c-fn-dsa.
+- Frozen commit, SHA-256 manifests, control qualification, deterministic output.
+- Generative-AI assistance disclosed; authors retain responsibility.
 
-### 5.5 Diverse upstream and production integration evidence
+## 4. Results
 
-Report lineage, ancestry caveat, architecture/profile/compiler/build cells,
-KAT/equivalence, and OpenSSL provider integration as separate dimensions.
-OpenSSL is not counted as a fifth implementation lineage.
+### 4.1 Committed screening corpus
 
-### 5.6 Physical timing campaign
+- 25 target–harness pairs, 206 build cells.
+- 6 risk-detected, 5 needs-review, 10 inconclusive, 4 no-finding-observed.
+- Old ML-DSA/SLH-DSA declassification is expired, so unresolved pairs remain
+  non-clean.
 
-Populate only from complete schema-v5 single-host artifacts. Process repeats
-remain within-host evidence and are not presented as multiple machines.
+### 4.2 Ablation
+
+- Single release: 11 candidate pairs.
+- Full matrix: 13.
+- Matrix plus assembly: 22.
+- Reviewed fold reports evidence states separately.
+
+### 4.3 Static case-study evidence
+
+- KyberSlash provenance/equivalence and exact operand candidates.
+- Falcon implementation-profile boundaries.
+- Diverse upstream and provider-integration scope.
+
+### 4.4 V10 result
+
+Populate only from a complete hash-validated
+`paper-native-single-host-analysis`. A pending draft contains no partial,
+pilot, failed, engineering, or legacy value.
+
+## 5. Discussion
+
+- Evidence composition catches different failure modes without pretending
+  universal coverage.
+- Timing states remain host/protocol scoped.
+- Secondary contrasts and signature-length association cannot override the
+  primary verdict.
+- Operational use is triage and auditable evidence production, not formal
+  verification.
 
 ## 6. Limitations
 
-- Dynamic coverage and input-distribution dependence.
-- CPU-specific variable latency and only one final microarchitecture.
-- Compiler and upstream revision scope.
-- Shared ancestry is unmeasured, not zero.
-- Beta mldsa-native API and prospective c-fn-dsa status.
-- No independent human review in v6 and the absence of formal constant-time
-  proof.
+- Dynamic path/input-distribution dependence.
+- One x86_64 microarchitecture, no cross-host replication.
+- No completed independent two-person review.
+- Compiler/upstream/build scope and shared ancestry.
+- Beta/prospective comparator status.
+- No power, EM, fault, or formal proof.
+- Cortex-M4 cross-compiled artifact support requires a separate ARM backend;
+  no M4 result is claimed and V10 need not be rerun for that future work.
 
-## 7. Reproducibility and artifact
+## 7. Conclusions
 
-- One-command premeasurement and postmeasurement profiles.
-- Exact revisions, vendored tree hashes, generated tables, artifact hashes,
-  automated frozen-input gate, deterministic named analysis, and explicit
-  single-host/no-independent-review limitations.
+Summarize the fail-closed composition and static evidence. The native sentence
+is conditional on complete generated results. Future work: second host,
+independent review, ARM/M4 artifact backend, and formal/physical assurance.
 
-Generated premeasurement tables live under `docs/paper/generated/` and must be
-refreshed by the repository script, never hand-edited.
+## 8. MDPI back matter
+
+Supplementary materials, author contributions, funding, IRB, informed
+consent, data availability, acknowledgments/AI disclosure, conflicts,
+abbreviations, and references. Unknown author/journal/archive metadata remains
+explicitly withheld until the user supplies it.
+
+Generated tables are never hand-edited. Build and submission gates are in
+`paper/mdpi_working/README.md` and
+`docs/paper/MDPI_SUBMISSION_CHECKLIST.md`.
