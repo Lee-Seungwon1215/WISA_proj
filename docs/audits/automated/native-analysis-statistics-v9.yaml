@@ -1,0 +1,92 @@
+schema_version: "1.0"
+audit_id: automated-native-analysis-statistics-v9
+status: complete
+title: Automated statistical audit of V10 analysis and MDPI result ingestion
+perspective: native-analysis-statistics
+automated_agent: true
+human_reviewer: false
+automated_agent_id: native-statistics-v10-v9-audit
+audited_at: "2026-08-17T10:49:55Z"
+audited_commit: a1b07c4b4e8430403f5ba46edc81ed4b41c52bbb
+scope:
+  - frozen single-host V10 statistical decision and multiplicity rules
+  - exact 28-axis named-analysis validation before publication
+  - consistency of summaries, raw states, repeat counts, sample counts, and timing statistics
+findings:
+  - finding_id: nsv10p-001
+    severity: critical
+    title: A paper summary could disagree with the underlying named analysis
+    description: Counts, states, timing signals, t statistics, sample counts, repeats, component inventories, and frozen provenance must be checked together rather than copied independently.
+    evidence_ids: [nsv10p-analysis, nsv10p-renderer, nsv10p-checker, nsv10p-tests]
+  - finding_id: nsv10p-002
+    severity: high
+    title: Single-host evidence could be worded as cross-host reproducibility
+    description: The paper must preserve host-scoped inference, Holm-family boundaries, and the absence of heterogeneity evidence.
+    evidence_ids: [nsv10p-plan, nsv10p-analysis, nsv10p-claims, nsv10p-manuscript]
+  - finding_id: nsv10p-003
+    severity: high
+    title: Final primary and secondary statistics could be selectively or over-broadly interpreted
+    description: All 28 primary axes, 17 pairwise contrasts, and 13 signature-length endpoints must be reconstructed together; mixed valid-tuple signals, family-local Holm decisions, and single-host scope must remain explicit.
+    evidence_ids: [nsv10p-renderer, nsv10p-native-results, nsv10p-render-state, nsv10p-manuscript]
+dispositions:
+  - finding_id: nsv10p-001
+    status: addressed
+    rationale: The renderer accepts only the exact named-analysis kind, 28 unique axes, one host, frozen commits and hashes, three repeats, positive sample counts, coherent states and signals, and matching summary totals; checker and mutation tests enforce deterministic regeneration.
+    blocker: ""
+    evidence_ids: [nsv10p-analysis, nsv10p-renderer, nsv10p-checker, nsv10p-tests, nsv10p-build]
+  - finding_id: nsv10p-002
+    status: addressed
+    rationale: The plan, analyzer, claim matrix, and manuscript consistently describe host-scoped screening and prohibit cross-host or algorithm-wide inference.
+    blocker: ""
+    evidence_ids: [nsv10p-plan, nsv10p-analysis, nsv10p-claims, nsv10p-manuscript]
+  - finding_id: nsv10p-003
+    status: addressed
+    rationale: The renderer validates and emits all primary and secondary inventories, the render state binds the exact analysis bytes, and the manuscript limits the three risk states to mixed valid-tuple attribution while retaining the one Holm-significant profile contrast as secondary.
+    blocker: ""
+    evidence_ids: [nsv10p-renderer, nsv10p-native-results, nsv10p-render-state, nsv10p-manuscript, nsv10p-checker]
+evidence:
+  - evidence_id: nsv10p-plan
+    path: docs/measurement/paper_native_campaign_v10.yaml
+    sha256: a1b1ee10f503f521f643c9ff668c66ccb215a9e96e8b7c513399ad2bcbcb04b2
+    purpose: Single-host scope, multiplicity, qualification, and claim limits.
+  - evidence_id: nsv10p-analysis
+    path: scripts/analyze_paper_native_results.py
+    sha256: 9094a25c5fffa28d83c8a6fb5a5698a24507d417f11f1d597e8933b7f4442d9a
+    purpose: Host-scoped primary decisions, Holm families, and named-analysis production.
+  - evidence_id: nsv10p-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 193467e2a1741c45bd7780fab7c0cdefd1191d2142585eb72d854d496833c3cf
+    purpose: Completed single-host state and prohibited statistical overclaims.
+  - evidence_id: nsv10p-renderer
+    path: scripts/render_mdpi_results.py
+    sha256: 97d25d19b852e4ed6f1d28094d0028cba4b2d4ba70cceb371f68ca3a7a878641
+    purpose: Strict named-analysis validation and deterministic table generation.
+  - evidence_id: nsv10p-checker
+    path: scripts/check_mdpi_paper.py
+    sha256: fc92ddb0658d8fcda7fa0f007b21cdce8e575a05eaaac5b514bf21548dcabf96
+    purpose: Pending versus complete state, regeneration, and LaTeX log gate.
+  - evidence_id: nsv10p-tests
+    path: tests/test_mdpi_results.py
+    sha256: c28282defaa6eae33c95a1d94bc8478b29c463b2f533b6724603602bb1283439
+    purpose: Full 28-axis acceptance and statistical inconsistency rejection coverage.
+  - evidence_id: nsv10p-build
+    path: scripts/build_mdpi_paper.sh
+    sha256: 88e955adf13c9840ed7084f08a80821cd4c83ee9089c9284086c8964cc2d9fc4
+    purpose: One-command pending and complete render, compile, and fail-closed check path.
+  - evidence_id: nsv10p-manuscript
+    path: paper/mdpi_working/main.tex
+    sha256: f9f0e83c3c23f41bd790b53b0ee48c8afe68cb4f94947a91d44c6db4ed83f220
+    purpose: Single-host statistical interpretation and limitations.
+  - evidence_id: nsv10p-native-results
+    path: paper/mdpi_working/generated/native_results.tex
+    sha256: 5dde86c4fdc3b4dd711f153d380dbf78842ab5b85c8e7ce70fb8615bac7a6877
+    purpose: Complete 28-axis, pairwise-family, and signature-length publication tables.
+  - evidence_id: nsv10p-render-state
+    path: paper/mdpi_working/generated/render_state.json
+    sha256: ea217eac9e01c1684406f6641c9cd60e2287d9cefd7179834290b921ee272555
+    purpose: Exact analysis byte hash, aggregate input hash, bundle ID, and commit binding.
+limitations:
+  - One physical host cannot estimate cross-host heterogeneity or reproducibility.
+  - Synthetic renderer tests validate plumbing, not timing outcomes.
+  - The audit validates tracked derived outputs, not the external raw timing archive.
+human_gate_effect: none

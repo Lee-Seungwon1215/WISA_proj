@@ -1,0 +1,88 @@
+schema_version: "1.0"
+audit_id: automated-mlkem-kyberslash-protocol-v9
+status: complete
+title: Automated audit of V10 ML-KEM and KyberSlash publication boundaries
+perspective: mlkem-kyberslash-protocol
+automated_agent: true
+human_reviewer: false
+automated_agent_id: mlkem-kyberslash-v10-v9-audit
+audited_at: "2026-08-17T10:49:55Z"
+audited_commit: a1b07c4b4e8430403f5ba46edc81ed4b41c52bbb
+scope:
+  - frozen V10 ML-KEM and KyberSlash protocol profiles
+  - per-axis identity and attribution limits in the MDPI manuscript
+  - rejection of algorithm-wide claims derived from site-level timing screens
+findings:
+  - finding_id: mkv10p-001
+    severity: critical
+    title: Post-diagnostic calibration or publication wording could change the protocol claim
+    description: The uniform fast-control amendment and the mixed-input, public-input, and operand-canary boundaries must remain visible through publication.
+    evidence_ids: [mkv10p-core, mkv10p-kyberslash, mkv10p-claims]
+  - finding_id: mkv10p-002
+    severity: high
+    title: Aggregation could hide KyberSlash axes or imply algorithm-wide leakage
+    description: The paper path must retain all ten KyberSlash axes, exact component totals, per-axis states, and explicit site-level interpretation limits.
+    evidence_ids: [mkv10p-renderer, mkv10p-manuscript, mkv10p-checker, mkv10p-tests]
+  - finding_id: mkv10p-003
+    severity: high
+    title: Large mixed valid-tuple signals could be misrepresented as secret-only leakage
+    description: The three final risk states jointly vary matching public and secret material, while every KyberSlash physical axis is a no-finding observation on one host; neither result supports key recovery or an algorithm-wide verdict.
+    evidence_ids: [mkv10p-native-results, mkv10p-manuscript, mkv10p-post-plan]
+dispositions:
+  - finding_id: mkv10p-001
+    status: addressed
+    rationale: The frozen profiles, claim matrix, and manuscript preserve the uniform calibration rule and distinguish valid-tuple, chosen-ciphertext, and operand-latency interpretations.
+    blocker: ""
+    evidence_ids: [mkv10p-core, mkv10p-kyberslash, mkv10p-claims, mkv10p-manuscript]
+  - finding_id: mkv10p-002
+    status: addressed
+    rationale: The renderer requires exactly ten KyberSlash axes within the exact 28-axis inventory and emits per-axis status rather than an algorithm-wide verdict; checker and tests fail closed on drift.
+    blocker: ""
+    evidence_ids: [mkv10p-renderer, mkv10p-manuscript, mkv10p-checker, mkv10p-tests]
+  - finding_id: mkv10p-003
+    status: addressed
+    rationale: The generated tables retain all mixed valid-tuple, ciphertext-only, FO, chosen-ciphertext, and operand-bin axes; the prose explicitly limits the three risk signals to mixed input attribution and preserves the negative host-scoped KyberSlash observations without erasing static division evidence.
+    blocker: ""
+    evidence_ids: [mkv10p-native-results, mkv10p-manuscript, mkv10p-post-plan, mkv10p-renderer]
+evidence:
+  - evidence_id: mkv10p-core
+    path: docs/measurement/native_timing_v5_campaign.yaml
+    sha256: 85d3263a9ec56aa69056cebf46896b68bd4c102c432bbddb738c675961d16b0a
+    purpose: Frozen committed-corpus target matrix and uniform control amendment.
+  - evidence_id: mkv10p-kyberslash
+    path: docs/measurement/kyberslash_native_v5.yaml
+    sha256: 093f9a1c1c056cd070672e155e4b41cef4f5158797aca1d1a35c85725fe65825
+    purpose: Ten chosen-ciphertext and operand-latency target contracts.
+  - evidence_id: mkv10p-claims
+    path: docs/paper/CLAIM_EVIDENCE_MATRIX.yaml
+    sha256: 193467e2a1741c45bd7780fab7c0cdefd1191d2142585eb72d854d496833c3cf
+    purpose: Completed single-host claim states and attribution boundaries.
+  - evidence_id: mkv10p-renderer
+    path: scripts/render_mdpi_results.py
+    sha256: 97d25d19b852e4ed6f1d28094d0028cba4b2d4ba70cceb371f68ca3a7a878641
+    purpose: Exact component inventory and per-axis MDPI rendering gate.
+  - evidence_id: mkv10p-manuscript
+    path: paper/mdpi_working/main.tex
+    sha256: f9f0e83c3c23f41bd790b53b0ee48c8afe68cb4f94947a91d44c6db4ed83f220
+    purpose: Site-level ML-KEM and KyberSlash interpretation and limitation wording.
+  - evidence_id: mkv10p-checker
+    path: scripts/check_mdpi_paper.py
+    sha256: fc92ddb0658d8fcda7fa0f007b21cdce8e575a05eaaac5b514bf21548dcabf96
+    purpose: Fail-closed manuscript and generated-result validation.
+  - evidence_id: mkv10p-tests
+    path: tests/test_mdpi_results.py
+    sha256: c28282defaa6eae33c95a1d94bc8478b29c463b2f533b6724603602bb1283439
+    purpose: Exact-axis acceptance and identity-drift rejection coverage.
+  - evidence_id: mkv10p-native-results
+    path: paper/mdpi_working/generated/native_results.tex
+    sha256: 5dde86c4fdc3b4dd711f153d380dbf78842ab5b85c8e7ce70fb8615bac7a6877
+    purpose: Complete per-axis ML-KEM, KyberSlash, and secondary contrast tables.
+  - evidence_id: mkv10p-post-plan
+    path: docs/paper/MDPI_POST_RESULT_WORK_PLAN_KO.md
+    sha256: 77be053f7f1a07179d508a8314857055ea8c58ecbce7efef4441905cca1ee2a9
+    purpose: Explicit mixed-input and negative-physical-observation interpretation boundary.
+limitations:
+  - Positive controls establish protocol sensitivity, not secret recovery.
+  - Site-level timing evidence does not establish an algorithm-wide constant-time property.
+  - The audit checks tracked derived presentation and does not replace review of the external raw bundle.
+human_gate_effect: none
