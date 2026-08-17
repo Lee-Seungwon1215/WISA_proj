@@ -82,3 +82,10 @@ def test_legacy_numeric_denylist_applies_only_to_hand_written_source():
         errors,
     )
     assert any("legacy native timing value 2.30" in error for error in errors)
+
+
+def test_submission_packager_normalizes_and_sorts_archive_inputs():
+    script = (checker.ROOT / "scripts/package_mdpi_submission.sh").read_text(encoding="utf-8")
+    assert "LC_ALL=C sort" in script
+    assert "touch -t 200001010000.00" in script
+    assert 'zip -X -q "$output_abs" -@' in script

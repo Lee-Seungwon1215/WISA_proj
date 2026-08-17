@@ -89,9 +89,24 @@ fi
 mkdir -p "$(dirname "$output_path")"
 output_dir=$(cd "$(dirname "$output_path")" && pwd)
 output_abs="$output_dir/$(basename "$output_path")"
+package_list="$stage_root/package-files.txt"
 (
   cd "$stage"
-  zip -X -q -r "$output_abs" main.tex references.bib README.md UPSTREAM.md generated Definitions
+  {
+    printf '%s\n' main.tex references.bib README.md UPSTREAM.md
+    find generated Definitions -type f -print
+  } | LC_ALL=C sort > "$package_list"
+)
+
+# Git checkout mtimes and freshly created directory entries are not evidence.
+# Normalize every archived source file and feed zip a sorted file-only list so
+# identical source bytes produce an identical review-package SHA-256.
+while IFS= read -r relative_path; do
+  TZ=UTC touch -t 200001010000.00 "$stage/$relative_path"
+done < "$package_list"
+(
+  cd "$stage"
+  zip -X -q "$output_abs" -@ < "$package_list"
 )
 
 echo "MDPI source package: $output_abs"

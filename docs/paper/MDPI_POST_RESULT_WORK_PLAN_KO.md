@@ -34,8 +34,9 @@ analysis와 SHA-256을 확인했다. 로컬 논문 브랜치에는 28개 primary
   2 pt 초과 overfull box 0
 - PDF 14쪽 전 페이지와 결과표 확대 육안 검사
 - 제출 source ZIP의 clean-room 컴파일 경로 구현
-- 내부 검토용 draft source ZIP 생성 및 clean-room 재빌드 확인
-  - SHA-256: `3d165d6cb492e74cc32f14eaf92ad840c105fa27a351429eed3b7b980522b66b`
+- 내부 검토용 draft source ZIP 생성, clean-room 재빌드와 독립 2회 생성의
+  byte-identical SHA-256 확인
+  - SHA-256: `9b63eb2c9964baf564c11b696f2c70ea4d8fc2a3e5580ea7c0d6df5062edd898`
 
 ## 2. 결과 해석 경계
 
