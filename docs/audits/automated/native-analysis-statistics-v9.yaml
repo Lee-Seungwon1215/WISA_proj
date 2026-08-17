@@ -6,8 +6,8 @@ perspective: native-analysis-statistics
 automated_agent: true
 human_reviewer: false
 automated_agent_id: native-statistics-v10-v9-audit
-audited_at: "2026-08-17T10:49:55Z"
-audited_commit: a1b07c4b4e8430403f5ba46edc81ed4b41c52bbb
+audited_at: "2026-08-17T10:55:36Z"
+audited_commit: d8efe3d3adccd04fb053a60267500c48a5c564f7
 scope:
   - frozen single-host V10 statistical decision and multiplicity rules
   - exact 28-axis named-analysis validation before publication
