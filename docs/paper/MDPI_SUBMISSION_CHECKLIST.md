@@ -16,14 +16,14 @@
 
 ## B. V10 결과가 나온 직후
 
-- [ ] 원격 marker가 성공이고 모든 component/baseline 디렉터리가 하나씩 존재
-- [ ] schema-v5 bundle 생성 및 전체 SHA-256 검증
-- [ ] frozen clean commit에서 named analyzer 최초 실행 성공
-- [ ] 같은 checkout에서 `--check-output` byte-identical 재검증
-- [ ] `paper_native_analysis.json` SHA-256 별도 기록
-- [ ] 논문 브랜치에서 `build_mdpi_paper.sh --analysis ... --refresh` 성공
-- [ ] native table이 정확히 28축이고 pending marker가 0개인지 확인
-- [ ] 결과 문장에 host/protocol scope와 attribution boundary가 유지되는지 읽기 검토
+- [x] 원격 marker가 성공이고 모든 component/baseline 디렉터리가 하나씩 존재
+- [x] schema-v5 bundle 생성 및 전체 SHA-256 검증
+- [x] frozen clean commit에서 named analyzer 최초 실행 성공
+- [x] 같은 checkout에서 `--check-output` byte-identical 재검증
+- [x] `paper_native_analysis.json` SHA-256 별도 기록
+- [x] 논문 브랜치에서 `build_mdpi_paper.sh --analysis ... --refresh` 성공
+- [x] native table이 정확히 28축이고 pending marker가 0개인지 확인
+- [x] 결과 문장에 host/protocol scope와 attribution boundary가 유지되는지 읽기 검토
 - [ ] raw/derived artifact archive 생성 및 안정된 DOI/URL 확보
 
 결과가 이상하거나 일부만 있으면 표를 채우지 않는다. `inconclusive`는 실패를 숨기는
@@ -45,17 +45,17 @@
 
 ## D. 내용/주장 최종 점검
 
-- [ ] `PASS`를 constant-time proof로 부른 문장이 없음
-- [ ] single-host 결과를 architecture/general reproducibility로 확장하지 않음
-- [ ] process repeat를 독립 host로 세지 않음
-- [ ] chosen-ciphertext = public-input contrast로 유지
-- [ ] valid-tuple = public+secret mixed axis로 유지
-- [ ] operand-bin = hardware-latency canary로 유지
-- [ ] Falcon full-signature의 variable-length encoding을 숨기지 않음
-- [ ] c-fn-dsa prospective/FIPS 206 비적합성 경계 유지
-- [ ] OpenSSL provider를 별도 lineage로 세지 않음
-- [ ] M4를 구현·측정했다고 쓰지 않음
-- [ ] candidate burden을 accuracy/FPR로 바꾸지 않음
+- [x] `PASS`를 constant-time proof로 부른 문장이 없음
+- [x] single-host 결과를 architecture/general reproducibility로 확장하지 않음
+- [x] process repeat를 독립 host로 세지 않음
+- [x] chosen-ciphertext = public-input contrast로 유지
+- [x] valid-tuple = public+secret mixed axis로 유지
+- [x] operand-bin = hardware-latency canary로 유지
+- [x] Falcon full-signature의 variable-length encoding을 숨기지 않음
+- [x] c-fn-dsa prospective/FIPS 206 비적합성 경계 유지
+- [x] OpenSSL provider를 별도 lineage로 세지 않음
+- [x] M4를 구현·측정했다고 쓰지 않음
+- [x] candidate burden을 accuracy/FPR로 바꾸지 않음
 
 ## E. 제출 패키지 게이트
 
@@ -64,18 +64,18 @@ bash scripts/build_mdpi_paper.sh \
   --analysis /path/to/v10-named/paper_native_analysis.json
 ```
 
-- [ ] 위 명령 성공
-- [ ] undefined citation/reference 0개
-- [ ] 2 pt 초과 overfull box 0개
-- [ ] PDF 첫 페이지, 모든 표, 참고문헌, 마지막 페이지 육안 확인
-- [ ] 제출 ZIP에 `main.tex`, `references.bib`, `generated/`, `Definitions/`, 필요한
+- [x] 위 명령 성공
+- [x] undefined citation/reference 0개
+- [x] 2 pt 초과 overfull box 0개
+- [x] PDF 첫 페이지, 모든 표, 참고문헌, 마지막 페이지 육안 확인
+- [x] draft 제출 ZIP에 `main.tex`, `references.bib`, `generated/`, `Definitions/`, 필요한
   그림이 모두 포함
-- [ ] clean 임시 디렉터리에서 ZIP 단독 재빌드
+- [x] draft ZIP을 clean 임시 디렉터리에서 단독 재빌드
 - [ ] PDF metadata/저자 익명화 정책이 실제 review mode와 일치
 - [ ] 최종 Git commit, tag, source archive SHA-256 기록
 
 ## 제출 가능 판정
 
 자동 게이트와 B~E가 모두 끝나야 `submission-ready`다. 지금 상태는
-`MDPI pre-result manuscript ready`이며, 결과가 비어 있다는 사실을 숨기지 않는
-정상적인 대기 상태다.
+`MDPI complete-result draft / machine gates passed`다. 남은 blocker는 제출자 정보,
+목표 저널 확정, artifact DOI/URL, 공동저자 최종 검토와 strict source package다.

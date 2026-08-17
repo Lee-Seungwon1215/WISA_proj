@@ -1,6 +1,6 @@
-# CT-KAT MDPI paper outline (V10 pre-result)
+# CT-KAT MDPI paper outline (V10 complete result)
 
-Status: implemented in `paper/mdpi_working/main.tex`
+Status: complete-result draft implemented in `paper/mdpi_working/main.tex`
 Measurement commit: `1aeadb97e0409227aa203ba825a6bfc1d90445bc`
 
 ## Working contribution
@@ -97,9 +97,20 @@ screen → matrix/assembly attribution → controlled timing → fail-closed fol
 
 ### 4.4 V10 result
 
-Populate only from a complete hash-validated
-`paper-native-single-host-analysis`. A pending draft contains no partial,
-pilot, failed, engineering, or legacy value.
+- The complete hash-validated `paper-native-single-host-analysis` supplies all
+  28 primary axes, 17 preregistered pairwise contrasts, and 13 signature-length
+  endpoints.
+- Primary states: three `risk-detected` mixed ML-KEM valid-tuple axes and 25
+  `no-finding-observed` axes; no axis is `needs-review` or `inconclusive`.
+- The three signals are mixed public-and-secret input contrasts, not
+  secret-only leakage or key-recovery evidence.
+- All ten KyberSlash physical axes are host-scoped negative observations and do
+  not cancel the statically identified division mechanism.
+- One family-local Holm-significant portable/native ML-KEM contrast compares
+  signal magnitude; it is not a security ranking because both primary axes are
+  `risk-detected`.
+- Variable-length Falcon correlations remain secondary and do not override the
+  primary full-signature states.
 
 ## 5. Discussion
 
@@ -124,9 +135,10 @@ pilot, failed, engineering, or legacy value.
 
 ## 7. Conclusions
 
-Summarize the fail-closed composition and static evidence. The native sentence
-is conditional on complete generated results. Future work: second host,
-independent review, ARM/M4 artifact backend, and formal/physical assurance.
+Summarize the fail-closed composition, static evidence, and complete
+single-host result without turning a timing screen into a proof. Future work:
+second host, independent review, ARM/M4 artifact backend, and formal/physical
+assurance.
 
 ## 8. MDPI back matter
 

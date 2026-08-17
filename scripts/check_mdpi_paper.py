@@ -63,13 +63,21 @@ REQUIRED_BACK_MATTER = (
 )
 FORBIDDEN_MANUSCRIPT_PATTERNS = {
     r"accepted-variable-time": "retired declassification vocabulary",
+    r"\\usepackage(?:\[[^]]*\])?\{kotex\}": "WISA-only Korean package",
+    r"llncs(?:\.cls)?": "WISA/LNCS class reference",
+}
+
+# These values came from the superseded WISA draft and must not be copied into
+# hand-written prose.  A complete named analysis may legitimately produce the
+# same decimal text (for example, the measured host model contains 2.30 GHz and
+# one V10 t-score rounds to 2.3), so generated files are protected by their
+# analysis-byte reconstruction instead of this lexical denylist.
+FORBIDDEN_SOURCE_PATTERNS = {
     r"(?<![0-9])2\.30(?![0-9])": "legacy native timing value 2.30",
     r"(?<![0-9])2\.10(?![0-9])": "legacy native timing value 2.10",
     r"(?<![0-9])1\.15(?:--|–|-)1\.75(?![0-9])": "legacy native timing range",
     r"(?<![0-9])1\.59(?![0-9])": "legacy native timing value 1.59",
     r"(?<![0-9])1\.52(?![0-9])": "legacy native timing value 1.52",
-    r"\\usepackage(?:\[[^]]*\])?\{kotex\}": "WISA-only Korean package",
-    r"llncs(?:\.cls)?": "WISA/LNCS class reference",
 }
 
 
@@ -123,6 +131,9 @@ def _check_structure(main: str, generated: str, bib: str, errors: list[str]) -> 
     for pattern, explanation in FORBIDDEN_MANUSCRIPT_PATTERNS.items():
         if re.search(pattern, manuscript, flags=re.IGNORECASE):
             errors.append(f"forbidden stale content found: {explanation}")
+    for pattern, explanation in FORBIDDEN_SOURCE_PATTERNS.items():
+        if re.search(pattern, main, flags=re.IGNORECASE):
+            errors.append(f"forbidden stale source content found: {explanation}")
 
     labels = re.findall(r"\\label\{([^}]+)\}", manuscript)
     duplicates = sorted({label for label in labels if labels.count(label) > 1})

@@ -1,8 +1,11 @@
 {
-  "analysis_input": null,
+  "analysis_input": "paper_native_analysis.json",
+  "analysis_input_sha256": "0af7e1b760565cf3caef760385a8f45c728cee155ab3e9f1c2e4b52b4ed90426",
+  "bundle_id": "ctkat-v10-1aeadb97e040-b2e608e053f6",
   "expected_axes": 28,
+  "input_aggregate_sha256": "0e18d2f103ed550151fa394641d533482a8ecb8f13bcbea2d9b45482ca18e7f3",
   "kind": "ctkat-mdpi-render-state",
   "measurement_commit": "1aeadb97e0409227aa203ba825a6bfc1d90445bc",
-  "native_results": "pending",
+  "native_results": "complete",
   "schema_version": 1
 }

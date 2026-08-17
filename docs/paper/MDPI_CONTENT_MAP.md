@@ -75,8 +75,8 @@ fail-closed evidence model·build/assembly matrix·KyberSlash/Falcon·28축 V10�
 
 ## 결과 전/후 경계
 
-결과 전에도 Introduction, Background, Methods, 정적 Results, Discussion 골격,
-Limitations, Conclusions 골격, 참고문헌, MDPI 선언, 빌드와 검증은 완성할 수 있다.
-결과 뒤에 남는 자동 작업은 native 표·초록 한 문장·결과 요약·결론 조건문을 complete
-analysis로 렌더링하는 것이다. 사람이 결정해야 할 것은 저널, 저자/소속, CRediT,
-연구비, 이해상충, 데이터 DOI뿐이다.
+결과 전 단계에서 Introduction, Background, Methods, 정적 Results, Discussion 골격,
+Limitations, Conclusions 골격, 참고문헌, MDPI 선언, 빌드와 검증을 완성했다. 이후
+complete analysis로 native 표·초록·결과 해석·결론을 렌더링하고 28축 및 secondary
+inventory를 검증하는 작업도 끝냈다. 이제 사람이 결정해야 할 것은 저널,
+저자/소속, CRediT, 연구비, 이해상충, 공동저자 최종 검토와 데이터 DOI뿐이다.

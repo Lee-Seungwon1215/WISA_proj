@@ -27,7 +27,7 @@ Packets: 8; premeasurement ready: false; paper ready: false. Pending means v10 m
 |---|---|---:|---:|
 | fail-closed-evidence-fold | implemented-premeasurement | 4 | 0 |
 | build-matrix-sensitivity | implemented-premeasurement | 2 | 0 |
-| kyberslash-attribution | pending-physical-measurement | 4 | 2 |
-| falcon-comparator | pending-physical-measurement | 4 | 3 |
+| kyberslash-attribution | supported-single-host | 7 | 0 |
+| falcon-comparator | supported-single-host | 7 | 0 |
 | diverse-upstream-builds | implemented-premeasurement | 3 | 2 |
-| native-timing-results | pending-physical-measurement | 16 | 4 |
+| native-timing-results | supported-single-host | 21 | 0 |

@@ -2,7 +2,10 @@
 
 작성 기준: 2026-08-17
 측정 기준 커밋: `1aeadb97e0409227aa203ba825a6bfc1d90445bc`
-상태: **결과 독립 작업 구현 완료, V10 complete named analysis 대기 중**
+상태: **완료된 역사 계획 — V10 complete named analysis와 MDPI 주입 완료**
+
+결과 이후의 현재 상태와 실제 잔여 작업은
+[`MDPI_POST_RESULT_WORK_PLAN_KO.md`](MDPI_POST_RESULT_WORK_PLAN_KO.md)를 본다.
 
 ## 0. 결론부터
 

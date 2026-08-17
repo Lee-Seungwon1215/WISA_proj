@@ -108,19 +108,19 @@
     },
     {
       "claim_id": "kyberslash-attribution",
-      "evidence_items": 4,
-      "open_gates": 2,
+      "evidence_items": 7,
+      "open_gates": 0,
       "prohibited_wording": "full attack or key recovery reproduced",
       "scope": "ML-KEM/Kyber-768 frozen variants",
-      "status": "pending-physical-measurement"
+      "status": "supported-single-host"
     },
     {
       "claim_id": "falcon-comparator",
-      "evidence_items": 4,
-      "open_gates": 3,
+      "evidence_items": 7,
+      "open_gates": 0,
       "prohibited_wording": "FIPS 206 conformance",
       "scope": "Falcon/FN-DSA 512 and 1024 comparators",
-      "status": "pending-physical-measurement"
+      "status": "supported-single-host"
     },
     {
       "claim_id": "diverse-upstream-builds",
@@ -132,11 +132,11 @@
     },
     {
       "claim_id": "native-timing-results",
-      "evidence_items": 16,
-      "open_gates": 4,
+      "evidence_items": 21,
+      "open_gates": 0,
       "prohibited_wording": "valid-tuple signal means secret-key leakage; no finding means proven constant-time",
       "scope": "28 predeclared timing axes plus all three same-corpus baseline tools",
-      "status": "pending-physical-measurement"
+      "status": "supported-single-host"
     }
   ],
   "corpus_pairs": 25,

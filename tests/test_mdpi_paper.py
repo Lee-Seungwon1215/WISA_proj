@@ -62,3 +62,23 @@ def test_latex_log_gate_rejects_only_material_overfull_boxes(tmp_path: Path):
     checker._check_log(broken, errors)
     assert any("overfull" in error for error in errors)
     assert any("unresolved" in error for error in errors)
+
+
+def test_legacy_numeric_denylist_applies_only_to_hand_written_source():
+    errors: list[str] = []
+    checker._check_structure(
+        checker.MAIN.read_text(encoding="utf-8"),
+        r"Validated generated value: 2.30",
+        checker.BIB.read_text(encoding="utf-8"),
+        errors,
+    )
+    assert not any("legacy native timing value 2.30" in error for error in errors)
+
+    errors = []
+    checker._check_structure(
+        checker.MAIN.read_text(encoding="utf-8") + "\nLegacy copied result: 2.30",
+        "",
+        checker.BIB.read_text(encoding="utf-8"),
+        errors,
+    )
+    assert any("legacy native timing value 2.30" in error for error in errors)

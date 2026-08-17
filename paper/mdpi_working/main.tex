@@ -13,8 +13,8 @@
 
 \newif\ifNativeResultsAvailable
 \NativeResultsAvailablefalse
-\newcommand{\NativeAbstractSentence}{Native results are pending.}
-\newcommand{\NativeResultSummary}{Native results are pending.}
+\newcommand{\NativeAbstractSentence}{Native result summary unavailable.}
+\newcommand{\NativeResultSummary}{Native result block unavailable.}
 \newcommand{\NativeMeasurementCommit}{\texttt{1aeadb97e0409227aa203ba825a6bfc1d90445bc}}
 \newcommand{\NativeHostModel}{not yet imported}
 \newcommand{\evidence}[1]{\texttt{#1}}
@@ -525,10 +525,34 @@ implementations or architecture-general timing evidence.
 
 \input{generated/native_results.tex}
 
-When the result block is complete, every value in it is generated from
-\path{paper_native_analysis.json}. No preliminary statistic is copied from
-the legacy WISA manuscript, and no partial component is used to fill an empty
-row.
+\ifNativeResultsAvailable
+All 28 primary axes passed their frozen timing-validity gates. The three
+\evidence{risk-detected} rows are the PQClean, mlkem-native portable, and
+mlkem-native x86\_64 ML-KEM decapsulation \texttt{valid\_tuple} axes. Each
+class changes a matching secret key, ciphertext, and the public material
+embedded in the secret key together. These are therefore reproducible mixed
+input timing signals on this host, not secret-key-only leakage attribution or
+key-recovery evidence. The distinct PQClean ciphertext-only, FO-path, and
+KyberSlash chosen-ciphertext axes remain \evidence{no-finding-observed} under
+their own input contracts.
+
+Exactly one of 17 preregistered pairwise comparisons is Holm-significant: the
+mlkem-native portable versus x86\_64 \texttt{valid\_tuple} class-mean-delta
+contrast ($p_{\mathrm{Holm}}=0.000288$). Both profiles retain a primary
+\evidence{risk-detected} state, so this secondary result compares signal
+magnitude and does not rank either profile as secure. None of the six Falcon,
+six KyberSlash chosen-ciphertext, three KyberSlash operand, or one ML-DSA
+pairwise comparisons is Holm-significant.
+
+Three of 13 signature-length endpoints are variable-length PQClean Falcon
+outputs. Their largest absolute within-class Pearson coefficient is below
+$0.0024$; the remaining ten endpoints are fixed length. The length analysis
+does not declassify the primary signature results.
+\else
+No native interpretation is emitted until every value can be generated from a
+complete \path{paper_native_analysis.json}. Preliminary or partial statistics
+are not copied from the legacy WISA manuscript.
+\fi
 
 \section{Discussion}
 \label{sec:discussion}
@@ -549,7 +573,11 @@ survives in the compiled binary. Assembly presence alone still lacks operand
 provenance, and direct operand attribution still does not establish an
 end-to-end remotely exploitable timing channel. The V10 full-KEM and operand
 canaries occupy those distinct claim scopes rather than being merged into one
-label.
+label. On the measured Intel host, all KyberSlash primary axes and all three
+vulnerable-versus-patched operand comparisons produced no timing finding under
+the frozen protocol. This negative physical observation does not erase the
+known division sites or their direct operand attribution; it limits what was
+observable on this processor and input partition.
 
 \subsection{Interpretation of Timing States}
 
@@ -641,8 +669,12 @@ vocabulary prevents these cases from being advertised as either universal
 vulnerabilities or proofs of safety.
 
 \ifNativeResultsAvailable
-The complete V10 result in Section~\ref{sec:native-results} adds host-scoped
-physical evidence without changing those claim boundaries.
+The complete V10 result in Section~\ref{sec:native-results} adds three valid,
+mixed-input ML-KEM risk signals and 25 valid no-finding observations. The
+result demonstrates why an axis label is part of a security claim: a large
+\texttt{valid\_tuple} timing difference does not by itself identify secret-key
+influence, while a negative operand canary on one CPU does not remove static
+evidence of a variable-latency mechanism.
 \else
 The final quantitative conclusion is intentionally deferred until the complete
 V10 bundle and deterministic named analysis pass their frozen validators.
@@ -663,7 +695,7 @@ connections to formal and physical side-channel assurance.
 
 \informedconsent{Not applicable.}
 
-\dataavailability{Source code, frozen protocols, and premeasurement artifacts are available at \url{https://github.com/Lee-Seungwon1215/WISA_proj}. The complete V10 raw and derived artifact bundle will be deposited with a stable identifier after integrity validation; that identifier must be added before submission.}
+\dataavailability{Source code, frozen protocols, and premeasurement artifacts are available at \url{https://github.com/Lee-Seungwon1215/WISA_proj}. The complete V10 raw and derived artifact bundle has passed local integrity validation and will be deposited with a stable identifier before submission; that identifier remains intentionally unresolved in this draft.}
 
 \acknowledgments{During preparation of this working manuscript, the authors used OpenAI Codex for assistance with code, document restructuring, and prose drafting. The authors reviewed and edited the output and take full responsibility for the content of the publication. Non-author technical assistance and institutional acknowledgments must be confirmed before submission.}
 

@@ -57,6 +57,7 @@ def _load_claims() -> tuple[dict[str, Any], list[str]]:
         "implemented-premeasurement",
         "pending-independent-review",
         "pending-physical-measurement",
+        "supported-single-host",
     }
     for index, claim in enumerate(claims):
         if not isinstance(claim, dict):

@@ -56,6 +56,30 @@ def _analysis() -> dict[str, object]:
         state: sum(axis["combined_status"] == state for axis in axes)
         for state in mdpi.ALLOWED_STATES
     }
+    pairwise = []
+    for family, count in mdpi.EXPECTED_PAIRWISE_FAMILIES.items():
+        for index in range(count):
+            pairwise.append(
+                {
+                    "family": family,
+                    "estimate_difference": 1.0,
+                    "t_score": 0.5,
+                    "p_value_raw": 0.5,
+                    "p_value_holm": 1.0,
+                    "holm_significant_0_05": False,
+                }
+            )
+    signatures = [
+        {
+            "host_id": host["id"],
+            "status": "variable-length" if index < 3 else "constant-length",
+            "pearson_r": 0.001 if index < 3 else None,
+            "p_value": 0.9 if index < 3 else None,
+            "within_class_pearson_r": 0.002 if index < 3 else None,
+            "within_class_p_value": 0.8 if index < 3 else None,
+        }
+        for index in range(mdpi.EXPECTED_SIGNATURE_AXIS_COUNT)
+    ]
     return {
         "schema_version": "1.0",
         "kind": "paper-native-single-host-analysis",
@@ -68,8 +92,12 @@ def _analysis() -> dict[str, object]:
         "summary": {
             "axis_count": len(axes),
             "combined_status_counts": counts,
+            "pairwise_contrast_count": len(pairwise),
+            "signature_host_axis_count": len(signatures),
         },
         "primary_axes": axes,
+        "pairwise_contrasts": pairwise,
+        "signature_length_associations": signatures,
     }
 
 
@@ -97,7 +125,8 @@ def test_complete_render_accepts_only_full_named_analysis(tmp_path: Path):
     assert "NATIVE-RESULTS-PENDING" not in outputs["native_results.tex"]
     assert r"\NativeResultsAvailabletrue" in outputs["native_summary.tex"]
     assert "Synthetic Test CPU" in outputs["native_summary.tex"]
-    assert outputs["native_results.tex"].count(r"\begin{table}[H]") == 4
+    assert outputs["native_results.tex"].count(r"\begin{table}[H]") == 5
+    assert "Preregistered secondary analyses" in outputs["native_results.tex"]
     state = json.loads(outputs["render_state.json"])
     assert state["native_results"] == "complete"
     assert state["analysis_input"] == "paper_native_analysis.json"

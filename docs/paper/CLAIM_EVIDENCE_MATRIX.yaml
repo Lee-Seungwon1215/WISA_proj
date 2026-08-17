@@ -27,31 +27,32 @@ claims:
     open_gates: []
     prohibited_wording: universal tool accuracy
   - id: kyberslash-attribution
-    statement: Stock, isolated KS1, isolated KS2, and combined full-KEM variants use one fixed key and public chosen-ciphertext pools, while three vulnerable/patched site pairs separately test operand-dependent hardware latency under exact linked-binary contracts.
-    status: pending-physical-measurement
+    statement: Stock, isolated KS1, isolated KS2, and combined full-KEM variants use one fixed key and public chosen-ciphertext pools, while three vulnerable/patched site pairs separately test operand-dependent hardware latency under exact linked-binary contracts. All ten primary axes produced no-finding-observed on the qualified Intel host; this host-scoped negative observation does not erase the statically identified division sites or establish an algorithm-wide constant-time property.
+    status: supported-single-host
     scope: ML-KEM/Kyber-768 frozen variants
     evidence:
       - docs/ground_truth/kyberslash/ground_truth.yaml
       - docs/measurement/kyberslash_native_v5.yaml
       - docs/measurement/KYBERSLASH_NATIVE_V3.md
       - docs/reviews/paper/kyberslash-ground-truth-v2.yaml
-    open_gates:
-      - complete single-host v5 physical timing artifacts after control qualification
-      - pass the automated frozen-input and artifact-integrity gates
+      - paper/mdpi_working/generated/native_results.tex
+      - paper/mdpi_working/generated/render_state.json
+      - paper/mdpi_working/main.tex
+    open_gates: []
     prohibited_wording: full attack or key recovery reproduced
   - id: falcon-comparator
-    statement: Reference Falcon and prospective c-fn-dsa native-FP/integer-FPR profiles have exact provenance, separate full-signature timing targets, and measured-binary sampler contracts matched to their actual software-FPR/SSE2 structure.
-    status: pending-physical-measurement
+    statement: Reference Falcon and prospective c-fn-dsa native-FP/integer-FPR profiles have exact provenance, separate full-signature timing targets, and measured-binary sampler contracts matched to their actual software-FPR/SSE2 structure. All six primary axes produced no-finding-observed on the qualified Intel host, and the three variable-length PQClean Falcon endpoints showed only very small within-class length correlations; neither observation is a sampler-core isolation or FIPS 206 conformance claim.
+    status: supported-single-host
     scope: Falcon/FN-DSA 512 and 1024 comparators
     evidence:
       - docs/ground_truth/falcon/manifest.yaml
       - docs/measurement/falcon_native_v4.yaml
       - examples/falcon_comparator_support/timing_binary_contracts_v1.yaml
       - docs/reviews/paper/falcon-comparator-v2.yaml
-    open_gates:
-      - complete single-host v4 physical timing artifacts after control qualification
-      - pass the automated frozen-input and artifact-integrity gates
-      - output-length secondary analysis
+      - paper/mdpi_working/generated/native_results.tex
+      - paper/mdpi_working/generated/render_state.json
+      - paper/mdpi_working/main.tex
+    open_gates: []
     prohibited_wording: FIPS 206 conformance
   - id: diverse-upstream-builds
     statement: Four primary upstream lineages are represented, with mlkem-native and mldsa-native build/KAT/equivalence matrices prepared across x86_64 and AArch64.
@@ -66,8 +67,8 @@ claims:
       - quantify or bound shared-code ancestry before stronger independence wording
     prohibited_wording: four from-scratch independent implementations
   - id: native-timing-results
-    statement: Paper-grade v10 native timing uses one physical x86_64 host, frozen controls, hard-gated SMT/turbo/governor/affinity state, and a qualification from two blocker-free operational control rehearsals at the exact final commit; explicit expected/observed randomness contracts, branchless shared-buffer class setup, and no automatic corpus promotion remain mandatory. Each result is host-scoped, the rehearsals are not inferential replicates, and each ML-KEM valid-tuple result is reported only as a mixed public-and-secret input contrast and never as secret attribution.
-    status: pending-physical-measurement
+    statement: Paper-grade v10 native timing completed on one physical x86_64 host with frozen controls, hard-gated SMT/turbo/governor/affinity state, and a qualification from two blocker-free operational control rehearsals at the exact measurement commit. The complete 28-axis analysis contains three risk-detected mixed ML-KEM valid-tuple axes and 25 no-finding-observed axes; valid-tuple signals vary matching public and secret material and are never reported as secret-only attribution. The rehearsals are not inferential replicates, and cross-host reproducibility is not claimed.
+    status: supported-single-host
     scope: 28 predeclared timing axes plus all three same-corpus baseline tools
     evidence:
       - docs/measurement/paper_native_campaign_v10.yaml
@@ -86,9 +87,10 @@ claims:
       - ctkat/timing_build_provenance.py
       - scripts/check_paper_campaign.py
       - docs/measurement/PAPER_NATIVE_ANALYSIS_V2.md
-    open_gates:
-      - complete two blocker-free v3 operational rehearsals and freeze their qualification
-      - execute the complete fresh single physical host campaign at the qualified commit
-      - hash the host tree and validate the schema-v5 bundle
-      - generate byte-deterministic named analysis outputs
+      - paper/mdpi_working/generated/native_results.tex
+      - paper/mdpi_working/generated/native_summary.tex
+      - paper/mdpi_working/generated/render_state.json
+      - paper/mdpi_working/main.tex
+      - docs/paper/MDPI_POST_RESULT_WORK_PLAN_KO.md
+    open_gates: []
     prohibited_wording: valid-tuple signal means secret-key leakage; no finding means proven constant-time
